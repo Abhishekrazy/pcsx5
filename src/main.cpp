@@ -1,9 +1,12 @@
 #include "common/log.h"
 #include "common/types.h"
+#include "config/config.h"
 #include "memory/memory.h"
 #include "kernel/kernel.h"
 #include "hle/hle.h"
 #include "gpu/gpu.h"
+#include "diagnostics/diagnostics.h"
+#include "reports/reports.h"
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -13,50 +16,40 @@
 
 namespace {
 
-struct CompatReport {
-    std::string target;
-    std::string status;          // "pass" | "fail" | "error"
-    std::string stage;           // "load" | "execute"
-    double       duration_ms = 0;
-    u64          resolved_imports = 0;
-    u64          unresolved_imports = 0;
-    std::vector<HLE::ImportStats> imports;
-};
-
-void WriteCompatReport(const std::string& path, const CompatReport& report) {
-    std::ofstream out(path, std::ios::trunc);
-    if (!out) {
-        std::printf("Failed to open compatibility report: %s\n", path.c_str());
-        return;
-    }
-    out << "{\n";
-    out << "  \"target\": \"" << report.target << "\",\n";
-    out << "  \"status\": \"" << report.status << "\",\n";
-    out << "  \"stage\":  \"" << report.stage << "\",\n";
-    out << "  \"duration_ms\": " << report.duration_ms << ",\n";
-    out << "  \"resolved_imports\": " << report.resolved_imports << ",\n";
-    out << "  \"unresolved_imports\": " << report.unresolved_imports << ",\n";
-    out << "  \"imports\": [\n";
-    for (size_t i = 0; i < report.imports.size(); ++i) {
-        const auto& s = report.imports[i];
-        out << "    { \"module\": \"" << s.module_name
-            << "\", \"nid\": \"" << s.name
-            << "\", \"calls\": " << s.call_count
-            << ", \"thunk\": \"0x" << std::hex << s.thunk_address << std::dec
-            << "\", \"last_caller\": \"0x" << std::hex << s.last_caller_rip << std::dec << "\" }";
-        if (i + 1 < report.imports.size()) out << ",";
-        out << "\n";
-    }
-    out << "  ]\n";
-    out << "}\n";
-}
-
 void PrintUsage() {
     std::printf("Usage:\n");
-    std::printf("  pcsx5.exe [--strict-imports] [--report=<path>] <path_to_eboot.bin_or_elf>\n");
+    std::printf("  pcsx5.exe [--strict-imports] [--report=<path>] [--regression-report=<path>]\n");
+    std::printf("          [--log-file=<path>] [--crash-dir=<path>]\n");
+    std::printf("          [--config-dir=<path>] [--title-id=<id>] <path_to_eboot.bin_or_elf>\n");
     std::printf("\nOptions:\n");
-    std::printf("  --strict-imports    Fail (return non-zero) if the guest requests an unresolved import.\n");
-    std::printf("  --report=<path>     Write a JSON compatibility report to <path>.\n");
+    std::printf("  --strict-imports             Fail (return non-zero) on unresolved imports.\n");
+    std::printf("  --report=<path>              Write a JSON compatibility summary to <path>.\n");
+    std::printf("  --regression-report=<path>   Write an aggregated markdown regression report.\n");
+    std::printf("  --log-file=<path>            Mirror log output to <path>.\n");
+    std::printf("  --crash-dir=<path>           Directory for crash-report bundles (default: pcsx5_crash).\n");
+    std::printf("  --config-dir=<path>          Directory holding global.json + per-title overrides.\n");
+    std::printf("  --title-id=<id>              PS5 title id (CUSAxxxxx) for per-title overrides and history.\n");
+}
+
+// Build a CompatSummary from the current run state.  title_id may be empty,
+// in which case the target path is sanitised into a synthetic id.
+Reports::CompatSummary BuildSummary(const std::string& target_path,
+                                    const std::string& title_id,
+                                    const std::string& status,
+                                    const std::string& stage,
+                                    double duration_ms) {
+    Reports::CompatSummary s;
+    s.title_id           = title_id;
+    s.target             = target_path;
+    s.status             = status;
+    s.stage              = stage;
+    s.duration_ms        = duration_ms;
+    s.resolved_imports   = 0;       // filled in by caller via SetImportStats
+    s.unresolved_imports = 0;
+    s.timestamp_iso      = "";
+    s.git_revision       = "";
+    s.top_imports        = {};
+    return s;
 }
 
 } // namespace
@@ -74,6 +67,11 @@ int main(int argc, char* argv[]) {
     // Parse options
     std::string target_path;
     std::string report_path;
+    std::string regression_report_path;
+    std::string log_file_path;
+    std::string crash_dir = "pcsx5_crash";
+    std::string config_dir;          // empty -> ./pcsx5_config
+    std::string title_id;
     bool strict_imports = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -81,6 +79,16 @@ int main(int argc, char* argv[]) {
             strict_imports = true;
         } else if (a.rfind("--report=", 0) == 0) {
             report_path = a.substr(9);
+        } else if (a.rfind("--regression-report=", 0) == 0) {
+            regression_report_path = a.substr(20);
+        } else if (a.rfind("--log-file=", 0) == 0) {
+            log_file_path = a.substr(11);
+        } else if (a.rfind("--crash-dir=", 0) == 0) {
+            crash_dir = a.substr(12);
+        } else if (a.rfind("--config-dir=", 0) == 0) {
+            config_dir = a.substr(13);
+        } else if (a.rfind("--title-id=", 0) == 0) {
+            title_id = a.substr(11);
         } else if (a == "-h" || a == "--help") {
             PrintUsage();
             return 0;
@@ -96,6 +104,33 @@ int main(int argc, char* argv[]) {
     if (target_path.empty()) {
         PrintUsage();
         return 1;
+    }
+
+    // Bring up the configuration service as the very first subsystem so every
+    // other initialiser (logging, diagnostics, HLE) can read its settings.
+    if (config_dir.empty()) config_dir = "pcsx5_config";
+    ConfigService::Initialize(config_dir);
+
+    // Apply the effective (global + per-title) configuration to the runtime.
+    const ConfigService::Config& cfg = ConfigService::EffectiveFor(title_id);
+    if (!cfg.logging.file_path.empty()) {
+        LogConfig::SetFileOutput(cfg.logging.file_path, cfg.logging.file_append);
+    } else if (!log_file_path.empty()) {
+        LogConfig::SetFileOutput(log_file_path, /*append=*/false);
+    }
+    if (cfg.logging.json_output) LogConfig::SetJsonOutput(true);
+    for (int i = 0; i < 6; ++i) {
+        LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
+    }
+    crash_dir = cfg.crash.bundle_dir.empty() ? crash_dir : cfg.crash.bundle_dir;
+    strict_imports = strict_imports || cfg.hle.strict_imports;
+
+    // Install the crash-report handler early so any later crash (including
+    // during subsystem init) is captured.
+    Diagnostics::InstallCrashHandler(crash_dir);
+
+    if (!title_id.empty()) {
+        LOG_INFO(General, "Active title: %s", title_id.c_str());
     }
 
     // 1. Initialize Subsystems
@@ -129,8 +164,8 @@ int main(int argc, char* argv[]) {
 
     LOG_INFO(General, "All subsystems initialized successfully.");
 
-    CompatReport report;
-    report.target = target_path;
+    Reports::CompatSummary summary = BuildSummary(target_path, title_id,
+                                                 "fail", "load", 0.0);
 
     auto t0 = std::chrono::steady_clock::now();
 
@@ -138,14 +173,24 @@ int main(int argc, char* argv[]) {
     Loader::LoadedModule main_module;
     if (!Kernel::LoadModule(target_path, main_module)) {
         LOG_ERROR(General, "Failed to load target module: %s", target_path.c_str());
-        report.status = "fail";
-        report.stage  = "load";
+        summary.status = "fail";
+        summary.stage  = "load";
+        auto t1 = std::chrono::steady_clock::now();
+        summary.duration_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
         GPU::Shutdown();
         Kernel::Shutdown();
         HLE::Shutdown();
         Memory::Shutdown();
-        if (!report_path.empty()) WriteCompatReport(report_path, report);
+
+        // Persist the per-run summary in the form requested by the caller.
+        if (!report_path.empty()) {
+            std::string err;
+            if (!Reports::WriteCompatSummary(report_path, summary, &err)) {
+                LOG_WARN(General, "Failed to write compat summary: %s", err.c_str());
+            }
+        }
+        Reports::AppendCompatHistory(ConfigService::Directory(), summary, nullptr);
         return -1;
     }
 
@@ -154,22 +199,22 @@ int main(int argc, char* argv[]) {
     bool run_success = Kernel::Execute(main_module);
 
     auto t1 = std::chrono::steady_clock::now();
-    report.duration_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    summary.duration_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
     if (run_success) {
         LOG_INFO(General, "Guest application completed execution successfully.");
-        report.status = "pass";
-        report.stage  = "execute";
+        summary.status = "pass";
+        summary.stage  = "execute";
     } else {
         LOG_ERROR(General, "Guest application execution crashed or failed.");
-        report.status = "fail";
-        report.stage  = "execute";
+        summary.status = "fail";
+        summary.stage  = "execute";
     }
 
     // Populate the import report and unresolved counters
-    report.imports           = HLE::GetImportReport();
-    report.resolved_imports  = report.imports.size();
-    report.unresolved_imports = HLE::GetUnresolvedImportCount();
+    summary.top_imports         = HLE::GetImportReport();
+    summary.resolved_imports    = summary.top_imports.size();
+    summary.unresolved_imports  = HLE::GetUnresolvedImportCount();
 
     // 4. Shutdown Subsystems
     GPU::Shutdown();
@@ -177,12 +222,44 @@ int main(int argc, char* argv[]) {
     HLE::Shutdown();
     Memory::Shutdown();
 
-    if (!report_path.empty()) WriteCompatReport(report_path, report);
+    // One-shot compat summary (CLI opt-in).
+    if (!report_path.empty()) {
+        std::string err;
+        if (!Reports::WriteCompatSummary(report_path, summary, &err)) {
+            LOG_WARN(General, "Failed to write compat summary: %s", err.c_str());
+        }
+    }
+
+    // Always append to the per-title jsonl history so the regression report
+    // can spot drift over time.  Skip when the summary has no identifying
+    // information (e.g. empty target path).
+    if (!summary.target.empty()) {
+        Reports::AppendCompatHistory(ConfigService::Directory(), summary, nullptr);
+    }
+
+    // Optional aggregated markdown regression report.
+    if (!regression_report_path.empty()) {
+        // Build a single-entry list (this run).  A multi-title report is
+        // produced by orchestrators that loop over many titles.
+        std::vector<Reports::RegressionEntry> entries;
+        std::vector<Reports::CompatSummary> history =
+            Reports::LoadCompatHistory(ConfigService::Directory(), summary.title_id, 32);
+        // Drop the entry we just appended (it would otherwise be part of the
+        // baseline against itself, masking the change we want to see).
+        if (!history.empty() && history.front().timestamp_iso == summary.timestamp_iso) {
+            history.erase(history.begin());
+        }
+        entries.push_back(Reports::EvaluateRegression(history, summary));
+        std::string err;
+        if (!Reports::WriteRegressionMarkdown(regression_report_path, entries, &err)) {
+            LOG_WARN(General, "Failed to write regression report: %s", err.c_str());
+        }
+    }
 
     // In strict-import mode, treat any unresolved import as a hard failure.
-    if (strict_imports && report.unresolved_imports > 0) {
+    if (strict_imports && summary.unresolved_imports > 0) {
         LOG_ERROR(General, "Strict-import mode: %llu unresolved import(s) detected.",
-                  (unsigned long long)report.unresolved_imports);
+                  (unsigned long long)summary.unresolved_imports);
         return 3;
     }
 

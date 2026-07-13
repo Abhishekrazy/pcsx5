@@ -57,6 +57,12 @@ add_executable(pcsx5
     src/kernel/tls.cpp
     src/gpu/gpu.h
     src/gpu/vulkan_backend.cpp
+    src/diagnostics/diagnostics.h
+    src/diagnostics/diagnostics.cpp
+    src/config/config.h
+    src/config/config.cpp
+    src/reports/reports.h
+    src/reports/reports.cpp
     ${DISPATCHER_SRC}
 )
 
@@ -71,6 +77,21 @@ if(BUILD_TESTING)
     target_include_directories(loader_validation_tests PRIVATE src)
     target_compile_options(loader_validation_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME loader_validation COMMAND loader_validation_tests)
+
+    # ------------------------------------------------------------------------
+    # Positive ELF corpus — hand-crafts valid PIE / fixed-address / multi-
+    # segment / BSS / PT_DYNAMIC binaries and asserts the post-load invariants
+    # the rest of the emulator depends on.  Does not require clang.
+    # ------------------------------------------------------------------------
+    add_executable(loader_corpus_tests
+        tests/loader_corpus.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+    )
+    target_include_directories(loader_corpus_tests PRIVATE src)
+    target_compile_options(loader_corpus_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME loader_corpus COMMAND loader_corpus_tests)
 
     add_executable(memory_validation_tests
         tests/memory_validation.cpp
@@ -114,6 +135,69 @@ if(BUILD_TESTING)
     add_test(NAME hle_import_report COMMAND hle_import_report_tests)
 
     # ------------------------------------------------------------------------
+    # Reports tests — CompatSummary jsonl history, regression verdict,
+    # aggregated markdown report.
+    # ------------------------------------------------------------------------
+    add_executable(report_tests
+        tests/report_tests.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/kernel/tls.cpp
+        src/kernel/kernel.cpp
+        src/gpu/vulkan_backend.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        src/reports/reports.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(report_tests PRIVATE src)
+    target_compile_options(report_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(report_tests PRIVATE glfw Vulkan::Headers)
+    add_test(NAME reports COMMAND report_tests)
+
+    # ------------------------------------------------------------------------
+    # Config service tests — round-trip, missing file, corrupt file, defaults,
+    # migration, per-title override layering.
+    # ------------------------------------------------------------------------
+    add_executable(config_tests
+        tests/config_tests.cpp
+        src/common/log.cpp
+        src/config/config.cpp
+    )
+    target_include_directories(config_tests PRIVATE src)
+    target_compile_options(config_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME config COMMAND config_tests)
+
+    # ------------------------------------------------------------------------
+    # Diagnostics tests — structured logging, HLE import trace, crash-report
+    # bundle layout.  Exercises the new Phase 0 problems-and-diagnostics APIs.
+    # ------------------------------------------------------------------------
+    add_executable(diagnostics_tests
+        tests/diagnostics_tests.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/kernel/tls.cpp
+        src/kernel/kernel.cpp
+        src/gpu/vulkan_backend.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        src/diagnostics/diagnostics.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(diagnostics_tests PRIVATE src)
+    target_compile_options(diagnostics_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(diagnostics_tests PRIVATE glfw Vulkan::Headers)
+    add_test(NAME diagnostics COMMAND diagnostics_tests)
+
+    # ------------------------------------------------------------------------
     # Guest smoke test — builds the freestanding test ELFs (syscall + TLS) and
     # runs them through the pcsx5 emulator in strict-imports mode.  The build
     # step requires clang on PATH; if it is missing the test is skipped with
@@ -133,6 +217,7 @@ if(BUILD_TESTING)
                   ${CMAKE_SOURCE_DIR}/tests/test_elf/build_all.bat
                   ${CMAKE_SOURCE_DIR}/tests/test_elf/build_elf.bat
                   ${CMAKE_SOURCE_DIR}/tests/test_elf/build_tls_elf.bat
+                  ${CMAKE_SOURCE_DIR}/tests/test_elf/build_corpus.bat
              DESTINATION ${CMAKE_BINARY_DIR}/test_elf)
 
         add_custom_command(

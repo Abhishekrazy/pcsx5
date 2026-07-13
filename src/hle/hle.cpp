@@ -1,12 +1,14 @@
 #include "hle.h"
 #include "../memory/memory.h"
 #include "../common/log.h"
+#include <algorithm>
 #include <cstring>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
 
 extern "C" void HleCommonDispatcher();
@@ -28,6 +30,45 @@ namespace HLE {
     static constexpr u64 THUNK_PAGE_SIZE    = 1 * 1024 * 1024; // 1MB = 32768 slots
     static std::mutex g_hle_mutex;
     static bool        g_strict_import_mode = false;  // Phase-0 test mode toggle
+
+    // ---------------------------------------------------------------------
+    // Import-call trace ring buffer.  Bounded (256) for crash-report use.
+    // ---------------------------------------------------------------------
+    constexpr size_t kTraceCapacity = 256;
+    struct TraceRing {
+        mutable std::mutex mutex;
+        TraceEntry        entries[kTraceCapacity];
+        size_t            write_index = 0;
+        size_t            total_writes = 0;
+
+        void Push(const TraceEntry& e) {
+            std::lock_guard<std::mutex> lock(mutex);
+            entries[write_index] = e;
+            write_index = (write_index + 1) & (kTraceCapacity - 1);
+            ++total_writes;
+        }
+
+        std::vector<TraceEntry> Snapshot(size_t max_count) const {
+            std::lock_guard<std::mutex> lock(mutex);
+            const size_t valid = std::min(total_writes, kTraceCapacity);
+            const size_t n = std::min(max_count, valid);
+            std::vector<TraceEntry> out;
+            out.reserve(n);
+            for (size_t i = 0; i < n; ++i) {
+                const size_t slot = (write_index + kTraceCapacity - 1 - i) & (kTraceCapacity - 1);
+                out.push_back(entries[slot]);
+            }
+            std::reverse(out.begin(), out.end());
+            return out;
+        }
+
+        void Clear() {
+            std::lock_guard<std::mutex> lock(mutex);
+            for (auto& e : entries) e = TraceEntry{};
+            write_index = 0;
+            total_writes = 0;
+        }
+    } g_trace;
 
     // Guest addresses set by the loader after module is mapped
     static guest_addr_t g_guest_main_addr  = 0;
@@ -133,6 +174,15 @@ namespace HLE {
         std::lock_guard<std::mutex> sl(g_stats_mutex);
         g_stats.clear();
         g_stubbed_ids.clear();
+        g_trace.Clear();
+    }
+
+    std::vector<TraceEntry> GetImportTrace(size_t max_count) {
+        return g_trace.Snapshot(max_count);
+    }
+
+    void ClearImportTrace() {
+        g_trace.Clear();
     }
 
     static guest_addr_t CreateThunk(u64 symbol_id) {
@@ -390,6 +440,20 @@ namespace HLE {
         args.arg4 = rcx;
         args.arg5 = r8;
         args.arg6 = r9;
+
+        // Push the call into the import-call trace ring.  Done before invoking
+        // the handler so the trace reflects what the guest requested, not
+        // whether the handler actually returned.
+        TraceEntry te;
+        te.timestamp_us  = ProcessUptimeMicros();
+        te.module_name   = target_sym.module_name;
+        te.name          = target_sym.name;
+        te.symbol_id     = target_sym.id;
+        te.caller_rip    = guest_rip;
+        te.thunk_address = target_sym.thunk_address;
+        te.arg1 = rdi; te.arg2 = rsi; te.arg3 = rdx;
+        te.arg4 = rcx; te.arg5 = r8;  te.arg6 = r9;
+        g_trace.Push(te);
 
         // Record per-symbol statistics (call count, last caller). Failures here
         // must not affect dispatch, so we wrap defensively.

@@ -52,12 +52,31 @@ namespace HLE {
     // along with module name, NID, call count, last caller RIP, and the thunk VA.
     std::vector<ImportStats> GetImportReport();
 
-    // Returns the count of symbols that have been auto-stubbed because they were
-    // requested by the guest but never registered.
+    // Returns the count of symbols that have been auto-stubbed because they
+    // were requested by the guest but never registered.
     u64 GetUnresolvedImportCount();
 
     // Resets per-run counters so a single process can host multiple guest runs.
     void ResetRunStatistics();
+
+    // Import-call trace.  A bounded ring of the most recent guest->host calls,
+    // captured by the dispatcher for inclusion in crash reports.
+    struct TraceEntry {
+        u64                timestamp_us = 0;
+        std::string        module_name;
+        std::string        name;
+        u64                symbol_id     = 0;
+        guest_addr_t       caller_rip    = 0;
+        guest_addr_t       thunk_address = 0;
+        u64                arg1 = 0, arg2 = 0, arg3 = 0;
+        u64                arg4 = 0, arg5 = 0, arg6 = 0;
+    };
+
+    // Returns the most recent N trace entries (chronological order).
+    std::vector<TraceEntry> GetImportTrace(size_t max_count = 256);
+
+    // Manually clear the trace ring.  Useful between guest runs.
+    void ClearImportTrace();
 
     // Register an HLE function handler for a library symbol
     void RegisterSymbol(const std::string& module_name, const std::string& name, HleHandler handler);

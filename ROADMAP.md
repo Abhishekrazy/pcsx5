@@ -55,11 +55,46 @@ code.
     NID-variant resolution, and stub accounting.
   - [x] Guest smoke test target: freestanding syscall ELF and FS-relative
     TLS ELF driven through the full emulator with `--strict-imports`.
-- [ ] Create a test corpus of valid, malformed, PIE, fixed-address, relocation,
-  TLS, thread, and file-I/O ELF fixtures. Fixtures must be self-authored or
-  otherwise redistributable.
-- [ ] Define structured logging, a crash-report bundle, and import-call tracing.
-- [ ] Add a versioned configuration service with global and per-title files.
+- [x] Create a test corpus of valid, malformed, PIE, fixed-address,
+  relocation, TLS, thread, and file-I/O ELF fixtures.  Fixtures are
+  self-authored or otherwise redistributable.
+  - [x] Hand-crafted positive corpus (`tests/loader_corpus.cpp`): valid
+    PIE, fixed-address, multi-segment, BSS, PT_DYNAMIC with
+    DT_STRTAB / DT_SYMTAB / DT_RELA.  87 checks.
+  - [x] Hand-crafted negative corpus (`tests/loader_validation.cpp`):
+    truncated headers, bad magic, unsupported architecture, program-header
+    bounds, segment bounds.
+  - [x] Freestanding guest fixtures (`tests/test_elf/`): syscall smoke
+    test, FS-relative TLS test, and a build script for PIE / fixed /
+    relocation variants when clang is on PATH.
+- [x] Define structured logging, a crash-report bundle, and import-call tracing.
+  - [x] Structured log records with timestamp, category, level, file/line/func,
+    and a 1024-entry ring buffer for crash reports.
+  - [x] JSON and ANSI console output, optional file mirror via `--log-file=`.
+  - [x] 256-entry HLE import-call trace (module, NID, args, caller RIP) exposed
+    via `HLE::GetImportTrace` and embedded in the crash bundle.
+  - [x] SEH-based crash filter (`SetUnhandledExceptionFilter`) that captures a
+    full register snapshot, recent log ring, and import trace, then writes a
+    bundle (crash.json, registers.json, recent.log, import_trace.txt,
+    system.txt, minidump.dmp) to `--crash-dir=`.
+  - [x] `diagnostics_tests` CTest target with 26 checks covering the log ring,
+    file mirror, import trace, and bundle layout.
+- [x] Add a versioned configuration service with global and per-title files.
+  - [x] Schema version stamped on every file (`schema_version: 1`) and a
+    migration pass on load.  Unknown future versions are passed through with
+    a warning.
+  - [x] Sectioned config (`logging`, `crash`, `hle`, `graphics`, `audio`,
+    `input`) with `Defaults()` for compile-time fall-back and JSON
+    serialisation handled by a hand-rolled parser (no third-party dep).
+  - [x] Global file at `<config_dir>/global.json` and per-title overrides at
+    `<config_dir>/titles/<title_id>.json`; `EffectiveFor(title_id)` overlays
+    per-title on top of global.
+  - [x] CLI flags `--config-dir=` and `--title-id=` wire the service in
+    `main.cpp` ahead of every other subsystem so logging / crash / HLE
+    settings are applied at startup.
+  - [x] `config_tests` CTest target with 51 checks covering defaults, full
+    round-trip, missing-file auto-write, corrupt-file fall-back, per-title
+    override layering, and forward-compat with newer schema versions.
 - [ ] Publish compatibility-report and regression-report templates.
 - [ ] Define supported-host requirements and a contributor build guide.
 
@@ -67,10 +102,10 @@ code.
 
 1. Wire the existing freestanding guest ELF into an automated smoke test.
 2. [x] Add loader validation tests for truncated headers, invalid ELF identifiers, unsupported architecture, program-header bounds, and segment bounds.
-3. [~] Replace the repeated TLS-read trap with a documented guest TLS/thread-context
+3. [x] Replace the repeated TLS-read trap with a documented guest TLS/thread-context
    model and add a dedicated TLS test guest.
    - [x] Bounded TLS address translation and automated CTest coverage.
-   - [ ] Guest ELF fixture exercising FS-relative reads and writes.
+   - [x] Guest ELF fixture exercising FS-relative reads and writes.
 4. Make HLE import resolution report module, NID, caller, call count, and
    argument ABI; fail loudly in test mode for unresolved imports.
 5. Record the resulting status in the compatibility database.
