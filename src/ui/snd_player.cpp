@@ -35,6 +35,12 @@ extern "C" {
 #include "libatrac9/libatrac9.h"
 }
 
+// stb_vorbis is a single-header OGG Vorbis decoder.  We compile
+// the implementation into this translation unit only (single TU
+// pattern, same as stb_image is used in the thumbnail cache).
+#define STB_VORBIS_NO_STDIO
+#include "stb_vorbis.h"
+
 namespace Ui {
 
 namespace {
@@ -557,6 +563,104 @@ std::vector<std::uint8_t> SndPreviewPlayer::DecodeAt9ToWav(
 }
 
 // ---------------------------------------------------------------------------
+// OGG Vorbis -> PCM16 WAV decode (vendored stb_vorbis).
+//
+// Reads the whole .ogg file into memory, asks stb_vorbis for its
+// PCM16 sample count, then decodes the entire stream into a single
+// interleaved int16 buffer.  Wraps that buffer in a canonical
+// 44-byte RIFF/WAVE/PCM header so the output is byte-identical
+// (in shape) to what `DecodeAt9ToWav` produces — meaning the
+// existing waveOut playback path picks it up with no special
+// handling.
+// ---------------------------------------------------------------------------
+std::vector<std::uint8_t> SndPreviewPlayer::DecodeOggToWav(
+    const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        LOG_WARN(General, "snd_player: cannot open '%s'", path.c_str());
+        return {};
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const std::string buf = ss.str();
+    if (buf.size() < 4 ||
+        static_cast<unsigned char>(buf[0]) != 'O' ||
+        static_cast<unsigned char>(buf[1]) != 'g' ||
+        static_cast<unsigned char>(buf[2]) != 'g' ||
+        static_cast<unsigned char>(buf[3]) != 'S') {
+        LOG_WARN(General, "snd_player: '%s' is not an OGG stream", path.c_str());
+        return {};
+    }
+    const std::vector<unsigned char> file(buf.begin(), buf.end());
+    int ogg_err = 0;
+    stb_vorbis* vorbis = ::stb_vorbis_open_memory(
+        file.data(), static_cast<int>(file.size()),
+        &ogg_err, nullptr);
+    if (!vorbis) {
+        LOG_WARN(General,
+                 "snd_player: stb_vorbis_open_memory failed for '%s' (err=%d)",
+                 path.c_str(), ogg_err);
+        return {};
+    }
+    const stb_vorbis_info info = ::stb_vorbis_get_info(vorbis);
+    const int channels   = info.channels   > 0 ? info.channels   : 2;
+    const int sampleRate = info.sample_rate > 0
+                             ? static_cast<int>(info.sample_rate) : 48000;
+    // Allocate an output buffer large enough for the full stream.
+    // stb_vorbis_get_samples_short_interleaved returns the number of
+    // *frames* it actually decoded (which can be less than the file
+    // length on truncated files).  Start with a generous estimate
+    // and shrink after.
+    const unsigned int total_samples_per_ch =
+        static_cast<unsigned int>(::stb_vorbis_stream_length_in_samples(vorbis));
+    const std::size_t pcm_frames_est =
+        total_samples_per_ch > 0
+            ? static_cast<std::size_t>(total_samples_per_ch)
+            : (file.size() * 2);  // worst-case fallback
+    std::vector<std::int16_t> pcm(pcm_frames_est * channels, 0);
+
+    const int frames_decoded = ::stb_vorbis_get_samples_short_interleaved(
+        vorbis, channels, pcm.data(),
+        static_cast<int>(pcm.size()));
+    ::stb_vorbis_close(vorbis);
+    if (frames_decoded <= 0) {
+        LOG_WARN(General,
+                 "snd_player: stb_vorbis returned 0 frames for '%s'", path.c_str());
+        return {};
+    }
+
+    constexpr std::size_t kWavHeader = 44;
+    const std::size_t pcm_frames = static_cast<std::size_t>(frames_decoded);
+    const std::size_t pcm_bytes  = pcm_frames *
+                                   static_cast<std::size_t>(channels) * 2U;
+    std::vector<std::uint8_t> wav(kWavHeader + pcm_bytes, 0);
+    WriteU32LE(wav, 0,  0x46464952U);   // "RIFF"
+    WriteU32LE(wav, 4,  static_cast<std::uint32_t>(wav.size() - 8));
+    WriteU32LE(wav, 8,  0x45564157U);   // "WAVE"
+    WriteU32LE(wav, 12, 0x20746D66U);   // "fmt "
+    WriteU32LE(wav, 16, 16);            // fmt chunk size (PCM)
+    WriteU16LE(wav, 20, 1);             // wFormatTag = PCM
+    WriteU16LE(wav, 22, static_cast<std::uint16_t>(channels));
+    WriteU32LE(wav, 24, static_cast<std::uint32_t>(sampleRate));
+    WriteU32LE(wav, 28, static_cast<std::uint32_t>(sampleRate * channels * 2));
+    WriteU16LE(wav, 32, static_cast<std::uint16_t>(channels * 2));
+    WriteU16LE(wav, 34, 16);
+    WriteU32LE(wav, 36, 0x61746164U);   // "data"
+    WriteU32LE(wav, 40, static_cast<std::uint32_t>(pcm_bytes));
+    // Interleaved PCM16 little-endian copy.
+    for (std::size_t s = 0; s < pcm_frames * channels; ++s) {
+        const std::size_t off = kWavHeader + s * 2;
+        const std::int16_t v  = pcm[s];
+        wav[off + 0] = static_cast<std::uint8_t>(v);
+        wav[off + 1] = static_cast<std::uint8_t>(v >> 8);
+    }
+    LOG_INFO(General,
+             "snd_player: decoded '%s' -> %d samples, %d ch, %d Hz",
+             path.c_str(), frames_decoded, channels, sampleRate);
+    return wav;
+}
+
+// ---------------------------------------------------------------------------
 // Member functions
 // ---------------------------------------------------------------------------
 SndPreviewPlayer::SndPreviewPlayer() {
@@ -719,9 +823,20 @@ void SndPreviewPlayer::WorkerLoop() {
             if (EndsWithCi(path, ".at9") || EndsWithCi(path, ".at3")) {
                 wav = DecodeAt9ToWav(path);
             }
+            else if (EndsWithCi(path, ".ogg")) {
+                // OGG Vorbis: decode to PCM16 WAV in-memory via the
+                // vendored stb_vorbis single-header decoder.  The
+                // resulting buffer goes through the same waveOut
+                // path as .at9 below — seamless looping, no size
+                // cap, no temp file.  This replaces the previous
+                // "skip OGG" warning (we used to bail because MCI
+                // has no native OGG codec).
+                wav = DecodeOggToWav(path);
+            }
 #ifdef _WIN32
-            else if (EndsWithCi(path, ".wav") || EndsWithCi(path, ".ogg") ||
-                     EndsWithCi(path, ".mp3") || EndsWithCi(path, ".flac") ||
+            else if (EndsWithCi(path, ".wav") ||
+                     EndsWithCi(path, ".mp3") ||
+                     EndsWithCi(path, ".flac") ||
                      EndsWithCi(path, ".opus")) {
                 // For container formats, just record the path; the
                 // real playback is handled in StartLocked.
@@ -825,14 +940,26 @@ void SndPreviewPlayer::StartLocked(const std::vector<std::uint8_t>& wav) {
     }
     if (EndsWithCi(path, ".ogg") || EndsWithCi(path, ".flac") ||
         EndsWithCi(path, ".opus")) {
-        // One-time warning per path (StopLocked clears mci_open_, so
-        // we use cached_path_ as the dedup key).
+        // .ogg is handled in the worker (stb_vorbis decode →
+        // in-memory WAV → waveOut).  .flac and .opus still have no
+        // native decoder vendored, so we skip those with a
+        // one-time warning (per-path dedup via `last_warned`).
+        if (EndsWithCi(path, ".ogg")) {
+            // Should not reach here: WorkerLoop intercepts .ogg
+            // before StartLocked is ever called with an empty
+            // wav.  Defensive log in case the code path shifts.
+            LOG_WARN(General,
+                     "snd_player: .ogg reached StartLocked (unexpected)");
+            playing_ = false;
+            paused_  = false;
+            return;
+        }
         static std::string last_warned;
         if (last_warned != path) {
             last_warned = path;
             LOG_WARN(General,
-                     "snd_player: skipping '%s' (no native MCI codec; "
-                     "convert to .wav/.at9 or install DirectShow pack)",
+                     "snd_player: skipping '%s' (no native decoder; "
+                     "convert to .wav/.at9 or install a system codec)",
                      path.c_str());
         }
         playing_ = false;
