@@ -137,6 +137,7 @@ namespace Kernel {
         u64 resolved_count    = 0;
         u64 unresolved_count  = 0;
         u64 relative_count    = 0;
+        bool hard_failure     = false;
 
         // Helper: resolve an external symbol by name, searching all registered HLE modules
         auto resolve_external = [&](const std::string& sym_name) -> guest_addr_t {
@@ -146,6 +147,11 @@ namespace Kernel {
             } else {
                 ++unresolved_count;
                 LOG_DEBUG(Kernel, "  Unresolved external symbol: %s", sym_name.c_str());
+                if (HLE::IsStrictImportMode()) {
+                    // In strict-import mode any unresolved symbol is a hard error
+                    // so the test harness can detect missing handlers deterministically.
+                    hard_failure = true;
+                }
             }
             return addr;
         };
@@ -213,6 +219,12 @@ namespace Kernel {
 
         LOG_INFO(Kernel, "Linking done: %llu RELATIVE, %llu resolved, %llu unresolved external.",
                  relative_count, resolved_count, unresolved_count);
+
+        if (hard_failure) {
+            LOG_ERROR(Kernel, "Strict-import mode: aborting link due to %llu unresolved import(s).",
+                      unresolved_count);
+            return false;
+        }
         return true;
     }
 
