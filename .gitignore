@@ -16,6 +16,7 @@
 *.sdf
 *.VC.db
 *.VC.opendb
+.trae/
 
 # Compiled Binaries & Libraries
 *.exe
