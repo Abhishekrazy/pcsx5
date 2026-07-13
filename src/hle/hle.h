@@ -27,8 +27,37 @@ namespace HLE {
         HleHandler handler;
     };
 
+    // Aggregate statistics for a single resolved import — used by the test harness
+    // and the compatibility database to make import resolution actionable.
+    struct ImportStats {
+        std::string module_name;
+        std::string name;          // The NID string the guest actually requested
+        guest_addr_t thunk_address = 0;
+        u64 call_count = 0;        // Number of times the symbol has been dispatched
+        guest_addr_t last_caller_rip = 0;  // RIP of the most recent guest caller
+        u64 total_caller_samples = 0;       // Number of distinct RIPs observed
+    };
+
     bool Initialize();
     void Shutdown();
+
+    // Test-mode helpers --------------------------------------------------------
+    // When strict-import mode is enabled, Resolve/ResolveAny refuse to auto-stub
+    // unresolved NIDs. They return 0 and the kernel linker treats the relocation
+    // as a hard error. This is required by the Phase-0 test suite.
+    void SetStrictImportMode(bool enabled);
+    bool IsStrictImportMode();
+
+    // Returns a snapshot of every symbol that was actually invoked (call_count > 0)
+    // along with module name, NID, call count, last caller RIP, and the thunk VA.
+    std::vector<ImportStats> GetImportReport();
+
+    // Returns the count of symbols that have been auto-stubbed because they were
+    // requested by the guest but never registered.
+    u64 GetUnresolvedImportCount();
+
+    // Resets per-run counters so a single process can host multiple guest runs.
+    void ResetRunStatistics();
 
     // Register an HLE function handler for a library symbol
     void RegisterSymbol(const std::string& module_name, const std::string& name, HleHandler handler);
@@ -37,7 +66,7 @@ namespace HLE {
     guest_addr_t Resolve(const std::string& module_name, const std::string& name);
 
     // Resolve by NID name alone, searching all registered modules.
-    // Falls back to auto-stub creation if not found anywhere.
+    // Falls back to auto-stub creation if not found anywhere (unless strict mode).
     guest_addr_t ResolveAny(const std::string& name);
 
     // Store the guest VA of the game's main() function (called from ELF loader)

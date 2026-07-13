@@ -53,11 +53,33 @@ add_executable(pcsx5
     src/hle/libagc.cpp
     src/kernel/kernel.h
     src/kernel/kernel.cpp
+    src/kernel/tls.h
+    src/kernel/tls.cpp
     src/gpu/gpu.h
     src/gpu/vulkan_backend.cpp
     ${DISPATCHER_SRC}
 )
 
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(loader_validation_tests
+        tests/loader_validation.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+    )
+    target_include_directories(loader_validation_tests PRIVATE src)
+    target_compile_options(loader_validation_tests PRIVATE /W4 /WX)
+    add_test(NAME loader_validation COMMAND loader_validation_tests)
+
+    add_executable(tls_context_tests
+        tests/tls_context.cpp
+        src/kernel/tls.cpp
+    )
+    target_include_directories(tls_context_tests PRIVATE src)
+    target_compile_options(tls_context_tests PRIVATE /W4 /WX)
+    add_test(NAME tls_context COMMAND tls_context_tests)
+endif()
 # Link GLFW and Vulkan Header dependencies
 target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers)
 

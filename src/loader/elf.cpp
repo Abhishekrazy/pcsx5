@@ -4,6 +4,7 @@
 #include <fstream>
 #include <cstring>
 #include <algorithm>
+#include <limits>
 
 namespace Loader {
 
@@ -49,15 +50,50 @@ namespace Loader {
 
         LOG_INFO(Loader, "Valid ELF64 x86-64 binary detected. Entry Point: 0x%llx", ehdr.e_entry);
 
-        // Read program headers
+        // Read program headers. Validate the table before seeking or allocating so
+        // malformed inputs cannot make the loader read outside the file.
         if (ehdr.e_phnum == 0) {
             LOG_ERROR(Loader, "No program headers found in ELF.");
+            return false;
+        }
+        if (ehdr.e_phentsize != sizeof(Elf64_Phdr)) {
+            LOG_ERROR(Loader, "Unsupported program-header entry size: %u.", ehdr.e_phentsize);
+            return false;
+        }
+
+        const u64 file_size_u64 = static_cast<u64>(file_size);
+        if (ehdr.e_phoff > file_size_u64 ||
+            ehdr.e_phnum > (file_size_u64 - ehdr.e_phoff) / sizeof(Elf64_Phdr)) {
+            LOG_ERROR(Loader, "Program-header table is outside the ELF file.");
             return false;
         }
 
         std::vector<Elf64_Phdr> phdrs(ehdr.e_phnum);
         file.seekg(ehdr.e_phoff, std::ios::beg);
-        file.read(reinterpret_cast<char*>(phdrs.data()), ehdr.e_phnum * sizeof(Elf64_Phdr));
+        file.read(reinterpret_cast<char*>(phdrs.data()), static_cast<std::streamsize>(ehdr.e_phnum * sizeof(Elf64_Phdr)));
+        if (!file) {
+            LOG_ERROR(Loader, "Failed to read the complete program-header table.");
+            return false;
+        }
+
+        // Validate all file-backed ranges and PT_LOAD address ranges before
+        // reserving guest memory or copying any segment data.
+        for (const auto& phdr : phdrs) {
+            if (phdr.p_offset > file_size_u64 || phdr.p_filesz > file_size_u64 - phdr.p_offset) {
+                LOG_ERROR(Loader, "Segment file range is outside the ELF file.");
+                return false;
+            }
+            if (phdr.p_type == PT_LOAD) {
+                if (phdr.p_filesz > phdr.p_memsz) {
+                    LOG_ERROR(Loader, "PT_LOAD file size exceeds memory size.");
+                    return false;
+                }
+                if (phdr.p_vaddr > std::numeric_limits<u64>::max() - phdr.p_memsz) {
+                    LOG_ERROR(Loader, "PT_LOAD virtual address range overflows.");
+                    return false;
+                }
+            }
+        }
 
         // Determine base address mapping requirements and total size
         u64 min_vaddr = ~0ULL;

@@ -14,7 +14,7 @@ namespace Kernel {
     static std::unordered_map<u64, ThreadContext> g_threads;
     static PVOID g_veh_handler = nullptr;
     static LPTOP_LEVEL_EXCEPTION_FILTER g_prev_exception_filter = nullptr;
-    static guest_addr_t g_guest_tls_base = 0;
+    static GuestTlsContext g_guest_tls;
 
     // Forward declaration of the VEH callback
     static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info);
@@ -65,12 +65,18 @@ namespace Kernel {
             return false;
         }
 
-        g_guest_tls_base = tls_alloc + 64 * 1024;
+        if (!g_guest_tls.Configure(tls_alloc, GuestTlsContext::kDefaultAllocationSize)) {
+            LOG_ERROR(Kernel, "Failed to configure guest TLS context.");
+            Memory::Unmap(tls_alloc, GuestTlsContext::kDefaultAllocationSize);
+            RemoveVectoredExceptionHandler(g_veh_handler);
+            g_veh_handler = nullptr;
+            return false;
+        }
         
         // Write the pointer to the base itself at offset 0 (FreeBSD TCB self-pointer convention)
-        Memory::Write<u64>(g_guest_tls_base, g_guest_tls_base);
+        Memory::Write<u64>(g_guest_tls.ThreadPointer(), g_guest_tls.ThreadPointer());
         LOG_INFO(Kernel, "Allocated guest TLS block [0x%llx - 0x%llx], base at 0x%llx", 
-                 tls_alloc, tls_alloc + tls_total_size, g_guest_tls_base);
+                 tls_alloc, tls_alloc + tls_total_size, g_guest_tls.ThreadPointer());
 
         LOG_INFO(Kernel, "Registered Vectored Exception Handler successfully.");
         return true;
@@ -86,10 +92,9 @@ namespace Kernel {
             SetUnhandledExceptionFilter(g_prev_exception_filter);
             g_prev_exception_filter = nullptr;
         }
-        if (g_guest_tls_base) {
-            guest_addr_t tls_alloc = g_guest_tls_base - 64 * 1024;
-            Memory::Unmap(tls_alloc, 128 * 1024);
-            g_guest_tls_base = 0;
+        if (g_guest_tls.AllocationBase()) {
+            Memory::Unmap(g_guest_tls.AllocationBase(), g_guest_tls.AllocationSize());
+            g_guest_tls.Reset();
         }
     }
 
@@ -581,8 +586,14 @@ namespace Kernel {
                             
                             // Emulate: mov reg, fs:[displacement]
                             if (opcode == 0x8B) {
+                                const u64 access_size = is_64bit ? 8 : 4;
+                                guest_addr_t tls_address = 0;
+                                if (!g_guest_tls.Translate(displacement, access_size, tls_address)) {
+                                    LOG_ERROR(Kernel, "Guest TLS read is outside the current thread context (offset: %d, size: %llu).", displacement, access_size);
+                                    return EXCEPTION_CONTINUE_SEARCH;
+                                }
                                 u64 tls_value = 0;
-                                Memory::ReadBuffer(g_guest_tls_base + displacement, &tls_value, is_64bit ? 8 : 4);
+                                Memory::ReadBuffer(tls_address, &tls_value, access_size);
                                 
                                 u64* reg_ptr = nullptr;
                                 switch (reg) {
@@ -636,7 +647,13 @@ namespace Kernel {
                                 
                                 if (reg_ptr) {
                                     u64 tls_value = *reg_ptr;
-                                    Memory::WriteBuffer(g_guest_tls_base + displacement, &tls_value, is_64bit ? 8 : 4);
+                                    const u64 access_size = is_64bit ? 8 : 4;
+                                    guest_addr_t tls_address = 0;
+                                    if (!g_guest_tls.Translate(displacement, access_size, tls_address)) {
+                                        LOG_ERROR(Kernel, "Guest TLS write is outside the current thread context (offset: %d, size: %llu).", displacement, access_size);
+                                        return EXCEPTION_CONTINUE_SEARCH;
+                                    }
+                                    Memory::WriteBuffer(tls_address, &tls_value, access_size);
                                     
                                     LOG_DEBUG(Kernel, "Emulated TLS Write: mov fs:[0x%X], %s -> Value: 0x%llx (Len: %u)",
                                               displacement, (reg == 0 ? "RAX" : (reg == 1 ? "RCX" : (reg == 2 ? "RDX" : (reg == 3 ? "RBX" : (reg == 6 ? "RSI" : (reg == 7 ? "RDI" : "REG")))))),
@@ -653,8 +670,14 @@ namespace Kernel {
                                     instr += 4;
                                     instr_len = static_cast<u32>(instr - rip);
                                     
+                                    const u64 access_size = is_64bit ? 8 : 4;
+                                    guest_addr_t tls_address = 0;
+                                    if (!g_guest_tls.Translate(displacement, access_size, tls_address)) {
+                                        LOG_ERROR(Kernel, "Guest TLS write is outside the current thread context (offset: %d, size: %llu).", displacement, access_size);
+                                        return EXCEPTION_CONTINUE_SEARCH;
+                                    }
                                     u64 tls_val = imm_value;
-                                    Memory::WriteBuffer(g_guest_tls_base + displacement, &tls_val, is_64bit ? 8 : 4);
+                                    Memory::WriteBuffer(tls_address, &tls_val, access_size);
                                     
                                     LOG_DEBUG(Kernel, "Emulated TLS Write (Imm): mov fs:[0x%X], 0x%X (Len: %u)",
                                               displacement, imm_value, instr_len);

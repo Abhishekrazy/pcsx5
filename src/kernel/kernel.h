@@ -1,6 +1,7 @@
 #pragma once
 #include "../common/types.h"
 #include "../loader/elf.h"
+#include "tls.h"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -13,6 +14,7 @@ namespace Kernel {
         guest_addr_t entry_point = 0;
         guest_addr_t stack_base = 0;
         u64 stack_size = 0;
+        guest_addr_t tls_base = 0;
     };
 
     bool Initialize();

@@ -4,6 +4,7 @@
 #include <cstring>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -18,11 +19,15 @@ namespace HLE {
 
     static std::unordered_map<std::string, HleSymbol> g_symbol_registry;
     static std::unordered_map<u64, HleSymbol>         g_id_index;       // fast O(1) dispatch
+    static std::unordered_map<u64, ImportStats>       g_stats;          // per-symbol runtime stats
+    static std::unordered_set<u64>                    g_stubbed_ids;    // symbols that were auto-stubbed
+    static std::mutex                                  g_stats_mutex;
     static guest_addr_t g_thunk_page_base   = 0;
     static u64          g_thunk_page_offset = 0;
     static constexpr u64 THUNK_SIZE         = 32;
     static constexpr u64 THUNK_PAGE_SIZE    = 1 * 1024 * 1024; // 1MB = 32768 slots
     static std::mutex g_hle_mutex;
+    static bool        g_strict_import_mode = false;  // Phase-0 test mode toggle
 
     // Guest addresses set by the loader after module is mapped
     static guest_addr_t g_guest_main_addr  = 0;
@@ -66,6 +71,68 @@ namespace HLE {
             Memory::Unmap(g_thunk_page_base, THUNK_PAGE_SIZE);
             g_thunk_page_base = 0;
         }
+        std::lock_guard<std::mutex> lock(g_hle_mutex);
+        g_symbol_registry.clear();
+        g_id_index.clear();
+        {
+            std::lock_guard<std::mutex> sl(g_stats_mutex);
+            g_stats.clear();
+            g_stubbed_ids.clear();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Test-mode and reporting helpers
+    // -------------------------------------------------------------------------
+    void SetStrictImportMode(bool enabled) {
+        g_strict_import_mode = enabled;
+        LOG_INFO(HLE, "Strict-import mode %s.", enabled ? "ENABLED" : "disabled");
+    }
+
+    bool IsStrictImportMode() {
+        return g_strict_import_mode;
+    }
+
+    static void RecordStats(const HleSymbol& sym, const GuestArgs& args, guest_addr_t guest_rip) {
+        std::lock_guard<std::mutex> sl(g_stats_mutex);
+        auto& s = g_stats[sym.id];
+        s.module_name     = sym.module_name;
+        s.name            = sym.name;
+        s.thunk_address   = sym.thunk_address;
+        s.call_count     += 1;
+        s.last_caller_rip = guest_rip;
+        // total_caller_samples is currently a count of recorded calls; tracking
+        // distinct RIPs would require additional storage and is unnecessary for
+        // the Phase-0 deliverable.
+        s.total_caller_samples = s.call_count;
+        (void)args;
+    }
+
+    static void MarkAutoStubbed(u64 symbol_id) {
+        std::lock_guard<std::mutex> sl(g_stats_mutex);
+        g_stubbed_ids.insert(symbol_id);
+    }
+
+    std::vector<ImportStats> GetImportReport() {
+        std::lock_guard<std::mutex> sl(g_stats_mutex);
+        std::vector<ImportStats> out;
+        out.reserve(g_stats.size());
+        for (const auto& kv : g_stats) {
+            if (kv.second.call_count == 0) continue;
+            out.push_back(kv.second);
+        }
+        return out;
+    }
+
+    u64 GetUnresolvedImportCount() {
+        std::lock_guard<std::mutex> sl(g_stats_mutex);
+        return g_stubbed_ids.size();
+    }
+
+    void ResetRunStatistics() {
+        std::lock_guard<std::mutex> sl(g_stats_mutex);
+        g_stats.clear();
+        g_stubbed_ids.clear();
     }
 
     static guest_addr_t CreateThunk(u64 symbol_id) {
@@ -99,7 +166,7 @@ namespace HLE {
 
     void RegisterSymbol(const std::string& module_name, const std::string& name, HleHandler handler) {
         std::lock_guard<std::mutex> lock(g_hle_mutex);
-        
+
         std::string key = module_name + "::" + name;
         u64 symbol_id = g_symbol_registry.size() + 1;
 
@@ -149,17 +216,26 @@ namespace HLE {
             }
         }
 
-        // 3. Auto-create a stub if not registered
+        // 3. Auto-create a stub if not registered (skipped in strict-import mode)
+        if (g_strict_import_mode) {
+            LOG_ERROR(HLE, "Unresolved symbol in strict mode: %s", key.c_str());
+            return 0;
+        }
         LOG_WARN(HLE, "Unresolved symbol requested: %s. Creating stub...", key.c_str());
         lock.unlock();
         RegisterSymbol(module_name, name, [key](const GuestArgs& args) -> u64 {
-            LOG_WARN(HLE, "Called unimplemented stub function: %s (Args: 0x%llx, 0x%llx, 0x%llx)", 
+            LOG_WARN(HLE, "Called unimplemented stub function: %s (Args: 0x%llx, 0x%llx, 0x%llx)",
                      key.c_str(), args.arg1, args.arg2, args.arg3);
             return 0;
         });
 
         lock.lock();
-        return g_symbol_registry[key].thunk_address;
+        auto found = g_symbol_registry.find(key);
+        if (found == g_symbol_registry.end()) {
+            return 0;
+        }
+        MarkAutoStubbed(found->second.id);
+        return found->second.thunk_address;
     }
 
     // Search ALL registered modules for a matching NID (exact or base match).
@@ -186,7 +262,11 @@ namespace HLE {
             }
         }
 
-        // 2. Not found anywhere - auto-stub under "unknown" module
+        // 2. Not found anywhere - auto-stub under "unknown" module (skipped in strict mode)
+        if (g_strict_import_mode) {
+            LOG_ERROR(HLE, "ResolveAny: Unresolved NID in strict mode: '%s'", name.c_str());
+            return 0;
+        }
         std::string stub_key = "unknown::" + name;
         LOG_WARN(HLE, "ResolveAny: Unresolved NID '%s'. Creating cross-module stub...", name.c_str());
         lock.unlock();
@@ -196,7 +276,12 @@ namespace HLE {
             return 0;
         });
         lock.lock();
-        return g_symbol_registry[stub_key].thunk_address;
+        auto found = g_symbol_registry.find(stub_key);
+        if (found == g_symbol_registry.end()) {
+            return 0;
+        }
+        MarkAutoStubbed(found->second.id);
+        return found->second.thunk_address;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -286,7 +371,7 @@ namespace HLE {
                 found = true;
             }
         }
- 
+
         if (!found) {
             LOG_ERROR(HLE, "HleDispatch: Received invalid symbol ID: %llu", symbol_id);
             return 0;
@@ -294,10 +379,10 @@ namespace HLE {
 
         std::string safe_mod = SafeString(target_sym.module_name);
         std::string safe_name = SafeString(target_sym.name);
-  
-        LOG_DEBUG(HLE, "HLE Call: %s::%s from RIP 0x%llx", 
+
+        LOG_DEBUG(HLE, "HLE Call: %s::%s from RIP 0x%llx",
                   safe_mod.c_str(), safe_name.c_str(), guest_rip);
- 
+
         GuestArgs args;
         args.arg1 = rdi;
         args.arg2 = rsi;
@@ -305,7 +390,11 @@ namespace HLE {
         args.arg4 = rcx;
         args.arg5 = r8;
         args.arg6 = r9;
- 
+
+        // Record per-symbol statistics (call count, last caller). Failures here
+        // must not affect dispatch, so we wrap defensively.
+        RecordStats(target_sym, args, guest_rip);
+
         if (!target_sym.handler) {
             LOG_ERROR(HLE, "HLE handler for %s::%s is null!", safe_mod.c_str(), safe_name.c_str());
             return 0;
@@ -315,7 +404,7 @@ namespace HLE {
         DWORD exc_code = 0;
         u64 result = SafeInvokeHandler(&target_sym.handler, args, &crashed, &exc_code);
         if (crashed) {
-            LOG_ERROR(HLE, "Crash executing HLE handler for %s::%s! Exception Code: 0x%X", 
+            LOG_ERROR(HLE, "Crash executing HLE handler for %s::%s! Exception Code: 0x%X",
                       safe_mod.c_str(), safe_name.c_str(), exc_code);
         }
         return result;
