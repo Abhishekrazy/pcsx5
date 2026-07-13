@@ -507,6 +507,7 @@ add_executable(dump_imports
     )
     target_include_directories(snd_player_test PRIVATE
         src
+        third_party
         third_party/LibAtrac9/include
     )
     target_link_libraries(snd_player_test PRIVATE atrac9)

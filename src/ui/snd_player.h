@@ -98,6 +98,11 @@ public:
     /// `pcsx5_snd_decode` CLI tool.
     static std::vector<std::uint8_t> DecodeAt9ToWav(const std::string& path);
 
+    /// Decode an OGG Vorbis file to an in-memory PCM16 WAV image.
+    /// Uses the vendored stb_vorbis single-header decoder.  Returns
+    /// an empty vector on any error.  Exposed for unit tests.
+    static std::vector<std::uint8_t> DecodeOggToWav(const std::string& path);
+
 private:
     void WorkerLoop();
     void EnqueueDecode(int generation, std::string path);
