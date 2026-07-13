@@ -39,7 +39,11 @@ public:
     // Cooperative stop: if the child is alive, terminate it.
     void Stop();
 
+    void Pause();
+    void Resume();
+
     bool running() const { return running_.load(); }
+    bool paused() const { return paused_.load(); }
     int  exit_code() const { return exit_code_; }
 
 private:
@@ -47,6 +51,7 @@ private:
 
     std::thread             reader_;
     std::atomic<bool>       running_{false};
+    std::atomic<bool>       paused_{false};
     int                     exit_code_ = 0;
     LogConsole*             sink_ = nullptr;
     OnExit                  on_exit_;

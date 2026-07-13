@@ -177,8 +177,8 @@ namespace Loader {
         }
         
         // Update base address if OS allocated dynamically (PIE)
-        if (load_base == 0) {
-            base_address = reserved_base;
+        if (out_module.is_pie) {
+            base_address = reserved_base - load_base;
             out_module.base_address = base_address;
             out_module.entry_point = base_address + ehdr.e_entry;
         }
@@ -527,12 +527,15 @@ namespace Loader {
             if (sym.st_name == 0 || sym.st_name >= module.string_table.size()) continue;
             const std::string name = &module.string_table[sym.st_name];
             for (auto& imp : out.imports) {
-                if (imp.name == name) { imp.plt_refs++; ++out.referenced_import_count; break; }
+                if (imp.name == name) { imp.plt_refs++; break; }
             }
         }
-        // RELA references also count.
+        // Count unique referenced imports (either RELA or PLT referenced).
+        out.referenced_import_count = 0;
         for (const auto& imp : out.imports) {
-            if (imp.rela_refs > 0) ++out.referenced_import_count;
+            if (imp.rela_refs > 0 || imp.plt_refs > 0) {
+                out.referenced_import_count++;
+            }
         }
 
         // ── Dependency list (DT_NEEDED) ─────────────────────────────────────

@@ -55,7 +55,7 @@ namespace HLE {
             return 0; // Success
         });
 
-        RegisterSymbol("libSceAgcDriver", "sceAgcDriverMapMemory", [](const GuestArgs& args) -> u64 {
+        auto AgcDriverMapMemoryImpl = [](const GuestArgs& args) -> u64 {
             u64 dev = args.arg1;
             guest_addr_t addr = args.arg2;
             u64 size = args.arg3;
@@ -63,6 +63,34 @@ namespace HLE {
             LOG_INFO(HLE, "sceAgcDriverMapMemory(device: 0x%llx, addr: 0x%llx, size: %llu, type: %u)", 
                      dev, addr, size, type);
             return 0; // Success
+        };
+
+        RegisterSymbol("libSceAgcDriver", "sceAgcDriverMapMemory", AgcDriverMapMemoryImpl);
+        RegisterSymbol("libSceAgcDriver", "9UK1vLZQft4#y#J", AgcDriverMapMemoryImpl);
+
+        RegisterSymbol("libSceAgcDriver", "tn3VlD0hG60#k#N", [](const GuestArgs& args) -> u64 {
+            u64 device = args.arg1;
+            u64 addr = args.arg2;
+            u64 host_ptr = args.arg3;
+            LOG_INFO(HLE, "tn3VlD0hG60#k#N called: device=0x%llx, addr=0x%llx, host_ptr=0x%llx", device, addr, host_ptr);
+            return 0; // Success
+        });
+
+        RegisterSymbol("libSceAgcDriver", "Ujf3KzMvRmI#j#j", [](const GuestArgs& args) -> u64 {
+            u64 align = args.arg1;
+            u64 size = args.arg2;
+            u64 ctx = args.arg3;
+            LOG_INFO(HLE, "Ujf3KzMvRmI#j#j (allocator) called: align=%llu, size=%llu, ctx=0x%llx", align, size, ctx);
+            
+            // Allocate guest virtual memory for the request
+            guest_addr_t allocated_addr = 0;
+            u64 rounded_size = (size + 0x3FFF) & ~0x3FFF; // round up to page size (16KB)
+            if (Memory::Map(0, rounded_size, Memory::PROT_READ | Memory::PROT_WRITE, &allocated_addr) == Memory::Status::Ok) {
+                LOG_INFO(HLE, "  Allocated memory at 0x%llx (size=%llu)", allocated_addr, rounded_size);
+                return allocated_addr;
+            }
+            LOG_ERROR(HLE, "  Failed to allocate memory!");
+            return 0;
         });
     }
 }

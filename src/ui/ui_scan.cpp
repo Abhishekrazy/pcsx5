@@ -33,9 +33,9 @@ static std::string CanonicalizeTitleId(const std::string& dir_name) {
 }
 
 // Find the first eboot-like file inside `dir`.  Preference order:
-//   eboot.bin.esbak, eboot.bin, eboot.elf
+//   decrypted/eboot.bin, eboot.bin.esbak, eboot.bin, eboot.elf
 static std::string FindEboot(const std::filesystem::path& dir) {
-    for (const char* name : {"eboot.bin.esbak", "eboot.bin", "eboot.elf"}) {
+    for (const char* name : {"decrypted/eboot.bin", "eboot.bin.esbak", "eboot.bin", "eboot.elf"}) {
         const auto p = dir / name;
         std::error_code ec;
         if (std::filesystem::exists(p, ec)) return p.generic_string();
