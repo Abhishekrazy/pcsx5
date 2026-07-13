@@ -60,6 +60,35 @@ namespace Loader {
     constexpr u32 R_X86_64_JUMP_SLOT = 7;
     constexpr u32 R_X86_64_RELATIVE  = 8;
 
+    // ELF64 e_type values
+    constexpr u16 ET_NONE   = 0;
+    constexpr u16 ET_REL    = 1;
+    constexpr u16 ET_EXEC   = 2;
+    constexpr u16 ET_DYN    = 3;
+    constexpr u16 ET_CORE   = 4;
+
+    // Symbol binding (low nibble of st_info)
+    constexpr u8 STB_LOCAL   = 0;
+    constexpr u8 STB_GLOBAL  = 1;
+    constexpr u8 STB_WEAK    = 2;
+
+    // Symbol type (high nibble of st_info)
+    constexpr u8 STT_NOTYPE  = 0;
+    constexpr u8 STT_OBJECT  = 1;
+    constexpr u8 STT_FUNC    = 2;
+    constexpr u8 STT_SECTION = 3;
+    constexpr u8 STT_FILE    = 4;
+    constexpr u8 STT_TLS     = 6;
+
+    // Section index special values
+    constexpr u16 SHN_UNDEF  = 0;
+    constexpr u16 SHN_ABS    = 0xfff1;
+
+    // Helper macros for st_info
+    #define ELF64_ST_BIND(i)   ((i) >> 4)
+    #define ELF64_ST_TYPE(i)   ((i) & 0xf)
+    #define ELF64_ST_INFO(b,t) (((b) << 4) | ((t) & 0xf))
+
     // Standard ELF64 Headers
     #pragma pack(push, 1)
     struct Elf64_Ehdr {
@@ -129,6 +158,8 @@ namespace Loader {
         guest_addr_t base_address = 0;
         u64 image_size = 0;
         guest_addr_t entry_point = 0;
+        u16 e_type = 0;             // ELF e_type (ET_EXEC / ET_DYN)
+        bool is_pie = false;        // true if PIE (ET_DYN with base 0)
 
         std::vector<std::string> needed_libraries;
         std::vector<Elf64_Sym> symbols;
@@ -136,11 +167,99 @@ namespace Loader {
         std::vector<Elf64_Rela> relocations;
         std::vector<Elf64_Rela> plt_relocations;
 
+        // PT_DYNAMIC pointers
         guest_addr_t dynamic_table_addr = 0;
         u64 dynamic_table_size = 0;
-        
+
+        // PT_TLS template
+        bool has_tls = false;
+        u64  tls_file_size = 0;
+        u64  tls_mem_size  = 0;
+        u64  tls_align     = 0;
+        u64  tls_template_offset = 0; // file offset of TLS template
+
+        // DT_INIT / DT_FINI
+        guest_addr_t init_address = 0;
+        guest_addr_t fini_address = 0;
+
+        // DT_SONAME (only meaningful for ET_DYN)
+        std::string soname;
+
         std::vector<MappedSegment> segments;
     };
+
+    // ------------------------------------------------------------------------
+    // Module metadata
+    //
+    // The raw `LoadedModule` carries every section and program header entry;
+    // `ModuleMetadata` is a derived view that classifies what the rest of the
+    // emulator cares about: imports vs. exports, TLS template parameters,
+    // module dependencies, and the module's runtime type.
+    // ------------------------------------------------------------------------
+    struct ImportEntry {
+        std::string name;          // symbol name as resolved from the strtab
+        u32         symbol_index = 0;  // index into LoadedModule::symbols
+        u8          sym_type = STT_NOTYPE;   // STT_FUNC / STT_OBJECT / ...
+        u8          sym_bind = STB_GLOBAL;  // STB_GLOBAL / STB_WEAK
+        bool        is_weak   = false;
+        bool        is_tls    = false;  // STT_TLS
+        // Number of RELA / PLT entries that target this symbol.  > 0 means
+        // the import is actually referenced by the loader.
+        u32         rela_refs   = 0;
+        u32         plt_refs    = 0;
+    };
+
+    struct ExportEntry {
+        std::string name;          // symbol name
+        guest_addr_t address = 0;  // resolved guest address (base + st_value)
+        u64         size   = 0;    // st_size in bytes
+        u8          sym_type = STT_NOTYPE;
+        u8          sym_bind = STB_GLOBAL;
+        u16         section_index = 0;
+        bool        is_tls = false;  // STT_TLS
+    };
+
+    struct TlsTemplate {
+        u64          file_size = 0;
+        u64          mem_size  = 0;
+        u64          align     = 0;
+        u64          file_offset = 0; // file offset of the template blob
+    };
+
+    struct ModuleMetadata {
+        // Module type
+        u16  e_type   = 0;     // ET_EXEC / ET_DYN / ...
+        bool is_pie   = false;  // PIE = ET_DYN with vaddr 0 in PT_LOAD
+        bool is_shared_object = false;  // ET_DYN that is not PIE
+
+        // Symbol classification
+        std::vector<ImportEntry> imports;
+        std::vector<ExportEntry> exports;
+
+        // Dependency ordering.  The vector holds the indices of
+        // `needed_libraries` in the order they should be loaded.  Right now
+        // we surface a topological order based on the loaded set; for
+        // simple cases this is just the input order.
+        std::vector<std::string> dependencies;
+
+        // TLS template (file offset + sizes + alignment) extracted from
+        // PT_TLS, if present.
+        TlsTemplate tls;
+
+        // True iff the module has a PT_TLS segment.
+        bool has_tls = false;
+
+        // Number of imports that the loader actually references through
+        // RELA or JMPREL relocations.  An import can appear in the symbol
+        // table but not be referenced (dead code).
+        u32 referenced_import_count = 0;
+    };
+
+    // Build a `ModuleMetadata` view from an already-loaded module.  The
+    // function never fails: it only inspects the data already on the
+    // module.  Pass a freshly loaded `LoadedModule` (no further side
+    // effects).
+    void ParseModuleMetadata(const LoadedModule& module, ModuleMetadata& out);
 
     // Load an ELF executable into memory and map its PT_LOAD segments
     bool Load(const std::string& filepath, LoadedModule& out_module);

@@ -52,6 +52,38 @@ Reports::CompatSummary BuildSummary(const std::string& target_path,
     return s;
 }
 
+// Persist the per-run summary to all sinks requested by the user.  Called
+// from both the success and failure paths so every run shows up in the
+// regression database.
+void PersistSummary(const Reports::CompatSummary& summary,
+                    const std::string& report_path,
+                    const std::string& regression_report_path) {
+    if (!report_path.empty()) {
+        std::string err;
+        if (!Reports::WriteCompatSummary(report_path, summary, &err)) {
+            LOG_WARN(General, "Failed to write compat summary: %s", err.c_str());
+        }
+    }
+    if (!summary.target.empty()) {
+        Reports::AppendCompatHistory(ConfigService::Directory(), summary, nullptr);
+    }
+    if (!regression_report_path.empty()) {
+        std::vector<Reports::RegressionEntry> entries;
+        std::vector<Reports::CompatSummary> history =
+            Reports::LoadCompatHistory(ConfigService::Directory(), summary.title_id, 32);
+        // Drop the entry we just appended (its timestamp matches the current
+        // run) so the regression baseline reflects the runs before this one.
+        if (!history.empty() && history.front().timestamp_iso == summary.timestamp_iso) {
+            history.erase(history.begin());
+        }
+        entries.push_back(Reports::EvaluateRegression(history, summary));
+        std::string err;
+        if (!Reports::WriteRegressionMarkdown(regression_report_path, entries, &err)) {
+            LOG_WARN(General, "Failed to write regression report: %s", err.c_str());
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -183,14 +215,7 @@ int main(int argc, char* argv[]) {
         HLE::Shutdown();
         Memory::Shutdown();
 
-        // Persist the per-run summary in the form requested by the caller.
-        if (!report_path.empty()) {
-            std::string err;
-            if (!Reports::WriteCompatSummary(report_path, summary, &err)) {
-                LOG_WARN(General, "Failed to write compat summary: %s", err.c_str());
-            }
-        }
-        Reports::AppendCompatHistory(ConfigService::Directory(), summary, nullptr);
+        PersistSummary(summary, report_path, regression_report_path);
         return -1;
     }
 
@@ -222,39 +247,7 @@ int main(int argc, char* argv[]) {
     HLE::Shutdown();
     Memory::Shutdown();
 
-    // One-shot compat summary (CLI opt-in).
-    if (!report_path.empty()) {
-        std::string err;
-        if (!Reports::WriteCompatSummary(report_path, summary, &err)) {
-            LOG_WARN(General, "Failed to write compat summary: %s", err.c_str());
-        }
-    }
-
-    // Always append to the per-title jsonl history so the regression report
-    // can spot drift over time.  Skip when the summary has no identifying
-    // information (e.g. empty target path).
-    if (!summary.target.empty()) {
-        Reports::AppendCompatHistory(ConfigService::Directory(), summary, nullptr);
-    }
-
-    // Optional aggregated markdown regression report.
-    if (!regression_report_path.empty()) {
-        // Build a single-entry list (this run).  A multi-title report is
-        // produced by orchestrators that loop over many titles.
-        std::vector<Reports::RegressionEntry> entries;
-        std::vector<Reports::CompatSummary> history =
-            Reports::LoadCompatHistory(ConfigService::Directory(), summary.title_id, 32);
-        // Drop the entry we just appended (it would otherwise be part of the
-        // baseline against itself, masking the change we want to see).
-        if (!history.empty() && history.front().timestamp_iso == summary.timestamp_iso) {
-            history.erase(history.begin());
-        }
-        entries.push_back(Reports::EvaluateRegression(history, summary));
-        std::string err;
-        if (!Reports::WriteRegressionMarkdown(regression_report_path, entries, &err)) {
-            LOG_WARN(General, "Failed to write regression report: %s", err.c_str());
-        }
-    }
+    PersistSummary(summary, report_path, regression_report_path);
 
     // In strict-import mode, treat any unresolved import as a hard failure.
     if (strict_imports && summary.unresolved_imports > 0) {

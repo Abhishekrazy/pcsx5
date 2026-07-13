@@ -433,7 +433,10 @@ namespace HLE {
             LOG_INFO(HLE, "sceKernelAllocateMainDirectMemory(size: %llu, align: %llu, type: %u)", size, alignment, type);
             
             // Map virtual memory block representing physical direct memory
-            guest_addr_t virt = Memory::Map(0, size, Memory::PROT_READ | Memory::PROT_WRITE);
+            guest_addr_t virt = 0;
+            if (Memory::Map(0, size, Memory::PROT_READ | Memory::PROT_WRITE, &virt) != Memory::Status::Ok) {
+                return static_cast<u64>(-1);
+            }
             if (phys_addr_out) {
                 Memory::Write<u64>(phys_addr_out, virt); // We simplify: phys addr = virt addr
             }
@@ -452,7 +455,9 @@ namespace HLE {
 
             LOG_INFO(HLE, "sceKernelMapDirectMemory(start: 0x%llx, size: %llu, phys: 0x%llx)", start, size, phys_addr);
             // Protect direct memory range
-            Memory::Protect(start, size, prot);
+            if (Memory::Protect(start, size, prot) != Memory::Status::Ok) {
+                LOG_WARN(HLE, "sceKernelMapDirectMemory: Protect failed");
+            }
             return 0; // Success
         });
 
@@ -794,7 +799,11 @@ namespace HLE {
             guest_addr_t old_ptr = args.arg1;
             u64 new_size         = args.arg2;
             if (new_size == 0) return 0;
-            guest_addr_t mem = Memory::Map(0, (new_size + 0xFFF) & ~0xFFFULL, Memory::PROT_READ | Memory::PROT_WRITE);
+            guest_addr_t mem = 0;
+            if (Memory::Map(0, (new_size + 0xFFF) & ~0xFFFULL,
+                            Memory::PROT_READ | Memory::PROT_WRITE, &mem) != Memory::Status::Ok) {
+                return 0;
+            }
             LOG_DEBUG(HLE, "libkernel::realloc(ptr: 0x%llx, size: %llu) -> 0x%llx", old_ptr, new_size, mem);
             return mem;
         });
@@ -821,9 +830,13 @@ namespace HLE {
         RegisterSymbol("libkernel", "gQX+4GDQjpM#T#T", [](const GuestArgs& args) -> u64 {
             u64 size = args.arg1;
             if (size == 0) size = 1;
-            
+
             // Use Windows heap for guest allocations, then map them into guest space
-            guest_addr_t mem = Memory::Map(0, (size + 0xFFF) & ~0xFFFULL, Memory::PROT_READ | Memory::PROT_WRITE);
+            guest_addr_t mem = 0;
+            if (Memory::Map(0, (size + 0xFFF) & ~0xFFFULL,
+                            Memory::PROT_READ | Memory::PROT_WRITE, &mem) != Memory::Status::Ok) {
+                return 0;
+            }
             LOG_DEBUG(HLE, "libkernel::malloc(size: %llu) -> 0x%llx", size, mem);
             return mem;
         });
@@ -845,8 +858,12 @@ namespace HLE {
             u64 size  = args.arg2;
             u64 total = nmemb * size;
             if (total == 0) total = 1;
-            
-            guest_addr_t mem = Memory::Map(0, (total + 0xFFF) & ~0xFFFULL, Memory::PROT_READ | Memory::PROT_WRITE);
+
+            guest_addr_t mem = 0;
+            if (Memory::Map(0, (total + 0xFFF) & ~0xFFFULL,
+                            Memory::PROT_READ | Memory::PROT_WRITE, &mem) != Memory::Status::Ok) {
+                return 0;
+            }
             // Memory::Map already commits zeroed pages on Windows
             LOG_DEBUG(HLE, "libkernel::calloc(nmemb: %llu, size: %llu) -> 0x%llx", nmemb, size, mem);
             return mem;

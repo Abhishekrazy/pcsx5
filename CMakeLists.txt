@@ -102,6 +102,30 @@ if(BUILD_TESTING)
     target_compile_options(memory_validation_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME memory_validation COMMAND memory_validation_tests)
 
+    # ------------------------------------------------------------------------
+    # Memory query / fault / status tests — exercises the new Status-based
+    # API added in Phase 1 (Query, error codes, guest fault VEH, stats,
+    # legacy wrapper compatibility).
+    # ------------------------------------------------------------------------
+    add_executable(memory_query_tests
+        tests/memory_query_tests.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+    )
+    target_include_directories(memory_query_tests PRIVATE src)
+    target_compile_options(memory_query_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME memory_query COMMAND memory_query_tests)
+
+    add_executable(elf_metadata_tests
+        tests/elf_metadata_tests.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+    )
+    target_include_directories(elf_metadata_tests PRIVATE src)
+    target_compile_options(elf_metadata_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME elf_metadata COMMAND elf_metadata_tests)
+
     add_executable(tls_context_tests
         tests/tls_context.cpp
         src/kernel/tls.cpp

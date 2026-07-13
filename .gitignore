@@ -46,8 +46,4 @@ Thumbs.db
 .vscode/
 *.sublime-project
 *.sublime-workspace
-tests/hle_import_report.cpp
-tests/memory_validation.cpp
-tests/test_elf/build_all.bat
-tests/test_elf/build_tls_elf.bat
-tests/test_elf/tls_main.cpp
+tests/

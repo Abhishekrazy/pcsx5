@@ -50,6 +50,12 @@ namespace Loader {
 
         LOG_INFO(Loader, "Valid ELF64 x86-64 binary detected. Entry Point: 0x%llx", ehdr.e_entry);
 
+        // Record e_type and PIE flag in the module before any other state is
+        // mutated so downstream code (including ParseModuleMetadata) can use
+        // it.
+        out_module.e_type = ehdr.e_type;
+        out_module.is_pie = (ehdr.e_type == ET_DYN);
+
         // Read program headers. Validate the table before seeking or allocating so
         // malformed inputs cannot make the loader read outside the file.
         if (ehdr.e_phnum == 0) {
@@ -137,8 +143,8 @@ namespace Loader {
         out_module.entry_point = base_address + ehdr.e_entry;
 
         // Reserve the entire virtual address range for the image first
-        guest_addr_t reserved_base = Memory::Reserve(base_address + load_base, total_size);
-        if (!reserved_base) {
+        guest_addr_t reserved_base = 0;
+        if (Memory::Reserve(base_address + load_base, total_size, &reserved_base) != Memory::Status::Ok) {
             LOG_ERROR(Loader, "Failed to reserve virtual address range for the module (size: %llu)", total_size);
             return false;
         }
@@ -174,8 +180,7 @@ namespace Loader {
                 map_protection |= Memory::PROT_EXEC;
             }
 
-            guest_addr_t mapped = Memory::Commit(seg_start, seg_size, map_protection);
-            if (mapped == 0) {
+            if (Memory::Commit(seg_start, seg_size, map_protection) != Memory::Status::Ok) {
                 LOG_ERROR(Loader, "Failed to commit segment at 0x%llx (size: %llu)", seg_start, seg_size);
                 return false;
             }
@@ -189,19 +194,23 @@ namespace Loader {
 
             // Copy data from file
             if (phdr.p_filesz > 0) {
+                LOG_INFO(Loader, "PT_LOAD p_offset=0x%llx p_vaddr=0x%llx p_filesz=%llu p_memsz=%llu sizeof(Elf64_Phdr)=%zu",
+                         (unsigned long long)phdr.p_offset, (unsigned long long)phdr.p_vaddr,
+                         (unsigned long long)phdr.p_filesz, (unsigned long long)phdr.p_memsz,
+                         sizeof(Elf64_Phdr));
                 file.seekg(phdr.p_offset, std::ios::beg);
                 std::vector<u8> seg_data(phdr.p_filesz);
                 file.read(reinterpret_cast<char*>(seg_data.data()), phdr.p_filesz);
-                
+
                 // Debug print first 16 bytes in hex to inspect segment content
                 char hex_buf[128] = {0};
                 u64 bytes_to_print = phdr.p_filesz > 16 ? 16 : phdr.p_filesz;
                 for (u64 idx = 0; idx < bytes_to_print; ++idx) {
                     sprintf_s(hex_buf + idx * 3, sizeof(hex_buf) - idx * 3, "%02X ", seg_data[idx]);
                 }
-                LOG_DEBUG(Loader, "Segment p_offset: 0x%llx, VAddr: 0x%llx, First bytes: %s", 
+                LOG_DEBUG(Loader, "Segment p_offset: 0x%llx, VAddr: 0x%llx, First bytes: %s",
                           phdr.p_offset, seg_start, hex_buf);
-                
+
                 Memory::WriteBuffer(seg_start, seg_data.data(), phdr.p_filesz);
             }
 
@@ -231,15 +240,17 @@ namespace Loader {
         u64 relasz = 0;
         u64 pltrelsz = 0;
         std::vector<u64> needed_offsets;
+        u64 soname_offset = 0;
+        bool has_soname = false;
 
         for (const auto& phdr : phdrs) {
             if (phdr.p_type == PT_DYNAMIC) {
                 out_module.dynamic_table_addr = base_address + phdr.p_vaddr;
                 out_module.dynamic_table_size = phdr.p_memsz;
-                
+
                 u64 num_entries = phdr.p_memsz / sizeof(Elf64_Dyn);
                 std::vector<Elf64_Dyn> dyn_entries(num_entries);
-                
+
                 file.seekg(phdr.p_offset, std::ios::beg);
                 file.read(reinterpret_cast<char*>(dyn_entries.data()), phdr.p_memsz);
 
@@ -276,8 +287,35 @@ namespace Loader {
                         case DT_PLTRELSZ:
                             pltrelsz = dyn.d_un.d_val;
                             break;
+                        case DT_SONAME:
+                            soname_offset = dyn.d_un.d_val;
+                            has_soname    = true;
+                            break;
+                        case DT_INIT:
+                            out_module.init_address =
+                                base_address + dyn.d_un.d_ptr;
+                            break;
+                        case DT_FINI:
+                            out_module.fini_address =
+                                base_address + dyn.d_un.d_ptr;
+                            break;
                     }
                 }
+                break;
+            }
+        }
+
+        // Extract PT_TLS template parameters (file size, mem size, alignment,
+        // and file offset of the template blob).  We need this even when the
+        // module has no symbol-table imports so that the kernel can correctly
+        // lay out TLS at load time.
+        for (const auto& phdr : phdrs) {
+            if (phdr.p_type == PT_TLS) {
+                out_module.has_tls            = true;
+                out_module.tls_file_size      = phdr.p_filesz;
+                out_module.tls_mem_size       = phdr.p_memsz;
+                out_module.tls_align          = phdr.p_align;
+                out_module.tls_template_offset = phdr.p_offset;
                 break;
             }
         }
@@ -293,6 +331,14 @@ namespace Loader {
                     std::string lib_name = &out_module.string_table[offset];
                     out_module.needed_libraries.push_back(lib_name);
                     LOG_INFO(Loader, "Dependency: %s", lib_name.c_str());
+                }
+            }
+
+            // Extract DT_SONAME if the dynamic table referenced it.
+            if (has_soname && soname_offset < strsz) {
+                out_module.soname = &out_module.string_table[soname_offset];
+                if (!out_module.soname.empty()) {
+                    LOG_INFO(Loader, "SONAME: %s", out_module.soname.c_str());
                 }
             }
         }
@@ -345,6 +391,106 @@ namespace Loader {
         out_module.name = filepath.substr(filepath.find_last_of("/\\") + 1);
         LOG_INFO(Loader, "Successfully mapped module: %s", out_module.name.c_str());
         return true;
+    }
+
+    // ===========================================================================
+    // ParseModuleMetadata
+    //
+    // Walks an already-loaded module and produces a structured view of the
+    // metadata the rest of the emulator needs:
+    //   - imports vs. exports split by `st_shndx` and `STB_*`
+    //   - the set of imports referenced by RELA / JMPREL relocations
+    //   - the dependency list (DT_NEEDED)
+    //   - the TLS template (PT_TLS)
+    //   - the module's ELF type (ET_EXEC / ET_DYN, PIE vs. shared object)
+    // ===========================================================================
+    void ParseModuleMetadata(const LoadedModule& module, ModuleMetadata& out) {
+        out = ModuleMetadata{};
+        out.e_type          = module.e_type;
+        out.is_pie          = module.is_pie;
+        out.is_shared_object = (module.e_type == ET_DYN) && !module.is_pie;
+        out.has_tls         = module.has_tls;
+        out.tls.file_size   = module.tls_file_size;
+        out.tls.mem_size    = module.tls_mem_size;
+        out.tls.align       = module.tls_align;
+        out.tls.file_offset = module.tls_template_offset;
+
+        // ── Symbol classification ────────────────────────────────────────────
+        //
+        // Walk the symbol table once.  For each entry:
+        //   - `st_shndx == 0`  (SHN_UNDEF) and a non-empty name → import.
+        //   - `st_shndx != 0`,  binding is GLOBAL/WEAK, name is set  → export.
+        //   - everything else (file/section/local/null) is ignored here.
+        for (size_t i = 0; i < module.symbols.size(); ++i) {
+            const auto& sym = module.symbols[i];
+            const u8  bind = ELF64_ST_BIND(sym.st_info);
+            const u8  type = ELF64_ST_TYPE(sym.st_info);
+            const bool is_undef = (sym.st_shndx == SHN_UNDEF);
+
+            // Resolve the name.  st_name == 0 means the symbol has no name
+            // (mandatory for the first table entry) so we treat it as empty.
+            std::string name;
+            if (sym.st_name < module.string_table.size()) {
+                name = &module.string_table[sym.st_name];
+            }
+
+            if (is_undef && !name.empty()) {
+                ImportEntry imp;
+                imp.name         = name;
+                imp.symbol_index = static_cast<u32>(i);
+                imp.sym_type     = type;
+                imp.sym_bind     = bind;
+                imp.is_weak      = (bind == STB_WEAK);
+                imp.is_tls       = (type == STT_TLS);
+                out.imports.push_back(std::move(imp));
+            } else if (!is_undef && !name.empty() &&
+                       (bind == STB_GLOBAL || bind == STB_WEAK)) {
+                ExportEntry exp;
+                exp.name          = name;
+                exp.address       = module.base_address + sym.st_value;
+                exp.size          = sym.st_size;
+                exp.sym_type      = type;
+                exp.sym_bind      = bind;
+                exp.section_index = sym.st_shndx;
+                exp.is_tls        = (type == STT_TLS);
+                out.exports.push_back(std::move(exp));
+            }
+        }
+
+        // ── Reference count: which imports are actually used ────────────────
+        for (const auto& rel : module.relocations) {
+            const u32 sym_idx = static_cast<u32>(ELF64_R_SYM(rel.r_info));
+            if (sym_idx == 0 || sym_idx >= module.symbols.size()) continue;
+            const auto& sym = module.symbols[sym_idx];
+            if (sym.st_shndx != SHN_UNDEF) continue;  // ignore internal
+            if (sym.st_name == 0 || sym.st_name >= module.string_table.size()) continue;
+            const std::string name = &module.string_table[sym.st_name];
+            for (auto& imp : out.imports) {
+                if (imp.name == name) { imp.rela_refs++; break; }
+            }
+        }
+        for (const auto& rel : module.plt_relocations) {
+            const u32 sym_idx = static_cast<u32>(ELF64_R_SYM(rel.r_info));
+            if (sym_idx == 0 || sym_idx >= module.symbols.size()) continue;
+            const auto& sym = module.symbols[sym_idx];
+            if (sym.st_shndx != SHN_UNDEF) continue;
+            if (sym.st_name == 0 || sym.st_name >= module.string_table.size()) continue;
+            const std::string name = &module.string_table[sym.st_name];
+            for (auto& imp : out.imports) {
+                if (imp.name == name) { imp.plt_refs++; ++out.referenced_import_count; break; }
+            }
+        }
+        // RELA references also count.
+        for (const auto& imp : out.imports) {
+            if (imp.rela_refs > 0) ++out.referenced_import_count;
+        }
+
+        // ── Dependency list (DT_NEEDED) ─────────────────────────────────────
+        //
+        // For now we just copy the names in the order they appeared in the
+        // file.  A future change can do real topological ordering against a
+        // set of known libkernel/libc/etc. dependencies.
+        out.dependencies = module.needed_libraries;
     }
 }
 // namespace Loader

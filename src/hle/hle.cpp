@@ -89,8 +89,9 @@ namespace HLE {
         LOG_INFO(HLE, "Initializing HLE subsystem...");
 
         // Allocate a large executable page for our thunks (1 MB = 32768 32-byte slots)
-        g_thunk_page_base = Memory::Map(0, THUNK_PAGE_SIZE, Memory::PROT_READ | Memory::PROT_WRITE | Memory::PROT_EXEC);
-        if (!g_thunk_page_base) {
+        if (Memory::Map(0, THUNK_PAGE_SIZE,
+                        Memory::PROT_READ | Memory::PROT_WRITE | Memory::PROT_EXEC,
+                        &g_thunk_page_base) != Memory::Status::Ok) {
             LOG_ERROR(HLE, "Failed to allocate HLE thunk page.");
             return false;
         }

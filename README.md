@@ -37,23 +37,31 @@ pcsx5/
 
 ## 🚀 Building from Source
 
+For full host requirements, supported toolchains, and a contributor build
+guide see [`BUILDING.md`](BUILDING.md).  The quick version:
+
 ### Prerequisites
-- **Visual Studio 2022** (with C++ Desktop development workload)
-- **CMake** (v3.15 or newer)
-- **Windows SDK 10/11**
-- **Vulkan SDK** (Optional, falls back to GDI software rendering)
+- **Visual Studio 2022 17.8+ (or 2026 18.x)** with the C++ Desktop development workload
+- **CMake 3.20+**
+- **Windows SDK 10.0.19041+**
+- **Vulkan SDK 1.3+** (optional; falls back to GDI)
 
 ### Steps
 
-1. Configure the project:
+1. Configure:
    ```bash
-   cmake -B build -DCMAKE_BUILD_TYPE=Release
+   cmake -B build -G "Visual Studio 17 2022" -A x64
    ```
 2. Build:
    ```bash
-   cmake --build build --config Release
+   cmake --build build --config Debug
    ```
-   The compiled executable will be generated at `./build/bin/Release/pcsx5.exe`.
+3. Test (optional but recommended):
+   ```bash
+   ctest --test-dir build -C Debug --output-on-failure
+   ```
+
+The compiled executable is generated at `./build/bin/Debug/pcsx5.exe`.
 
 ---
 

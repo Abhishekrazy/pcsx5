@@ -113,22 +113,22 @@ std::string SerializeSummaryJsonl(const CompatSummary& s) {
 
     std::ostringstream os;
     os << "{\"schema_version\":\"" << copy.schema_version << "\","
-       << "\"timestamp_iso\":\"" << copy.timestamp_iso << "\","
-       << "\"title_id\":\"";        WriteString(os, copy.title_id);
-    os << "\",\"target\":\"";       WriteString(os, copy.target);
-    os << "\",\"git_revision\":\""; WriteString(os, copy.git_revision);
-    os << "\",\"status\":\"";       WriteString(os, copy.status);
-    os << "\",\"stage\":\"";        WriteString(os, copy.stage);
-    os << "\",\"duration_ms\":";    WriteNumber(os, copy.duration_ms);
+       << "\"timestamp_iso\":\"" << copy.timestamp_iso << "\",";
+    os << "\"title_id\":";        WriteString(os, copy.title_id);
+    os << ",\"target\":";         WriteString(os, copy.target);
+    os << ",\"git_revision\":";   WriteString(os, copy.git_revision);
+    os << ",\"status\":";         WriteString(os, copy.status);
+    os << ",\"stage\":";          WriteString(os, copy.stage);
+    os << ",\"duration_ms\":";    WriteNumber(os, copy.duration_ms);
     os << ",\"resolved_imports\":" <<   copy.resolved_imports
        << ",\"unresolved_imports\":" << copy.unresolved_imports
        << ",\"top_imports\":[";
     for (std::size_t i = 0; i < top.size(); ++i) {
         if (i) os << ',';
         const auto& imp = top[i];
-        os << "{\"module\":\"";     WriteString(os, imp.module_name);
-        os << "\",\"nid\":\"";      WriteString(os, imp.name);
-        os << "\",\"calls\":" << imp.call_count
+        os << "{\"module\":";     WriteString(os, imp.module_name);
+        os << ",\"nid\":";         WriteString(os, imp.name);
+        os << ",\"calls\":" << imp.call_count
            << ",\"thunk\":\"0x";    WriteNumber(os, static_cast<double>(imp.thunk_address));
         os << "\",\"last_caller\":\"0x"; WriteNumber(os, static_cast<double>(imp.last_caller_rip));
         os << "\"}";
@@ -165,9 +165,9 @@ bool WriteCompatSummary(const std::string& path, const CompatSummary& s,
     out << "{\n";
     out << "  \"schema_version\": \"" << copy.schema_version << "\",\n";
     out << "  \"timestamp_iso\":  \"" << copy.timestamp_iso << "\",\n";
-    out << "  \"title_id\":       \""; WriteString(out, copy.title_id);   out << "\",\n";
-    out << "  \"target\":         \""; WriteString(out, copy.target);     out << "\",\n";
-    out << "  \"git_revision\":   \""; WriteString(out, copy.git_revision); out << "\",\n";
+    out << "  \"title_id\":       ";   WriteString(out, copy.title_id);    out << ",\n";
+    out << "  \"target\":         ";   WriteString(out, copy.target);      out << ",\n";
+    out << "  \"git_revision\":   ";   WriteString(out, copy.git_revision);out << ",\n";
     out << "  \"status\":         \"" << copy.status << "\",\n";
     out << "  \"stage\":          \"" << copy.stage  << "\",\n";
     out << "  \"duration_ms\":    ";   WriteNumber(out, copy.duration_ms); out << ",\n";
@@ -176,10 +176,10 @@ bool WriteCompatSummary(const std::string& path, const CompatSummary& s,
     out << "  \"top_imports\": [\n";
     for (std::size_t i = 0; i < top.size(); ++i) {
         const auto& imp = top[i];
-        out << "    { \"module\": \"";     WriteString(out, imp.module_name);
-        out << "\", \"nid\": \"";          WriteString(out, imp.name);
-        out << "\", \"calls\": " << imp.call_count
-            << ", \"thunk\": \"0x";        WriteNumber(out, static_cast<double>(imp.thunk_address));
+        out << "    { \"module\": ";   WriteString(out, imp.module_name);
+        out << ", \"nid\": ";          WriteString(out, imp.name);
+        out << ", \"calls\": " << imp.call_count
+            << ", \"thunk\": \"0x";    WriteNumber(out, static_cast<double>(imp.thunk_address));
         out << "\", \"last_caller\": \"0x";WriteNumber(out, static_cast<double>(imp.last_caller_rip));
         out << "\" }";
         if (i + 1 < top.size()) out << ",";

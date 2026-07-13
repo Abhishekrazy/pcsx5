@@ -57,8 +57,8 @@ namespace Kernel {
 
         // Allocate a 128KB block representing the guest's TLS area to support negative offsets (Variant II TLS)
         u64 tls_total_size = 128 * 1024;
-        guest_addr_t tls_alloc = Memory::Map(0, tls_total_size, Memory::PROT_READ | Memory::PROT_WRITE);
-        if (!tls_alloc) {
+        guest_addr_t tls_alloc = 0;
+        if (Memory::Map(0, tls_total_size, Memory::PROT_READ | Memory::PROT_WRITE, &tls_alloc) != Memory::Status::Ok) {
             LOG_ERROR(Kernel, "Failed to allocate guest TLS memory block.");
             RemoveVectoredExceptionHandler(g_veh_handler);
             g_veh_handler = nullptr;
@@ -376,7 +376,10 @@ namespace Kernel {
 
         // Apply final page protections for all segments
         for (const auto& seg : out_module.segments) {
-            Memory::Protect(seg.address, seg.size, seg.final_protection);
+            if (Memory::Protect(seg.address, seg.size, seg.final_protection) != Memory::Status::Ok) {
+                LOG_WARN(Kernel, "Failed to set final protection for segment at 0x%llx",
+                         seg.address);
+            }
         }
 
         return true;
@@ -404,8 +407,8 @@ namespace Kernel {
 
         // Allocate a dedicated 1 MB guest stack
         u64 stack_size = 1024 * 1024;
-        guest_addr_t stack_base = Memory::Map(0, stack_size, Memory::PROT_READ | Memory::PROT_WRITE);
-        if (!stack_base) {
+        guest_addr_t stack_base = 0;
+        if (Memory::Map(0, stack_size, Memory::PROT_READ | Memory::PROT_WRITE, &stack_base) != Memory::Status::Ok) {
             LOG_ERROR(Kernel, "Failed to allocate guest stack.");
             return false;
         }

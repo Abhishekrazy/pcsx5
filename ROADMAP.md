@@ -95,8 +95,34 @@ code.
   - [x] `config_tests` CTest target with 51 checks covering defaults, full
     round-trip, missing-file auto-write, corrupt-file fall-back, per-title
     override layering, and forward-compat with newer schema versions.
-- [ ] Publish compatibility-report and regression-report templates.
-- [ ] Define supported-host requirements and a contributor build guide.
+- [x] Publish compatibility-report and regression-report templates.
+  - [x] `Reports::CompatSummary` struct (schema `pcsx5.compat.v1`) capturing
+    title, target, status, stage, duration, import counts, top-K imports,
+    ISO-8601 timestamp, and git revision.  Serialised both as a pretty
+    standalone file and a single-line jsonl record.
+  - [x] Per-title history under `<config_dir>/compat/<title_id>.jsonl`
+    (append on every run) and `LoadCompatHistory(dir, title_id, N)` reader.
+  - [x] `Reports::EvaluateRegression(history, current)` returns a
+    `RegressionEntry` with verdict `new` / `stable` / `improvement` /
+    `regression` (pass↔fail status changes dominate, otherwise ±10% on
+    `duration_ms` vs the recent history baseline).
+  - [x] `Reports::WriteRegressionMarkdown` produces an aggregated
+    markdown report with title rows, status, verdict, duration,
+    baseline, delta, sample count, and counters.  CLI flag
+    `--regression-report=<path>` wires it in `main.cpp` for both the
+    success and failure paths.
+  - [x] `report_tests` CTest target with 34 checks covering serialisation,
+    history round-trip, regression evaluation (all four verdicts plus
+    status changes), and aggregated markdown generation.
+- [x] Define supported-host requirements and a contributor build guide.
+  - [x] `BUILDING.md` documents supported host platforms (Windows 10/11,
+    Server 2022; Linux/macOS not yet supported), required MSVC + Windows
+    SDK + CMake versions, optional Vulkan SDK and LLVM/clang toolchains,
+    Configure/Build/Test commands, the full CLI flag reference, project
+    layout, coding conventions, instructions for adding HLE symbols and
+    new CTest targets, a troubleshooting matrix, and a minimal CI script.
+  - [x] `README.md` trimmed to a 3-step quick-start that points at
+    `BUILDING.md` for the full guide.
 
 ### Current sprint: guest execution correctness
 
