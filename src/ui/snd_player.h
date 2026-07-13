@@ -7,14 +7,21 @@
 //
 // Decoding strategy (matches the file on disk):
 //   * .at9 / .at3  — Sony ATRAC9 (vendored LibAtrac9 C port), decoded
-//                    in a worker thread to a PCM16 WAV image held in
-//                    memory, then handed to winmm `PlaySound` via
-//                    `SND_MEMORY | SND_ASYNC | SND_LOOP | SND_NODEFAULT`.
-//   * .wav         — played directly from disk via `SND_FILENAME`.
+//                    in a worker thread to a PCM16 WAV image written
+//                    to a temp file in %TEMP%, then played via winmm
+//                    MCI (`mciSendStringW`) with `repeat` for looping.
+//   * .wav         — played directly from disk via MCI `open ... type
+//                    waveaudio`.
 //   * .ogg/.mp3/
-//     .flac/.opus  — passed to `SND_FILENAME` too; Windows' DirectShow
-//                    codec chain handles them on most installs (if
-//                    playback fails we fall back to silent, never crash).
+//     .flac/.opus  — also routed through MCI; on most Windows installs
+//                    MCI uses DirectShow for non-WAV containers.
+//
+// Why MCI and not `PlaySound`?
+//   `PlaySound(SND_MEMORY | SND_LOOP)` silently truncates buffers
+//   above ~256KB-1MB and then loops the truncated chunk — the
+//   decoded 15MB preview WAV kept looping after ~1 second.  MCI
+//   streams the file properly with no practical size limit and
+//   supports real looping via the `repeat` flag.
 //
 // Threading model
 //   * `Play(path)` is non-blocking.  It bumps a generation counter
@@ -23,11 +30,12 @@
 //   * A 300 ms debounce timer suppresses churn while the user skims
 //     the library grid with the mouse/keyboard (SharpEmu does the same).
 //   * `Stop()` and `Pause()`/`Resume()` are immediate and thread-safe.
-//   * On destruction everything is stopped and the worker joined.
+//   * On destruction everything is stopped, the worker joined, and
+//     any temp file is deleted.
 //
 // Platform
-//   * Currently Windows-only because we lean on winmm `PlaySound`.  All
-//     entry points are no-ops on other platforms so a future Linux/macOS
+//   * Currently Windows-only because we lean on winmm MCI.  All entry
+//     points are no-ops on other platforms so a future Linux/macOS
 //     port can swap in OpenAL or SDL_mixer without changing callers.
 #pragma once
 
@@ -38,6 +46,15 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#ifdef _WIN32
+// The waveOut path uses HWAVEOUT and WAVEHDR as value members, so
+// the full definitions must be visible here.  <mmsystem.h> pulls in
+// the mmeapi.h types we need without pulling in the rest of the
+// <windows.h> surface (we use only a tiny subset in this header).
+#include <windows.h>
+#include <mmsystem.h>
+#endif
 
 namespace Ui {
 
@@ -84,6 +101,26 @@ public:
 private:
     void WorkerLoop();
     void EnqueueDecode(int generation, std::string path);
+#ifdef _WIN32
+    // waveOut path for raw PCM (decoded .at9 or .wav).  The callback
+    // re-submits the buffer on WOM_DONE so we get seamless looping
+    // without polling.
+    void StartWaveOut(const std::vector<std::uint8_t>& wav);
+    void StopWaveOut();
+    void PauseWaveOut();
+    void ResumeWaveOut();
+    static void CALLBACK WaveOutProc(HWAVEOUT hwo, UINT uMsg,
+                                     DWORD_PTR dwInstance,
+                                     DWORD_PTR dwParam1,
+                                     DWORD_PTR dwParam2);
+    // MCI path for formats waveOut can't handle natively (currently
+    // just MP3 via the `mpegvideo` device).  OGG/FLAC/OPUS have no
+    // native MCI support and are skipped.
+    bool StartMciForPath(const std::string& path);
+    void StopMci();
+    // Periodically poll MCI mode and re-issue play on natural end.
+    void LoopThread();
+#endif
     void StartLocked(const std::vector<std::uint8_t>& wav);
     void StopLocked();
     void FreePinnedLocked();
@@ -107,14 +144,45 @@ private:
     std::string                     cached_path_;
     std::vector<std::uint8_t>       cached_wav_;
 
-    // Pinned memory for winmm playback.  Must stay alive for as long
-    // as PlaySound is using it.
+    // Pinned memory for winmm playback.  Kept around in case a future
+    // change reintroduces the in-memory path, but with MCI the
+    // playback goes through `temp_wav_path_` instead.
     void*                           pinned_addr_  = nullptr;
     bool                            pinned_allocated_ = false;
-    std::vector<std::uint8_t>       pinned_wav_;   // owns the storage
+    std::vector<std::uint8_t>       pinned_wav_;   // legacy
 
-    // Last-started in-memory WAV (so Pause/Resume can re-Play it).
+    // Last-started in-memory WAV.  Stashed so Pause/Resume can re-emit
+    // it to a fresh temp file if the user toggles playback.
     std::vector<std::uint8_t>       last_started_wav_;
+
+    // On-disk temp WAV.  MCI needs a path; we write the decoded bytes
+    // here once and `open type waveaudio` it.  No size limit.  The
+    // path is stable for the lifetime of the cache entry, so the file
+    // is reused on re-selection of the same game.  Deleted in
+    // StopLocked() / destructor.
+    std::string                     temp_wav_path_;
+
+    // True when an MCI alias is currently open.  Distinguishes "never
+    // played" from "playback ended naturally" so Pause/Resume behave
+    // correctly across cache hits.
+    bool                            mci_open_      = false;
+
+#ifdef _WIN32
+    // waveOut path: a single HWAVEOUT + WAVEHDR for the entire PCM
+    // payload.  Looping is done by re-submitting the header in the
+    // WOM_DONE callback.  This is the reliable path — it doesn't
+    // depend on MCI's `play ... repeat` (rejected for waveaudio) or
+    // on a polling loop thread.
+    HWAVEOUT                        wave_out_      = nullptr;
+    WAVEHDR                         wave_hdr_{};
+    std::vector<std::uint8_t>       wave_data_;   // owns PCM bytes
+    std::atomic<bool>               wave_active_{false};
+
+    // MCI loop thread — only used for the `mpegvideo` device (MP3).
+    // waveOut handles its own looping via the WOM_DONE callback.
+    std::thread                     loop_thread_;
+    std::atomic<bool>               loop_active_{false};
+#endif
 
     bool                            playing_  = false;
     bool                            paused_   = false;
