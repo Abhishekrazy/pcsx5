@@ -36,6 +36,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(vulkan_headers)
 
+# Fetch Dear ImGui (docking branch, MIT) for pcsx5_ui.  We do not use the
+# upstream CMakeLists because it requires OpenGL/Vulkan to be selected at
+# configure time; we instead add the .cpp files we need directly.
+set(IMGUI_DIR ${CMAKE_BINARY_DIR}/_deps/imgui-src CACHE PATH "" FORCE)
+if(NOT EXISTS ${IMGUI_DIR})
+    FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG        v1.90.4
+    )
+    FetchContent_Populate(imgui)
+    set(IMGUI_DIR ${imgui_SOURCE_DIR} CACHE PATH "" FORCE)
+endif()
+
 add_executable(pcsx5
     src/main.cpp
     src/common/types.h
@@ -125,6 +139,36 @@ if(BUILD_TESTING)
     target_include_directories(elf_metadata_tests PRIVATE src)
     target_compile_options(elf_metadata_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME elf_metadata COMMAND elf_metadata_tests)
+
+    # ------------------------------------------------------------------------
+    # PS5 NID encoder/decoder tests — round-trip, type-tag parsing, and a
+    # known-name table lookup hit (using the top PPSA02929 NID as the
+    # canonical sample).
+    # ------------------------------------------------------------------------
+    add_executable(nid_tests
+        tests/nid_tests.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+    )
+    target_include_directories(nid_tests PRIVATE src)
+    target_compile_options(nid_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME nid COMMAND nid_tests)
+
+    # ------------------------------------------------------------------------
+    # SELF (Signed ELF) container parser tests — synthetic SELF files with
+    # a known inner ELF, exercising the structural parser, ext-info, segment
+    # flag decoding, authority-id classification, and the end-to-end
+    # LoadSelf path for fake-signed plaintext SELFs.
+    # ------------------------------------------------------------------------
+    add_executable(self_header_tests
+        tests/self_header_tests.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+    )
+    target_include_directories(self_header_tests PRIVATE src)
+    target_compile_options(self_header_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME self_header COMMAND self_header_tests)
 
     add_executable(tls_context_tests
         tests/tls_context.cpp
@@ -233,6 +277,16 @@ if(BUILD_TESTING)
         DOC   "Clang front-end required to build the freestanding guest test ELFs."
     )
 
+    # ------------------------------------------------------------------------
+    # Cover-art helper — generates synthetic placeholder PNGs in
+    # ./Covers/ so the UI has something to display during development.
+    # ------------------------------------------------------------------------
+    add_executable(make_test_covers
+        tests/make_test_covers.cpp
+    )
+    target_include_directories(make_test_covers PRIVATE third_party)
+    target_compile_options(make_test_covers PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W3>)
+
     if(CLANG_EXECUTABLE)
         # Copy every freestanding test source next to the build tree so the
         # .bat file can operate on a stable working directory.
@@ -299,3 +353,129 @@ endif()
 set_target_properties(pcsx5 PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+# ------------------------------------------------------------------------
+# dump_imports — load a real PS5 game ELF (eboot.bin.esbak) through the
+# standard Loader::Load path and write the full import list to
+# Games/PPSA02929-app0/imports.txt plus a per-library histogram.  Skips
+# itself with a clear message if the game file is not present.
+# ------------------------------------------------------------------------
+add_executable(dump_imports
+        tests/dump_imports.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+    )
+    target_include_directories(dump_imports PRIVATE src)
+    target_compile_options(dump_imports PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME dump_imports COMMAND dump_imports)
+
+    # Dump the dynamic-tag table of a real PS5 game ELF to identify
+    # which DT_* / PT_* tags are actually used (Sony-specific tags
+    # are common).  Mirrors the constants in Kyty's loader.
+    add_executable(dump_dt
+        tests/dump_dt.cpp
+        src/common/log.cpp
+    )
+    target_include_directories(dump_dt PRIVATE src)
+    target_compile_options(dump_dt PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME dump_dt COMMAND dump_dt)
+
+    # ------------------------------------------------------------------------
+    # Per-title compatibility database — schema round-trip, list, search,
+    # auto-field update, remove/re-add, and markdown report.
+    # ------------------------------------------------------------------------
+    add_executable(compat_tests
+        tests/compat_tests.cpp
+        src/common/log.cpp
+        src/compat/compat.cpp
+    )
+    target_include_directories(compat_tests PRIVATE src)
+    target_compile_options(compat_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME compat COMMAND compat_tests)
+
+    # ------------------------------------------------------------------------
+    # pcsx5_compat — CLI for the compatibility database.  Mirrors the style
+    # of dump_imports / dump_dt: a thin standalone tool that operates on the
+    # compat module.
+    # ------------------------------------------------------------------------
+    add_executable(pcsx5_compat
+        tests/compat_tool.cpp
+        src/common/log.cpp
+        src/compat/compat.cpp
+    )
+    target_include_directories(pcsx5_compat PRIVATE src)
+    target_compile_options(pcsx5_compat PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME pcsx5_compat COMMAND pcsx5_compat --root $<CONFIG>/compat_seed list)
+
+    # ------------------------------------------------------------------------
+    # pcsx5_ui — the desktop UI for end users.  Dear ImGui + GLFW + OpenGL3
+    # backend.  Out-of-process: it spawns pcsx5.exe as a child and pipes
+    # stdout/stderr into the detachable console window.
+    # ------------------------------------------------------------------------
+    add_executable(pcsx5_ui
+        tests/pcsx5_ui.cpp
+        src/ui/ui.cpp
+        src/ui/ui_scan.cpp
+        src/ui/library.cpp
+        src/ui/console.cpp
+        src/ui/process.cpp
+        src/ui/theme.cpp
+        src/ui/thumbnail.cpp
+        src/ui/system_panel.cpp
+        src/common/log.cpp
+        src/system/system.cpp
+        src/compat/compat.cpp
+        # ImGui core (compile, draw, tables, widgets, demo)
+        ${IMGUI_DIR}/imgui.cpp
+        ${IMGUI_DIR}/imgui_demo.cpp
+        ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp
+        ${IMGUI_DIR}/imgui_widgets.cpp
+        # GLFW + OpenGL3 backends
+        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_include_directories(pcsx5_ui PRIVATE
+        src
+        third_party
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+    )
+    # ImGui's GLFW backend needs glfw + OpenGL headers/libraries.
+    target_link_libraries(pcsx5_ui PRIVATE glfw)
+    if(MSVC)
+        target_compile_options(pcsx5_ui PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+        # ImGui's backends are not /WX clean (some upstream warnings).
+        # Demote them to /W3 and disable the warning that fires as an error.
+        set_source_files_properties(
+            ${IMGUI_DIR}/imgui.cpp
+            ${IMGUI_DIR}/imgui_demo.cpp
+            ${IMGUI_DIR}/imgui_draw.cpp
+            ${IMGUI_DIR}/imgui_tables.cpp
+            ${IMGUI_DIR}/imgui_widgets.cpp
+            ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+            ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+            PROPERTIES COMPILE_OPTIONS "/W3;/wd4701;/wd4703;/wd26451;/wd26495")
+        target_link_libraries(pcsx5_ui PRIVATE opengl32)
+    endif()
+
+    # Debug helper: dump what ScanGames actually finds under ./Games.
+    add_executable(ui_scan_test
+        tests/ui_scan_test.cpp
+        src/ui/ui_scan.cpp
+    )
+    target_include_directories(ui_scan_test PRIVATE src)
+    target_compile_options(ui_scan_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+
+    # ------------------------------------------------------------------------
+    # System info test — quick dump of CPU/GPU/RAM/OS as reported by
+    # the cross-platform Sys module.
+    # ------------------------------------------------------------------------
+    add_executable(system_info_test
+        tests/system_info_test.cpp
+        src/system/system.cpp
+    )
+    target_include_directories(system_info_test PRIVATE src)
+    target_compile_options(system_info_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)

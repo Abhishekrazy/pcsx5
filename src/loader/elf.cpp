@@ -3,13 +3,23 @@
 #include "../common/log.h"
 #include <fstream>
 #include <cstring>
+#include <cstdio>
 #include <algorithm>
 #include <limits>
+#include <filesystem>
 
 namespace Loader {
 
     bool Load(const std::string& filepath, LoadedModule& out_module) {
         LOG_INFO(Loader, "Loading ELF binary: %s", filepath.c_str());
+
+        // Dispatch through the SELF container parser when the file starts
+        // with one of Sony's SELF magics (see elf.h::IsSelfMagic).  The
+        // extracted inner ELF is materialised to a temp file and then run
+        // through the regular ELF64 loader.
+        if (IsSelfFile(filepath)) {
+            return LoadSelf(filepath, out_module);
+        }
 
         std::ifstream file(filepath, std::ios::binary | std::ios::ate);
         if (!file.is_open()) {
@@ -52,9 +62,14 @@ namespace Loader {
 
         // Record e_type and PIE flag in the module before any other state is
         // mutated so downstream code (including ParseModuleMetadata) can use
-        // it.
+        // it.  PS5 SDK module types (0xFE00..0xFEFF) are accepted and treated
+        // as PIE-style dynamic modules, the same as ET_DYN with a base of 0.
         out_module.e_type = ehdr.e_type;
-        out_module.is_pie = (ehdr.e_type == ET_DYN);
+        out_module.is_pie = (ehdr.e_type == ET_DYN) || IsPs5ModuleType(ehdr.e_type);
+        if (IsPs5ModuleType(ehdr.e_type)) {
+            LOG_INFO(Loader, "PS5 SDK module type 0x%04X detected; treating as PIE.",
+                     ehdr.e_type);
+        }
 
         // Read program headers. Validate the table before seeking or allocating so
         // malformed inputs cannot make the loader read outside the file.
@@ -98,6 +113,18 @@ namespace Loader {
                     LOG_ERROR(Loader, "PT_LOAD virtual address range overflows.");
                     return false;
                 }
+            }
+            // Sony PS5 SDK p_types (PT_SCE_*, PT_GNU_RELRO, etc.) carry
+            // no PT_LOAD data, so we don't need to validate them.  A
+            // debug log makes it easy to see what extensions the module
+            // is using.
+            if (IsPs5SegmentType(phdr.p_type)) {
+                LOG_DEBUG(Loader, "Skipping PS5 SDK segment p_type=0x%08X "
+                          "p_vaddr=0x%llx p_filesz=%llu p_memsz=%llu",
+                          phdr.p_type,
+                          (unsigned long long)phdr.p_vaddr,
+                          (unsigned long long)phdr.p_filesz,
+                          (unsigned long long)phdr.p_memsz);
             }
         }
 
@@ -162,7 +189,21 @@ namespace Loader {
 
             guest_addr_t seg_start = base_address + phdr.p_vaddr;
             u64 seg_size = phdr.p_memsz;
-            
+
+            // Some PS5 SDK ELFs (notably e_type 0xFE10) carry PT_LOAD
+            // segments whose p_vaddr is NOT 16 KB-page-aligned (the
+            // segment sits in the middle of a page alongside a sibling
+            // segment).  Memory::Commit / VirtualAlloc require
+            // page-aligned addresses, so we:
+            //   1. round the start *down* to the page boundary,
+            //   2. grow the size to cover the full unaligned range,
+            //   3. keep the unaligned `seg_start` for data copy so the
+            //      bytes land at the correct vaddr.
+            const u64 unaligned_offset = seg_start & (PAGE_SIZE - 1);
+            const guest_addr_t commit_start = seg_start - unaligned_offset;
+            const u64 commit_size = (unaligned_offset + seg_size + PAGE_SIZE - 1)
+                                    & ~(u64)(PAGE_SIZE - 1);
+
             // Translate protection flags (PF_X=1, PF_W=2, PF_R=4)
             u32 final_protection = Memory::PROT_NONE;
             if (phdr.p_flags & 4) final_protection |= Memory::PROT_READ;
@@ -180,8 +221,9 @@ namespace Loader {
                 map_protection |= Memory::PROT_EXEC;
             }
 
-            if (Memory::Commit(seg_start, seg_size, map_protection) != Memory::Status::Ok) {
-                LOG_ERROR(Loader, "Failed to commit segment at 0x%llx (size: %llu)", seg_start, seg_size);
+            if (Memory::Commit(commit_start, commit_size, map_protection) != Memory::Status::Ok) {
+                LOG_ERROR(Loader, "Failed to commit segment at 0x%llx (size: %llu)",
+                          commit_start, commit_size);
                 return false;
             }
 
@@ -192,12 +234,20 @@ namespace Loader {
             seg.final_protection = final_protection;
             out_module.segments.push_back(seg);
 
+            // Always log the phdr fields we are about to use so a
+            // p_filesz=0 anomaly is visible even when the data copy is
+            // skipped.
+            LOG_INFO(Loader,
+                     "PT_LOAD p_offset=0x%llx p_vaddr=0x%llx "
+                     "p_filesz=%llu p_memsz=%llu sizeof(Elf64_Phdr)=%zu",
+                     (unsigned long long)phdr.p_offset,
+                     (unsigned long long)phdr.p_vaddr,
+                     (unsigned long long)phdr.p_filesz,
+                     (unsigned long long)phdr.p_memsz,
+                     sizeof(Elf64_Phdr));
+
             // Copy data from file
             if (phdr.p_filesz > 0) {
-                LOG_INFO(Loader, "PT_LOAD p_offset=0x%llx p_vaddr=0x%llx p_filesz=%llu p_memsz=%llu sizeof(Elf64_Phdr)=%zu",
-                         (unsigned long long)phdr.p_offset, (unsigned long long)phdr.p_vaddr,
-                         (unsigned long long)phdr.p_filesz, (unsigned long long)phdr.p_memsz,
-                         sizeof(Elf64_Phdr));
                 file.seekg(phdr.p_offset, std::ios::beg);
                 std::vector<u8> seg_data(phdr.p_filesz);
                 file.read(reinterpret_cast<char*>(seg_data.data()), phdr.p_filesz);
@@ -491,6 +541,301 @@ namespace Loader {
         // file.  A future change can do real topological ordering against a
         // set of known libkernel/libc/etc. dependencies.
         out.dependencies = module.needed_libraries;
+    }
+
+    // ===========================================================================
+    // SELF (Signed ELF) container parser
+    //
+    // The parser below only reads the structural layer of a PS5 SELF image:
+    // container header, segment table, embedded ELF region (header + phdrs),
+    // and extended info.  It does NOT decrypt or verify segment data; that
+    // requires root keys we do not have.
+    //
+    // Layout (little-endian, all offsets in bytes):
+    //
+    //   0x000  SelfContainerHeader (0x20)
+    //   0x020  Segment table       (segment_count * 0x20)
+    //   ...     Embedded ELF        (header 0x40 + phdr[] 0x38 each)
+    //   ...     Extended info       (0x40, 16-byte aligned)
+    //   ...     Control region      (0x30)
+    //   ...     Meta footer         (meta_size)
+    //   ...     Segment data        (file_offset/file_size per segment)
+    //
+    // Reference: SvenGDK/LibProsperoPKG Content/ProsperoFself.cs (2026).
+    // ===========================================================================
+
+    bool IsSelfFile(const std::string& filepath) {
+        std::ifstream file(filepath, std::ios::binary);
+        if (!file.is_open()) return false;
+        u32 magic = 0;
+        file.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+        return file.gcount() == sizeof(magic) && IsSelfMagic(magic);
+    }
+
+    bool ParseSelfHeader(std::ifstream& file, SelfImage& out) {
+        if (!file) return false;
+        file.clear();
+        file.seekg(0, std::ios::beg);
+
+        SelfContainerHeader hdr{};
+        file.read(reinterpret_cast<char*>(&hdr), sizeof(hdr));
+        if (file.gcount() != sizeof(hdr)) {
+            LOG_ERROR(Loader, "SELF: file too small for container header.");
+            return false;
+        }
+        if (!IsSelfMagic(hdr.magic)) {
+            LOG_ERROR(Loader, "SELF: bad magic 0x%08X (expected 0x%08X or 0x%08X).",
+                      hdr.magic, kSelfMagic, kSelfMagicRetail);
+            return false;
+        }
+        if (hdr.segment_count == 0) {
+            LOG_ERROR(Loader, "SELF: container has zero segments.");
+            return false;
+        }
+        if (hdr.header_size < sizeof(hdr)) {
+            LOG_ERROR(Loader, "SELF: header_size (%u) smaller than container header (%zu).",
+                      hdr.header_size, sizeof(hdr));
+            return false;
+        }
+
+        // Read the segment table.  Each entry is 0x20 bytes; the table
+        // starts immediately after the container header.
+        const u64 seg_table_off = sizeof(hdr);
+        const u64 seg_table_bytes =
+            static_cast<u64>(hdr.segment_count) * sizeof(SelfSegmentEntry);
+        std::vector<SelfSegmentEntry> raw_segs(hdr.segment_count);
+        file.seekg(static_cast<std::streamoff>(seg_table_off), std::ios::beg);
+        file.read(reinterpret_cast<char*>(raw_segs.data()),
+                  static_cast<std::streamsize>(seg_table_bytes));
+        if (static_cast<u64>(file.gcount()) != seg_table_bytes) {
+            LOG_ERROR(Loader, "SELF: segment table truncated (need %llu bytes).",
+                      static_cast<unsigned long long>(seg_table_bytes));
+            return false;
+        }
+
+        out.header = hdr;
+        out.segments.clear();
+        out.segments.reserve(hdr.segment_count);
+        for (const auto& raw : raw_segs) {
+            SelfSegment s;
+            s.flags       = raw.flags;
+            s.file_offset = raw.file_offset;
+            s.file_size   = raw.file_size;
+            s.mem_size    = raw.mem_size;
+            out.segments.push_back(s);
+        }
+        return true;
+    }
+
+    bool ParseSelfImage(const std::string& filepath, SelfImage& out) {
+        std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            LOG_ERROR(Loader, "SELF: failed to open %s", filepath.c_str());
+            return false;
+        }
+        const std::streamsize file_size = file.tellg();
+        file.seekg(0, std::ios::beg);
+        if (file_size <= 0) {
+            LOG_ERROR(Loader, "SELF: file is empty: %s", filepath.c_str());
+            return false;
+        }
+
+        if (!ParseSelfHeader(file, out)) return false;
+
+        // Locate the embedded ELF.  The ELF region begins immediately after
+        // the segment table and contains an ELF64 Ehdr (0x40) followed by
+        // phnum program headers.  We do not require the ELF to be 16-byte
+        // aligned here; the SvenGDK builder aligns `extInfoStart` later.
+        const u64 elf_start = sizeof(SelfContainerHeader) +
+            static_cast<u64>(out.header.segment_count) * sizeof(SelfSegmentEntry);
+
+        // Probe for an ELF magic.  Some builders pad; we accept the first
+        // ELF-looking position within the first 0x40 bytes after the
+        // segment table.
+        u8 probe[4] = {0, 0, 0, 0};
+        u64 elf_off = 0;
+        for (u64 delta = 0; delta < 0x40; delta += 0x8) {
+            file.seekg(static_cast<std::streamoff>(elf_start + delta), std::ios::beg);
+            file.read(reinterpret_cast<char*>(probe), sizeof(probe));
+            if (probe[0] == 0x7F && probe[1] == 'E' && probe[2] == 'L' && probe[3] == 'F') {
+                elf_off = elf_start + delta;
+                break;
+            }
+        }
+        if (elf_off == 0) {
+            LOG_WARN(Loader, "SELF: no embedded ELF magic found near offset 0x%llx.",
+                     static_cast<unsigned long long>(elf_start));
+            // Not fatal: the SELF is still structurally valid, it just
+            // does not contain a parseable embedded ELF.
+            out.elf_region.clear();
+            out.elf_region_offset = 0;
+        } else {
+            // Read the ELF Ehdr to learn the phnum.
+            file.seekg(static_cast<std::streamoff>(elf_off), std::ios::beg);
+            Elf64_Ehdr ehdr{};
+            file.read(reinterpret_cast<char*>(&ehdr), sizeof(ehdr));
+            if (file.gcount() != sizeof(ehdr)) {
+                LOG_ERROR(Loader, "SELF: embedded ELF header truncated.");
+                return false;
+            }
+
+            // Read the phdr table so we can compute the *actual* extent of
+            // the embedded ELF (some SELFs embed the full ELF, payload and
+            // all, in the structural layer; we need to read all of it so
+            // that LoadSelf gets a loadable binary).  We compute the max
+            // extent as `max(p_offset + p_filesz)`, falling back to the
+            // header+phdr table size if no phdrs are present.
+            const u64 phdr_table_size =
+                static_cast<u64>(ehdr.e_phnum) * sizeof(Elf64_Phdr);
+            std::vector<Elf64_Phdr> phdrs(ehdr.e_phnum);
+            if (ehdr.e_phnum > 0) {
+                file.seekg(static_cast<std::streamoff>(elf_off + ehdr.e_phoff),
+                           std::ios::beg);
+                file.read(reinterpret_cast<char*>(phdrs.data()),
+                          static_cast<std::streamsize>(phdr_table_size));
+                if (static_cast<u64>(file.gcount()) != phdr_table_size) {
+                    LOG_ERROR(Loader, "SELF: embedded ELF phdr table truncated.");
+                    return false;
+                }
+            }
+
+            u64 max_extent = sizeof(ehdr) + phdr_table_size;
+            for (const auto& p : phdrs) {
+                if (p.p_offset + p.p_filesz > max_extent) {
+                    max_extent = p.p_offset + p.p_filesz;
+                }
+            }
+            const u64 elf_region_size = max_extent;
+
+            if (elf_off + elf_region_size > static_cast<u64>(file_size)) {
+                LOG_ERROR(Loader, "SELF: embedded ELF overruns file.");
+                return false;
+            }
+            out.elf_region.resize(static_cast<size_t>(elf_region_size));
+            file.seekg(static_cast<std::streamoff>(elf_off), std::ios::beg);
+            file.read(reinterpret_cast<char*>(out.elf_region.data()),
+                      static_cast<std::streamsize>(elf_region_size));
+            if (static_cast<u64>(file.gcount()) != elf_region_size) {
+                LOG_ERROR(Loader, "SELF: failed to read embedded ELF region.");
+                return false;
+            }
+            out.elf_region_offset = elf_off;
+            LOG_INFO(Loader,
+                     "SELF: embedded ELF at 0x%llx, phnum=%u, region size=%llu",
+                     static_cast<unsigned long long>(elf_off),
+                     ehdr.e_phnum,
+                     static_cast<unsigned long long>(elf_region_size));
+
+            // The extended info sits 16-byte aligned after the ELF region,
+            // but only if it falls within the header region.
+            const u64 ext_info_start = (elf_off + elf_region_size + 0xF) & ~u64{0xF};
+            if (ext_info_start + sizeof(SelfExtInfo) <=
+                    static_cast<u64>(out.header.header_size) &&
+                ext_info_start + sizeof(SelfExtInfo) <= static_cast<u64>(file_size)) {
+                file.seekg(static_cast<std::streamoff>(ext_info_start), std::ios::beg);
+                file.read(reinterpret_cast<char*>(&out.ext_info), sizeof(out.ext_info));
+                if (file.gcount() == sizeof(out.ext_info)) {
+                    out.has_ext_info = true;
+                    out.ext_info_offset = ext_info_start;
+                    LOG_INFO(Loader,
+                             "SELF: ext info at 0x%llx, authority_id=0x%016llx, "
+                             "app_ver=0x%llx, fw_ver=0x%llx, category=0x%02X",
+                             static_cast<unsigned long long>(ext_info_start),
+                             static_cast<unsigned long long>(out.ext_info.authority_id),
+                             static_cast<unsigned long long>(out.ext_info.app_version),
+                             static_cast<unsigned long long>(out.ext_info.firmware_version),
+                             static_cast<unsigned int>(
+                                 (out.ext_info.authority_id >> 56) & 0xFFu));
+                }
+            }
+        }
+
+        LOG_INFO(Loader,
+                 "SELF: program_type=0x%08X, header_size=%u, meta_size=%u, "
+                 "file_size=%llu, segment_count=%u, flags=0x%04X",
+                 out.header.program_type, out.header.header_size,
+                 out.header.meta_size,
+                 static_cast<unsigned long long>(out.header.file_size),
+                 out.header.segment_count, out.header.flags);
+        return true;
+    }
+
+    std::vector<u8> ExtractInnerElf(const SelfImage& self) {
+        return self.elf_region;
+    }
+
+    bool LoadSelf(const std::string& filepath, LoadedModule& out_module) {
+        LOG_INFO(Loader, "Loading SELF container: %s", filepath.c_str());
+
+        SelfImage self;
+        if (!ParseSelfImage(filepath, self)) {
+            LOG_ERROR(Loader, "SELF: parse failed for %s", filepath.c_str());
+            return false;
+        }
+
+        if (self.elf_region.empty()) {
+            LOG_ERROR(Loader, "SELF: no embedded ELF to load.");
+            return false;
+        }
+
+        // If any data segment is encrypted or compressed, we cannot
+        // reconstruct a valid ELF binary; we just have the inner header.
+        // Detect this and bail out before attempting to load.
+        for (const auto& seg : self.segments) {
+            if (seg.encrypted()) {
+                LOG_ERROR(Loader,
+                          "SELF: segment id=%d is encrypted — root keys required.",
+                          seg.id());
+                return false;
+            }
+            if (seg.compressed()) {
+                LOG_ERROR(Loader,
+                          "SELF: segment id=%d is compressed — not supported yet.",
+                          seg.id());
+                return false;
+            }
+        }
+
+        // Materialize the inner ELF bytes in a temp file so the existing
+        // `Loader::Load` path can do its job.  The temp file is deleted by
+        // the OS once the handle is closed (or on next reboot if it isn't).
+        std::filesystem::path tmp_dir =
+            std::filesystem::temp_directory_path() / "pcsx5_self";
+        std::error_code ec;
+        std::filesystem::create_directories(tmp_dir, ec);
+
+        // Build a unique temp filename.  std::tmpnam is unsafe in general
+        // but acceptable here because we own the directory and only the
+        // current process writes to it.
+        char tmp_name[L_tmpnam_s];
+        if (tmpnam_s(tmp_name, sizeof(tmp_name)) != 0) {
+            LOG_ERROR(Loader, "SELF: failed to allocate temp name.");
+            return false;
+        }
+        std::filesystem::path tmp_path = tmp_dir / tmp_name;
+        {
+            std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+            if (!out.is_open()) {
+                LOG_ERROR(Loader, "SELF: failed to write temp ELF.");
+                return false;
+            }
+            out.write(reinterpret_cast<const char*>(self.elf_region.data()),
+                      static_cast<std::streamsize>(self.elf_region.size()));
+        }
+
+        const bool ok = Load(tmp_path.string(), out_module);
+
+        // Best-effort cleanup; ignore errors.
+        std::filesystem::remove(tmp_path, ec);
+
+        if (ok) {
+            LOG_INFO(Loader,
+                     "SELF: loaded inner ELF '%s' (entry=0x%llx, base=0x%llx).",
+                     out_module.name.c_str(),
+                     static_cast<unsigned long long>(out_module.entry_point),
+                     static_cast<unsigned long long>(out_module.base_address));
+        }
+        return ok;
     }
 }
 // namespace Loader
