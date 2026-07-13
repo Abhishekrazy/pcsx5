@@ -1,0 +1,48 @@
+# PCSX5 Emulator Gitignore
+
+# CMake build outputs
+/build/
+/out/
+/CMakeSettings.json
+/CMakeUserPresets.json
+
+# MSVC / Visual Studio files
+.vs/
+*.user
+*.suo
+*.db
+*.opendb
+*.ipch
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# Compiled Binaries & Libraries
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.obj
+*.o
+*.a
+*.so
+
+# Game dumps, backups, and user logs
+/Games/
+/run*.log
+/crash_log.txt
+/user/
+/logs/
+/saves/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE Configs
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
