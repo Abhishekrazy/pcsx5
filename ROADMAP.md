@@ -38,7 +38,7 @@ code.
 - [x] A freestanding guest ELF smoke-test source exists in `tests/test_elf/`.
 - [~] Guest TLS has a bounded, testable thread-context model. Guest-code TLS
   execution still uses the exception bridge and needs a dedicated fixture.
-- [ ] Test targets, compatibility database, and reproducible regression suite.
+- [x] Test targets, compatibility database, and reproducible regression suite.
 - [ ] Typed and verified HLE ABI contracts.
 - [ ] PS5-style GPU command processing and rendering.
 
@@ -46,9 +46,15 @@ code.
 
 ### Objectives
 
-- [~] Add CMake/CTest targets for loader, memory, HLE, and guest smoke tests.
+- [x] Add CMake/CTest targets for loader, memory, HLE, and guest smoke tests.
   - [x] Loader validation target: truncated headers, invalid ELF magic, and
     unsupported machine architecture.
+  - [x] Memory validation target: Map / Unmap / Protect / Read / Write /
+    Buffer / Translate / Reserve / Commit.
+  - [x] HLE subsystem test target: import reporting, strict mode,
+    NID-variant resolution, and stub accounting.
+  - [x] Guest smoke test target: freestanding syscall ELF and FS-relative
+    TLS ELF driven through the full emulator with `--strict-imports`.
 - [ ] Create a test corpus of valid, malformed, PIE, fixed-address, relocation,
   TLS, thread, and file-I/O ELF fixtures. Fixtures must be self-authored or
   otherwise redistributable.
