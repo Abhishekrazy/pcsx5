@@ -683,10 +683,7 @@ namespace HLE {
             return 0;
         });
 
-        // sceKernelMapDirectMemory (L-Q3LEjIbgA#S#N)
-        // Maps a sub-range of the physical pool into the process virtual address space.
-        // Signature: int sceKernelMapDirectMemory(void **addr, size_t len, int prot, int flags, off_t physOffset, size_t alignment)
-        RegisterSymbol("libkernel", "L-Q3LEjIbgA#S#N", [](const GuestArgs& args) -> u64 {
+        auto MapDirectMemoryImpl = [EnsurePhysPool](const GuestArgs& args) -> u64 {
             guest_addr_t addr_ptr  = args.arg1; // in/out: pointer to VA hint
             u64 length             = args.arg2;
             u32 prot               = static_cast<u32>(args.arg3);
@@ -704,6 +701,9 @@ namespace HLE {
             }
             if (alignment < 0x1000) alignment = 0x1000;
 
+            std::lock_guard<std::mutex> lk(g_phys_mutex);
+            if (!EnsurePhysPool()) return 0x800D0006;
+
             // Sanitize prot
             if (prot > 0xF) {
                 LOG_WARN(HLE, "sceKernelMapDirectMemory: bad prot=0x%X -> defaulting to RW", prot);
@@ -713,27 +713,59 @@ namespace HLE {
             // Determine Windows protection
             DWORD win_prot = PAGE_READWRITE;
             bool r = (prot & 1), w = (prot & 2), x = (prot & 4);
-            if (x)      win_prot = w ? PAGE_EXECUTE_READWRITE : (r ? PAGE_EXECUTE_READ : PAGE_EXECUTE);
+            if (x)      win_prot = w ? PAGE_EXECUTE_READWRITE : (r ? PAGE_EXECUTE_READ : PAGE_EXECUTE_READ); // Always Exec+Read for safety
             else if (w) win_prot = PAGE_READWRITE;
             else if (r) win_prot = PAGE_READONLY;
             else        win_prot = PAGE_NOACCESS;
 
-            // Commit the relevant slice of the physical pool
-            void* target = reinterpret_cast<void*>(g_phys_pool_base + phys_offset);
-            u64 rounded  = (length + 0xFFF) & ~0xFFFULL;
-            if (!VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
-                // Already committed — just re-protect
-                DWORD old;
-                VirtualProtect(target, rounded, win_prot, &old);
+            u64 rounded = (length + 0xFFF) & ~0xFFFULL;
+            guest_addr_t hint = Memory::Read<u64>(addr_ptr);
+            void* target = nullptr;
+            bool alloc_ok = false;
+            if (hint != 0) {
+                target = reinterpret_cast<void*>(hint);
+                // Reserve and commit at the hint address
+                if (VirtualAlloc(target, rounded, MEM_RESERVE | MEM_COMMIT, win_prot)) {
+                    alloc_ok = true;
+                } else {
+                    // Try to commit only in case it's already reserved
+                    if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
+                        alloc_ok = true;
+                    } else {
+                        DWORD err = GetLastError();
+                        LOG_ERROR(HLE, "MapDirectMemoryImpl: VirtualAlloc failed at 0x%llx size=0x%llx (err=%lu)",
+                                  hint, rounded, err);
+                    }
+                }
+            } else {
+                target = reinterpret_cast<void*>(g_phys_pool_base + phys_offset);
+                if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
+                    alloc_ok = true;
+                } else {
+                    DWORD old;
+                    if (VirtualProtect(target, rounded, win_prot, &old)) {
+                        alloc_ok = true;
+                    } else {
+                        DWORD err = GetLastError();
+                        LOG_ERROR(HLE, "MapDirectMemoryImpl: Phys pool commit failed at 0x%llx size=0x%llx (err=%lu)",
+                                  (u64)target, rounded, err);
+                    }
+                }
             }
-            // Zero-fill so the game gets clean memory
-            std::memset(target, 0, rounded);
+
+            if (!alloc_ok || !target) {
+                LOG_ERROR(HLE, "MapDirectMemoryImpl: Allocation failed!");
+                return 0x800D0006;
+            }
 
             guest_addr_t mapped_va = reinterpret_cast<guest_addr_t>(target);
             Memory::Write<u64>(addr_ptr, mapped_va);
             LOG_INFO(HLE, "sceKernelMapDirectMemory -> va: 0x%llx", mapped_va);
             return 0;
-        });
+        };
+
+        RegisterSymbol("libkernel", "L-Q3LEjIbgA#S#N", MapDirectMemoryImpl);
+        RegisterSymbol("libkernel", "7oxv3PPCumo#y#J", MapDirectMemoryImpl);
 
         // __cxa_guard_acquire (3GPpjQdAMTw#T#T)
         // C++ one-time static init guard. Returns 1 if caller must initialize, 0 if already done.

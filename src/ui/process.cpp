@@ -67,6 +67,7 @@ bool ProcessRunner::Start(const std::string& backend,
     sink_     = sink;
     on_exit_  = std::move(on_exit);
     exit_code_ = 0;
+    paused_.store(false);
 
     HANDLE h_out_read  = nullptr;
     HANDLE h_out_write = nullptr;
@@ -118,32 +119,55 @@ void ProcessRunner::ReaderLoop() {
     HANDLE handles[2] = { static_cast<HANDLE>(pipe_out_), static_cast<HANDLE>(pipe_err_) };
     char buf[4096];
     while (running_.load()) {
-        DWORD n = 0;
-        BOOL ok = ReadFile(handles[0], buf, sizeof(buf), &n, nullptr);
-        if (ok && n > 0 && sink_) sink_->Append(buf, n);
-        if (!ok) {
-            DWORD err = GetLastError();
-            if (err == ERROR_BROKEN_PIPE) break;
+        bool read_something = false;
+        for (int i = 0; i < 2; ++i) {
+            DWORD avail = 0;
+            if (PeekNamedPipe(handles[i], nullptr, 0, nullptr, &avail, nullptr) && avail > 0) {
+                DWORD to_read = (avail < sizeof(buf)) ? avail : sizeof(buf);
+                DWORD n = 0;
+                if (ReadFile(handles[i], buf, to_read, &n, nullptr) && n > 0) {
+                    if (sink_) sink_->Append(buf, n);
+                    read_something = true;
+                }
+            }
         }
-        n = 0;
-        ok = ReadFile(handles[1], buf, sizeof(buf), &n, nullptr);
-        if (ok && n > 0 && sink_) sink_->Append(buf, n);
-        if (!ok) {
-            DWORD err = GetLastError();
-            if (err == ERROR_BROKEN_PIPE) break;
+
+        DWORD err0 = 0, err1 = 0;
+        DWORD avail = 0;
+        if (!PeekNamedPipe(handles[0], nullptr, 0, nullptr, &avail, nullptr)) {
+            err0 = GetLastError();
         }
-        Sleep(15);
+        if (!PeekNamedPipe(handles[1], nullptr, 0, nullptr, &avail, nullptr)) {
+            err1 = GetLastError();
+        }
+        if (err0 == ERROR_BROKEN_PIPE && err1 == ERROR_BROKEN_PIPE) {
+            break;
+        }
+
+        if (!read_something) {
+            Sleep(15);
+        }
     }
     // Drain any final bytes.
     for (HANDLE h : handles) {
-        DWORD n = 0;
-        while (ReadFile(h, buf, sizeof(buf), &n, nullptr) && n > 0) {
-            if (sink_) sink_->Append(buf, n);
+        DWORD avail = 0;
+        while (PeekNamedPipe(h, nullptr, 0, nullptr, &avail, nullptr) && avail > 0) {
+            DWORD to_read = (avail < sizeof(buf)) ? avail : sizeof(buf);
+            DWORD n = 0;
+            if (ReadFile(h, buf, to_read, &n, nullptr) && n > 0) {
+                if (sink_) sink_->Append(buf, n);
+            } else {
+                break;
+            }
         }
         CloseHandle(h);
     }
     DWORD code = 0;
     if (child_handle_) {
+        // If it was suspended, resume it so it exits cleanly and we don't wait forever
+        if (paused_.load()) {
+            Resume();
+        }
         WaitForSingleObject(child_handle_, INFINITE);
         GetExitCodeProcess(child_handle_, &code);
         CloseHandle(static_cast<HANDLE>(child_handle_));
@@ -156,7 +180,30 @@ void ProcessRunner::ReaderLoop() {
 
 void ProcessRunner::Stop() {
     if (child_handle_) {
+        if (paused_.load()) {
+            Resume();
+        }
         TerminateProcess(static_cast<HANDLE>(child_handle_), 1);
+    }
+}
+
+void ProcessRunner::Pause() {
+    if (!child_handle_ || paused_.load()) return;
+    typedef LONG(NTAPI* pfnNtSuspendProcess)(HANDLE ProcessHandle);
+    static pfnNtSuspendProcess NtSuspendProcess = (pfnNtSuspendProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtSuspendProcess");
+    if (NtSuspendProcess) {
+        NtSuspendProcess(static_cast<HANDLE>(child_handle_));
+        paused_.store(true);
+    }
+}
+
+void ProcessRunner::Resume() {
+    if (!child_handle_ || !paused_.load()) return;
+    typedef LONG(NTAPI* pfnNtResumeProcess)(HANDLE ProcessHandle);
+    static pfnNtResumeProcess NtResumeProcess = (pfnNtResumeProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtResumeProcess");
+    if (NtResumeProcess) {
+        NtResumeProcess(static_cast<HANDLE>(child_handle_));
+        paused_.store(false);
     }
 }
 
@@ -170,6 +217,7 @@ bool ProcessRunner::Start(const std::string& backend,
     sink_     = sink;
     on_exit_  = std::move(on_exit);
     exit_code_ = 0;
+    paused_.store(false);
 
     int out_fds[2] = {-1, -1}, err_fds[2] = {-1, -1};
     if (pipe(out_fds) != 0 || pipe(err_fds) != 0) return false;
@@ -219,6 +267,9 @@ void ProcessRunner::ReaderLoop() {
     }
     int status = 0;
     if (child_pid_ > 0) {
+        if (paused_.load()) {
+            Resume();
+        }
         waitpid(child_pid_, &status, 0);
         child_pid_ = -1;
     }
@@ -230,7 +281,24 @@ void ProcessRunner::ReaderLoop() {
 
 void ProcessRunner::Stop() {
     if (child_pid_ > 0) {
+        if (paused_.load()) {
+            Resume();
+        }
         kill(child_pid_, SIGTERM);
+    }
+}
+
+void ProcessRunner::Pause() {
+    if (child_pid_ > 0 && !paused_.load()) {
+        kill(child_pid_, SIGSTOP);
+        paused_.store(true);
+    }
+}
+
+void ProcessRunner::Resume() {
+    if (child_pid_ > 0 && paused_.load()) {
+        kill(child_pid_, SIGCONT);
+        paused_.store(false);
     }
 }
 

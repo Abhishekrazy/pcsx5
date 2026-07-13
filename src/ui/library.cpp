@@ -154,18 +154,15 @@ static void DrawPlaceholder(ImDrawList* dl, const ImVec2& p,
                 IM_COL32(56, 64, 76, 255), 8.0f, 0, 1.0f);
 }
 
-void DrawLibraryPanel(const std::vector<GameEntry>& games,
+bool DrawLibraryPanel(const std::vector<GameEntry>& games,
                       int& selected_index,
-                      ThumbnailCache& thumbs) {
-    // ---- Filter + view state (per-panel) ----
-    static char filter_buf[128] = "";
-
-    // ---- Filter input + clear + count, all on one line ----
-    // Caller is expected to have already drawn the page header
-    // ("Library  N games"  + search box).  We just draw the grid.
+                      ThumbnailCache& thumbs,
+                      float card_min_w,
+                      const char* filter_text) {
+    bool boot_requested = false;
 
     // ---- Filter + sort ----
-    std::string needle = filter_buf;
+    std::string needle = filter_text ? filter_text : "";
     auto tolower_c = [](char c) {
         return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     };
@@ -194,27 +191,20 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
             "No games found.\n\nPlace a PS5 PKG extract under\n"
             "./Games/<TITLE_ID>-app0/eboot.bin(.esbak)");
         ImGui::PopStyleColor();
-        return;
+        return false;
     }
     if (idx.empty()) {
         ImGui::Dummy(ImVec2(0, 24));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.545f, 0.58f, 0.62f, 1.0f));
-        ImGui::Text("No titles match \"%s\".", filter_buf);
+        ImGui::Text("No titles match \"%s\".", needle.c_str());
         ImGui::PopStyleColor();
-        return;
+        return false;
     }
 
     // ---- Card grid ----
-    // Manual absolute-positioned grid (NO ImGui::SameLine).  The
-    // previous version used SameLine + SetCursorScreenPos, which
-    // desynchronised ImGui's internal column tracking and produced a
-    // zigzag layout.  Here we set the cursor position explicitly for
-    // every card using ImGui::SetCursorPos (relative coordinates
-    // inside the current window), which always lines up correctly.
     const float avail_w = ImGui::GetContentRegionAvail().x;
-    const float card_min_w = 168.0f;        // min comfortable width
     int   cols = std::max(1, static_cast<int>(avail_w / card_min_w));
-    if (cols > 7) cols = 7;
+    if (cols > 10) cols = 10;
     const float gap      = 14.0f;
     const float card_w   = (avail_w - (cols - 1) * gap) /
                            static_cast<float>(cols);
@@ -236,14 +226,6 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
         const auto& g  = games[i];
         Compat::Entry e;
         std::string status = g.status_text;
-        // Primary name source: the human-readable title parsed from the
-        // game's own `sce_sys/param.json` (or, as a fallback, the
-        // directory name) by ScanGames.  We only override it from the
-        // compat DB when the curated entry contains a *meaningful* name
-        // (non-empty AND not just a copy of the title id, which is a
-        // common antipattern in scraped/auto-saved entries).  This
-        // prevents a stale or auto-generated compat entry from silently
-        // replacing the real game name with the title id.
         std::string name   = g.display_name;
         if (name.empty()) name = g.title_id;
         if (Compat::Load(g.title_id, e, nullptr)) {
@@ -257,11 +239,6 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
         const bool sel = (selected_index == i);
         ImGui::PushID(i);
 
-        // ---- Absolute position of this card (relative to the
-        //      current window's content area).  Setting the cursor
-        //      here is what makes the grid a true grid: each card
-        //      lives at (col, row) with a fixed stride, regardless
-        //      of what the previous card was doing.
         const ImVec2 card_pos(origin.x + col * (card_w + col_gap),
                               origin.y + row * (card_h + row_gap));
         ImGui::SetCursorPos(card_pos);
@@ -271,7 +248,6 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
         const ImVec2 sz(card_w, card_h);
         const bool hovered = ImGui::IsMouseHoveringRect(
             p, ImVec2(p.x + sz.x, p.y + sz.y));
-        // Background fill: subtle darken for hover/select.
         const ImU32 fill = sel ? IM_COL32(0, 70, 120, 180)
                                : (hovered ? IM_COL32(255, 255, 255, 8)
                                           : IM_COL32(0, 0, 0, 0));
@@ -283,10 +259,6 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
         // ---- Cover art area (top portion) ----
         const ImVec2 cover_p(p.x, p.y);
         const ImVec2 cover_sz(card_w, cover_h);
-        // Prefer the game's own sce_sys/icon0.png (SharpEmu-style:
-        // pull straight from the game files).  If that is missing
-        // (older / unusual dumps), fall back to a global covers dir
-        // lookup by title id.
         Thumbnail thumb;
         if (!g.cover_path.empty()) {
             thumb = thumbs.GetFromPath(g.title_id, g.cover_path);
@@ -295,8 +267,6 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
             thumb = thumbs.Get(g.title_id);
         }
         if (thumb.valid()) {
-            // Draw the cover texture in absolute coordinates, clipped
-            // to the cover area so the rounded-card look is preserved.
             dl_grid->PushClipRect(cover_p,
                                   ImVec2(cover_p.x + cover_sz.x,
                                          cover_p.y + cover_sz.y),
@@ -312,8 +282,6 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
             DrawPlaceholder(dl_grid, cover_p, cover_sz, g.title_id);
         }
 
-        // Selection / hover ring (drawn above the cover, inside the
-        // card area, so the title strip is not hidden by it).
         if (sel) {
             dl_grid->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y),
                              IM_COL32(0, 168, 252, 255), r, 0, 2.5f);
@@ -326,10 +294,9 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
         const ImVec2 meta_p(p.x, p.y + cover_h);
         const ImVec2 meta_sz(card_w, meta_h);
 
-        // Subtle separator between cover and meta.
         dl_grid->AddLine(ImVec2(p.x, p.y + cover_h - 0.5f),
-                         ImVec2(p.x + sz.x, p.y + cover_h - 0.5f),
-                         IM_COL32(255, 255, 255, 18));
+                          ImVec2(p.x + sz.x, p.y + cover_h - 0.5f),
+                          IM_COL32(255, 255, 255, 18));
 
         // Status dot.
         const float dot_r = 3.5f;
@@ -338,12 +305,6 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
         dl_grid->AddCircleFilled(ImVec2(dot_x, dot_y), dot_r,
                                  StatusColor(status), 8);
 
-        // Game name (truncated to fit, with pixel-width measurement).
-        // The trim is bounded so we never produce an empty string: if
-        // the first 4 characters of the name still don't fit we fall
-        // back to the (shorter) title id, which is always single-line
-        // ASCII and guaranteed to fit on a card of any reasonable
-        // width.
         const float text_x = meta_p.x + 20.0f;
         const float text_w = meta_sz.x - 24.0f;
         auto fits = [&](const std::string& s) {
@@ -355,27 +316,17 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
                 trimmed.pop_back();
             }
             if (trimmed.size() > 3) {
-                // Drop the last char and append an ellipsis.  This is
-                // visually equivalent to "S…per M…" but never leaves
-                // the user staring at an empty name field.
                 trimmed.resize(trimmed.size() - 1);
                 trimmed += "...";
             } else if (fits(g.title_id)) {
-                // Even the first 4 chars don't fit — use the title id
-                // instead, which is always short ASCII.
                 trimmed = g.title_id;
             } else {
-                // Extremely narrow: keep at least the first character.
                 trimmed = trimmed.substr(0, 1);
             }
         }
         dl_grid->AddText(ImVec2(text_x, meta_p.y + 6),
                          IM_COL32(232, 238, 244, 255), trimmed.c_str());
 
-        // Title id + size (muted).  Append a small "♪ <file>" hint
-        // when the game ships a default-music track so the user can
-        // see at a glance which games have a snd0.at9 / .ogg / .wav
-        // available for the home-screen preview.
         char meta_line[128];
         if (!g.music_path.empty()) {
             const std::string base =
@@ -403,27 +354,23 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
                          IM_COL32(125, 135, 148, 255), meta_str.c_str());
 
         // ---- Clickable hot zone ----
-        // Set the cursor to the card's screen position and emit a
-        // transparent button the size of the card.  This makes the
-        // entire card a single hit target for selection / tooltip.
         ImGui::SetCursorScreenPos(p);
         if (ImGui::InvisibleButton("##card", sz)) {
             selected_index = i;
         }
         if (ImGui::IsItemHovered()) {
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                selected_index = i;
+                boot_requested = true;
+            }
             ImGui::SetTooltip("%s\n%s\nSize: %s",
-                              g.title_id.c_str(),
-                              g.dir_path.c_str(),
-                              FormatSize(g.size_bytes).c_str());
+                               g.title_id.c_str(),
+                               g.dir_path.c_str(),
+                               FormatSize(g.size_bytes).c_str());
         }
         ImGui::PopID();
     }
 
-    // Reserve enough vertical space inside the parent for the whole
-    // grid (rows * card_h + (rows-1) * gap), so any scroll container
-    // sees the correct total content size.  We place a single Dummy
-    // at the end rather than per-card, so ImGui's column tracking is
-    // not affected.
     const int total_rows = static_cast<int>(
         (idx.size() + cols - 1) / static_cast<size_t>(cols));
     const float total_h = static_cast<float>(total_rows) * card_h +
@@ -431,6 +378,8 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
                               row_gap;
     ImGui::SetCursorPos(ImVec2(origin.x, origin.y + total_h));
     ImGui::Dummy(ImVec2(avail_w, 8.0f));
+
+    return boot_requested;
 }
 
 }  // namespace Ui

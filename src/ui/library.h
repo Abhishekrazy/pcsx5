@@ -19,8 +19,10 @@ namespace Ui {
 // `thumbs` is queried for the cover art of every game.  Cover images
 // are loaded lazily and cached, so the first frame after switching
 // covers_dir may briefly show a placeholder while textures upload.
-void DrawLibraryPanel(const std::vector<GameEntry>& games,
+bool DrawLibraryPanel(const std::vector<GameEntry>& games,
                       int& selected_index,
-                      ThumbnailCache& thumbs);
+                      ThumbnailCache& thumbs,
+                      float card_min_w = 168.0f,
+                      const char* filter_text = nullptr);
 
 }  // namespace Ui

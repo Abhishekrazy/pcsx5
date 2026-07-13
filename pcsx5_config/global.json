@@ -29,7 +29,7 @@
     "file_append": false,
     "file_path": "",
     "json_output": false,
-    "min_level": "Info"
+    "min_level": "Debug"
   },
   "schema_version": 1
 }

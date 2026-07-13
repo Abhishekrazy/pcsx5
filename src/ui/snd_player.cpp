@@ -39,7 +39,23 @@ extern "C" {
 // the implementation into this translation unit only (single TU
 // pattern, same as stb_image is used in the thumbnail cache).
 #define STB_VORBIS_NO_STDIO
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4100) // unreferenced formal parameter
+#pragma warning(disable : 4244) // conversion from 'type1' to 'type2', possible loss of data
+#pragma warning(disable : 4245) // conversion from 'int' to 'uint32', signed/unsigned mismatch
+#pragma warning(disable : 4456) // declaration of 'identifier' hides previous local declaration
+#pragma warning(disable : 4457) // declaration of 'identifier' hides function parameter
+#pragma warning(disable : 4701) // potentially uninitialized local variable
+#pragma warning(disable : 4703) // potentially uninitialized local pointer variable
+#endif
+
 #include "stb_vorbis.h"
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 namespace Ui {
 
