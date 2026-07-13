@@ -287,6 +287,39 @@ if(BUILD_TESTING)
     target_include_directories(make_test_covers PRIVATE third_party)
     target_compile_options(make_test_covers PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W3>)
 
+    # ------------------------------------------------------------------------
+    # LibAtrac9 — vendored C port of Thealexbarney/LibAtrac9 (MIT).
+    # Used by SndPreviewPlayer to decode sce_sys/snd0.at9 to PCM16 WAV
+    # for the title-music preview.  See src/ui/snd_player.cpp.
+    # ------------------------------------------------------------------------
+    add_library(atrac9 STATIC
+        third_party/LibAtrac9/src/band_extension.c
+        third_party/LibAtrac9/src/bit_allocation.c
+        third_party/LibAtrac9/src/bit_reader.c
+        third_party/LibAtrac9/src/decinit.c
+        third_party/LibAtrac9/src/decoder.c
+        third_party/LibAtrac9/src/huffCodes.c
+        third_party/LibAtrac9/src/imdct.c
+        third_party/LibAtrac9/src/libatrac9.c
+        third_party/LibAtrac9/src/quantization.c
+        third_party/LibAtrac9/src/scale_factors.c
+        third_party/LibAtrac9/src/tables.c
+        third_party/LibAtrac9/src/unpack.c
+        third_party/LibAtrac9/src/utility.c
+    )
+    target_include_directories(atrac9
+        PUBLIC  third_party/LibAtrac9/include
+        PRIVATE third_party/LibAtrac9/include/libatrac9
+    )
+    if(MSVC)
+        # The LibAtrac9 header uses __declspec(dllexport/dllimport) for
+        # a DLL build.  We compile it as a static library instead, so
+        # both the producer and the consumer must see `dllexport` for
+        # the linker to match the symbols.  See libatrac9.h:6-11.
+        target_compile_definitions(atrac9 PUBLIC COMPILING_DLL)
+        target_compile_options(atrac9 PRIVATE $<$<COMPILE_LANGUAGE:C>:/W3>)
+    endif()
+
     if(CLANG_EXECUTABLE)
         # Copy every freestanding test source next to the build tree so the
         # .bat file can operate on a stable working directory.
@@ -424,6 +457,7 @@ add_executable(dump_imports
         src/ui/theme.cpp
         src/ui/thumbnail.cpp
         src/ui/system_panel.cpp
+        src/ui/snd_player.cpp
         src/common/log.cpp
         src/system/system.cpp
         src/compat/compat.cpp
@@ -440,11 +474,12 @@ add_executable(dump_imports
     target_include_directories(pcsx5_ui PRIVATE
         src
         third_party
+        third_party/LibAtrac9/include
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
     )
     # ImGui's GLFW backend needs glfw + OpenGL headers/libraries.
-    target_link_libraries(pcsx5_ui PRIVATE glfw)
+    target_link_libraries(pcsx5_ui PRIVATE glfw atrac9)
     if(MSVC)
         target_compile_options(pcsx5_ui PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
         # ImGui's backends are not /WX clean (some upstream warnings).
@@ -458,8 +493,30 @@ add_executable(dump_imports
             ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
             ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
             PROPERTIES COMPILE_OPTIONS "/W3;/wd4701;/wd4703;/wd26451;/wd26495")
-        target_link_libraries(pcsx5_ui PRIVATE opengl32)
+        target_link_libraries(pcsx5_ui PRIVATE opengl32 winmm)
     endif()
+
+    # ------------------------------------------------------------------------
+    # SndPreviewPlayer test — decodes the first snd0.at9 found under
+    # ./Games/ to a PCM16 WAV and validates the header.
+    # ------------------------------------------------------------------------
+    add_executable(snd_player_test
+        tests/snd_player_test.cpp
+        src/ui/snd_player.cpp
+        src/common/log.cpp
+    )
+    target_include_directories(snd_player_test PRIVATE
+        src
+        third_party/LibAtrac9/include
+    )
+    target_link_libraries(snd_player_test PRIVATE atrac9)
+    target_compile_options(snd_player_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    if(MSVC)
+        target_link_libraries(snd_player_test PRIVATE winmm)
+    endif()
+    add_test(NAME snd_player_test
+             COMMAND snd_player_test
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
     # Debug helper: dump what ScanGames actually finds under ./Games.
     add_executable(ui_scan_test

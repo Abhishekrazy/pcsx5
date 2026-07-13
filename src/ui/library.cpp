@@ -236,10 +236,22 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
         const auto& g  = games[i];
         Compat::Entry e;
         std::string status = g.status_text;
+        // Primary name source: the human-readable title parsed from the
+        // game's own `sce_sys/param.json` (or, as a fallback, the
+        // directory name) by ScanGames.  We only override it from the
+        // compat DB when the curated entry contains a *meaningful* name
+        // (non-empty AND not just a copy of the title id, which is a
+        // common antipattern in scraped/auto-saved entries).  This
+        // prevents a stale or auto-generated compat entry from silently
+        // replacing the real game name with the title id.
         std::string name   = g.display_name;
+        if (name.empty()) name = g.title_id;
         if (Compat::Load(g.title_id, e, nullptr)) {
             status = Compat::StatusName(e.status);
-            if (!e.name.empty()) name = e.name;
+            if (!e.name.empty() && e.name != g.title_id &&
+                e.name != "(unnamed)") {
+                name = e.name;
+            }
         }
 
         const bool sel = (selected_index == i);
@@ -327,17 +339,35 @@ void DrawLibraryPanel(const std::vector<GameEntry>& games,
                                  StatusColor(status), 8);
 
         // Game name (truncated to fit, with pixel-width measurement).
+        // The trim is bounded so we never produce an empty string: if
+        // the first 4 characters of the name still don't fit we fall
+        // back to the (shorter) title id, which is always single-line
+        // ASCII and guaranteed to fit on a card of any reasonable
+        // width.
         const float text_x = meta_p.x + 20.0f;
         const float text_w = meta_sz.x - 24.0f;
+        auto fits = [&](const std::string& s) {
+            return ImGui::CalcTextSize(s.c_str()).x <= text_w;
+        };
         std::string trimmed = name;
-        while (!trimmed.empty() &&
-               ImGui::CalcTextSize(trimmed.c_str()).x > text_w) {
-            trimmed.pop_back();
-        }
-        if (trimmed.size() + 3 < name.size() && trimmed.size() > 3) {
-            // We had to drop at least 4 characters -> ellipsise.
-            trimmed.resize(trimmed.size() - 1);
-            trimmed += "...";
+        if (!fits(trimmed)) {
+            while (trimmed.size() > 4 && !fits(trimmed)) {
+                trimmed.pop_back();
+            }
+            if (trimmed.size() > 3) {
+                // Drop the last char and append an ellipsis.  This is
+                // visually equivalent to "S…per M…" but never leaves
+                // the user staring at an empty name field.
+                trimmed.resize(trimmed.size() - 1);
+                trimmed += "...";
+            } else if (fits(g.title_id)) {
+                // Even the first 4 chars don't fit — use the title id
+                // instead, which is always short ASCII.
+                trimmed = g.title_id;
+            } else {
+                // Extremely narrow: keep at least the first character.
+                trimmed = trimmed.substr(0, 1);
+            }
         }
         dl_grid->AddText(ImVec2(text_x, meta_p.y + 6),
                          IM_COL32(232, 238, 244, 255), trimmed.c_str());
