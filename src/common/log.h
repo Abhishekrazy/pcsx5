@@ -15,10 +15,12 @@ enum class LogCategory {
 };
 
 enum class LogLevel {
-    Info,
-    Warn,
-    Error,
-    Debug
+    Trace,    // Extremely verbose; per-instruction / per-call detail
+    Debug,    // Developer diagnostic; may be noisy
+    Info,     // Normal operational messages
+    Warn,     // Recoverable issues; something is suboptimal
+    Error,    // Hard failures in a subsystem; emulation may continue
+    Critical  // Fatal condition; the process cannot safely continue
 };
 
 // One captured log record.  Used by the diagnostics ring buffer so a crash
@@ -45,8 +47,10 @@ namespace LogConfig {
     void SetFileOutput(const std::string& path, bool append = false);
 
     // Suppress messages below `level` for the given category.  Use
-    // LogLevel::Debug to enable verbose output.
+    // LogLevel::Trace to enable absolutely everything, or
+    // LogLevel::Critical to only see fatal conditions.
     void SetLevel(LogCategory category, LogLevel level);
+    LogLevel GetLevel(LogCategory category);
 }
 
 // Stringification helpers used by diagnostics, the test harness, and the
@@ -76,10 +80,12 @@ void LogMessageRaw(LogCategory category, LogLevel level,
 // arg for zero-arg calls (##__VA_ARGS__ is a GCC/Clang extension); MSVC
 // also accepts it via the /Zc:preprocessor flag.
 // ---------------------------------------------------------------------------
-#define LOG_INFO(cat, fmt, ...)  ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Info,  __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
-#define LOG_WARN(cat, fmt, ...)  ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Warn,  __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
-#define LOG_ERROR(cat, fmt, ...) ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Error, __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
-#define LOG_DEBUG(cat, fmt, ...) ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Debug, __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
+#define LOG_TRACE(cat, fmt, ...)   ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Trace,    __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
+#define LOG_DEBUG(cat, fmt, ...)   ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Debug,    __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
+#define LOG_INFO(cat, fmt, ...)    ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Info,     __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
+#define LOG_WARN(cat, fmt, ...)    ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Warn,     __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
+#define LOG_ERROR(cat, fmt, ...)   ::LogMessageRaw(::LogCategory::cat, ::LogLevel::Error,    __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
+#define LOG_CRITICAL(cat, fmt, ...)::LogMessageRaw(::LogCategory::cat, ::LogLevel::Critical, __FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
 
 // ---------------------------------------------------------------------------
 // Process start time.  Use ProcessUptimeMicros() to add a monotonic baseline

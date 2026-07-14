@@ -1,4 +1,5 @@
 #include "ui/console.h"
+#include "common/log.h"
 
 #include "imgui.h"
 
@@ -57,6 +58,20 @@ bool LogConsole::Draw(const char* title, bool* p_open) {
     // Toolbar.
     if (ImGui::Button("Clear")) Clear();
     ImGui::SameLine();
+    if (ImGui::Button("Copy")) {
+        // Build a single string from the currently visible (filtered) lines.
+        std::string clipboard;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            for (const auto& line : lines_) {
+                if (!ContainsCi(line, filter_)) continue;
+                clipboard += line;
+                clipboard += '\n';
+            }
+        }
+        if (!clipboard.empty()) ImGui::SetClipboardText(clipboard.c_str());
+    }
+    ImGui::SameLine();
     ImGui::Checkbox("Autoscroll", &autoscroll_);
     ImGui::SameLine();
     ImGui::Checkbox("Word-wrap", &word_wrap_);
@@ -68,10 +83,29 @@ bool LogConsole::Draw(const char* title, bool* p_open) {
     ImGui::SameLine();
     ImGui::SetNextItemWidth(180);
     ImGui::InputTextWithHint("##filter", "filter...", filter_, sizeof(filter_));
+    ImGui::SameLine();
+    if (ImGui::Button(visible_ ? "Hide" : "Show")) visible_ = !visible_;
+    ImGui::SameLine();
+    if (ImGui::Button("Levels")) ImGui::OpenPopup("console_levels");
+    if (ImGui::BeginPopup("console_levels")) {
+        static const char* kCatNames[] = {"Loader", "Memory", "Kernel", "HLE", "GPU", "General"};
+        static const char* kLvlNames[] = {"Trace", "Debug", "Info", "Warn", "Error", "Critical"};
+        for (int i = 0; i < 6; ++i) {
+            int cur = static_cast<int>(LogConfig::GetLevel(static_cast<LogCategory>(i)));
+            ImGui::TextUnformatted(kCatNames[i]);
+            ImGui::SameLine(80);
+            ImGui::SetNextItemWidth(100);
+            if (ImGui::Combo(("##lvl" + std::to_string(i)).c_str(), &cur, kLvlNames, 6)) {
+                LogConfig::SetLevel(static_cast<LogCategory>(i), static_cast<LogLevel>(cur));
+            }
+        }
+        ImGui::EndPopup();
+    }
 
     ImGui::Separator();
 
-    // Body: scrollable, filtered lines.
+    // Body: scrollable, filtered lines (skipped when hidden).
+    if (visible_) {
     std::vector<std::string> snapshot;
     {
         std::lock_guard<std::mutex> lock(mu_);
@@ -85,10 +119,12 @@ bool LogConsole::Draw(const char* title, bool* p_open) {
             // small coloured badge.  This is heuristic and good enough for
             // most emulator log lines.
             ImVec4 col = ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
-            if (line.find("[Error]") != std::string::npos)        col = ImVec4(1.0f, 0.45f, 0.45f, 1.0f);
+            if (line.find("[Critical]") != std::string::npos)     col = ImVec4(1.0f, 0.30f, 0.60f, 1.0f); // Magenta
+            else if (line.find("[Error]") != std::string::npos)   col = ImVec4(1.0f, 0.45f, 0.45f, 1.0f);
             else if (line.find("[Warn]") != std::string::npos)    col = ImVec4(1.0f, 0.85f, 0.40f, 1.0f);
             else if (line.find("[Info]") != std::string::npos)    col = ImVec4(0.55f, 0.85f, 1.0f, 1.0f);
             else if (line.find("[Debug]") != std::string::npos)   col = ImVec4(0.65f, 0.65f, 0.80f, 1.0f);
+            else if (line.find("[Trace]") != std::string::npos)   col = ImVec4(0.50f, 0.50f, 0.55f, 1.0f); // Dim gray
             else if (line.find("crash") != std::string::npos ||
                      line.find("CRASH") != std::string::npos)     col = ImVec4(1.0f, 0.30f, 0.30f, 1.0f);
             ImGui::PushStyleColor(ImGuiCol_Text, col);
@@ -100,6 +136,7 @@ bool LogConsole::Draw(const char* title, bool* p_open) {
             ImGui::SetScrollHereY(1.0f);
     }
     ImGui::EndChild();
+    } // if (visible_)
 
     ImGui::End();
     return changed;
