@@ -16,6 +16,12 @@
 #include <queue>
 #include <cstdio>
 
+#ifdef PCSX5_HAS_LUA
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
+#endif
+
 namespace LuaInit {
 
 // ===========================================================================
