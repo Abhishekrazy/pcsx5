@@ -50,6 +50,33 @@ if(NOT EXISTS ${IMGUI_DIR})
     set(IMGUI_DIR ${imgui_SOURCE_DIR} CACHE PATH "" FORCE)
 endif()
 
+# Fetch Lua 5.4.7 — compiled as a static C library for the Lua init script engine.
+FetchContent_Declare(
+    lua
+    GIT_REPOSITORY https://github.com/lua/lua.git
+    GIT_TAG        v5.4.7
+)
+FetchContent_GetProperties(lua)
+if(NOT lua_POPULATED)
+    FetchContent_Populate(lua)
+endif()
+
+# Collect Lua core + library sources (exclude the standalone interpreters lua.c/luac.c).
+file(GLOB LUA_SRC "${lua_SOURCE_DIR}/src/*.c")
+list(REMOVE_ITEM LUA_SRC
+    "${lua_SOURCE_DIR}/src/lua.c"
+    "${lua_SOURCE_DIR}/src/luac.c"
+)
+
+add_library(lua STATIC ${LUA_SRC})
+target_include_directories(lua PUBLIC ${lua_SOURCE_DIR}/src)
+# Lua uses C99 features; silence MSVC deprecation warnings and mark as DLL build
+# so __declspec(dllexport) is used (required for the static library to export symbols).
+target_compile_definitions(lua PRIVATE _CRT_SECURE_NO_WARNINGS LUA_BUILD_AS_DLL)
+if(MSVC)
+    target_compile_options(lua PRIVATE $<$<COMPILE_LANGUAGE:C>:/W3>)
+endif()
+
 add_executable(pcsx5
     src/main.cpp
     src/common/types.h
@@ -375,8 +402,11 @@ if(BUILD_TESTING)
             "Install LLVM/clang and reconfigure to enable these tests.")
     endif()
 endif()
-# Link GLFW and Vulkan Header dependencies
-target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers)
+# Enable Lua scripting for the subsystem lifecycle init script.
+target_compile_definitions(pcsx5 PRIVATE PCSX5_HAS_LUA)
+
+# Link GLFW, Vulkan Headers, and Lua dependencies
+target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers lua)
 
 # Enable high compiler warnings and warnings-as-errors to maintain code cleanliness for C++ files
 if(MSVC)
