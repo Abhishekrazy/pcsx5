@@ -51,6 +51,10 @@ if(NOT EXISTS ${IMGUI_DIR})
 endif()
 
 # Fetch Lua 5.4.7 — compiled as a static C library for the Lua init script engine.
+# The official Lua repository does NOT have a CMakeLists.txt, so we use
+# FetchContent_Populate (download-only) and manually build the library.
+# Suppress CMP0169 deprecation warning for FetchContent_Populate.
+cmake_policy(SET CMP0169 OLD)
 FetchContent_Declare(
     lua
     GIT_REPOSITORY https://github.com/lua/lua.git
@@ -61,18 +65,17 @@ if(NOT lua_POPULATED)
     FetchContent_Populate(lua)
 endif()
 
-# Collect Lua core + library sources (exclude the standalone interpreters lua.c/luac.c).
-file(GLOB LUA_SRC "${lua_SOURCE_DIR}/src/*.c")
-list(REMOVE_ITEM LUA_SRC
-    "${lua_SOURCE_DIR}/src/lua.c"
-    "${lua_SOURCE_DIR}/src/luac.c"
-)
+# Collect Lua core + library sources (exclude the standalone interpreters lua.c/luac.c
+# and the amalgamation file onelua.c which duplicates all symbols).
+# Lua sources are flat in the repo root, not in a src/ subdirectory.
+file(GLOB LUA_SRC "${lua_SOURCE_DIR}/*.c")
+list(REMOVE_ITEM LUA_SRC "${lua_SOURCE_DIR}/lua.c" "${lua_SOURCE_DIR}/luac.c" "${lua_SOURCE_DIR}/onelua.c")
 
 add_library(lua STATIC ${LUA_SRC})
-target_include_directories(lua PUBLIC ${lua_SOURCE_DIR}/src)
+target_include_directories(lua PUBLIC ${lua_SOURCE_DIR})
 # Lua uses C99 features; silence MSVC deprecation warnings and mark as DLL build
 # so __declspec(dllexport) is used (required for the static library to export symbols).
-target_compile_definitions(lua PRIVATE _CRT_SECURE_NO_WARNINGS LUA_BUILD_AS_DLL)
+target_compile_definitions(lua PRIVATE _CRT_SECURE_NO_WARNINGS)
 if(MSVC)
     target_compile_options(lua PRIVATE $<$<COMPILE_LANGUAGE:C>:/W3>)
 endif()

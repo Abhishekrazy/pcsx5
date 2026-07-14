@@ -801,5 +801,12 @@ namespace Kernel {
 
         return EXCEPTION_CONTINUE_SEARCH;
     }
+
+    void RegisterThread(const ThreadContext& context) {
+        g_threads[context.thread_id] = context;
+        LOG_INFO(Kernel, "Registered thread '%s' (id=%llu, entry=0x%llx, stack=0x%llx, stack_size=%llu, tls=0x%llx)",
+                 context.name.c_str(), context.thread_id, context.entry_point,
+                 context.stack_base, context.stack_size, context.tls_base);
+    }
 }
 // namespace Kernel

@@ -33,6 +33,9 @@
 #include <functional>
 #include <unordered_map>
 
+// Forward-declare Lua types so includers don't need Lua headers.
+struct lua_State;
+
 namespace LuaInit {
 
 // ---------------------------------------------------------------------------
@@ -110,5 +113,11 @@ bool RunLuaScript(void* lua_state, const char* script_text, const char* script_n
 // Convenience: run the default init chain from a Lua script embedded in
 // the binary.  Falls back to the C++ chain if Lua is unavailable.
 bool RunDefaultLuaInit(std::string* error = nullptr);
+
+// Get the global Lua state (nullptr if Lua is not initialized).
+lua_State* GetLuaState();
+
+// Close the global Lua state.  Safe to call even if Lua was never initialized.
+void ShutdownLua();
 
 } // namespace LuaInit
