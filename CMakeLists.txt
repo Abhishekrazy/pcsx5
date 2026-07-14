@@ -488,6 +488,7 @@ add_executable(dump_imports
         src/ui/ui_scan.cpp
         src/ui/library.cpp
         src/ui/console.cpp
+        src/ui/discord_rpc.cpp
         src/ui/process.cpp
         src/ui/theme.cpp
         src/ui/thumbnail.cpp
@@ -528,7 +529,7 @@ add_executable(dump_imports
             ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
             ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
             PROPERTIES COMPILE_OPTIONS "/W3;/wd4701;/wd4703;/wd26451;/wd26495")
-        target_link_libraries(pcsx5_ui PRIVATE opengl32 winmm)
+        target_link_libraries(pcsx5_ui PRIVATE opengl32 winmm ws2_32)
     endif()
 
     # ------------------------------------------------------------------------

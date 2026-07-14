@@ -48,3 +48,5 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 tests/
+baddream_decoded.wav
+snd0_decoded.wav
