@@ -77,6 +77,8 @@ add_executable(pcsx5
     src/config/config.cpp
     src/reports/reports.h
     src/reports/reports.cpp
+    src/lua/lua_init.h
+    src/lua/lua_init.cpp
     ${DISPATCHER_SRC}
 )
 

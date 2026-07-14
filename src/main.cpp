@@ -7,6 +7,7 @@
 #include "gpu/gpu.h"
 #include "diagnostics/diagnostics.h"
 #include "reports/reports.h"
+#include "lua/lua_init.h"
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -165,34 +166,17 @@ int main(int argc, char* argv[]) {
         LOG_INFO(General, "Active title: %s", title_id.c_str());
     }
 
-    // 1. Initialize Subsystems
-    if (!Memory::Initialize()) {
-        std::printf("FATAL: Failed to initialize Memory subsystem.\n");
+    // 1. Initialize Subsystems — driven by the Lua subsystem registry.
+    //    Falls back to the C++ default chain when Lua is unavailable.
+    std::string init_error;
+    if (!LuaInit::RunDefaultInit(&init_error)) {
+        std::printf("FATAL: Failed to initialize subsystems: %s\n", init_error.c_str());
         return -1;
     }
 
-    if (!HLE::Initialize()) {
-        std::printf("FATAL: Failed to initialize HLE subsystem.\n");
-        Memory::Shutdown();
-        return -1;
-    }
+    // Post-init configuration that requires the HLE subsystem to be ready.
     HLE::SetStrictImportMode(strict_imports);
     HLE::ResetRunStatistics();
-
-    if (!Kernel::Initialize()) {
-        std::printf("FATAL: Failed to initialize Kernel subsystem.\n");
-        HLE::Shutdown();
-        Memory::Shutdown();
-        return -1;
-    }
-
-    if (!GPU::Initialize()) {
-        std::printf("FATAL: Failed to initialize GPU subsystem.\n");
-        Kernel::Shutdown();
-        HLE::Shutdown();
-        Memory::Shutdown();
-        return -1;
-    }
 
     LOG_INFO(General, "All subsystems initialized successfully.");
 
@@ -210,10 +194,7 @@ int main(int argc, char* argv[]) {
         auto t1 = std::chrono::steady_clock::now();
         summary.duration_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-        GPU::Shutdown();
-        Kernel::Shutdown();
-        HLE::Shutdown();
-        Memory::Shutdown();
+        LuaInit::SubsystemRegistry::Instance().TeardownAll();
 
         PersistSummary(summary, report_path, regression_report_path);
         return -1;
@@ -241,11 +222,8 @@ int main(int argc, char* argv[]) {
     summary.resolved_imports    = summary.top_imports.size();
     summary.unresolved_imports  = HLE::GetUnresolvedImportCount();
 
-    // 4. Shutdown Subsystems
-    GPU::Shutdown();
-    Kernel::Shutdown();
-    HLE::Shutdown();
-    Memory::Shutdown();
+    // 4. Shutdown Subsystems — teardown in reverse init order via the registry.
+    LuaInit::SubsystemRegistry::Instance().TeardownAll();
 
     PersistSummary(summary, report_path, regression_report_path);
 
