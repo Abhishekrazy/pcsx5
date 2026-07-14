@@ -30,6 +30,9 @@ public:
     bool detached() const { return detached_; }
     void set_detached(bool v) { detached_ = v; }
 
+    bool visible() const { return visible_; }
+    void set_visible(bool v) { visible_ = v; }
+
 private:
     std::mutex                              mu_;
     std::deque<std::string>                 lines_;
@@ -37,6 +40,7 @@ private:
     bool                                    autoscroll_  = true;
     bool                                    word_wrap_   = true;
     bool                                    detached_    = false;
+    bool                                    visible_     = true;
 };
 
 }  // namespace Ui

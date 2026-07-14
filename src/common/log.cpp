@@ -110,20 +110,24 @@ const char* LogCategoryName(LogCategory c) {
 
 const char* LogLevelName(LogLevel l) {
     switch (l) {
-        case LogLevel::Info:  return "Info";
-        case LogLevel::Warn:  return "Warn";
-        case LogLevel::Error: return "Error";
-        case LogLevel::Debug: return "Debug";
+        case LogLevel::Trace:    return "Trace";
+        case LogLevel::Debug:    return "Debug";
+        case LogLevel::Info:     return "Info";
+        case LogLevel::Warn:     return "Warn";
+        case LogLevel::Error:    return "Error";
+        case LogLevel::Critical: return "Critical";
     }
     return "Unknown";
 }
 
 const char* LevelAnsiColor(LogLevel l) {
     switch (l) {
-        case LogLevel::Info:  return "\033[36m"; // Cyan
-        case LogLevel::Warn:  return "\033[33m"; // Yellow
-        case LogLevel::Error: return "\033[31m"; // Red
-        case LogLevel::Debug: return "\033[90m"; // Dark Gray
+        case LogLevel::Trace:    return "\033[90m"; // Bright Black (Dark Gray)
+        case LogLevel::Debug:    return "\033[37m"; // White
+        case LogLevel::Info:     return "\033[36m"; // Cyan
+        case LogLevel::Warn:     return "\033[33m"; // Yellow
+        case LogLevel::Error:    return "\033[31m"; // Red
+        case LogLevel::Critical: return "\033[35m"; // Magenta
     }
     return "\033[0m";
 }
@@ -133,7 +137,7 @@ bool IsCategoryEnabled(LogCategory c, LogLevel l) {
     if (idx < 0 || idx >= 6) return true;
     return static_cast<int>(l) <= static_cast<int>(g_min_levels[idx])
         ? true
-        : (l == LogLevel::Error || l == LogLevel::Warn);
+        : (l == LogLevel::Error || l == LogLevel::Warn || l == LogLevel::Critical);
 }
 
 // Build a JSON object for a single entry.  Strings are escaped.
@@ -208,6 +212,12 @@ void SetLevel(LogCategory category, LogLevel level) {
     const int idx = static_cast<int>(category);
     if (idx < 0 || idx >= 6) return;
     g_min_levels[idx] = level;
+}
+
+LogLevel GetLevel(LogCategory category) {
+    const int idx = static_cast<int>(category);
+    if (idx < 0 || idx >= 6) return LogLevel::Info;
+    return g_min_levels[idx];
 }
 } // namespace LogConfig
 
