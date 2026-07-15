@@ -442,6 +442,18 @@ void WriteInput   (JsonValue& root, const InputConfig&    i) {
     root.o["input"]  = std::move(v);
 }
 
+void ReadUi      (const JsonValue& root, UiConfig&       u) {
+    if (const JsonValue* v = Field(root, "ui"); v && v->is_object()) {
+        if (auto* p = Field(*v, "language")) u.language = (p->is_string() ? p->s : u.language);
+    }
+}
+
+void WriteUi     (JsonValue& root, const UiConfig&       u) {
+    JsonValue v; v.type = JsonValue::Type::Object;
+    v.o["language"] = StrV(u.language);
+    root.o["ui"]    = std::move(v);
+}
+
 } // namespace (json primitives + parser)
 
 // ===========================================================================
@@ -621,6 +633,7 @@ bool LoadFromFile(const std::string& path, Config& out, std::string* error) {
     ReadGraphics(root, out.graphics);
     ReadAudio   (root, out.audio);
     ReadInput   (root, out.input);
+    ReadUi      (root, out.ui);
 
     out.schema_version   = version;
     out.loaded_from_disk = true;
@@ -645,6 +658,7 @@ bool SaveToFile(const std::string& path, const Config& cfg, std::string* error) 
     WriteGraphics(root, cfg.graphics);
     WriteAudio   (root, cfg.audio);
     WriteInput   (root, cfg.input);
+    WriteUi      (root, cfg.ui);
 
     std::ofstream out(path, std::ios::trunc | std::ios::binary);
     if (!out) {
@@ -669,7 +683,10 @@ bool MigrateToCurrent(int from_version, Config& cfg, std::string* error) {
         if (error) *error = "unknown pre-v1 schema";
         return false;
     }
-    // (No migrations from v1 yet — current version IS v1.)
+    // v1 -> v2: add UiConfig with language field
+    if (from_version == 1) {
+        cfg.ui.language = "en-US";
+    }
     cfg.schema_version = kCurrentSchemaVersion;
     return true;
 }

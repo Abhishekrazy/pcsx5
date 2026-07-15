@@ -1,5 +1,6 @@
 #include "ui/system_panel.h"
 #include "ui/theme.h"
+#include "ui/i18n.h"
 
 #include "imgui.h"
 
@@ -14,7 +15,7 @@ void SystemPanelState::Refresh() {
         has_info = true;
         last_error.clear();
     } catch (...) {
-        last_error = "Snapshot() failed";
+        last_error = I18n::Tr("system.snapshot_failed");
     }
 }
 
@@ -163,11 +164,11 @@ void DrawSystemPanel(SystemPanelState& s) {
 
     // Header row: title + Refresh button.
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-    ImGui::Text("System information");
+    ImGui::Text("%s", I18n::Tr("system.info"));
     ImGui::PopStyleColor();
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.545f, 0.58f, 0.62f, 1.0f));
-    ImGui::Text("snapshot of the host hardware");
+    ImGui::Text("%s", I18n::Tr("system.snapshot"));
     ImGui::PopStyleColor();
 
     ImGui::Dummy(ImVec2(0, 4));
@@ -175,7 +176,7 @@ void DrawSystemPanel(SystemPanelState& s) {
     // Refresh button (top-right).
     const float btn_w = 100;
     ImGui::SameLine(ImGui::GetContentRegionAvail().x - btn_w);
-    if (ImGui::Button("Refresh", ImVec2(btn_w, 0))) {
+    if (ImGui::Button(I18n::Tr("system.refresh"), ImVec2(btn_w, 0))) {
         s.Refresh();
         s.SampleMemory();
     }
@@ -184,7 +185,9 @@ void DrawSystemPanel(SystemPanelState& s) {
 
     if (!s.last_error.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
-        ImGui::TextWrapped("Error: %s", s.last_error.c_str());
+        char err_buf[512];
+        std::snprintf(err_buf, sizeof(err_buf), I18n::Tr("system.error_prefix"), s.last_error.c_str());
+        ImGui::TextWrapped("%s", err_buf);
         ImGui::PopStyleColor();
     }
 
@@ -192,10 +195,10 @@ void DrawSystemPanel(SystemPanelState& s) {
     ImGui::Columns(2, nullptr, false);
     ImGui::SetColumnWidth(0, ImGui::GetContentRegionAvail().x * 0.5f - 6);
 
-    SectionCard("Operating System", s.info.os.version.c_str());
-    KeyValueRow("Name",    s.info.os.name);
-    KeyValueRow("Kernel",  s.info.os.kernel);
-    KeyValueRow("Arch",    s.info.os.arch);
+    SectionCard(I18n::Tr("system.os"), s.info.os.version.c_str());
+    KeyValueRow(I18n::Tr("system.os_name"),    s.info.os.name);
+    KeyValueRow(I18n::Tr("system.os_kernel"),  s.info.os.kernel);
+    KeyValueRow(I18n::Tr("system.os_arch"),    s.info.os.arch);
     EndSectionCard();
 
     ImGui::NextColumn();
@@ -212,16 +215,16 @@ void DrawSystemPanel(SystemPanelState& s) {
         std::snprintf(cpu_sub, sizeof(cpu_sub), "%d cores",
                       s.info.cpu.logical_cores);
     }
-    SectionCard("Processor", cpu_sub);
-    KeyValueRow("Brand", s.info.cpu.brand);
+    SectionCard(I18n::Tr("system.cpu"), cpu_sub);
+    KeyValueRow(I18n::Tr("system.cpu_brand"), s.info.cpu.brand);
     char cores[48];
     std::snprintf(cores, sizeof(cores), "%d physical / %d logical",
                   s.info.cpu.physical_cores, s.info.cpu.logical_cores);
-    KeyValueRow("Cores", cores);
+    KeyValueRow(I18n::Tr("system.cpu_cores"), cores);
     if (s.info.cpu.base_ghz > 0.0) {
         char ghz[16];
         std::snprintf(ghz, sizeof(ghz), "%.2f GHz", s.info.cpu.base_ghz);
-        KeyValueRow("Base", ghz);
+        KeyValueRow(I18n::Tr("system.cpu_base"), ghz);
     }
     EndSectionCard();
 
@@ -229,29 +232,29 @@ void DrawSystemPanel(SystemPanelState& s) {
     ImGui::Dummy(ImVec2(0, 12));
 
     // ---- GPU card (full width) ----
-    SectionCard("Graphics", s.info.gpu.name.c_str());
-    KeyValueRow("Name",   s.info.gpu.name);
-    KeyValueRow("VRAM",   Sys::FormatBytes(s.info.gpu.vram_bytes));
+    SectionCard(I18n::Tr("system.gpu"), s.info.gpu.name.c_str());
+    KeyValueRow(I18n::Tr("system.gpu_name"),   s.info.gpu.name);
+    KeyValueRow(I18n::Tr("system.gpu_vram"),   Sys::FormatBytes(s.info.gpu.vram_bytes));
     if (s.info.gpu.shared_bytes > 0)
-        KeyValueRow("Shared", Sys::FormatBytes(s.info.gpu.shared_bytes));
+        KeyValueRow(I18n::Tr("system.gpu_shared"), Sys::FormatBytes(s.info.gpu.shared_bytes));
     if (!s.info.gpu.driver_version.empty())
-        KeyValueRow("Driver", s.info.gpu.driver_version);
+        KeyValueRow(I18n::Tr("system.gpu_driver"), s.info.gpu.driver_version);
     EndSectionCard();
 
     ImGui::Dummy(ImVec2(0, 12));
 
     // ---- Memory card (with live usage bar) ----
-    SectionCard("Memory", s.has_mem
+    SectionCard(I18n::Tr("system.memory"), s.has_mem
                             ? Sys::FormatBytes(s.mem.total_bytes).c_str()
-                            : "Unknown");
+                            : I18n::Tr("system.unknown"));
     if (s.has_mem) {
-        UsageBar("RAM",
+        UsageBar(I18n::Tr("system.ram"),
                  s.mem.used_fraction,
                  Sys::FormatBytes(s.mem.used_bytes),
                  Sys::FormatBytes(s.mem.total_bytes));
     } else {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.545f, 0.58f, 0.62f, 1.0f));
-        ImGui::TextWrapped("Memory info unavailable.");
+        ImGui::TextWrapped("%s", I18n::Tr("system.memory_unavailable"));
         ImGui::PopStyleColor();
     }
     EndSectionCard();
@@ -259,9 +262,8 @@ void DrawSystemPanel(SystemPanelState& s) {
     ImGui::Dummy(ImVec2(0, 8));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.40f, 0.43f, 0.50f, 1.0f));
     ImGui::TextWrapped(
-        "Memory usage is sampled live; CPU / GPU / OS are queried on first\n"
-        "load and on demand via the Refresh button.  Used to size the\n"
-        "guest memory pool for booting PS5 binaries.");
+        "%s",
+        I18n::Tr("system.memory_note"));
     ImGui::PopStyleColor();
 }
 

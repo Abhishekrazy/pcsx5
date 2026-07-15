@@ -494,6 +494,7 @@ add_executable(dump_imports
         src/ui/thumbnail.cpp
         src/ui/system_panel.cpp
         src/ui/snd_player.cpp
+        src/ui/i18n.cpp
         src/common/log.cpp
         src/system/system.cpp
         src/compat/compat.cpp
