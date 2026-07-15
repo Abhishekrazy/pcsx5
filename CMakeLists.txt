@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
+cmake_policy(VERSION 3.5)
 project(pcsx5 LANGUAGES CXX)
 
 # Force C++20
@@ -64,6 +65,17 @@ FetchContent_GetProperties(lua)
 if(NOT lua_POPULATED)
     FetchContent_Populate(lua)
 endif()
+
+# Fetch nlohmann/json — header-only JSON library for i18n translation files.
+# Set policy minimum to 3.5 to allow nlohmann_json's old cmake_minimum_required
+cmake_policy(SET CMP0150 NEW)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.2
+)
+FetchContent_MakeAvailable(nlohmann_json)
 
 # Collect Lua core + library sources (exclude the standalone interpreters lua.c/luac.c
 # and the amalgamation file onelua.c which duplicates all symbols).
@@ -514,9 +526,10 @@ add_executable(dump_imports
         third_party/LibAtrac9/include
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
+        ${nlohmann_json_SOURCE_DIR}/include
     )
     # ImGui's GLFW backend needs glfw + OpenGL headers/libraries.
-    target_link_libraries(pcsx5_ui PRIVATE glfw atrac9)
+    target_link_libraries(pcsx5_ui PRIVATE glfw atrac9 nlohmann_json)
     if(MSVC)
         target_compile_options(pcsx5_ui PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
         # ImGui's backends are not /WX clean (some upstream warnings).

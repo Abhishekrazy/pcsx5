@@ -82,5 +82,8 @@ const char* Tr(const char* key);
 // Pre-populate all string tables.  Called once by RunUi().
 void Init();
 
+// Clean up allocated translation strings.  Called on application exit.
+void Shutdown();
+
 } // namespace I18n
 } // namespace Ui
