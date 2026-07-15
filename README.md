@@ -11,7 +11,7 @@
 [![Vulkan](https://img.shields.io/badge/Graphics-Vulkan%201.3-red?style=flat-square&logo=vulkan&logoColor=white)](https://www.vulkan.org/)
 [![MSVC](https://img.shields.io/badge/Compiler-MSVC%202022%2F2026-purple?style=flat-square&logo=visual-studio&logoColor=white)](https://visualstudio.microsoft.com/)
 
-[![Discord](https://img.shields.io/discord/1234567890?color=5865F2&label=Discord&logo=discord&logoColor=white&style=flat-square)](https://discord.gg/1527049564983656518)
+[![Discord](https://img.shields.io/discord/1234567890?color=5865F2&label=Discord&logo=discord&logoColor=white&style=flat-square)](https://discord.gg/Ks8rZTbzx)
 [![GitHub Stars](https://img.shields.io/github/stars/Abhishekrazy/pcsx5?style=flat-square&logo=github&logoColor=white)](https://github.com/Abhishekrazy/pcsx5/stargazers)
 [![GitHub Issues](https://img.shields.io/github/issues/Abhishekrazy/pcsx5?style=flat-square&logo=github&logoColor=white)](https://github.com/Abhishekrazy/pcsx5/issues)
 [![GitHub Forks](https://img.shields.io/github/forks/Abhishekrazy/pcsx5?style=flat-square&logo=github&logoColor=white)](https://github.com/Abhishekrazy/pcsx5/network/members)
