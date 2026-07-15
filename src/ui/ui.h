@@ -24,6 +24,7 @@ struct Options {
     std::string compat_dir  = "./compat";
     std::string covers_dir  = "./Covers";   // PNG/JPG cover art per title_id
     std::string backend_bin = "pcsx5";     // name on POSIX; "pcsx5.exe" on Win
+    std::string language    = "en-US";     // BCP-47 tag: "en-US", "ja-JP", etc.
 };
 
 // Pre-scan of `games_dir`.  Each entry is a directory under games_dir that

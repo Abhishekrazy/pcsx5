@@ -61,6 +61,7 @@ void Init() {
     en["sidebar.audio"]      = "AUDIO";
     en["sidebar.view"]       = "VIEW";
     en["sidebar.help"]       = "HELP";
+    en["sidebar.language"]   = "Language";
 
     // Sidebar status pills
     en["status.running"]     = "RUNNING";
@@ -156,6 +157,29 @@ void Init() {
     en["system.build"]            = "Build";
     en["system.host"]             = "Host";
     en["system.target"]           = "Target";
+    en["system.snapshot"]         = "snapshot of the host hardware";
+    en["system.refresh"]          = "Refresh";
+    en["system.error_prefix"]     = "Error: %s";
+    en["system.os_name"]          = "Name";
+    en["system.os_kernel"]        = "Kernel";
+    en["system.os_arch"]          = "Arch";
+    en["system.cpu_brand"]        = "Brand";
+    en["system.cpu_cores"]        = "Cores";
+    en["system.cpu_base"]         = "Base";
+    en["system.gpu_name"]         = "Name";
+    en["system.gpu_vram"]         = "VRAM";
+    en["system.gpu_shared"]       = "Shared";
+    en["system.gpu_driver"]       = "Driver";
+    en["system.memory_subtitle"]  = "Memory";
+    en["system.unknown"]          = "Unknown";
+    en["system.ram_label"]        = "RAM";
+    en["system.memory_unavailable"] = "Memory info unavailable.";
+    en["system.memory_note"]      = "Memory usage is sampled live; CPU / GPU / OS are queried on first\nload and on demand via the Refresh button.  Used to size the\nguest memory pool for booting PS5 binaries.";
+    en["system.snapshot_failed"]  = "Snapshot() failed";
+    en["system.cpu_ghz_cores"]    = "%.2f GHz, %dC/%dT";
+    en["system.cpu_cores_only"]   = "%d cores";
+    en["system.cpu_physical_logical"] = "%d physical / %d logical";
+    en["system.cpu_base_ghz"]     = "%.2f GHz";
 
     // Help / usage
     en["help.usage"] = "Usage: pcsx5_ui [--games=DIR] [--compat=DIR] [--covers=DIR] [--backend=NAME]";
