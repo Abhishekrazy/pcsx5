@@ -48,5 +48,11 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 tests/
+pcsx5_config/
+pcsx5_crash/
+covers/
+testing/
+
+imgui.ini
 baddream_decoded.wav
 snd0_decoded.wav
