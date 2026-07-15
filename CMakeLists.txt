@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(MSVC)
     enable_language(ASM_MASM)
     set(DISPATCHER_SRC src/hle/dispatcher.asm)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/FS>" "$<$<COMPILE_LANGUAGE:C>:/FS>")
 else()
     message(FATAL_ERROR "Currently, only MSVC toolchains are supported for building pcsx5 on Windows due to MASM calling convention bridge requirements.")
 endif()
@@ -92,6 +93,21 @@ if(MSVC)
     target_compile_options(lua PRIVATE $<$<COMPILE_LANGUAGE:C>:/W3>)
 endif()
 
+set(KERNEL_SRC
+    src/kernel/kernel.h
+    src/kernel/kernel.cpp
+    src/kernel/fd_table.h
+    src/kernel/fd_table.cpp
+    src/kernel/memory.h
+    src/kernel/memory.cpp
+    src/kernel/thread.h
+    src/kernel/thread.cpp
+    src/kernel/syscalls.h
+    src/kernel/syscalls.cpp
+    src/kernel/tls.h
+    src/kernel/tls.cpp
+)
+
 add_executable(pcsx5
     src/main.cpp
     src/common/types.h
@@ -107,10 +123,7 @@ add_executable(pcsx5
     src/hle/libpad.cpp
     src/hle/libvideoout.cpp
     src/hle/libagc.cpp
-    src/kernel/kernel.h
-    src/kernel/kernel.cpp
-    src/kernel/tls.h
-    src/kernel/tls.cpp
+    ${KERNEL_SRC}
     src/gpu/gpu.h
     src/gpu/vulkan_backend.cpp
     src/diagnostics/diagnostics.h
@@ -231,8 +244,7 @@ if(BUILD_TESTING)
         src/common/log.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
-        src/kernel/tls.cpp
-        src/kernel/kernel.cpp
+        ${KERNEL_SRC}
         src/gpu/vulkan_backend.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
@@ -255,8 +267,7 @@ if(BUILD_TESTING)
         src/common/log.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
-        src/kernel/tls.cpp
-        src/kernel/kernel.cpp
+        ${KERNEL_SRC}
         src/gpu/vulkan_backend.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
@@ -293,8 +304,7 @@ if(BUILD_TESTING)
         src/common/log.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
-        src/kernel/tls.cpp
-        src/kernel/kernel.cpp
+        ${KERNEL_SRC}
         src/gpu/vulkan_backend.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
@@ -421,7 +431,8 @@ endif()
 target_compile_definitions(pcsx5 PRIVATE PCSX5_HAS_LUA)
 
 # Link GLFW, Vulkan Headers, and Lua dependencies
-target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers lua)
+target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers lua ws2_32)
+target_include_directories(pcsx5 PRIVATE src)
 
 # Enable high compiler warnings and warnings-as-errors to maintain code cleanliness for C++ files
 if(MSVC)
