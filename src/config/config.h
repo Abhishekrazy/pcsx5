@@ -25,7 +25,7 @@ namespace ConfigService {
 // ---------------------------------------------------------------------------
 // Schema versioning
 // ---------------------------------------------------------------------------
-inline constexpr int kCurrentSchemaVersion = 1;
+inline constexpr int kCurrentSchemaVersion = 2;
 
 // ---------------------------------------------------------------------------
 // Sectioned config.  Each section is plain data so it can be serialised /
@@ -69,6 +69,10 @@ struct InputConfig {
     bool  rumble   = true;
 };
 
+struct UiConfig {
+    std::string language = "en-US";            // BCP-47 tag, e.g. "en-US", "ja-JP"
+};
+
 // Top-level config — covers both global defaults and per-title overrides.
 // When loaded as a per-title file, only the fields the user touched are
 // populated; the rest should fall back to the global view at lookup time.
@@ -79,6 +83,7 @@ struct Config {
     GraphicsConfig graphics;
     AudioConfig    audio;
     InputConfig    input;
+    UiConfig       ui;
 
     // -- helpers -----------------------------------------------------------
     static Config Defaults();                   // compiled-in defaults
