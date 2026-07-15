@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWpf>true</UseWpf>
+    <AssemblyName>pcsx5_ui</AssemblyName>
+    <ApplicationTitle>PCSX5 Native Windows UI</ApplicationTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="ps5_controller.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Resource>
+  </ItemGroup>
+
+</Project>

@@ -47,7 +47,6 @@ Thumbs.db
 .vscode/
 *.sublime-project
 *.sublime-workspace
-tests/
 pcsx5_config/
 pcsx5_crash/
 covers/

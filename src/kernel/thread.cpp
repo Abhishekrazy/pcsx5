@@ -8,6 +8,7 @@
 #include <vector>
 #include <mutex>
 
+
 namespace Kernel {
 
 // Thread management globals
@@ -15,7 +16,7 @@ static std::mutex g_thread_mutex;
 static u64 g_next_thread_id = 1;
 static thread_local u64 g_current_thread_id = 0;
 
-// Thread context storage
+// Registry entry for a running guest thread.
 struct ThreadInfo {
     u64 tid;
     HANDLE handle;
@@ -85,53 +86,73 @@ bool UnregisterThread(u64 tid) {
 
 DWORD WINAPI ThreadEntryPoint(LPVOID lpParameter) {
     ThreadContext* ctx = static_cast<ThreadContext*>(lpParameter);
-    
-    // Set current thread ID
+
+    // Set per-thread ID
     SetCurrentThreadId(ctx->thread_id);
-    
-    // Execute the thread entry point
-    // Note: The entry point is in guest memory, so in a full implementation we would execute it.
-    // For now we delete ctx and return.
+
+    const u64 entry   = ctx->entry_point;
+    const u64 arg     = ctx->argument;
     delete ctx;
-    return 0;
+
+    // Initialize this thread's per-thread host stack pointer.
+    // SetHostStackPointer stores the current RSP so that if the very first HLE call
+    // happens before InvokeGuestFunction has a chance to update it, it still has a valid
+    // host stack to return to.  InvokeGuestFunction will overwrite it with a more precise
+    // value immediately on entry.
+    SetHostStackPointer(reinterpret_cast<uintptr_t>(&entry));
+
+    // Execute the guest thread entry point.
+    // The guest function receives its argument in rdi (SysV ABI first arg).
+    u64 ret = InvokeGuestFunction(entry, arg, 0, 0);
+
+    // Clean up after the guest thread returns
+    u64 tid = GetCurrentThreadId();
+    UnregisterThread(tid);
+
+    return static_cast<DWORD>(ret);
 }
 
 HANDLE CreateThread(guest_addr_t entry, guest_addr_t stack, u64 stack_size, guest_addr_t tls_base, u64* out_tid) {
     u64 tid = AllocateThreadId();
-    
+
     ThreadContext* ctx = new ThreadContext();
-    ctx->thread_id = tid;
+    ctx->thread_id   = tid;
     ctx->entry_point = entry;
-    ctx->stack_base = stack;
-    ctx->stack_size = stack_size;
-    ctx->tls_base = tls_base;
-    
+    ctx->stack_base  = stack;
+    ctx->stack_size  = stack_size;
+    ctx->tls_base    = tls_base;
+    ctx->argument    = 0; // caller fills in via scePthreadCreate wrapper
+
+    // Use 1MB as Windows host thread stack (guest stack is separate).
+    constexpr SIZE_T kHostStackSize = 1 * 1024 * 1024;
+
     HANDLE handle = ::CreateThread(
-        nullptr,                    // Default security attributes
-        static_cast<SIZE_T>(stack_size), // Stack size
-        ThreadEntryPoint,           // Thread function
-        ctx,                        // Parameter
-        0,                          // Default creation flags
-        nullptr                     // Thread ID
+        nullptr,         // Default security attributes
+        kHostStackSize,  // Host stack size (not the guest stack)
+        ThreadEntryPoint,
+        ctx,
+        0,               // Run immediately
+        nullptr
     );
-    
+
     if (handle == nullptr) {
         delete ctx;
         return nullptr;
     }
-    
+
     if (!RegisterThread(tid, handle, entry, stack, stack_size, tls_base)) {
         CloseHandle(handle);
         delete ctx;
         return nullptr;
     }
-    
+
     if (out_tid) {
         *out_tid = tid;
     }
-    
+
     return handle;
 }
+
 
 void ExitThread(u64 status) {
     u64 tid = GetCurrentThreadId();
@@ -225,6 +246,16 @@ bool TerminateThreadByTid(u64 tid) {
         return true;
     }
     return false;
+}
+
+guest_addr_t GetThreadTlsBase(u64 tid) {
+    std::lock_guard<std::mutex> lock(g_thread_mutex);
+    for (const auto& thread : g_threads) {
+        if (thread.tid == tid && thread.active) {
+            return thread.tls_base;
+        }
+    }
+    return 0;
 }
 
 } // namespace Kernel

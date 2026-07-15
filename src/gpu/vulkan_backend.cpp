@@ -2,6 +2,7 @@
 #include "../common/log.h"
 #include "../memory/memory.h"
 #include <windows.h>
+#include <xinput.h>
 #define GLFW_INCLUDE_NONE
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3.h>
@@ -20,7 +21,32 @@ namespace GPU {
     static int         g_height  = 720;
 
     static PadButtonState g_pad_state = { 0, 127, 127, 127, 127, 0, 0, {0, 0} };
+    static u32            g_keyboard_buttons = 0;
     static std::mutex     g_pad_mutex;
+
+    // Dynamically loaded Windows XInput GetState
+    typedef DWORD(WINAPI* PFN_XInputGetState)(DWORD dwUserIndex, XINPUT_STATE* pState);
+    static PFN_XInputGetState g_XInputGetState = nullptr;
+    static HMODULE g_xinput_dll = nullptr;
+
+    static void InitializeXInput() {
+        const char* dlls[] = { "xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll" };
+        for (const auto& dll : dlls) {
+            g_xinput_dll = LoadLibraryA(dll);
+            if (g_xinput_dll) {
+                g_XInputGetState = (PFN_XInputGetState)GetProcAddress(g_xinput_dll, "XInputGetState");
+                if (g_XInputGetState) {
+                    LOG_INFO(GPU, "Successfully loaded Windows XInput API from %s", dll);
+                    break;
+                }
+                FreeLibrary(g_xinput_dll);
+                g_xinput_dll = nullptr;
+            }
+        }
+        if (!g_XInputGetState) {
+            LOG_WARN(GPU, "Failed to load Windows XInput DLL. Controller support in emulator is disabled.");
+        }
+    }
 
     // Host-side DIB backing store (BGRA, 32-bit, 1280x720)
     static std::vector<u32> g_dib_buffer;
@@ -288,10 +314,10 @@ namespace GPU {
         if (button_flag != 0) {
             std::lock_guard<std::mutex> lock(g_pad_mutex);
             if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-                g_pad_state.buttons |= button_flag;
+                g_keyboard_buttons |= button_flag;
                 LOG_DEBUG(GPU, "Key pressed, mapping button flag: 0x%X", button_flag);
             } else if (action == GLFW_RELEASE) {
-                g_pad_state.buttons &= ~button_flag;
+                g_keyboard_buttons &= ~button_flag;
                 LOG_DEBUG(GPU, "Key released, clearing button flag: 0x%X", button_flag);
             }
         }
@@ -371,6 +397,11 @@ namespace GPU {
             FreeLibrary(g_vulkan_dll);
             g_vulkan_dll = nullptr;
         }
+        if (g_xinput_dll) {
+            FreeLibrary(g_xinput_dll);
+            g_xinput_dll = nullptr;
+            g_XInputGetState = nullptr;
+        }
         g_dib_buffer.clear();
     }
 
@@ -446,6 +477,79 @@ namespace GPU {
         if (g_window) {
             glfwPollEvents();
         }
+
+        // Initialize XInput if not already done
+        static bool xinput_inited = false;
+        if (!xinput_inited) {
+            InitializeXInput();
+            xinput_inited = true;
+        }
+
+        PadButtonState new_state = { 0, 127, 127, 127, 127, 0, 0, {0, 0} };
+
+        // Base state from keyboard
+        {
+            std::lock_guard<std::mutex> lock(g_pad_mutex);
+            new_state.buttons = g_keyboard_buttons;
+            // Map keyboard WASD to left stick
+            if (g_window) {
+                if (glfwGetKey(g_window, GLFW_KEY_W) == GLFW_PRESS) new_state.left_analog_y = 0;
+                else if (glfwGetKey(g_window, GLFW_KEY_S) == GLFW_PRESS) new_state.left_analog_y = 255;
+                if (glfwGetKey(g_window, GLFW_KEY_A) == GLFW_PRESS) new_state.left_analog_x = 0;
+                else if (glfwGetKey(g_window, GLFW_KEY_D) == GLFW_PRESS) new_state.left_analog_x = 255;
+            }
+        }
+
+        if (g_XInputGetState) {
+            XINPUT_STATE xstate;
+            // Poll primary controller (dwUserIndex = 0)
+            if (g_XInputGetState(0, &xstate) == ERROR_SUCCESS) {
+                u32 buttons = 0;
+                WORD wButtons = xstate.Gamepad.wButtons;
+
+                // Map XInput buttons to PlayStation HLE button bitmask (SCE_PAD values)
+                if (wButtons & XINPUT_GAMEPAD_A) buttons |= 0x00004000; // Cross
+                if (wButtons & XINPUT_GAMEPAD_B) buttons |= 0x00002000; // Circle
+                if (wButtons & XINPUT_GAMEPAD_X) buttons |= 0x00008000; // Square
+                if (wButtons & XINPUT_GAMEPAD_Y) buttons |= 0x00001000; // Triangle
+
+                if (wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) buttons |= 0x00000400; // L1
+                if (wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) buttons |= 0x00000800; // R1
+
+                if (wButtons & XINPUT_GAMEPAD_DPAD_UP) buttons |= 0x00000010; // Up
+                if (wButtons & XINPUT_GAMEPAD_DPAD_DOWN) buttons |= 0x00000040; // Down
+                if (wButtons & XINPUT_GAMEPAD_DPAD_LEFT) buttons |= 0x00000080; // Left
+                if (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) buttons |= 0x00000020; // Right
+
+                if (wButtons & XINPUT_GAMEPAD_START) buttons |= 0x00000008; // Options
+                if (wButtons & XINPUT_GAMEPAD_BACK) buttons |= 0x00100000;  // Share / TouchPad
+                if (wButtons & XINPUT_GAMEPAD_LEFT_THUMB) buttons |= 0x00000002; // L3
+                if (wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) buttons |= 0x00000004; // R3
+
+                // Guide button (PS Button) support
+                if (wButtons & 0x0400) buttons |= 0x00010000;
+
+                new_state.buttons |= buttons;
+
+                // Analog stick translation (XInput is -32768..32767; ScePad is 0..255)
+                auto map_stick = [](SHORT val) -> u8 {
+                    return static_cast<u8>(((val + 32768) * 255) / 65535);
+                };
+                new_state.left_analog_x = map_stick(xstate.Gamepad.sThumbLX);
+                new_state.left_analog_y = map_stick(-xstate.Gamepad.sThumbLY); // invert Y for standard direction
+                new_state.right_analog_x = map_stick(xstate.Gamepad.sThumbRX);
+                new_state.right_analog_y = map_stick(-xstate.Gamepad.sThumbRY);
+
+                new_state.l2_trigger = xstate.Gamepad.bLeftTrigger;
+                new_state.r2_trigger = xstate.Gamepad.bRightTrigger;
+
+                if (new_state.l2_trigger > 50) new_state.buttons |= 0x00000100; // L2
+                if (new_state.r2_trigger > 50) new_state.buttons |= 0x00000200; // R2
+            }
+        }
+
+        std::lock_guard<std::mutex> lock(g_pad_mutex);
+        g_pad_state = new_state;
     }
 
     // Spin the GLFW event loop until the window is closed.

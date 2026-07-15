@@ -15,6 +15,7 @@ namespace Kernel {
         guest_addr_t stack_base = 0;
         u64 stack_size = 0;
         guest_addr_t tls_base = 0;
+        u64 argument = 0;  // SysV rdi arg passed to guest entry function
     };
 
     bool Initialize();

@@ -102,7 +102,14 @@ namespace HLE {
 // namespace HLE
 
 // Assembly-language trampoline: call a guest function from within a Windows-ABI C++ function.
-// Translates Windows ABI → System V ABI and updates g_host_stack_pointer.
+// Translates Windows ABI → System V ABI and stores/restores the per-thread host stack pointer
+// in a __declspec(thread) variable (thread-safe, each host thread has its own slot).
 // rcx = guest_func_va, rdx = rdi_arg, r8 = rsi_arg, r9 = rdx_arg
 // Returns: rax = guest return value
 extern "C" u64 InvokeGuestFunction(u64 guest_func_va, u64 rdi_arg, u64 rsi_arg, u64 rdx_arg);
+
+// Per-thread host stack pointer helpers called by dispatcher.asm.
+// Each guest/host thread gets its own private copy via __declspec(thread).
+extern "C" uintptr_t GetHostStackPointer();
+extern "C" void SetHostStackPointer(uintptr_t rsp);
+
