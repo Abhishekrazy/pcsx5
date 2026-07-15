@@ -5,6 +5,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 namespace Ui {
 
@@ -15,6 +16,11 @@ namespace Ui {
 // Designed to be drawn from inside a dock host or as its own OS window.
 class LogConsole {
 public:
+    struct LogEntry {
+        std::string text;
+        std::string timestamp;
+    };
+
     static constexpr std::size_t kMaxLines = 10000;
 
     void Append(const std::string& line);
@@ -35,12 +41,15 @@ public:
 
 private:
     std::mutex                              mu_;
-    std::deque<std::string>                 lines_;
+    std::deque<LogEntry>                    lines_;
     char                                    filter_[128] = {};
     bool                                    autoscroll_  = true;
     bool                                    word_wrap_   = true;
     bool                                    detached_    = false;
     bool                                    visible_     = true;
+    bool                                    show_timestamps_ = true;
+    bool                                    filter_regex_    = false;
+    std::unordered_set<size_t>              selected_lines_;
 };
 
 }  // namespace Ui

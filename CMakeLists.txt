@@ -598,3 +598,26 @@ add_executable(dump_imports
     )
     target_include_directories(system_info_test PRIVATE src)
     target_compile_options(system_info_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+
+    # ------------------------------------------------------------------------
+    # Syscall HLE validation tests — round-trip, arguments mapping, logging,
+    # and exception handling verification.
+    # ------------------------------------------------------------------------
+    add_executable(syscall_validation_tests
+        tests/syscall_validation_tests.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        ${KERNEL_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(syscall_validation_tests PRIVATE src)
+    target_compile_options(syscall_validation_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(syscall_validation_tests PRIVATE glfw Vulkan::Headers)
+    add_test(NAME syscall_validation COMMAND syscall_validation_tests)

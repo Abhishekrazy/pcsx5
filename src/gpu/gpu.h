@@ -18,6 +18,7 @@ namespace GPU {
     bool Initialize();
     void Shutdown();
     void RenderFrame(guest_addr_t framebuffer_addr = 0);
+    void SetFramebufferConfig(u32 width, u32 height, u32 format);
 
     // Query whether the emulator execution window should close
     bool ShouldCloseWindow();

@@ -1230,10 +1230,48 @@ namespace HLE {
             return 0;
         });
 
-        // sceKernelVirtualQuery (rVjRvHJ0X6c#S#N) — stub
-        RegisterSymbol("libkernel", "rVjRvHJ0X6c#S#N", [](const GuestArgs& /*args*/) -> u64 {
-            LOG_DEBUG(HLE, "sceKernelVirtualQuery() -> stub 0");
-            return 0;
+        // sceKernelVirtualQuery (rVjRvHJ0X6c#S#N)
+        RegisterSymbol("libkernel", "rVjRvHJ0X6c#S#N", [](const GuestArgs& args) -> u64 {
+            guest_addr_t addr = args.arg1;
+            guest_addr_t info_ptr = args.arg2;
+            u64 info_size = args.arg3;
+            LOG_INFO(HLE, "sceKernelVirtualQuery(addr: 0x%llx, info: 0x%llx, size: %llu)", addr, info_ptr, info_size);
+
+            if (!info_ptr || info_size < 16) {
+                return 0x80020016; // EINVAL
+            }
+
+            MEMORY_BASIC_INFORMATION mbi;
+            if (VirtualQuery(reinterpret_cast<void*>(addr), &mbi, sizeof(mbi)) == 0) {
+                LOG_ERROR(HLE, "sceKernelVirtualQuery: VirtualQuery failed (err=%lu)", GetLastError());
+                return 0x80020005; // EFAULT
+            }
+
+            // Write start address
+            Memory::Write<u64>(info_ptr + 0, reinterpret_cast<u64>(mbi.BaseAddress));
+            // Write end address
+            Memory::Write<u64>(info_ptr + 8, reinterpret_cast<u64>(mbi.BaseAddress) + mbi.RegionSize);
+
+            // Convert Windows protection to Unix prot
+            u32 prot = 0;
+            if (mbi.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) {
+                prot |= 1; // PROT_READ
+            }
+            if (mbi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) {
+                prot |= 2; // PROT_WRITE
+            }
+            if (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE)) {
+                prot |= 4; // PROT_EXEC
+            }
+
+            if (info_size >= 20) {
+                Memory::Write<u32>(info_ptr + 16, prot);
+            }
+            if (info_size >= 24) {
+                Memory::Write<u32>(info_ptr + 20, mbi.State);
+            }
+
+            return 0; // Success
         });
 
         // =====================================================================

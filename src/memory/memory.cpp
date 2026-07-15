@@ -131,6 +131,16 @@ bool Initialize() {
     } else {
         LOG_INFO(Memory, "Guest fault VEH installed at 0x%p", g_fault_veh);
     }
+    
+    // Map guest framebuffer region (32MB starting at 0x200000000)
+    guest_addr_t fb_addr = 0x200000000ULL;
+    guest_addr_t out_fb_addr = 0;
+    Status status = Map(fb_addr, 0x2000000, PROT_READ | PROT_WRITE, &out_fb_addr);
+    if (status != Status::Ok) {
+        LOG_ERROR(Memory, "Failed to map guest framebuffer at 0x%llx (status=%s)", fb_addr, StatusAsString(status));
+    } else {
+        LOG_INFO(Memory, "Mapped guest framebuffer region at 0x%llx-0x%llx", out_fb_addr, out_fb_addr + 0x2000000);
+    }
     return true;
 }
 
@@ -375,10 +385,16 @@ MemoryStats GetStats() {
 }
 
 void ReadBuffer(guest_addr_t addr, void* dest, u64 size) {
+    if (addr >= 0x200000000ULL && addr < 0x202000000ULL) {
+        LOG_DEBUG(Memory, "Framebuffer read at guest 0x%llx (size=%llu)", addr, size);
+    }
     std::memcpy(dest, reinterpret_cast<const void*>(addr), size);
 }
 
 void WriteBuffer(guest_addr_t addr, const void* src, u64 size) {
+    if (addr >= 0x200000000ULL && addr < 0x202000000ULL) {
+        LOG_DEBUG(Memory, "Framebuffer write at guest 0x%llx (size=%llu)", addr, size);
+    }
     std::memcpy(reinterpret_cast<void*>(addr), src, size);
 }
 
