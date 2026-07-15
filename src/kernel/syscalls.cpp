@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -178,9 +179,31 @@ s64 HandleSyscall(u32 syscall_number, CONTEXT* context) {
         LOG_WARN(Kernel, "Unimplemented syscall: %u", syscall_number);
         return -ENOSYS;
     }
+
+    static bool init_breaks = false;
+    static int break_sys_num = -1;
+    if (!init_breaks) {
+        init_breaks = true;
+        const char* env = std::getenv("PCSX5_BREAK_SYSCALL");
+        if (env) {
+            break_sys_num = std::atoi(env);
+            LOG_INFO(Kernel, "Configured breakpoint on syscall %d", break_sys_num);
+        }
+    }
+    if (break_sys_num == static_cast<int>(syscall_number)) {
+        LOG_INFO(Kernel, "Debugger breakpoint hit on syscall %u!", syscall_number);
+#ifdef _WIN32
+        DebugBreak();
+#endif
+    }
     
-    LOG_DEBUG(Kernel, "Handling syscall %u", syscall_number);
-    return handler(context);
+    LOG_DEBUG(Kernel, "Handling syscall %u (args: Rdi=0x%llx, Rsi=0x%llx, Rdx=0x%llx, R10=0x%llx, R8=0x%llx, R9=0x%llx)",
+              syscall_number, context->Rdi, context->Rsi, context->Rdx, context->R10, context->R8, context->R9);
+              
+    s64 result = handler(context);
+    
+    LOG_DEBUG(Kernel, "Syscall %u returned: %lld (0x%llx)", syscall_number, result, result);
+    return result;
 }
 
 s64 SysExit(s32 status, CONTEXT*) {

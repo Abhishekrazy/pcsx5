@@ -66,6 +66,13 @@ namespace HLE {
                 LOG_DEBUG(HLE, "  Buffer #%u Address: 0x%llx", slot, addr);
             }
 
+            if (attr) {
+                u32 w = Memory::Read<u32>(attr + 0);
+                u32 h = Memory::Read<u32>(attr + 4);
+                u32 fmt = Memory::Read<u32>(attr + 12);
+                GPU::SetFramebufferConfig(w, h, fmt);
+            }
+
             return 0; // Success
         });
 
@@ -98,6 +105,41 @@ namespace HLE {
             }
 
             return 0; // Success
+        });
+
+        // sceVideoOutWaitVblank
+        // Signature: sceVideoOutWaitVblank(handle)
+        RegisterSymbol("libSceVideoOut", "sceVideoOutWaitVblank", [](const GuestArgs& args) -> u64 {
+            u32 handle = static_cast<u32>(args.arg1);
+            LOG_DEBUG(HLE, "sceVideoOutWaitVblank(handle: 0x%X) called", handle);
+            // Wait/Sleep ~16.6ms to simulate vertical blank interval (60Hz)
+            Sleep(16);
+            return 0;
+        });
+
+        // sceVideoOutGetResolution
+        // Signature: sceVideoOutGetResolution(handle, width*, height*)
+        RegisterSymbol("libSceVideoOut", "sceVideoOutGetResolution", [](const GuestArgs& args) -> u64 {
+            u32 handle = static_cast<u32>(args.arg1);
+            guest_addr_t width_ptr = args.arg2;
+            guest_addr_t height_ptr = args.arg3;
+            LOG_INFO(HLE, "sceVideoOutGetResolution(handle: 0x%X) called", handle);
+            if (width_ptr) {
+                Memory::Write<u32>(width_ptr, 1920);
+            }
+            if (height_ptr) {
+                Memory::Write<u32>(height_ptr, 1080);
+            }
+            return 0;
+        });
+
+        // sceVideoOutSetFlipRate
+        // Signature: sceVideoOutSetFlipRate(handle, rate)
+        RegisterSymbol("libSceVideoOut", "sceVideoOutSetFlipRate", [](const GuestArgs& args) -> u64 {
+            u32 handle = static_cast<u32>(args.arg1);
+            u32 rate = static_cast<u32>(args.arg2);
+            LOG_INFO(HLE, "sceVideoOutSetFlipRate(handle: 0x%X, rate: %u) called", handle, rate);
+            return 0;
         });
     }
 } // namespace HLE

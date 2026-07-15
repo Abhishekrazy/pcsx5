@@ -25,6 +25,13 @@ namespace GPU {
     // Host-side DIB backing store (BGRA, 32-bit, 1280x720)
     static std::vector<u32> g_dib_buffer;
 
+    static u32 g_fb_width = 1920;
+    static u32 g_fb_height = 1080;
+    static u32 g_fb_format = 0; // 0 = RGBA8, 1 = BGRA8, 2 = RGB565
+
+    typedef HRESULT(WINAPI* PFN_DwmFlush)();
+    static PFN_DwmFlush pfn_DwmFlush = nullptr;
+
     // Vulkan dynamic loading entry points (retain for future use)
     typedef VkResult(VKAPI_PTR* PFN_vkCreateInstance)(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);
     static PFN_vkCreateInstance pfn_vkCreateInstance = nullptr;
@@ -247,6 +254,10 @@ namespace GPU {
             DIB_RGB_COLORS, SRCCOPY);
 
         ReleaseDC(g_hwnd, hdc);
+
+        if (pfn_DwmFlush) {
+            pfn_DwmFlush();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -330,6 +341,15 @@ namespace GPU {
             LOG_WARN(GPU, "Vulkan driver 'vulkan-1.dll' not found. Graphics emulation will run in stub mode.");
         }
 
+        // Dynamically load DWM API for VSync (DwmFlush)
+        HMODULE hDwmapi = LoadLibraryA("dwmapi.dll");
+        if (hDwmapi) {
+            pfn_DwmFlush = reinterpret_cast<PFN_DwmFlush>(GetProcAddress(hDwmapi, "DwmFlush"));
+            if (pfn_DwmFlush) {
+                LOG_INFO(GPU, "DWM composition API 'dwmapi.dll' resolved successfully for VSync.");
+            }
+        }
+
         // Draw and present the boot screen immediately ("first frame")
         DrawBootScreen();
         PresentDIB();
@@ -365,21 +385,36 @@ namespace GPU {
             return;
         }
 
-        // Blit guest RGBA framebuffer → host DIB buffer (BGRA)
-        // Guest FB is assumed 1920x1080 RGBA8 - scale-blit to 1280x720 window
-        // For now, attempt to read the first 1280x720 rows directly (raw blit)
+        // Blit guest framebuffer → host DIB buffer (BGRA)
+        // Guest FB format is dynamic (RGBA8, BGRA8, or RGB565) - scale-blit to window (g_width x g_height)
         __try {
             const u8* src = reinterpret_cast<const u8*>(framebuffer_addr);
             for (int y = 0; y < g_height; ++y) {
+                int src_y = (y * static_cast<int>(g_fb_height)) / g_height;
                 for (int x = 0; x < g_width; ++x) {
-                    // Read RGBA bytes from guest memory (guest may use RGBA or BGRA)
-                    int src_offset = (y * g_width + x) * 4;
-                    u8 r = src[src_offset + 0];
-                    u8 g_ch = src[src_offset + 1];
-                    u8 b = src[src_offset + 2];
-                    u8 a = src[src_offset + 3];
-                    (void)a;
-                    // Pack as BGRA for GDI StretchDIBits
+                    int src_x = (x * static_cast<int>(g_fb_width)) / g_width;
+                    
+                    u8 r = 0, g_ch = 0, b = 0;
+                    if (g_fb_format == 2) { // RGB565
+                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 2;
+                        u16 pixel = *reinterpret_cast<const u16*>(src + src_offset);
+                        r = ((pixel >> 11) & 0x1F) * 255 / 31;
+                        g_ch = ((pixel >> 5) & 0x3F) * 255 / 63;
+                        b = (pixel & 0x1F) * 255 / 31;
+                    } else if (g_fb_format == 1) { // BGRA8
+                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 4;
+                        const u8* pixel = src + src_offset;
+                        b = pixel[0];
+                        g_ch = pixel[1];
+                        r = pixel[2];
+                    } else { // RGBA8 (default)
+                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 4;
+                        const u8* pixel = src + src_offset;
+                        r = pixel[0];
+                        g_ch = pixel[1];
+                        b = pixel[2];
+                    }
+                    
                     g_dib_buffer[y * g_width + x] = (0xFF << 24) | (r << 16) | (g_ch << 8) | b;
                 }
             }
@@ -391,6 +426,13 @@ namespace GPU {
 
         PresentDIB();
         LOG_DEBUG(GPU, "RenderFrame: Presented guest framebuffer 0x%llx.", framebuffer_addr);
+    }
+
+    void SetFramebufferConfig(u32 width, u32 height, u32 format) {
+        g_fb_width = width > 0 ? width : 1920;
+        g_fb_height = height > 0 ? height : 1080;
+        g_fb_format = format;
+        LOG_INFO(GPU, "Framebuffer config updated: %ux%u format=%u", g_fb_width, g_fb_height, g_fb_format);
     }
 
     bool ShouldCloseWindow() {

@@ -64,6 +64,9 @@ bool ProcessRunner::Start(const std::string& backend,
         LOG_WARN(General, "ProcessRunner: already running, refusing to start.");
         return false;
     }
+    if (reader_.joinable()) {
+        reader_.join();
+    }
     sink_     = sink;
     on_exit_  = std::move(on_exit);
     exit_code_ = 0;
@@ -214,6 +217,9 @@ bool ProcessRunner::Start(const std::string& backend,
                           LogConsole* sink,
                           OnExit on_exit) {
     if (running_.load()) return false;
+    if (reader_.joinable()) {
+        reader_.join();
+    }
     sink_     = sink;
     on_exit_  = std::move(on_exit);
     exit_code_ = 0;

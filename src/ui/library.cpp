@@ -32,7 +32,7 @@ namespace Ui {
 // colour coding for Compat::Status values.  We only use a small palette
 // (green/amber/grey) — SharpEmu's approach is to keep the status visual
 // quiet so the cover art can dominate.
-static ImU32 StatusColor(const std::string& s) {
+[[maybe_unused]] static ImU32 StatusColor(const std::string& s) {
     if (s == "complete") return IM_COL32(80, 200, 100, 255);
     if (s == "playable") return IM_COL32(80, 200, 100, 255);
     if (s == "menu")     return IM_COL32(220, 165, 60, 255);
@@ -159,6 +159,7 @@ bool DrawLibraryPanel(const std::vector<GameEntry>& games,
                       ThumbnailCache& thumbs,
                       float card_min_w,
                       const char* filter_text) {
+    (void)card_min_w;
     bool boot_requested = false;
 
     // ---- Filter + sort ----
@@ -201,183 +202,119 @@ bool DrawLibraryPanel(const std::vector<GameEntry>& games,
         return false;
     }
 
-    // ---- Card grid ----
-    const float avail_w = ImGui::GetContentRegionAvail().x;
-    int   cols = std::max(1, static_cast<int>(avail_w / card_min_w));
-    if (cols > 10) cols = 10;
-    const float gap      = 14.0f;
-    const float card_w   = (avail_w - (cols - 1) * gap) /
-                           static_cast<float>(cols);
-    const float cover_h  = card_w;          // square cover
-    const float meta_h   = 52.0f;
-    const float card_h   = cover_h + meta_h;
-    const float row_gap  = gap;
-    const float col_gap  = gap;
+    // ---- Card shelf (horizontal scrolling list) ----
+    const float card_w   = 130.0f;
+    const float cover_h  = 160.0f;          // vertical cover art
+    const float text_h   = 40.0f;           // space for title text below
+    const float gap      = 18.0f;
 
-    // Absolute content-region origin (parent-window coordinates) so
-    // the first card lines up flush with the panel's left edge.
-    const ImVec2 origin = ImGui::GetCursorPos();
-    ImDrawList* dl_grid = ImGui::GetWindowDrawList();
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+    if (ImGui::BeginChild("library_shelf", ImVec2(0, cover_h + text_h + 24.0f), false, ImGuiWindowFlags_HorizontalScrollbar)) {
+        ImDrawList* dl_grid = ImGui::GetWindowDrawList();
 
-    for (size_t k = 0; k < idx.size(); ++k) {
-        const int  row = static_cast<int>(k) / cols;
-        const int  col = static_cast<int>(k) % cols;
-        const int  i   = idx[k];
-        const auto& g  = games[i];
-        Compat::Entry e;
-        std::string status = g.status_text;
-        std::string name   = g.display_name;
-        if (name.empty()) name = g.title_id;
-        if (Compat::Load(g.title_id, e, nullptr)) {
-            status = Compat::StatusName(e.status);
-            if (!e.name.empty() && e.name != g.title_id &&
-                e.name != "(unnamed)") {
-                name = e.name;
+        for (size_t k = 0; k < idx.size(); ++k) {
+            const int  i   = idx[k];
+            const auto& g  = games[i];
+            std::string name   = g.display_name;
+            if (name.empty()) name = g.title_id;
+
+            const bool sel = (selected_index == i);
+            ImGui::PushID(i);
+
+            if (k > 0) {
+                ImGui::SameLine(0, gap);
             }
-        }
 
-        const bool sel = (selected_index == i);
-        ImGui::PushID(i);
-
-        const ImVec2 card_pos(origin.x + col * (card_w + col_gap),
-                              origin.y + row * (card_h + row_gap));
-        ImGui::SetCursorPos(card_pos);
-
-        // ---- Card frame ----
-        const ImVec2 p  = ImGui::GetCursorScreenPos();
-        const ImVec2 sz(card_w, card_h);
-        const bool hovered = ImGui::IsMouseHoveringRect(
-            p, ImVec2(p.x + sz.x, p.y + sz.y));
-        const ImU32 fill = sel ? IM_COL32(0, 70, 120, 180)
-                               : (hovered ? IM_COL32(255, 255, 255, 8)
-                                          : IM_COL32(0, 0, 0, 0));
-        const float r = 10.0f;
-        if (fill != 0)
-            dl_grid->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y),
-                                   fill, r);
-
-        // ---- Cover art area (top portion) ----
-        const ImVec2 cover_p(p.x, p.y);
-        const ImVec2 cover_sz(card_w, cover_h);
-        Thumbnail thumb;
-        if (!g.cover_path.empty()) {
-            thumb = thumbs.GetFromPath(g.title_id, g.cover_path);
-        }
-        if (!thumb.valid()) {
-            thumb = thumbs.Get(g.title_id);
-        }
-        if (thumb.valid()) {
-            dl_grid->PushClipRect(cover_p,
-                                  ImVec2(cover_p.x + cover_sz.x,
-                                         cover_p.y + cover_sz.y),
-                                  true);
-            dl_grid->AddImage(reinterpret_cast<ImTextureID>(thumb.texture),
-                              cover_p,
-                              ImVec2(cover_p.x + cover_sz.x,
-                                     cover_p.y + cover_sz.y),
-                              ImVec2(0, 0), ImVec2(1, 1),
-                              IM_COL32(255, 255, 255, 255));
-            dl_grid->PopClipRect();
-        } else {
-            DrawPlaceholder(dl_grid, cover_p, cover_sz, g.title_id);
-        }
-
-        if (sel) {
-            dl_grid->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y),
-                             IM_COL32(0, 168, 252, 255), r, 0, 2.5f);
-        } else if (hovered) {
-            dl_grid->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y),
-                             IM_COL32(255, 255, 255, 60), r, 0, 1.0f);
-        }
-
-        // ---- Meta strip (title + title id + size) ----
-        const ImVec2 meta_p(p.x, p.y + cover_h);
-        const ImVec2 meta_sz(card_w, meta_h);
-
-        dl_grid->AddLine(ImVec2(p.x, p.y + cover_h - 0.5f),
-                          ImVec2(p.x + sz.x, p.y + cover_h - 0.5f),
-                          IM_COL32(255, 255, 255, 18));
-
-        // Status dot.
-        const float dot_r = 3.5f;
-        const float dot_x = meta_p.x + 10.0f;
-        const float dot_y = meta_p.y + 12.0f;
-        dl_grid->AddCircleFilled(ImVec2(dot_x, dot_y), dot_r,
-                                 StatusColor(status), 8);
-
-        const float text_x = meta_p.x + 20.0f;
-        const float text_w = meta_sz.x - 24.0f;
-        auto fits = [&](const std::string& s) {
-            return ImGui::CalcTextSize(s.c_str()).x <= text_w;
-        };
-        std::string trimmed = name;
-        if (!fits(trimmed)) {
-            while (trimmed.size() > 4 && !fits(trimmed)) {
-                trimmed.pop_back();
+            ImGui::BeginGroup();
+            
+            const ImVec2 p  = ImGui::GetCursorScreenPos();
+            const ImVec2 sz(card_w, cover_h); // Only the cover art card gets hovered/selected effects
+            const bool hovered = ImGui::IsMouseHoveringRect(p, ImVec2(p.x + sz.x, p.y + sz.y));
+            
+            if (sel && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+                ImGui::SetScrollHereX(0.5f);
             }
-            if (trimmed.size() > 3) {
-                trimmed.resize(trimmed.size() - 1);
-                trimmed += "...";
-            } else if (fits(g.title_id)) {
-                trimmed = g.title_id;
+
+            // Draw card background
+            const ImU32 fill = sel ? IM_COL32(0, 168, 252, 30)
+                                   : (hovered ? IM_COL32(255, 255, 255, 10)
+                                              : IM_COL32(0, 0, 0, 60));
+            const float r = 10.0f;
+            dl_grid->AddRectFilled(p, ImVec2(p.x + sz.x, p.y + sz.y), fill, r);
+
+            // ---- Cover art area ----
+            Thumbnail thumb;
+            if (!g.cover_path.empty()) {
+                thumb = thumbs.GetFromPath(g.title_id, g.cover_path);
+            }
+            if (!thumb.valid()) {
+                thumb = thumbs.Get(g.title_id);
+            }
+            if (thumb.valid()) {
+                dl_grid->PushClipRect(p, ImVec2(p.x + sz.x, p.y + sz.y), true);
+                dl_grid->AddImage(reinterpret_cast<ImTextureID>(thumb.texture),
+                                  p, ImVec2(p.x + sz.x, p.y + sz.y),
+                                  ImVec2(0, 0), ImVec2(1, 1),
+                                  IM_COL32(255, 255, 255, 255));
+                dl_grid->PopClipRect();
             } else {
-                trimmed = trimmed.substr(0, 1);
+                DrawPlaceholder(dl_grid, p, sz, g.title_id);
             }
-        }
-        dl_grid->AddText(ImVec2(text_x, meta_p.y + 6),
-                         IM_COL32(232, 238, 244, 255), trimmed.c_str());
 
-        char meta_line[128];
-        if (!g.music_path.empty()) {
-            const std::string base =
-                std::filesystem::path(g.music_path).filename().generic_string();
-            std::snprintf(meta_line, sizeof(meta_line), "%s  -  %s  -  %s",
-                          g.title_id.c_str(),
-                          FormatSize(g.size_bytes).c_str(),
-                          base.c_str());
-        } else {
-            std::snprintf(meta_line, sizeof(meta_line), "%s  -  %s",
-                          g.title_id.c_str(),
-                          FormatSize(g.size_bytes).c_str());
-        }
-        std::string meta_str = meta_line;
-        while (!meta_str.empty() &&
-               ImGui::CalcTextSize(meta_str.c_str()).x > text_w) {
-            meta_str.pop_back();
-        }
-        if (meta_str.size() > 3) {
-            meta_str[meta_str.size() - 1] = '.';
-            meta_str[meta_str.size() - 2] = '.';
-            meta_str[meta_str.size() - 3] = '.';
-        }
-        dl_grid->AddText(ImVec2(text_x, meta_p.y + 26),
-                         IM_COL32(125, 135, 148, 255), meta_str.c_str());
+            // Glow border on selected/hovered card
+            if (sel) {
+                dl_grid->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y),
+                                 IM_COL32(0, 168, 252, 255), r, 0, 2.5f);
+            } else if (hovered) {
+                dl_grid->AddRect(p, ImVec2(p.x + sz.x, p.y + sz.y),
+                                 IM_COL32(255, 255, 255, 100), r, 0, 1.0f);
+            }
 
-        // ---- Clickable hot zone ----
-        ImGui::SetCursorScreenPos(p);
-        if (ImGui::InvisibleButton("##card", sz)) {
-            selected_index = i;
-        }
-        if (ImGui::IsItemHovered()) {
-            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            // ---- Title text (directly below the card) ----
+            // We draw a dummy layout spacer for the cover art
+            ImGui::Dummy(sz);
+            
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6.0f);
+            
+            // Render text
+            std::string trimmed = name;
+            float text_w = card_w;
+            auto fits = [&](const std::string& s) {
+                return ImGui::CalcTextSize(s.c_str()).x <= text_w;
+            };
+            if (!fits(trimmed)) {
+                while (trimmed.size() > 4 && !fits(trimmed)) {
+                    trimmed.pop_back();
+                }
+                if (trimmed.size() > 3) {
+                    trimmed.resize(trimmed.size() - 1);
+                    trimmed += "...";
+                }
+            }
+            
+            ImGui::PushStyleColor(ImGuiCol_Text, sel ? ImVec4(0.0f, 0.66f, 1.0f, 1.0f) : ImVec4(0.9f, 0.93f, 0.96f, 1.0f));
+            ImGui::Text("%s", trimmed.c_str());
+            ImGui::PopStyleColor();
+
+            // ---- Clickable hot zone on the card ----
+            ImGui::SetCursorScreenPos(p);
+            if (ImGui::InvisibleButton("##card", sz)) {
                 selected_index = i;
-                boot_requested = true;
             }
-            ImGui::SetTooltip("%s\n%s\nSize: %s",
-                               g.title_id.c_str(),
-                               g.dir_path.c_str(),
-                               FormatSize(g.size_bytes).c_str());
-        }
-        ImGui::PopID();
-    }
+            if (ImGui::IsItemHovered()) {
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                    selected_index = i;
+                    boot_requested = true;
+                }
+                ImGui::SetTooltip("%s\nSize: %s", g.title_id.c_str(), FormatSize(g.size_bytes).c_str());
+            }
 
-    const int total_rows = static_cast<int>(
-        (idx.size() + cols - 1) / static_cast<size_t>(cols));
-    const float total_h = static_cast<float>(total_rows) * card_h +
-                          static_cast<float>(total_rows > 0 ? total_rows - 1 : 0) *
-                              row_gap;
-    ImGui::SetCursorPos(ImVec2(origin.x, origin.y + total_h));
-    ImGui::Dummy(ImVec2(avail_w, 8.0f));
+            ImGui::EndGroup();
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
 
     return boot_requested;
 }
