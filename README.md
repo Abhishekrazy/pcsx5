@@ -44,7 +44,7 @@
 
 Track game compatibility and contribute reports at our dedicated repository:
 
-[![Compatibility Repo](https://img.shields.io/badge/🎮_Game_Compatibility-Abhishekrazy%2FPCSX5--Game--Compatibility-00D9FF?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Abhishekrazy/PCSX5-Game-Compatibility)
+[![Compatibility Repo](https://img.shields.io/badge/🎮_Game_Compatibility-PCSX5_Game_Compatibility-00D9FF?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Abhishekrazy/PCSX5-Game-Compatibility)
 
 - **Auto-updating statistics** via GitHub Actions
 - **Structured issue templates** for compatibility reports
