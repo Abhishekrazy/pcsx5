@@ -13,6 +13,19 @@
 
 extern "C" void HleCommonDispatcher();
 
+// Per-thread host stack pointer: each guest thread has its own copy so that
+// concurrent HLE dispatches on different threads never clobber each other's RSP.
+// Accessed from assembly via GetHostStackPointer/SetHostStackPointer helpers.
+static __declspec(thread) uintptr_t tls_host_stack_pointer = 0;
+
+extern "C" uintptr_t GetHostStackPointer() {
+    return tls_host_stack_pointer;
+}
+
+extern "C" void SetHostStackPointer(uintptr_t rsp) {
+    tls_host_stack_pointer = rsp;
+}
+
 namespace HLE {
     void RegisterLibKernel();
     void RegisterLibPad();
@@ -392,7 +405,7 @@ namespace HLE {
         }
         std::string result;
         result.resize(size);
-        if (SafeRead(result.data(), data_ptr, size)) {
+        if (SafeRead(const_cast<char*>(result.data()), data_ptr, size)) {
             return result;
         } else {
             return "[Corrupt String Content]";

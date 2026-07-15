@@ -505,57 +505,19 @@ add_executable(dump_imports
     # backend.  Out-of-process: it spawns pcsx5.exe as a child and pipes
     # stdout/stderr into the detachable console window.
     # ------------------------------------------------------------------------
-    add_executable(pcsx5_ui
-        tests/pcsx5_ui.cpp
-        src/ui/ui.cpp
-        src/ui/ui_scan.cpp
-        src/ui/library.cpp
-        src/ui/console.cpp
-        src/ui/discord_rpc.cpp
-        src/ui/process.cpp
-        src/ui/theme.cpp
-        src/ui/thumbnail.cpp
-        src/ui/system_panel.cpp
-        src/ui/snd_player.cpp
-        src/ui/i18n.cpp
-        src/common/log.cpp
-        src/system/system.cpp
-        src/compat/compat.cpp
-        # ImGui core (compile, draw, tables, widgets, demo)
-        ${IMGUI_DIR}/imgui.cpp
-        ${IMGUI_DIR}/imgui_demo.cpp
-        ${IMGUI_DIR}/imgui_draw.cpp
-        ${IMGUI_DIR}/imgui_tables.cpp
-        ${IMGUI_DIR}/imgui_widgets.cpp
-        # GLFW + OpenGL3 backends
-        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    # pcsx5_ui — the desktop UI for end users. Compiled in C# (WPF) with native Windows 11 Mica.
+    # Out-of-process: it spawns pcsx5.exe as a child and pipes stdout/stderr.
+    add_custom_target(pcsx5_ui ALL
+        COMMAND "C:/Program Files/dotnet/dotnet.exe" build "${CMAKE_SOURCE_DIR}/src/ui_csharp/Pcsx5Ui.csproj" -c Release -o "${CMAKE_BINARY_DIR}/Release/"
+        COMMENT "Building C# WPF Emulator UI (Mica, Fluent Design)"
     )
-    target_include_directories(pcsx5_ui PRIVATE
-        src
-        third_party
-        third_party/LibAtrac9/include
-        ${IMGUI_DIR}
-        ${IMGUI_DIR}/backends
-        ${nlohmann_json_SOURCE_DIR}/include
-    )
-    # ImGui's GLFW backend needs glfw + OpenGL headers/libraries.
-    target_link_libraries(pcsx5_ui PRIVATE glfw atrac9 nlohmann_json)
-    if(MSVC)
-        target_compile_options(pcsx5_ui PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-        # ImGui's backends are not /WX clean (some upstream warnings).
-        # Demote them to /W3 and disable the warning that fires as an error.
-        set_source_files_properties(
-            ${IMGUI_DIR}/imgui.cpp
-            ${IMGUI_DIR}/imgui_demo.cpp
-            ${IMGUI_DIR}/imgui_draw.cpp
-            ${IMGUI_DIR}/imgui_tables.cpp
-            ${IMGUI_DIR}/imgui_widgets.cpp
-            ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-            ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
-            PROPERTIES COMPILE_OPTIONS "/W3;/wd4701;/wd4703;/wd26451;/wd26495")
-        target_link_libraries(pcsx5_ui PRIVATE opengl32 winmm ws2_32)
-    endif()
+
+    # ------------------------------------------------------------------------
+    # pcsx5_boot_parser — standalone, independent game boot & memory parser.
+    # Can be run individually without dependencies.
+    # ------------------------------------------------------------------------
+    add_executable(pcsx5_boot_parser pcsx5_boot_parser.cpp)
+    target_compile_options(pcsx5_boot_parser PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
 
     # ------------------------------------------------------------------------
     # SndPreviewPlayer test — decodes the first snd0.at9 found under
@@ -580,13 +542,25 @@ add_executable(dump_imports
              COMMAND snd_player_test
              WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-    # Debug helper: dump what ScanGames actually finds under ./Games.
-    add_executable(ui_scan_test
-        tests/ui_scan_test.cpp
-        src/ui/ui_scan.cpp
+    # ------------------------------------------------------------------------
+    # pcsx5_snd_decode — standalone ATRAC9/OGG to WAV sound decoder.
+    # ------------------------------------------------------------------------
+    add_executable(pcsx5_snd_decode
+        tests/pcsx5_snd_decode.cpp
+        src/ui/snd_player.cpp
+        src/common/log.cpp
     )
-    target_include_directories(ui_scan_test PRIVATE src)
-    target_compile_options(ui_scan_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_include_directories(pcsx5_snd_decode PRIVATE
+        src
+        third_party
+        third_party/LibAtrac9/include
+    )
+    target_link_libraries(pcsx5_snd_decode PRIVATE atrac9)
+    target_compile_options(pcsx5_snd_decode PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    if(MSVC)
+        target_link_libraries(pcsx5_snd_decode PRIVATE winmm)
+    endif()
+
 
     # ------------------------------------------------------------------------
     # System info test — quick dump of CPU/GPU/RAM/OS as reported by

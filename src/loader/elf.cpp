@@ -99,7 +99,13 @@ namespace Loader {
 
         // Validate all file-backed ranges and PT_LOAD address ranges before
         // reserving guest memory or copying any segment data.
+        int inner_idx = 0;
         for (const auto& phdr : phdrs) {
+            LOG_INFO(Loader, "  Inner Phdr[%d]: type=%u, p_offset=0x%llx, p_filesz=0x%llx, file_size=0x%llx",
+                     inner_idx++, phdr.p_type,
+                     static_cast<unsigned long long>(phdr.p_offset),
+                     static_cast<unsigned long long>(phdr.p_filesz),
+                     static_cast<unsigned long long>(file_size_u64));
             if (phdr.p_offset > file_size_u64 || phdr.p_filesz > file_size_u64 - phdr.p_offset) {
                 LOG_ERROR(Loader, "Segment file range is outside the ELF file.");
                 return false;
@@ -208,7 +214,10 @@ namespace Loader {
             u32 final_protection = Memory::PROT_NONE;
             if (phdr.p_flags & 4) final_protection |= Memory::PROT_READ;
             if (phdr.p_flags & 2) final_protection |= Memory::PROT_WRITE;
-            if (phdr.p_flags & 1) final_protection |= Memory::PROT_EXEC;
+            if (phdr.p_flags & 1) {
+                final_protection |= Memory::PROT_EXEC;
+                final_protection |= Memory::PROT_READ; // Always allow reading code segments on host
+            }
 
             // Default zero-flag PT_LOAD segments to Read+Write (representing BSS/global variables)
             if (final_protection == Memory::PROT_NONE) {
@@ -295,16 +304,21 @@ namespace Loader {
 
         for (const auto& phdr : phdrs) {
             if (phdr.p_type == PT_DYNAMIC) {
+                LOG_INFO(Loader, "Found PT_DYNAMIC: offset=0x%llx memsz=0x%llx vaddr=0x%llx", phdr.p_offset, phdr.p_memsz, phdr.p_vaddr);
                 out_module.dynamic_table_addr = base_address + phdr.p_vaddr;
                 out_module.dynamic_table_size = phdr.p_memsz;
 
                 u64 num_entries = phdr.p_memsz / sizeof(Elf64_Dyn);
+                LOG_INFO(Loader, "PT_DYNAMIC num_entries: %llu", num_entries);
                 std::vector<Elf64_Dyn> dyn_entries(num_entries);
 
-                file.seekg(phdr.p_offset, std::ios::beg);
-                file.read(reinterpret_cast<char*>(dyn_entries.data()), phdr.p_memsz);
+                // Read from mapped guest memory instead of file stream to handle truncated files
+                Memory::ReadBuffer(base_address + phdr.p_vaddr, dyn_entries.data(), phdr.p_memsz);
+                LOG_INFO(Loader, "PT_DYNAMIC loaded from guest memory at 0x%llx", base_address + phdr.p_vaddr);
 
+                int dyn_idx = 0;
                 for (const auto& dyn : dyn_entries) {
+                    LOG_INFO(Loader, "  Dyn[%d]: tag=%lld, val=0x%llx", dyn_idx++, dyn.d_tag, dyn.d_un.d_val);
                     if (dyn.d_tag == DT_NULL) break;
 
                     switch (dyn.d_tag) {
@@ -394,6 +408,7 @@ namespace Loader {
         }
 
         // Load Symbol Table
+        LOG_INFO(Loader, "Symbol table address: 0x%llx, String table address: 0x%llx, strsz: %llu", symtab_addr, strtab_addr, strsz);
         if (symtab_addr && strtab_addr) {
             // Estimate number of symbols (until we hit the string limit or section bounds, or using hash size)
             // A simple approximation is to read until we hit a symbol with an invalid name offset.
@@ -627,6 +642,11 @@ namespace Loader {
             s.mem_size    = raw.mem_size;
             out.segments.push_back(s);
         }
+        for (size_t i = 0; i < out.segments.size(); ++i) {
+            const auto& seg = out.segments[i];
+            LOG_INFO(Loader, "  SELF Seg[%zu]: id=%d offset=0x%llx size=0x%llx memsz=0x%llx encrypted=%d compressed=%d",
+                     i, seg.id(), seg.file_offset, seg.file_size, seg.mem_size, seg.encrypted(), seg.compressed());
+        }
         return true;
     }
 
@@ -682,6 +702,12 @@ namespace Loader {
                 return false;
             }
 
+            char ehdr_hex[256] = {0};
+            for (int i = 0; i < 64; ++i) {
+                sprintf_s(ehdr_hex + i * 3, sizeof(ehdr_hex) - i * 3, "%02X ", reinterpret_cast<u8*>(&ehdr)[i]);
+            }
+            LOG_INFO(Loader, "SELF inner ELF Header hex: %s", ehdr_hex);
+
             // Read the phdr table so we can compute the *actual* extent of
             // the embedded ELF (some SELFs embed the full ELF, payload and
             // all, in the structural layer; we need to read all of it so
@@ -696,31 +722,66 @@ namespace Loader {
                            std::ios::beg);
                 file.read(reinterpret_cast<char*>(phdrs.data()),
                           static_cast<std::streamsize>(phdr_table_size));
-                if (static_cast<u64>(file.gcount()) != phdr_table_size) {
+            if (static_cast<u64>(file.gcount()) != phdr_table_size) {
                     LOG_ERROR(Loader, "SELF: embedded ELF phdr table truncated.");
                     return false;
                 }
             }
-
             u64 max_extent = sizeof(ehdr) + phdr_table_size;
+            int phdr_idx = 0;
             for (const auto& p : phdrs) {
+                LOG_INFO(Loader, "  Phdr[%d]: type=%u, p_offset=0x%llx, p_filesz=0x%llx (sum=0x%llx)",
+                         phdr_idx++, p.p_type,
+                         static_cast<unsigned long long>(p.p_offset),
+                         static_cast<unsigned long long>(p.p_filesz),
+                         static_cast<unsigned long long>(p.p_offset + p.p_filesz));
                 if (p.p_offset + p.p_filesz > max_extent) {
                     max_extent = p.p_offset + p.p_filesz;
                 }
             }
-            const u64 elf_region_size = max_extent;
-
-            if (elf_off + elf_region_size > static_cast<u64>(file_size)) {
-                LOG_ERROR(Loader, "SELF: embedded ELF overruns file.");
-                return false;
+            // Grow max_extent to cover any larger segment payloads actually written
+            for (const auto& seg : out.segments) {
+                int id = seg.id();
+                if (id >= 0 && id < ehdr.e_phnum) {
+                    const auto& phdr = phdrs[id];
+                    if (seg.file_size > 0) {
+                        if (phdr.p_offset + seg.file_size > max_extent) {
+                            max_extent = phdr.p_offset + seg.file_size;
+                        }
+                    }
+                }
             }
-            out.elf_region.resize(static_cast<size_t>(elf_region_size));
-            file.seekg(static_cast<std::streamoff>(elf_off), std::ios::beg);
-            file.read(reinterpret_cast<char*>(out.elf_region.data()),
-                      static_cast<std::streamsize>(elf_region_size));
-            if (static_cast<u64>(file.gcount()) != elf_region_size) {
-                LOG_ERROR(Loader, "SELF: failed to read embedded ELF region.");
-                return false;
+ 
+            u64 elf_region_size = max_extent;
+            out.elf_region.assign(static_cast<size_t>(elf_region_size), 0);
+ 
+            // 1. Copy Elf64_Ehdr to the start of elf_region
+            std::memcpy(out.elf_region.data(), &ehdr, sizeof(ehdr));
+ 
+            // 2. Copy Elf64_Phdrs to elf_region + ehdr.e_phoff
+            if (ehdr.e_phnum > 0) {
+                std::memcpy(out.elf_region.data() + ehdr.e_phoff, phdrs.data(), phdr_table_size);
+            }
+ 
+            // 3. Copy each loadable/metadata segment from its SELF file offset to its ELF offset
+            for (const auto& seg : out.segments) {
+                int id = seg.id();
+                if (id >= 0 && id < ehdr.e_phnum) {
+                    const auto& phdr = phdrs[id];
+                    if (seg.file_size > 0) {
+                        if (seg.file_offset + seg.file_size <= static_cast<u64>(file_size)) {
+                            file.clear();
+                            file.seekg(static_cast<std::streamoff>(seg.file_offset), std::ios::beg);
+                            file.read(reinterpret_cast<char*>(out.elf_region.data() + phdr.p_offset),
+                                      static_cast<std::streamsize>(seg.file_size));
+                            LOG_INFO(Loader, "Reconstructed SELF segment id=%d: file_off=0x%llx -> ELF off=0x%llx size=0x%llx",
+                                     id, seg.file_offset, phdr.p_offset, seg.file_size);
+                        } else {
+                            LOG_WARN(Loader, "SELF segment id=%d file extent (0x%llx) exceeds file size (0x%llx)",
+                                     id, seg.file_offset + seg.file_size, file_size);
+                        }
+                    }
+                }
             }
             out.elf_region_offset = elf_off;
             LOG_INFO(Loader,

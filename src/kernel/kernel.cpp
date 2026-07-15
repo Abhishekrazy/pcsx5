@@ -2,6 +2,7 @@
 #include "fd_table.h"
 #include "memory.h"
 #include "syscalls.h"
+#include "thread.h"
 #include "../memory/memory.h"
 #include "../hle/hle.h"
 #include "../common/log.h"
@@ -24,7 +25,7 @@
 
 #endif // KERNEL_UNIX_COMPAT_H
 
-extern "C" u64 g_host_stack_pointer = 0;
+
 
 namespace Kernel {
 
@@ -103,6 +104,13 @@ namespace Kernel {
         Memory::Write<u64>(g_guest_tls.ThreadPointer(), g_guest_tls.ThreadPointer());
         LOG_INFO(Kernel, "Allocated guest TLS block [0x%llx - 0x%llx], base at 0x%llx", 
                  tls_alloc, tls_alloc + tls_total_size, g_guest_tls.ThreadPointer());
+
+        // Register the main thread (ID: 1)
+        ThreadContext main_ctx;
+        main_ctx.thread_id = 1;
+        main_ctx.tls_base = g_guest_tls.ThreadPointer();
+        g_threads[1] = main_ctx;
+        SetCurrentThreadId(1);
 
         LOG_INFO(Kernel, "Registered Vectored Exception Handler successfully.");
         return true;
@@ -203,7 +211,14 @@ namespace Kernel {
                     Memory::Write<u64>(target_addr, resolved_addr);
                     break;
                 case Loader::R_X86_64_RELATIVE:
-                    Memory::Write<u64>(target_addr, module.base_address + static_cast<u64>(rel.r_addend));
+                    {
+                        guest_addr_t target = module.base_address + static_cast<u64>(rel.r_addend);
+                        if (target < module.base_address) {
+                            LOG_WARN(Kernel, "RELATIVE Relocation with negative addend: offset 0x%llx, addend %lld -> target 0x%llx", 
+                                     rel.r_offset, rel.r_addend, target);
+                        }
+                        Memory::Write<u64>(target_addr, target);
+                    }
                     break;
                 default:
                     break;
@@ -348,6 +363,29 @@ namespace Kernel {
             }
         }
 
+        // Print first 256 bytes of the guest memory starting from base address before applying final protection
+        u8 base_code[256] = {};
+        Memory::ReadBuffer(out_module.base_address, base_code, 256);
+        char base_hex[1024] = {0};
+        int hex_offset = 0;
+        for (int i = 0; i < 256; ++i) {
+            hex_offset += sprintf_s(base_hex + hex_offset, sizeof(base_hex) - hex_offset, "%02X ", base_code[i]);
+            if ((i + 1) % 16 == 0) {
+                hex_offset += sprintf_s(base_hex + hex_offset, sizeof(base_hex) - hex_offset, "\n");
+            }
+        }
+        LOG_INFO(Kernel, "Memory starting at guest base (0x%llx) BEFORE protection:\n%s", out_module.base_address, base_hex);
+ 
+        // Dump all exported symbols
+        for (const auto& sym : out_module.symbols) {
+            if (sym.st_value != 0 && sym.st_shndx != 0) {
+                const char* sym_name = &out_module.string_table[sym.st_name];
+                if (sym_name && sym_name[0] != '\0') {
+                    LOG_INFO(Kernel, "Exported Symbol: %s at value 0x%llx", sym_name, sym.st_value);
+                }
+            }
+        }
+
         // Scan and patch "syscall" instructions to trap them via VEH
         PatchSyscalls(out_module.segments);
 
@@ -378,6 +416,19 @@ namespace Kernel {
     bool Execute(const Loader::LoadedModule& main_module) {
         LOG_INFO(Kernel, "Starting execution of %s at Entry Point: 0x%llx", 
                  main_module.name.c_str(), main_module.entry_point);
+
+        // Print first 256 bytes of the guest memory starting from base address
+        u8 base_code[256] = {};
+        Memory::ReadBuffer(main_module.base_address, base_code, 256);
+        char base_hex[1024] = {0};
+        int hex_offset = 0;
+        for (int i = 0; i < 256; ++i) {
+            hex_offset += sprintf_s(base_hex + hex_offset, sizeof(base_hex) - hex_offset, "%02X ", base_code[i]);
+            if ((i + 1) % 16 == 0) {
+                hex_offset += sprintf_s(base_hex + hex_offset, sizeof(base_hex) - hex_offset, "\n");
+            }
+        }
+        LOG_INFO(Kernel, "Memory starting at guest base (0x%llx):\n%s", main_module.base_address, base_hex);
 
         u64 stack_size = 1024 * 1024;
         guest_addr_t stack_base = 0;
@@ -424,10 +475,27 @@ namespace Kernel {
             return false;
         }
     }
-
-    static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info) {
+static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info) {
         PEXCEPTION_RECORD exception_record = exception_info->ExceptionRecord;
         PCONTEXT context = exception_info->ContextRecord;
+
+        LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu", 
+                 exception_record->ExceptionCode, context->Rip, ::GetCurrentThreadId());
+ 
+        if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+            u8 instr[16] = {0};
+            if (SafeRead(instr, reinterpret_cast<void*>(context->Rip), 16)) {
+                char instr_hex[128] = {0};
+                for (int i = 0; i < 16; ++i) {
+                    sprintf_s(instr_hex + i * 3, sizeof(instr_hex) - i * 3, "%02X ", instr[i]);
+                }
+                LOG_INFO(Kernel, "  Instruction bytes at crash RIP 0x%llx: %s", context->Rip, instr_hex);
+            }
+            LOG_INFO(Kernel, "  Access violation details: Type: %s, Address: 0x%llx",
+                     exception_record->ExceptionInformation[0] == 0 ? "Read" :
+                     exception_record->ExceptionInformation[0] == 1 ? "Write" : "Execute",
+                     exception_record->ExceptionInformation[1]);
+        }
 
         if (exception_record->ExceptionCode == EXCEPTION_BREAKPOINT) {
             u8* ip = reinterpret_cast<u8*>(context->Rip);
@@ -442,6 +510,7 @@ namespace Kernel {
         }
 
         if (exception_record->ExceptionCode == STATUS_ACCESS_VIOLATION || exception_record->ExceptionCode == 0xC0000005) {
+            LOG_INFO(Kernel, "Parsing instruction for TLS emulation at RIP=0x%llx", context->Rip);
             u8* rip = reinterpret_cast<u8*>(context->Rip);
             u8* instr = rip;
             u8 b = 0;
@@ -457,6 +526,8 @@ namespace Kernel {
                 if (SafeRead(&b, instr, 1) && (b & 0xF0) == 0x40) {
                     is_64bit = (b & 0x08) != 0;
                     instr++;
+                } else {
+                    LOG_INFO(Kernel, "  No REX prefix, b=0x%x", b);
                 }
                 
                 u8 opcode = 0;
@@ -482,6 +553,9 @@ namespace Kernel {
                                 if (base == 5) {
                                     if (!SafeRead(&displacement, instr, 4)) parse_success = false;
                                     instr += 4;
+                                } else {
+                                    LOG_INFO(Kernel, "  SIB base is %d (expected 5)", base);
+                                    parse_success = false;
                                 }
                             } else {
                                 parse_success = false;
@@ -512,18 +586,36 @@ namespace Kernel {
                             } else {
                                 parse_success = false;
                             }
+                        } else {
+                            LOG_INFO(Kernel, "  Unsupported mod=%d, rm=%d", mod, rm);
+                            parse_success = false;
                         }
                         
                         if (parse_success) {
                             u32 instr_len = static_cast<u32>(instr - rip);
                             
+                            u64 current_tid = GetCurrentThreadId();
+                            guest_addr_t tp = 0;
+                            {
+                                std::lock_guard<std::mutex> lock(g_thread_mutex);
+                                auto it = g_threads.find(current_tid);
+                                if (it != g_threads.end()) {
+                                    tp = it->second.tls_base;
+                                }
+                            }
+                            if (tp == 0) {
+                                tp = g_guest_tls.ThreadPointer();
+                            }
+                            
                             if (opcode == 0x8B) {
                                 const u64 access_size = is_64bit ? 8 : 4;
-                                guest_addr_t tls_address = 0;
-                                if (!g_guest_tls.Translate(displacement, access_size, tls_address)) {
-                                    LOG_ERROR(Kernel, "Guest TLS read is outside the current thread context (offset: %d, size: %llu).", displacement, access_size);
+                                LOG_INFO(Kernel, "Emulating TLS read: RIP=0x%llx, displacement=%d, reg=%d, is_64bit=%d, tp=0x%llx",
+                                         context->Rip, displacement, reg, is_64bit, tp);
+                                if (tp == 0) {
+                                    LOG_ERROR(Kernel, "Guest TLS read but no thread pointer configured.");
                                     return EXCEPTION_CONTINUE_SEARCH;
                                 }
+                                guest_addr_t tls_address = tp + displacement;
                                 u64 tls_value = 0;
                                 Memory::ReadBuffer(tls_address, &tls_value, access_size);
                                 
@@ -546,7 +638,9 @@ namespace Kernel {
                                         *reg_ptr = (*reg_ptr & 0xFFFFFFFF00000000) | (tls_value & 0xFFFFFFFF);
                                     }
                                     
+                                    u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
+                                    LOG_INFO(Kernel, "TLS read emulated: RIP 0x%llx -> 0x%llx (len=%d), reg val = 0x%llx, OS Thread: %lu", old_rip, context->Rip, instr_len, *reg_ptr, ::GetCurrentThreadId());
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
                             }
@@ -566,14 +660,16 @@ namespace Kernel {
                                 if (reg_ptr) {
                                     u64 tls_value = *reg_ptr;
                                     const u64 access_size = is_64bit ? 8 : 4;
-                                    guest_addr_t tls_address = 0;
-                                    if (!g_guest_tls.Translate(displacement, access_size, tls_address)) {
-                                        LOG_ERROR(Kernel, "Guest TLS write is outside the current thread context (offset: %d, size: %llu).", displacement, access_size);
+                                    if (tp == 0) {
+                                        LOG_ERROR(Kernel, "Guest TLS write but no thread pointer configured.");
                                         return EXCEPTION_CONTINUE_SEARCH;
                                     }
+                                    guest_addr_t tls_address = tp + displacement;
                                     Memory::WriteBuffer(tls_address, &tls_value, access_size);
                                     
+                                    u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
+                                    LOG_INFO(Kernel, "TLS write emulated: RIP 0x%llx -> 0x%llx (len=%d), val = 0x%llx", old_rip, context->Rip, instr_len, tls_value);
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
                             }
@@ -584,15 +680,17 @@ namespace Kernel {
                                     instr_len = static_cast<u32>(instr - rip);
                                     
                                     const u64 access_size = is_64bit ? 8 : 4;
-                                    guest_addr_t tls_address = 0;
-                                    if (!g_guest_tls.Translate(displacement, access_size, tls_address)) {
-                                        LOG_ERROR(Kernel, "Guest TLS write is outside the current thread context (offset: %d, size: %llu).", displacement, access_size);
+                                    if (tp == 0) {
+                                        LOG_ERROR(Kernel, "Guest TLS write but no thread pointer configured.");
                                         return EXCEPTION_CONTINUE_SEARCH;
                                     }
+                                    guest_addr_t tls_address = tp + displacement;
                                     u64 tls_val = imm_value;
                                     Memory::WriteBuffer(tls_address, &tls_val, access_size);
                                     
+                                    u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
+                                    LOG_INFO(Kernel, "TLS imm write emulated: RIP 0x%llx -> 0x%llx (len=%d), val = 0x%llx", old_rip, context->Rip, instr_len, tls_val);
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
                             }

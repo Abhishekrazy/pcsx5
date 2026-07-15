@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "hle.h"
 #include "../kernel/kernel.h"
+#include "../kernel/thread.h"
 #include "../memory/memory.h"
 #include "../common/log.h"
 #include "../gpu/gpu.h"
@@ -54,6 +55,15 @@ namespace HLE {
         LOG_INFO(HLE, "Guest thread '%s' (tid=%llu) starting at entry=0x%llx, arg=0x%llx",
                  info->name.c_str(), info->guest_tid, info->entry_point, info->arg);
 
+        // Set the thread-local ID for the new thread
+        Kernel::SetCurrentThreadId(info->guest_tid);
+
+        // Initialize the per-thread host stack pointer so that HleCommonDispatcher
+        // can safely switch to a host stack when HLE calls come in from this guest thread.
+        // InvokeGuestFunction will immediately overwrite this with a more precise value.
+        volatile uintptr_t stack_hint = 0;
+        SetHostStackPointer(reinterpret_cast<uintptr_t>(&stack_hint));
+
         // Call the guest entry point via the ABI translation trampoline.
         // InvokeGuestFunction(guest_func_va, rdi_arg, rsi_arg, rdx_arg)
         u64 result = InvokeGuestFunction(info->entry_point, info->arg, 0, 0);
@@ -85,6 +95,16 @@ namespace HLE {
             valist.overflow_arg_area += 8;
         }
         return val;
+    }
+
+    static bool SafeReadCharacter(u64 addr, u8& out_ch) {
+        __try {
+            out_ch = *reinterpret_cast<const u8*>(addr);
+            return true;
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false;
+        }
     }
 
     static std::string FormatGuestString(const std::string& fmt, SysVAmd64VaList& valist) {
@@ -127,9 +147,15 @@ namespace HLE {
                     if (str_ptr) {
                         u64 offset = 0;
                         while (true) {
-                            u8 ch = Memory::Read<u8>(str_ptr + offset++);
+                            u8 ch = 0;
+                            if (!SafeReadCharacter(str_ptr + offset, ch)) {
+                                str_val += "(invalid)";
+                                break;
+                            }
                             if (ch == 0) break;
                             str_val += static_cast<char>(ch);
+                            offset++;
+                            if (offset > 4096) break; // prevent infinite loops on unterminated strings
                         }
                     } else {
                         str_val = "(null)";
@@ -186,31 +212,19 @@ namespace HLE {
         // by scanning the symbol table for "main"), then call it via InvokeGuestFunction.
         // =====================================================================
         RegisterSymbol("libkernel", "XKRegsFpEpk#T#T", [](const GuestArgs& args) -> u64 {
-            u64 argc_val = args.arg1;   // rdi (argc)
-            u64 argv_val = args.arg2;   // rsi (argv pointer)
-            // args.arg3 = envp (rdx) = 0 typically
+            // XKRegsFpEpk is "catchReturnFromMain" — the PS5 libc calls this to wrap
+            // a call to main() and catch its return value. The CPU dispatcher already
+            // calls main() directly from Execute(); by the time XKRegsFpEpk is hit from
+            // inside _start, main() has returned and this should just log the exit status
+            // and signal a clean process exit. Calling InvokeGuestFunction(main_va) here
+            // would cause stack corruption on secondary guest threads (SharpEmu insight).
+            u64 exit_status = args.arg1;  // rdi = exit status from main()
 
-            LOG_INFO(HLE, "XKRegsFpEpk (__libc_start_main): argc=%llu argv=0x%llx", argc_val, argv_val);
+            LOG_INFO(HLE, "XKRegsFpEpk (catchReturnFromMain): exit_status=%llu — signalling process exit", exit_status);
 
-            guest_addr_t main_va = HLE::GetGuestMainAddress();
-            if (main_va == 0) {
-                LOG_WARN(HLE, "XKRegsFpEpk: main() address not found — game may exit immediately.");
-                // Return 0; the guest will call exit(0) from _start's fallthrough.
-                return 0;
-            }
-
-            LOG_INFO(HLE, "XKRegsFpEpk: Calling game main() at 0x%llx", main_va);
-
-            // Call the game's main(argc, argv) using the SYSV-to-Windows ABI trampoline.
-            // InvokeGuestFunction updates g_host_stack_pointer so nested HLE calls
-            // from within main() correctly route back through our host stack.
-            u64 ret = InvokeGuestFunction(main_va, argc_val, argv_val, 0);
-
-            LOG_INFO(HLE, "XKRegsFpEpk: main() returned %llu — calling exit()", ret);
-
-            // After main() returns, show the last frame and exit cleanly.
-            GPU::RunIdleLoop();
-            std::exit(static_cast<int>(ret));
+            // Signal the guest dispatch loop to terminate cleanly.
+            // GPU::RunIdleLoop() + std::exit() will be called by the Execute() caller.
+            std::exit(static_cast<int>(exit_status));
         });
 
         // =====================================================================
@@ -235,6 +249,10 @@ namespace HLE {
         });
         RegisterSymbol("libkernel", "scePthreadAttrDestroy", [](const GuestArgs& args) -> u64 {
             LOG_DEBUG(HLE, "scePthreadAttrDestroy(0x%llx) -> OK", args.arg1);
+            return 0;
+        });
+        RegisterSymbol("libkernel", "62KCwEMmzcM#S#N", [](const GuestArgs& args) -> u64 {
+            LOG_DEBUG(HLE, "scePthreadAttrDestroy(NID)(0x%llx) -> OK", args.arg1);
             return 0;
         });
         RegisterSymbol("libkernel", "scePthreadAttrSetstacksize", [](const GuestArgs& args) -> u64 {
@@ -293,6 +311,9 @@ namespace HLE {
             constexpr u64 kTlsSize = 0x4000;
             void* tls_block = VirtualAlloc(nullptr, kTlsSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             u64 tls_base = reinterpret_cast<u64>(tls_block);
+            if (tls_block) {
+                *reinterpret_cast<u64*>(tls_block) = tls_base;
+            }
 
             // Assign a new guest thread ID
             u64 tid = g_next_tid.fetch_add(1);
@@ -773,9 +794,15 @@ namespace HLE {
             if (str_ptr) {
                 u64 offset = 0;
                 while (true) {
-                    u8 ch = Memory::Read<u8>(str_ptr + offset++);
+                    u8 ch = 0;
+                    if (!SafeReadCharacter(str_ptr + offset, ch)) {
+                        msg += "(invalid)";
+                        break;
+                    }
                     if (ch == 0) break;
                     msg += static_cast<char>(ch);
+                    offset++;
+                    if (offset > 4096) break;
                 }
             }
             std::cerr << "[GUEST][FPUTS]: " << msg;
@@ -1316,6 +1343,9 @@ namespace HLE {
             constexpr u64 kTlsSize = 0x4000;
             void* tls_block = VirtualAlloc(nullptr, kTlsSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             u64 tls_base = reinterpret_cast<u64>(tls_block);
+            if (tls_block) {
+                *reinterpret_cast<u64*>(tls_block) = tls_base;
+            }
 
             u64 tid = g_next_tid.fetch_add(1);
 
@@ -1398,6 +1428,49 @@ namespace HLE {
             }
 
             LOG_INFO(HLE, "scePthreadJoin(NID)(tid=%llu) -> exit_code=%lu", tid, exit_code);
+            return 0;
+        });
+
+        RegisterSymbol("libkernel", "onNY9Byn-W8#S#N", [](const GuestArgs& args) -> u64 {
+            u64 tid = args.arg1;
+            guest_addr_t value_ptr = args.arg2;
+
+            HANDLE handle = nullptr;
+            GuestThreadInfo info_copy;
+            {
+                std::lock_guard<std::mutex> lock(g_thread_mutex);
+                auto it = g_threads.find(tid);
+                if (it == g_threads.end()) {
+                    LOG_ERROR(HLE, "scePthreadJoin(NID-alias): thread %llu not found", tid);
+                    return 3; // ESRCH
+                }
+                info_copy = it->second;
+                handle = it->second.handle;
+            }
+
+            DWORD wait_result = WaitForSingleObject(handle, INFINITE);
+            if (wait_result != WAIT_OBJECT_0) {
+                LOG_ERROR(HLE, "scePthreadJoin(NID-alias): WaitForSingleObject failed (err=%lu)", GetLastError());
+                return 5;
+            }
+
+            DWORD exit_code = 0;
+            GetExitCodeThread(handle, &exit_code);
+            if (value_ptr) Memory::Write<u64>(value_ptr, static_cast<u64>(exit_code));
+
+            CloseHandle(handle);
+            if (info_copy.stack_base) {
+                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info_copy.stack_base)), 0, MEM_RELEASE);
+            }
+            if (info_copy.tls_base) {
+                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info_copy.tls_base)), 0, MEM_RELEASE);
+            }
+            {
+                std::lock_guard<std::mutex> lock(g_thread_mutex);
+                g_threads.erase(tid);
+            }
+
+            LOG_INFO(HLE, "scePthreadJoin(NID-alias)(tid=%llu) -> exit_code=%lu", tid, exit_code);
             return 0;
         });
 

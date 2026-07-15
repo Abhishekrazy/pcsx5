@@ -22,5 +22,6 @@ bool SuspendCurrentThread(const struct timespec* timeout);
 bool WakeThread(u64 tid);
 bool CheckThreadActive(u64 tid);
 bool TerminateThreadByTid(u64 tid);
+guest_addr_t GetThreadTlsBase(u64 tid);
 
 } // namespace Kernel
