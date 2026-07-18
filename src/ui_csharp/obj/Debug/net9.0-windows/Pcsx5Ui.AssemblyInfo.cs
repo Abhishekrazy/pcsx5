@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("pcsx5_ui")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+04faf18c089367d4970f15d75c20d1e76591053e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d83dc9799b67e45085c7d6ac9060a779ae8d9725")]
 [assembly: System.Reflection.AssemblyProductAttribute("pcsx5_ui")]
 [assembly: System.Reflection.AssemblyTitleAttribute("pcsx5_ui")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

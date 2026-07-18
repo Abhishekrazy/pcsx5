@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "title_id": "PPSA01668",
+  "name": "Super Monkey Ball Banana Mania",
+  "region": "US",
+  "version": "01.004",
+  "status": "nothing",
+  "notes": "",
+  "curated_at": "",
+  "workarounds": [],
+  "auto": {
+    "last_tested": "",
+    "last_run_status": "",
+    "last_run_git_revision": "",
+    "last_run_duration_ms": 0,
+    "last_run_resolved_imports": 0,
+    "last_run_unresolved_imports": 0
+  }
+}

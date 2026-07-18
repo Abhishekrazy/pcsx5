@@ -40,21 +40,27 @@ namespace Compat {
 // ===========================================================================
 const char* StatusName(Status s) {
     switch (s) {
-        case Status::Untested:  return "untested";
+        case Status::Nothing:   return "nothing";
+        case Status::Boot:      return "boot";
         case Status::Intro:     return "intro";
-        case Status::Menu:      return "menu";
+        case Status::Menus:     return "menus";
+        case Status::Ingame:    return "ingame";
         case Status::Playable:  return "playable";
-        case Status::Complete:  return "complete";
     }
-    return "untested";
+    return "nothing";
 }
 
 bool StatusFromName(const std::string& s, Status& out) {
-    if (s == "untested") { out = Status::Untested; return true; }
+    if (s == "nothing")  { out = Status::Nothing;  return true; }
+    if (s == "boot")     { out = Status::Boot;     return true; }
     if (s == "intro")    { out = Status::Intro;    return true; }
-    if (s == "menu")     { out = Status::Menu;     return true; }
+    if (s == "menus")    { out = Status::Menus;    return true; }
+    if (s == "ingame")   { out = Status::Ingame;   return true; }
     if (s == "playable") { out = Status::Playable; return true; }
-    if (s == "complete") { out = Status::Complete; return true; }
+    // Legacy aliases (pre-unification scheme), kept for tolerance.
+    if (s == "untested") { out = Status::Nothing;  return true; }
+    if (s == "menu")     { out = Status::Menus;    return true; }
+    if (s == "complete") { out = Status::Playable; return true; }
     return false;
 }
 

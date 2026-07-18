@@ -36,6 +36,7 @@ namespace Kernel {
     static PVOID g_veh_handler = nullptr;
     static LPTOP_LEVEL_EXCEPTION_FILTER g_prev_exception_filter = nullptr;
     static GuestTlsContext g_guest_tls;
+    static std::vector<Loader::MappedSegment> g_guest_segments;
 
     // Forward declarations
     static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info);
@@ -417,6 +418,8 @@ namespace Kernel {
         LOG_INFO(Kernel, "Starting execution of %s at Entry Point: 0x%llx", 
                  main_module.name.c_str(), main_module.entry_point);
 
+        g_guest_segments = main_module.segments;
+
         // Print first 256 bytes of the guest memory starting from base address
         u8 base_code[256] = {};
         Memory::ReadBuffer(main_module.base_address, base_code, 256);
@@ -752,6 +755,37 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 offset = context->Rip - reinterpret_cast<u64>(h_mod);
             }
 
+            // Scan the guest stack for values that look like guest return
+            // addresses (guest modules live at [0x800000000, 0x900000000)).
+            // Logged via LOG_ERROR (flushed per line) since crash_log.txt may
+            // not be flushed if the handler itself dies.
+            LOG_ERROR(Kernel, "Guest stack scan (potential return addresses):");
+            for (u64 sp_scan = context->Rsp; sp_scan < context->Rsp + 0x2000; sp_scan += 8) {
+                u64 val = 0;
+                if (!SafeRead(&val, reinterpret_cast<void*>(sp_scan), 8)) break;
+                if (val >= 0x800000000 && val < 0x900000000) {
+                    LOG_ERROR(Kernel, "  [RSP+0x%04llx] -> 0x%llx (guest offset 0x%llx)",
+                              sp_scan - context->Rsp, val, val - 0x800000000);
+                }
+            }
+
+            // Scan guest segments for leaked host pointers (values that fall in
+            // the host module/DLL range). These should never appear in guest
+            // memory; their location identifies the bad relocation/import.
+            LOG_ERROR(Kernel, "Guest memory scan (leaked host pointers):");
+            int leaked_count = 0;
+            for (const auto& seg : g_guest_segments) {
+                for (u64 addr = seg.address; addr + 8 <= seg.address + seg.size && leaked_count < 32; addr += 8) {
+                    u64 val = 0;
+                    if (!SafeRead(&val, reinterpret_cast<void*>(addr), 8)) break;
+                    if (val >= 0x7FF000000000 && val < 0x800000000000) {
+                        LOG_ERROR(Kernel, "  [0x%llx] = 0x%llx (guest offset 0x%llx)",
+                                  addr, val, addr - 0x800000000);
+                        leaked_count++;
+                    }
+                }
+            }
+
             FILE* f = nullptr;
             fopen_s(&f, "crash_log.txt", "w");
             if (f) {
@@ -783,10 +817,33 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                     fprintf(f, "  [%02d] %s + 0x%llx (Address: 0x%llx)\n", i, symbol_name, offset_frame, reinterpret_cast<u64>(stack[i]));
                 }
                 
+                // Scan the guest stack for values that look like guest return
+                // addresses (guest modules live at [0x800000000, 0x900000000)).
+                // This reveals the guest call chain when execution ended up in
+                // host code with a guest RSP.
+                fprintf(f, "Guest stack scan (potential return addresses):\n");
+                for (u64 sp_scan = context->Rsp; sp_scan < context->Rsp + 0x2000; sp_scan += 8) {
+                    u64 val = 0;
+                    if (!SafeRead(&val, reinterpret_cast<void*>(sp_scan), 8)) break;
+                    if (val >= 0x800000000 && val < 0x900000000) {
+                        fprintf(f, "  [RSP+0x%04llx] -> 0x%llx (guest offset 0x%llx)\n",
+                                sp_scan - context->Rsp, val, val - 0x800000000);
+                    }
+                }
+
                 fclose(f);
             }
             LOG_ERROR(Kernel, "VEH Unhandled Exception: Code: 0x%X, RIP: 0x%llx, Module: %s, Offset: 0x%llx", 
                       exception_record->ExceptionCode, context->Rip, module_name, offset);
+
+            // Also log recent HLE import calls so the crash can be correlated
+            // with the last guest->host transitions.
+            auto trace = HLE::GetImportTrace(16);
+            for (const auto& te : trace) {
+                LOG_ERROR(Kernel, "  HLE trace: %s::%s (id=%llu) from guest RIP 0x%llx args=(0x%llx, 0x%llx, 0x%llx, 0x%llx)",
+                          te.module_name.c_str(), te.name.c_str(), te.symbol_id,
+                          te.caller_rip, te.arg1, te.arg2, te.arg3, te.arg4);
+            }
         }
 
         return EXCEPTION_CONTINUE_SEARCH;

@@ -14,6 +14,7 @@ bool RegisterThread(u64 tid, HANDLE handle, guest_addr_t entry, guest_addr_t sta
 bool UnregisterThread(u64 tid);
 
 HANDLE CreateThread(guest_addr_t entry, guest_addr_t stack, u64 stack_size, guest_addr_t tls_base, u64* out_tid);
+HANDLE CreateThreadEx(guest_addr_t entry, guest_addr_t stack, u64 stack_size, guest_addr_t tls_base, u64 argument, u64* out_tid);
 void ExitThread(u64 status);
 
 // New thread control APIs for thr_suspend/thr_wake/thr_kill

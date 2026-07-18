@@ -32,80 +32,49 @@ extern SetHostStackPointer : proc
 ; using Windows calling convention on the current (guest) stack.
 ;
 ; Register usage plan:
-;   - r8, r9 saved in red zone [rsp-8],[rsp-16] FIRST (before any push)
+;   - r8, r9 pushed FIRST (before callee-saved regs) so the later pushes don't
+;     clobber the SysV red zone where they used to be saved
 ;   - callee-saved (rbx,rbp,r12,r13,r14,r15) used to hold SysV args across call
-;   - guest RIP read from [rsp+48] after 6 pushes
+;   - guest RIP read from [rsp+64] after 8 pushes
 ;=============================================================================
 HleCommonDispatcher proc
-    ; Step 1: Save volatile r8, r9 in SysV red zone (128 bytes below RSP, always valid)
-    mov  [rsp -  8], r8
-    mov  [rsp - 16], r9
+    ; Step 1: Push r8/r9 first (their old red-zone slots would be overwritten
+    ; by the callee-saved pushes below, so they must live on the stack too)
+    push r8     ; [rsp+56] after all pushes
+    push r9     ; [rsp+48] after all pushes
 
     ; Step 2: Save all Windows callee-saved registers we'll use
-    push r15    ; [rsp+40] after this (rsp -= 8 -> was at ret addr)
+    push r15    ; [rsp+40]
     push r14    ; [rsp+32]
     push r13    ; [rsp+24]
     push r12    ; [rsp+16]
     push rbp    ; [rsp+8]
     push rbx    ; [rsp+0]
-    ; After 6 pushes: rsp is 48 bytes below where it was at entry.
-    ; Original [entry_rsp+0] = guest_ret_rip is now at [rsp+48].
+    ; After 8 pushes: rsp is 64 bytes below where it was at entry.
+    ; Original [entry_rsp+0] = guest_ret_rip is now at [rsp+64].
 
     ; Step 3: Capture args into callee-saved regs (survive Windows call)
-    mov  r15, [rsp + 48]    ; guest return RIP
+    mov  r15, [rsp + 64]    ; guest return RIP
     mov  r12, rdi           ; SysV arg1
     mov  r13, rsi           ; SysV arg2
     mov  r14, rdx           ; SysV arg3
     mov  rbp, rcx           ; SysV arg4
     mov  rbx, r10           ; symbol_id
 
-    ; r8_orig at [entry_rsp - 8]  = [rsp + 48 - 8]  = [rsp + 40]
-    ; r9_orig at [entry_rsp - 16] = [rsp + 48 - 16] = [rsp + 32]
-    ; But wait: we pushed 6 regs, which occupy [rsp+0]..[rsp+40].
-    ; [rsp+40] = r15 (first push). So there IS a collision with r8_orig at [rsp+40].
-    ; Fix: r8_orig was at [entry_rsp - 8] = [original_rsp - 8].
-    ; After 6 pushes: original_rsp = rsp + 48 (the ret addr is at rsp+48, so orig rsp was there).
-    ; Wait - on function entry, rsp points to the return address (pushed by CALL).
-    ; So entry_rsp = rsp_at_entry, and [entry_rsp] = ret addr.
-    ; The red zone is BELOW entry_rsp: [entry_rsp - 8] = r8_orig, [entry_rsp - 16] = r9_orig.
-    ; After 6 pushes (each lowers rsp by 8), rsp_now = entry_rsp - 48.
-    ; So: r8_orig at [entry_rsp - 8]  = [rsp_now + 48 - 8]  = [rsp_now + 40]
-    ;     r9_orig at [entry_rsp - 16] = [rsp_now + 48 - 16] = [rsp_now + 32]
-    ; But [rsp_now + 40] is where we pushed r15, and [rsp_now + 32] is where we pushed r14!
-    ; So we're reading the saved callee regs, not the red zone values.
-    ; The issue: pushes OVERWRITE the red zone. We must read r8/r9 BEFORE the pushes,
-    ; or use a different location for them.
-    ;
-    ; Since we have no more callee-saved registers left, use volatile r10/r11 temporarily
-    ; before the HleDispatch call - BUT they get clobbered. Push them too.
-    ; Solution: push r8_orig and r9_orig before the callee-saved regs.
-
-    ; Read them NOW (they're in the original red zone, which is currently [rsp+8] and [rsp+0]
-    ; since we did 6 pushes of 8 each = 48, so [entry_rsp-8] = [rsp+40] ... still collision.
-    ; The problem is fundamental: 6 pushes (48 bytes) go DOWN, covering bytes -8 to -48 below
-    ; original rsp, which is exactly where our red zone saves are.
-    ;
-    ; ACTUAL FIX: Save r8/r9 ABOVE the existing stack (into our own push area),
-    ; by pushing them BEFORE the other saves:
-
-    ; We need to restart the register-save order. See corrected version below.
-    ; (Remove this stub and replace with correct code.)
-
-    ; For now, pass 0 for r8/r9 args (acceptable for most HLE calls since they use <=4 args)
-    ; and fix properly once we get further.
-
     ; Step 4: Build Windows ABI call frame (need 16-byte aligned rsp before CALL)
-    ; After 6 pushes, rsp alignment: entry had ret addr pushed (so entry_rsp was 16n-8).
-    ; After 6 more pushes (48 bytes): rsp = entry_rsp - 48 = 16n - 8 - 48 = 16n - 56.
-    ; 16n - 56 = 16(n-4) - 8 -> misaligned. Need to subtract 8 more to align.
-    ; Shadow space = 32 bytes. Args 5-8 on stack = 4 * 8 = 32 bytes. Total = 64. Align needs +8.
-    ; Sub 72: rsp = 16n - 56 - 72 = 16n - 128 = 16-aligned. Good.
+    ; entry_rsp was 16n-8 (ret addr pushed by guest CALL). After 8 pushes
+    ; (64 bytes): rsp = 16n - 72 -> misaligned. Shadow space = 32 bytes,
+    ; stack args 5-8 = 32 bytes; sub 72: rsp = 16n - 144 = 16-aligned. Good.
     sub  rsp, 72
 
-    ; Stack args for HleDispatch (beyond rcx, rdx, r8, r9):
+    ; Stack args for HleDispatch (beyond rcx, rdx, r8, r9).
+    ; r8_orig/r9_orig were pushed before the callee-saved regs; after sub 72
+    ; they live at [rsp + 72 + 56] and [rsp + 72 + 48].
     mov  [rsp + 32], rbp    ; arg5 = rcx_orig (SysV arg4)
-    mov  qword ptr [rsp + 40], 0    ; arg6 = r8_orig (TODO: fix red zone collision)
-    mov  qword ptr [rsp + 48], 0    ; arg7 = r9_orig (TODO: fix red zone collision)
+    mov  rax, [rsp + 128]   ; r8_orig
+    mov  [rsp + 40], rax    ; arg6 = r8_orig (SysV arg5)
+    mov  rax, [rsp + 120]   ; r9_orig
+    mov  [rsp + 48], rax    ; arg7 = r9_orig (SysV arg6)
     mov  [rsp + 56], r15    ; arg8 = guest_rip
 
     mov  rcx, rbx           ; arg1 = symbol_id
@@ -123,6 +92,7 @@ HleCommonDispatcher proc
     pop  r13
     pop  r14
     pop  r15
+    add  rsp, 16            ; drop saved r8/r9
 
     ret                     ; return rax to guest
 HleCommonDispatcher endp
@@ -167,6 +137,11 @@ StartGuest proc
     ; PS5 _start receives its first argument (rdi) pointing to the stack top
     ; where argc/argv/envp are laid out. Set rdi = rsp per PS5 ABI.
     mov  rdi, rsp
+
+    ; SysV ABI expects rsp % 16 == 8 at function entry (as if reached via CALL).
+    ; The compiled _start relies on this to keep 16-byte alignment at its own
+    ; call sites; without it, SSE spills (movdqa) in downstream code fault.
+    sub  rsp, 8
 
     ; Zero other registers (but NOT rdi or rsp which we just set)
     xor  r12, r12

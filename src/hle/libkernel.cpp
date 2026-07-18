@@ -2,6 +2,7 @@
 #include "hle.h"
 #include "../kernel/kernel.h"
 #include "../kernel/thread.h"
+#include "../cpu/cpu.h"
 #include "../memory/memory.h"
 #include "../common/log.h"
 #include "../gpu/gpu.h"
@@ -31,59 +32,9 @@ namespace HLE {
 
     // -----------------------------------------------------------------------
     // Thread tracking for scePthreadCreate / scePthreadJoin / scePthreadDetach
+    // lives in the CpuCore guest-thread registry (src/cpu/cpu.cpp), reached
+    // through the Kernel:: thread API (src/kernel/thread.cpp).
     // -----------------------------------------------------------------------
-    struct GuestThreadInfo {
-        HANDLE handle;          // Windows thread handle
-        u64 guest_tid;          // PS5 thread ID
-        u64 entry_point;        // guest function address
-        u64 arg;                // argument to pass
-        u64 stack_base;         // guest stack base
-        u64 stack_size;         // guest stack size
-        u64 tls_base;           // TLS base for this thread
-        std::string name;
-        bool detached = false;  // true if thread was detached (auto-cleanup)
-    };
-
-    static std::mutex g_thread_mutex;
-    static std::unordered_map<u64, GuestThreadInfo> g_threads;  // keyed by guest_tid
-    static std::atomic<u64> g_next_tid{3};  // 1=main, 2=reserved, start at 3
-
-    // Windows thread proc wrapper: translates to SysV ABI and calls the guest entry point.
-    static DWORD WINAPI GuestThreadProc(LPVOID param) {
-        GuestThreadInfo* info = static_cast<GuestThreadInfo*>(param);
-
-        LOG_INFO(HLE, "Guest thread '%s' (tid=%llu) starting at entry=0x%llx, arg=0x%llx",
-                 info->name.c_str(), info->guest_tid, info->entry_point, info->arg);
-
-        // Set the thread-local ID for the new thread
-        Kernel::SetCurrentThreadId(info->guest_tid);
-
-        // Initialize the per-thread host stack pointer so that HleCommonDispatcher
-        // can safely switch to a host stack when HLE calls come in from this guest thread.
-        // InvokeGuestFunction will immediately overwrite this with a more precise value.
-        volatile uintptr_t stack_hint = 0;
-        SetHostStackPointer(reinterpret_cast<uintptr_t>(&stack_hint));
-
-        // Call the guest entry point via the ABI translation trampoline.
-        // InvokeGuestFunction(guest_func_va, rdi_arg, rsi_arg, rdx_arg)
-        u64 result = InvokeGuestFunction(info->entry_point, info->arg, 0, 0);
-
-        LOG_INFO(HLE, "Guest thread '%s' (tid=%llu) returned 0x%llx",
-                 info->name.c_str(), info->guest_tid, result);
-
-        // If the thread was detached, clean up our tracking info.
-        if (info->detached) {
-            std::lock_guard<std::mutex> lock(g_thread_mutex);
-            g_threads.erase(info->guest_tid);
-            // Free the guest stack
-            if (info->stack_base) {
-                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info->stack_base)), 0, MEM_RELEASE);
-            }
-            delete info;
-        }
-
-        return static_cast<DWORD>(result);
-    }
 
     static u64 GetNextVaListArg(SysVAmd64VaList& valist) {
         u64 val = 0;
@@ -277,143 +228,10 @@ namespace HLE {
         });
 
         // =====================================================================
-        // scePthreadCreate  ===  Create a PS5 thread.
-        // Spawns a real Windows thread that calls InvokeGuestFunction.
+        // scePthreadCreate / scePthreadJoin are registered by NID below
+        // (6UgtwV+0zb4#T#T and onNY9Byn-W8#S#N); the name-keyed duplicates
+        // were dropped during the CpuCore thread-registry consolidation.
         // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadCreate", [](const GuestArgs& args) -> u64 {
-            guest_addr_t thread_ptr   = args.arg1;  // out: pthread_t*
-            guest_addr_t attr_ptr     = args.arg2;  // optional attr
-            guest_addr_t start_fn     = args.arg3;  // entry point
-            guest_addr_t start_arg    = args.arg4;  // argument
-            guest_addr_t name_ptr     = args.arg5;  // optional name string
-            (void)attr_ptr;
-
-            // Read thread name from guest memory
-            std::string tname = "<unnamed>";
-            if (name_ptr) {
-                for (u64 i = 0; i < 128; ++i) {
-                    u8 c = Memory::Read<u8>(name_ptr + i);
-                    if (!c) break;
-                    tname += static_cast<char>(c);
-                }
-            }
-
-            // Allocate a guest stack (1 MB, same as main thread)
-            constexpr u64 kGuestStackSize = 1024 * 1024;
-            void* guest_stack = VirtualAlloc(nullptr, kGuestStackSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (!guest_stack) {
-                LOG_ERROR(HLE, "scePthreadCreate: VirtualAlloc failed for guest stack");
-                return 11; // EAGAIN
-            }
-            u64 stack_base = reinterpret_cast<u64>(guest_stack);
-
-            // Allocate TLS for this thread (16 KB, same as main thread)
-            constexpr u64 kTlsSize = 0x4000;
-            void* tls_block = VirtualAlloc(nullptr, kTlsSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            u64 tls_base = reinterpret_cast<u64>(tls_block);
-            if (tls_block) {
-                *reinterpret_cast<u64*>(tls_block) = tls_base;
-            }
-
-            // Assign a new guest thread ID
-            u64 tid = g_next_tid.fetch_add(1);
-
-            // Build tracking info
-            auto* info = new GuestThreadInfo{};
-            info->guest_tid   = tid;
-            info->entry_point = start_fn;
-            info->arg         = start_arg;
-            info->stack_base  = stack_base;
-            info->stack_size  = kGuestStackSize;
-            info->tls_base    = tls_base;
-            info->name        = tname;
-
-            // Register with the kernel
-            Kernel::ThreadContext ctx;
-            ctx.thread_id   = tid;
-            ctx.name        = tname;
-            ctx.entry_point = start_fn;
-            ctx.stack_base  = stack_base;
-            ctx.stack_size  = kGuestStackSize;
-            ctx.tls_base    = tls_base;
-            Kernel::RegisterThread(ctx);
-
-            // Spawn the Windows thread
-            info->handle = CreateThread(nullptr, 0, GuestThreadProc, info, 0, nullptr);
-            if (!info->handle) {
-                LOG_ERROR(HLE, "scePthreadCreate: CreateThread failed (err=%lu)", GetLastError());
-                Kernel::RegisterThread(ctx); // already registered, but fine
-                VirtualFree(guest_stack, 0, MEM_RELEASE);
-                VirtualFree(tls_block, 0, MEM_RELEASE);
-                delete info;
-                return 11; // EAGAIN
-            }
-
-            {
-                std::lock_guard<std::mutex> lock(g_thread_mutex);
-                g_threads[tid] = *info;
-            }
-
-            // Write the guest thread handle (tid) to the output pointer
-            if (thread_ptr) Memory::Write<u64>(thread_ptr, tid);
-
-            LOG_INFO(HLE, "scePthreadCreate(entry=0x%llx, arg=0x%llx, name='%s') -> tid=%llu",
-                     start_fn, start_arg, tname.c_str(), tid);
-            return 0;
-        });
-
-        // =====================================================================
-        // scePthreadJoin  ===  Wait for a thread to finish and get its exit value.
-        // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadJoin", [](const GuestArgs& args) -> u64 {
-            u64 tid = args.arg1;
-            guest_addr_t value_ptr = args.arg2;  // out: void**
-
-            LOG_INFO(HLE, "scePthreadJoin(tid=%llu)", tid);
-
-            HANDLE handle = nullptr;
-            GuestThreadInfo info_copy;
-            {
-                std::lock_guard<std::mutex> lock(g_thread_mutex);
-                auto it = g_threads.find(tid);
-                if (it == g_threads.end()) {
-                    LOG_ERROR(HLE, "scePthreadJoin: thread %llu not found", tid);
-                    return 3; // ESRCH
-                }
-                info_copy = it->second;
-                handle = it->second.handle;
-            }
-
-            // Wait for the thread to finish
-            DWORD wait_result = WaitForSingleObject(handle, INFINITE);
-            if (wait_result != WAIT_OBJECT_0) {
-                LOG_ERROR(HLE, "scePthreadJoin: WaitForSingleObject failed (err=%lu)", GetLastError());
-                return 5; // EDEADLK or other error
-            }
-
-            // Get the exit code (return value from GuestThreadProc)
-            DWORD exit_code = 0;
-            GetExitCodeThread(handle, &exit_code);
-
-            // Write exit value to guest memory
-            if (value_ptr) Memory::Write<u64>(value_ptr, static_cast<u64>(exit_code));
-
-            // Clean up
-            CloseHandle(handle);
-            if (info_copy.stack_base) {
-                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info_copy.stack_base)), 0, MEM_RELEASE);
-            }
-            if (info_copy.tls_base) {
-                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info_copy.tls_base)), 0, MEM_RELEASE);
-            }
-            {
-                std::lock_guard<std::mutex> lock(g_thread_mutex);
-                g_threads.erase(tid);
-            }
-
-            LOG_INFO(HLE, "scePthreadJoin(tid=%llu) -> exit_code=%lu", tid, exit_code);
-            return 0;
-        });
 
         // =====================================================================
         // scePthreadDetach  ===  Detach a thread (auto-cleanup on exit).
@@ -422,16 +240,10 @@ namespace HLE {
             u64 tid = args.arg1;
             LOG_INFO(HLE, "scePthreadDetach(tid=%llu)", tid);
 
-            std::lock_guard<std::mutex> lock(g_thread_mutex);
-            auto it = g_threads.find(tid);
-            if (it == g_threads.end()) {
+            if (!CpuCore::DetachThread(tid)) {
                 LOG_ERROR(HLE, "scePthreadDetach: thread %llu not found", tid);
                 return 3; // ESRCH
             }
-            it->second.detached = true;
-            // Close the handle — the thread will clean itself up in GuestThreadProc
-            CloseHandle(it->second.handle);
-            it->second.handle = nullptr;
             return 0;
         });
 
@@ -444,15 +256,7 @@ namespace HLE {
             ExitThread(static_cast<DWORD>(exit_value));
         });
 
-        // =====================================================================
-        // scePthreadSelf  ===  Return the calling thread's ID.
-        // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadSelf", [](const GuestArgs& /*args*/) -> u64 {
-            // For the main thread, return 1. For guest threads, we'd need TLS-based lookup.
-            // For now, return 1 (main thread) — guest threads will need a proper TLS slot.
-            LOG_DEBUG(HLE, "scePthreadSelf() -> 0x1");
-            return 0x1;
-        });
+        // scePthreadSelf is registered by NID below (aI+OeCz8xrQ#T#T).
         RegisterSymbol("libkernel", "scePthreadGetprio", [](const GuestArgs& args) -> u64 {
             LOG_DEBUG(HLE, "scePthreadGetprio(thread=0x%llx) -> 700", args.arg1);
             if (args.arg2) Memory::Write<s32>(args.arg2, 700); // Default PS5 priority
@@ -1304,9 +1108,11 @@ namespace HLE {
         // =====================================================================
         // pthread stubs (single-threaded model — all calls succeed trivially)
         // =====================================================================
-        // scePthreadSelf (aI+OeCz8xrQ#T#T) — returns a fake thread handle (1)
+        // scePthreadSelf (aI+OeCz8xrQ#T#T) — current thread ID from the CpuCore registry
         RegisterSymbol("libkernel", "aI+OeCz8xrQ#T#T", [](const GuestArgs& /*args*/) -> u64 {
-            return 1; // fake main thread handle
+            u64 tid = Kernel::GetCurrentThreadId();
+            LOG_DEBUG(HLE, "scePthreadSelf() -> 0x%llx", tid);
+            return tid;
         });
 
         // scePthreadYield (T72hz6ffq08#T#T) — no-op in single-threaded mode
@@ -1314,7 +1120,8 @@ namespace HLE {
             return 0;
         });
 
-        // scePthreadCreate (6UgtwV+0zb4#T#T) — real implementation: spawns a Windows thread
+        // scePthreadCreate (6UgtwV+0zb4#T#T) — spawns a guest thread via the
+        // CpuCore registry (reached through the Kernel:: thread API).
         RegisterSymbol("libkernel", "6UgtwV+0zb4#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t tid_out   = args.arg1;
             guest_addr_t attr_ptr  = args.arg2;
@@ -1347,38 +1154,14 @@ namespace HLE {
                 *reinterpret_cast<u64*>(tls_block) = tls_base;
             }
 
-            u64 tid = g_next_tid.fetch_add(1);
-
-            auto* info = new GuestThreadInfo{};
-            info->guest_tid   = tid;
-            info->entry_point = entry_ptr;
-            info->arg         = start_arg;
-            info->stack_base  = stack_base;
-            info->stack_size  = kGuestStackSize;
-            info->tls_base    = tls_base;
-            info->name        = name;
-
-            Kernel::ThreadContext ctx;
-            ctx.thread_id   = tid;
-            ctx.name        = name;
-            ctx.entry_point = entry_ptr;
-            ctx.stack_base  = stack_base;
-            ctx.stack_size  = kGuestStackSize;
-            ctx.tls_base    = tls_base;
-            Kernel::RegisterThread(ctx);
-
-            info->handle = CreateThread(nullptr, 0, GuestThreadProc, info, 0, nullptr);
-            if (!info->handle) {
-                LOG_ERROR(HLE, "scePthreadCreate(NID): CreateThread failed (err=%lu)", GetLastError());
+            u64 tid = 0;
+            HANDLE handle = Kernel::CreateThreadEx(entry_ptr, stack_base, kGuestStackSize,
+                                                   tls_base, start_arg, &tid);
+            if (!handle) {
+                LOG_ERROR(HLE, "scePthreadCreate(NID): CreateThreadEx failed (err=%lu)", GetLastError());
                 VirtualFree(guest_stack, 0, MEM_RELEASE);
                 VirtualFree(tls_block, 0, MEM_RELEASE);
-                delete info;
-                return 11;
-            }
-
-            {
-                std::lock_guard<std::mutex> lock(g_thread_mutex);
-                g_threads[tid] = *info;
+                return 11; // EAGAIN
             }
 
             if (tid_out) Memory::Write<u64>(tid_out, tid);
@@ -1387,90 +1170,19 @@ namespace HLE {
             return 0;
         });
 
-        // scePthreadJoin (NID) — real implementation
-        RegisterSymbol("libkernel", "scePthreadJoin", [](const GuestArgs& args) -> u64 {
-            u64 tid = args.arg1;
-            guest_addr_t value_ptr = args.arg2;
-
-            HANDLE handle = nullptr;
-            GuestThreadInfo info_copy;
-            {
-                std::lock_guard<std::mutex> lock(g_thread_mutex);
-                auto it = g_threads.find(tid);
-                if (it == g_threads.end()) {
-                    LOG_ERROR(HLE, "scePthreadJoin(NID): thread %llu not found", tid);
-                    return 3; // ESRCH
-                }
-                info_copy = it->second;
-                handle = it->second.handle;
-            }
-
-            DWORD wait_result = WaitForSingleObject(handle, INFINITE);
-            if (wait_result != WAIT_OBJECT_0) {
-                LOG_ERROR(HLE, "scePthreadJoin(NID): WaitForSingleObject failed (err=%lu)", GetLastError());
-                return 5;
-            }
-
-            DWORD exit_code = 0;
-            GetExitCodeThread(handle, &exit_code);
-            if (value_ptr) Memory::Write<u64>(value_ptr, static_cast<u64>(exit_code));
-
-            CloseHandle(handle);
-            if (info_copy.stack_base) {
-                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info_copy.stack_base)), 0, MEM_RELEASE);
-            }
-            if (info_copy.tls_base) {
-                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info_copy.tls_base)), 0, MEM_RELEASE);
-            }
-            {
-                std::lock_guard<std::mutex> lock(g_thread_mutex);
-                g_threads.erase(tid);
-            }
-
-            LOG_INFO(HLE, "scePthreadJoin(NID)(tid=%llu) -> exit_code=%lu", tid, exit_code);
-            return 0;
-        });
-
+        // scePthreadJoin (onNY9Byn-W8#S#N) — waits on the CpuCore-registered thread
         RegisterSymbol("libkernel", "onNY9Byn-W8#S#N", [](const GuestArgs& args) -> u64 {
             u64 tid = args.arg1;
             guest_addr_t value_ptr = args.arg2;
 
-            HANDLE handle = nullptr;
-            GuestThreadInfo info_copy;
-            {
-                std::lock_guard<std::mutex> lock(g_thread_mutex);
-                auto it = g_threads.find(tid);
-                if (it == g_threads.end()) {
-                    LOG_ERROR(HLE, "scePthreadJoin(NID-alias): thread %llu not found", tid);
-                    return 3; // ESRCH
-                }
-                info_copy = it->second;
-                handle = it->second.handle;
+            u64 exit_code = 0;
+            if (!CpuCore::JoinThread(tid, &exit_code)) {
+                LOG_ERROR(HLE, "scePthreadJoin(NID): thread %llu not found or not joinable", tid);
+                return 3; // ESRCH
             }
+            if (value_ptr) Memory::Write<u64>(value_ptr, exit_code);
 
-            DWORD wait_result = WaitForSingleObject(handle, INFINITE);
-            if (wait_result != WAIT_OBJECT_0) {
-                LOG_ERROR(HLE, "scePthreadJoin(NID-alias): WaitForSingleObject failed (err=%lu)", GetLastError());
-                return 5;
-            }
-
-            DWORD exit_code = 0;
-            GetExitCodeThread(handle, &exit_code);
-            if (value_ptr) Memory::Write<u64>(value_ptr, static_cast<u64>(exit_code));
-
-            CloseHandle(handle);
-            if (info_copy.stack_base) {
-                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info_copy.stack_base)), 0, MEM_RELEASE);
-            }
-            if (info_copy.tls_base) {
-                VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(info_copy.tls_base)), 0, MEM_RELEASE);
-            }
-            {
-                std::lock_guard<std::mutex> lock(g_thread_mutex);
-                g_threads.erase(tid);
-            }
-
-            LOG_INFO(HLE, "scePthreadJoin(NID-alias)(tid=%llu) -> exit_code=%lu", tid, exit_code);
+            LOG_INFO(HLE, "scePthreadJoin(NID)(tid=%llu) -> exit_code=%llu", tid, exit_code);
             return 0;
         });
 
@@ -1587,7 +1299,7 @@ namespace HLE {
             "QOQtbeDqsT4#N#O", "s1--uE9mBFw#N#O"
         }) {
             RegisterSymbol("libkernel", nid, [nid](const GuestArgs& /*a*/) -> u64 {
-                LOG_DEBUG(HLE, "PS5-specific stub: %s -> 0", nid);
+                LogStubCallOnce("libkernel", nid);
                 return 0;
             });
         }

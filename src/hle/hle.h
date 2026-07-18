@@ -32,10 +32,12 @@ namespace HLE {
     struct ImportStats {
         std::string module_name;
         std::string name;          // The NID string the guest actually requested
+        std::string resolved_name; // Friendly name if the NID is known, else == name
         guest_addr_t thunk_address = 0;
         u64 call_count = 0;        // Number of times the symbol has been dispatched
         guest_addr_t last_caller_rip = 0;  // RIP of the most recent guest caller
         u64 total_caller_samples = 0;       // Number of distinct RIPs observed
+        bool auto_stubbed = false; // True if the symbol was auto-stubbed (unimplemented)
     };
 
     bool Initialize();
@@ -58,6 +60,19 @@ namespace HLE {
 
     // Resets per-run counters so a single process can host multiple guest runs.
     void ResetRunStatistics();
+
+    // Serializes the import report as a JSON array sorted by call_count
+    // descending.  Each entry: {module, nid, name, call_count, auto_stubbed,
+    // last_caller_rip} with last_caller_rip as a hex string.
+    std::string ExportImportReportJson();
+
+    // Writes ExportImportReportJson() to `path`.  Returns false on I/O error.
+    bool WriteImportReportJson(const std::string& path);
+
+    // Logs a one-line structured WARN (module + NID + resolved name) the first
+    // time an unimplemented stub is invoked; subsequent calls stay silent —
+    // hit counts remain visible via the import report / JSON export.
+    void LogStubCallOnce(const std::string& module_name, const std::string& name);
 
     // Import-call trace.  A bounded ring of the most recent guest->host calls,
     // captured by the dispatcher for inclusion in crash reports.

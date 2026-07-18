@@ -14,6 +14,10 @@ void InitializeSyscallTable();
 // Main syscall dispatcher
 s64 HandleSyscall(u32 syscall_number, CONTEXT* context);
 
+// Register (or clear, with nullptr) a raw handler in the dispatch table.
+// Used by CpuCore to install custom handlers without a parallel table.
+void RegisterSyscallHandler(u32 syscall_number, SyscallHandler handler);
+
 // Syscall Implementations matching original kernel.cpp signatures and behavior
 s64 SysExit(s32 status, CONTEXT* context);
 s64 SysRead(s64 fd, guest_addr_t buf, u64 count, CONTEXT* context);

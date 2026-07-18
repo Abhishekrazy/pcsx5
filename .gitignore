@@ -56,3 +56,20 @@ imgui.ini
 baddream_decoded.wav
 snd0_decoded.wav
 TASKLIST.md
+ps5.csv
+# Python cache
+__pycache__/
+*.pyc
+.github/ISSUE_TEMPLATE/compatibility-report.yml
+.gitignore
+.gitignore
+generate_compat_table.py
+deploy_compatibility_repo.py
+deploy_compatibility_repo.bat
+create_github_issues.py
+
+# affinity file for pcsx5.exe
+PCSX5.af 
+
+dist/
+issues.txt

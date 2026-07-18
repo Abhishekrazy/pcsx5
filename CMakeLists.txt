@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 cmake_policy(VERSION 3.5)
-project(pcsx5 LANGUAGES CXX)
+project(pcsx5 LANGUAGES CXX C)
 
 # Force C++20
 set(CMAKE_CXX_STANDARD 20)
@@ -108,6 +108,13 @@ set(KERNEL_SRC
     src/kernel/tls.cpp
 )
 
+# CPU core — owns the guest thread registry; required wherever KERNEL_SRC is
+# linked because kernel/thread.cpp is a shim over CpuCore.
+set(CPU_SRC
+    src/cpu/cpu.h
+    src/cpu/cpu.cpp
+)
+
 add_executable(pcsx5
     src/main.cpp
     src/common/types.h
@@ -123,7 +130,10 @@ add_executable(pcsx5
     src/hle/libpad.cpp
     src/hle/libvideoout.cpp
     src/hle/libagc.cpp
+    src/hle/libscepad.cpp
+    src/common/nid.cpp
     ${KERNEL_SRC}
+    ${CPU_SRC}
     src/gpu/gpu.h
     src/gpu/vulkan_backend.cpp
     src/diagnostics/diagnostics.h
@@ -135,6 +145,7 @@ add_executable(pcsx5
     src/lua/lua_init.h
     src/lua/lua_init.cpp
     ${DISPATCHER_SRC}
+    src/pcsx5.rc
 )
 
 include(CTest)
@@ -242,20 +253,23 @@ if(BUILD_TESTING)
     add_executable(hle_import_report_tests
         tests/hle_import_report.cpp
         src/common/log.cpp
+        src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
         ${KERNEL_SRC}
+        ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        src/hle/libscepad.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_import_report_tests PRIVATE src)
     target_compile_options(hle_import_report_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(hle_import_report_tests PRIVATE glfw Vulkan::Headers)
+    target_link_libraries(hle_import_report_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
     add_test(NAME hle_import_report COMMAND hle_import_report_tests)
 
     # ------------------------------------------------------------------------
@@ -265,21 +279,24 @@ if(BUILD_TESTING)
     add_executable(report_tests
         tests/report_tests.cpp
         src/common/log.cpp
+        src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
         ${KERNEL_SRC}
+        ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        src/hle/libscepad.cpp
         src/reports/reports.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(report_tests PRIVATE src)
     target_compile_options(report_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(report_tests PRIVATE glfw Vulkan::Headers)
+    target_link_libraries(report_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
     add_test(NAME reports COMMAND report_tests)
 
     # ------------------------------------------------------------------------
@@ -302,21 +319,24 @@ if(BUILD_TESTING)
     add_executable(diagnostics_tests
         tests/diagnostics_tests.cpp
         src/common/log.cpp
+        src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
         ${KERNEL_SRC}
+        ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        src/hle/libscepad.cpp
         src/diagnostics/diagnostics.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(diagnostics_tests PRIVATE src)
     target_compile_options(diagnostics_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(diagnostics_tests PRIVATE glfw Vulkan::Headers)
+    target_link_libraries(diagnostics_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
     add_test(NAME diagnostics COMMAND diagnostics_tests)
 
     # ------------------------------------------------------------------------
@@ -426,13 +446,22 @@ if(BUILD_TESTING)
             "Skipping guest smoke tests: clang not found on PATH. "
             "Install LLVM/clang and reconfigure to enable these tests.")
     endif()
-endif()
 # Enable Lua scripting for the subsystem lifecycle init script.
 target_compile_definitions(pcsx5 PRIVATE PCSX5_HAS_LUA)
 
 # Link GLFW, Vulkan Headers, and Lua dependencies
-target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers lua ws2_32)
+target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers lua ws2_32 nlohmann_json::nlohmann_json)
 target_include_directories(pcsx5 PRIVATE src)
+
+# Add Windows SDK include path for resource compiler (RC) to find windows.h
+if(MSVC)
+    target_include_directories(pcsx5 PRIVATE
+        $<$<COMPILE_LANGUAGE:RC>:${CMAKE_RC_INCLUDE_PATH}>
+    )
+    # Windows SDK / MSVC system libraries (ws2_32, ucrt, msvcprt, ...) are
+    # resolved by the linker via the toolchain's own search paths; no
+    # hardcoded SDK/MSVC directories are needed here.
+endif()
 
 # Enable high compiler warnings and warnings-as-errors to maintain code cleanliness for C++ files
 if(MSVC)
@@ -507,16 +536,28 @@ add_executable(dump_imports
     # ------------------------------------------------------------------------
     # pcsx5_ui — the desktop UI for end users. Compiled in C# (WPF) with native Windows 11 Mica.
     # Out-of-process: it spawns pcsx5.exe as a child and pipes stdout/stderr.
-    add_custom_target(pcsx5_ui ALL
-        COMMAND "C:/Program Files/dotnet/dotnet.exe" build "${CMAKE_SOURCE_DIR}/src/ui_csharp/Pcsx5Ui.csproj" -c Release -o "${CMAKE_BINARY_DIR}/Release/"
-        COMMENT "Building C# WPF Emulator UI (Mica, Fluent Design)"
-    )
+    # Requires the .NET SDK; skipped with a message when dotnet is not on PATH.
+    find_program(DOTNET_EXE NAMES dotnet)
+    if(DOTNET_EXE)
+        add_custom_target(pcsx5_ui ALL
+            COMMAND "${DOTNET_EXE}" build "${CMAKE_SOURCE_DIR}/src/ui_csharp/Pcsx5Ui.csproj" -c Release -o "${CMAKE_BINARY_DIR}/Release/"
+            COMMENT "Building C# WPF Emulator UI (Mica, Fluent Design)"
+        )
+    else()
+        message(STATUS "dotnet SDK not found on PATH — skipping pcsx5_ui target")
+    endif()
 
     # ------------------------------------------------------------------------
     # pcsx5_boot_parser — standalone, independent game boot & memory parser.
     # Can be run individually without dependencies.
     # ------------------------------------------------------------------------
-    add_executable(pcsx5_boot_parser pcsx5_boot_parser.cpp)
+    add_executable(pcsx5_boot_parser
+        pcsx5_boot_parser.cpp
+        src/common/log.cpp
+        src/loader/elf.cpp
+        src/memory/memory.cpp
+    )
+    target_include_directories(pcsx5_boot_parser PRIVATE src)
     target_compile_options(pcsx5_boot_parser PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
 
     # ------------------------------------------------------------------------
@@ -536,6 +577,8 @@ add_executable(dump_imports
     target_link_libraries(snd_player_test PRIVATE atrac9)
     target_compile_options(snd_player_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     if(MSVC)
+        # winmm.lib is a Windows SDK system library; link it by name and let
+        # the MSVC toolchain resolve it (no hardcoded SDK/MSVC paths).
         target_link_libraries(snd_player_test PRIVATE winmm)
     endif()
     add_test(NAME snd_player_test
@@ -558,8 +601,15 @@ add_executable(dump_imports
     target_link_libraries(pcsx5_snd_decode PRIVATE atrac9)
     target_compile_options(pcsx5_snd_decode PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     if(MSVC)
+        # winmm.lib is a Windows SDK system library; link it by name and let
+        # the MSVC toolchain resolve it (no hardcoded SDK/MSVC paths).
         target_link_libraries(pcsx5_snd_decode PRIVATE winmm)
     endif()
+
+    # Set binary output directory to match pcsx5 target
+    set_target_properties(pcsx5_snd_decode PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
 
 
     # ------------------------------------------------------------------------
@@ -580,9 +630,11 @@ add_executable(dump_imports
     add_executable(syscall_validation_tests
         tests/syscall_validation_tests.cpp
         src/common/log.cpp
+        src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
         ${KERNEL_SRC}
+        ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
@@ -593,5 +645,7 @@ add_executable(dump_imports
     )
     target_include_directories(syscall_validation_tests PRIVATE src)
     target_compile_options(syscall_validation_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(syscall_validation_tests PRIVATE glfw Vulkan::Headers)
+    target_link_libraries(syscall_validation_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
     add_test(NAME syscall_validation COMMAND syscall_validation_tests)
+
+endif()

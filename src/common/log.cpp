@@ -33,12 +33,13 @@ std::atomic<bool>     g_file_active{false};
 std::mutex            g_file_mutex;
 std::ofstream         g_file_stream;
 std::string           g_file_path;
-LogLevel              g_min_levels[6] = {
+LogLevel              g_min_levels[7] = {
     LogLevel::Info, // Loader
     LogLevel::Info, // Memory
     LogLevel::Info, // Kernel
     LogLevel::Info, // HLE
     LogLevel::Info, // GPU
+    LogLevel::Info, // Cpu
     LogLevel::Info, // General
 };
 
@@ -103,6 +104,7 @@ const char* LogCategoryName(LogCategory c) {
         case LogCategory::Kernel:  return "Kernel";
         case LogCategory::HLE:     return "HLE";
         case LogCategory::GPU:     return "GPU";
+        case LogCategory::Cpu:     return "Cpu";
         case LogCategory::General: return "General";
     }
     return "Unknown";
@@ -134,7 +136,7 @@ const char* LevelAnsiColor(LogLevel l) {
 
 bool IsCategoryEnabled(LogCategory c, LogLevel l) {
     const int idx = static_cast<int>(c);
-    if (idx < 0 || idx >= 6) return true;
+    if (idx < 0 || idx >= 7) return true;
     return static_cast<int>(l) <= static_cast<int>(g_min_levels[idx])
         ? true
         : (l == LogLevel::Error || l == LogLevel::Warn || l == LogLevel::Critical);
@@ -210,13 +212,13 @@ void SetFileOutput(const std::string& path, bool append) {
 
 void SetLevel(LogCategory category, LogLevel level) {
     const int idx = static_cast<int>(category);
-    if (idx < 0 || idx >= 6) return;
+    if (idx < 0 || idx >= 7) return;
     g_min_levels[idx] = level;
 }
 
 LogLevel GetLevel(LogCategory category) {
     const int idx = static_cast<int>(category);
-    if (idx < 0 || idx >= 6) return LogLevel::Info;
+    if (idx < 0 || idx >= 7) return LogLevel::Info;
     return g_min_levels[idx];
 }
 } // namespace LogConfig

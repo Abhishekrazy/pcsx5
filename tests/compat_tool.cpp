@@ -46,7 +46,7 @@ void PrintUsage() {
         "  report [--out PATH]                    Markdown report (default: compat_report.md)\n"
         "  seed-elf <ELF_PATH> [--name NAME]      Create a stub from a real ELF header\n"
         "\n"
-        "Status values: untested | intro | menu | playable | complete\n");
+        "Status values: nothing | boot | intro | menus | ingame | playable\n");
 }
 
 bool ArgFlag(const std::vector<std::string>& a, const std::string& name) {
@@ -411,7 +411,7 @@ int CmdSeedElf(const std::vector<std::string>& args) {
     }
     e.name     = !name.empty() ? name : "(unnamed)";
     e.notes    = "Seeded from " + elf_path;
-    e.status   = Compat::Status::Untested;
+    e.status   = Compat::Status::Nothing;
 
     char buf[16];
     std::snprintf(buf, sizeof(buf), "0x%04X",

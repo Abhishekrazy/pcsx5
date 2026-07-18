@@ -168,6 +168,12 @@ void InitializeSyscallTable() {
     g_syscall_table[542] = [](CONTEXT* ctx) -> s64 { return SysKernGettid(ctx); };
 }
 
+void RegisterSyscallHandler(u32 syscall_number, SyscallHandler handler) {
+    if (syscall_number < 512) {
+        g_syscall_table[syscall_number] = handler;
+    }
+}
+
 s64 HandleSyscall(u32 syscall_number, CONTEXT* context) {
     if (syscall_number >= 512) {
         LOG_WARN(Kernel, "Unknown syscall number: %u", syscall_number);
@@ -621,7 +627,7 @@ s64 SysThrCreate(guest_addr_t thread, guest_addr_t attr, guest_addr_t start_rout
               thread, attr, start_routine, arg, flags, tls_base, child_tid);
     
     u64 new_thread_id = 0;
-    HANDLE hThread = CreateThread(start_routine, 0, 1024 * 1024, tls_base, &new_thread_id);
+    HANDLE hThread = CreateThreadEx(start_routine, 0, 1024 * 1024, tls_base, arg, &new_thread_id);
     if (hThread == nullptr) {
         return -EFAULT;
     }

@@ -91,18 +91,32 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-The expected output is eight passing tests:
+The expected output is eighteen passing tests:
 
 ```
-1/8 loader_validation
-2/8 loader_corpus
-3/8 memory_validation
-4/8 tls_context
-5/8 hle_import_report
-6/8 reports
-7/8 config
-8/8 diagnostics
+ 1/18 loader_validation
+ 2/18 loader_corpus
+ 3/18 memory_validation
+ 4/18 memory_query
+ 5/18 elf_metadata
+ 6/18 nid
+ 7/18 self_header
+ 8/18 tls_context
+ 9/18 hle_import_report
+10/18 reports
+11/18 config
+12/18 diagnostics
+13/18 dump_imports
+14/18 dump_dt
+15/18 compat
+16/18 pcsx5_compat
+17/18 snd_player_test
+18/18 syscall_validation
 ```
+
+`dump_imports` and `snd_player_test` depend on real game files under
+`Games/`; when those are absent (e.g. on a CI runner) they skip
+gracefully and still report success.
 
 If `clang` is on `PATH` the two extra guest smoke tests
 (`guest_syscall_smoke`, `guest_tls_smoke`) are also registered and should
