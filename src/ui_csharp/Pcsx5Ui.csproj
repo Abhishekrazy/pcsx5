@@ -6,12 +6,14 @@
     <UseWpf>true</UseWpf>
     <AssemblyName>pcsx5_ui</AssemblyName>
     <ApplicationTitle>PCSX5 Native Windows UI</ApplicationTitle>
-  </PropertyGroup>
+<ApplicationIcon>pcsx5_icon.ico</ApplicationIcon>
+</PropertyGroup>
 
   <ItemGroup>
     <Resource Include="ps5_controller.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>
+    <Resource Include="pcsx5_icon.ico" />
   </ItemGroup>
 
 </Project>

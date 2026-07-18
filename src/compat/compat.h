@@ -33,11 +33,12 @@ inline constexpr int kCurrentSchemaVersion = 1;
 
 // Overall playability status.  Ordered: lower == worse.
 enum class Status {
-    Untested,   // never run
+    Nothing,    // does not boot (black screen / immediate crash)
+    Boot,       // shows something but crashes before intro
     Intro,      // gets to first logo / warning screen
-    Menu,       // main menu reachable
-    Playable,   // enters gameplay
-    Complete    // beatable end-to-end
+    Menus,      // main menu reachable
+    Ingame,     // enters gameplay with major issues
+    Playable    // playable end-to-end with minor/no issues
 };
 
 const char* StatusName(Status s);
@@ -59,7 +60,7 @@ struct Entry {
     std::string              name;
     std::string              region;        // free-form, e.g. "EU", "US", "JP"
     std::string              version;       // free-form, e.g. "1.00", "01.020"
-    Status                   status = Status::Untested;
+    Status                   status = Status::Nothing;
     std::string              notes;
     std::vector<std::string> workarounds;   // CLI flags or notes
     std::string              curated_at;    // ISO-8601 UTC, set on save

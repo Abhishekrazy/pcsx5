@@ -212,6 +212,13 @@ namespace Loader {
         guest_addr_t address;
         u64 size;
         u32 final_protection;
+        // Full ELF program header fields (for boot parser / debugging)
+        u32 type = 0;           // p_type
+        u64 file_offset = 0;    // p_offset
+        u64 file_size = 0;      // p_filesz
+        u64 mem_size = 0;       // p_memsz
+        guest_addr_t vaddr = 0; // p_vaddr
+        u64 flags = 0;          // p_flags
     };
 
     // Loaded Module details

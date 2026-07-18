@@ -49,13 +49,21 @@ std::string MakeScratchDir() {
 }
 
 void TestStatusRoundTrip() {
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 6; ++i) {
         const auto s = static_cast<Compat::Status>(i);
         const char* n = Compat::StatusName(s);
         Compat::Status back;
         EXPECT(Compat::StatusFromName(n, back), "status round-trip parse");
         EXPECT(back == s, "status round-trip equality");
     }
+    // Legacy aliases still parse.
+    Compat::Status alias;
+    EXPECT(Compat::StatusFromName("untested", alias) && alias == Compat::Status::Nothing,
+           "legacy 'untested' alias");
+    EXPECT(Compat::StatusFromName("menu", alias) && alias == Compat::Status::Menus,
+           "legacy 'menu' alias");
+    EXPECT(Compat::StatusFromName("complete", alias) && alias == Compat::Status::Playable,
+           "legacy 'complete' alias");
     Compat::Status junk;
     EXPECT(!Compat::StatusFromName("nonsense", junk), "rejects unknown status");
 }
@@ -133,14 +141,14 @@ void TestListAndSearch(const std::string& dir) {
         auto e = MakeSample("PPSA00002");
         e.name = "Another Game";
         e.region = "US";
-        e.status = Compat::Status::Menu;
+        e.status = Compat::Status::Menus;
         EXPECT(Compat::Save(std::move(e), nullptr), "Save 002");
     }
     {
         auto e = MakeSample("PPSA00003");
         e.name = "Third Game";
         e.region = "JP";
-        e.status = Compat::Status::Complete;
+        e.status = Compat::Status::Ingame;
         EXPECT(Compat::Save(std::move(e), nullptr), "Save 003");
     }
 
@@ -156,8 +164,8 @@ void TestListAndSearch(const std::string& dir) {
     EXPECT(matches.size() == 1, "Search 'Another' returns 1");
     EXPECT(matches[0].title_id == "PPSA00002", "Search hits PPSA00002");
 
-    auto by_status = Compat::Search("complete");
-    EXPECT(by_status.size() == 1, "Search by status 'complete' returns 1");
+    auto by_status = Compat::Search("ingame");
+    EXPECT(by_status.size() == 1, "Search by status 'ingame' returns 1");
     EXPECT(by_status[0].title_id == "PPSA00003", "status search hit");
 
     auto by_region = Compat::Search("JP");

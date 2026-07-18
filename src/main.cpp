@@ -10,6 +10,7 @@
 #include "lua/lua_init.h"
 #include <iostream>
 #include <string>
+#include <filesystem>
 #include <fstream>
 #include <chrono>
 #include <vector>
@@ -63,6 +64,12 @@ void PersistSummary(const Reports::CompatSummary& summary,
         std::string err;
         if (!Reports::WriteCompatSummary(report_path, summary, &err)) {
             LOG_WARN(General, "Failed to write compat summary: %s", err.c_str());
+        }
+        // Structured per-import JSON lives next to the compat summary.
+        const std::filesystem::path import_json =
+            std::filesystem::path(report_path).parent_path() / "import_report.json";
+        if (!HLE::WriteImportReportJson(import_json.string())) {
+            LOG_WARN(General, "Failed to write import report: %s", import_json.string().c_str());
         }
     }
     if (!summary.target.empty()) {

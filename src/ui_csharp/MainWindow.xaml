@@ -7,7 +7,8 @@
         Background="#0A0D14"
         Foreground="White"
         FontFamily="Segoe UI Semibold, Inter, Outfit, Arial"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        Icon="pcsx5_icon.ico">
 
     <WindowChrome.WindowChrome>
         <WindowChrome GlassFrameThickness="-1" 
@@ -1041,17 +1042,10 @@
                     </Grid>
 
                     <Border Grid.Row="1" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="8" Padding="12">
-                        <RichTextBox x:Name="ConsoleOutputRichBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
-                                     BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
-                                     HorizontalScrollBarVisibility="Disabled" Foreground="#FFCC66"
-                                     IsDocumentEnabled="True" AcceptsReturn="True">
-                            <RichTextBox.Resources>
-                                <Style TargetType="Paragraph">
-                                    <Setter Property="Margin" Value="0"/>
-                                </Style>
-                            </RichTextBox.Resources>
-                            <FlowDocument x:Name="ConsoleDoc" PageWidth="3000"/>
-                        </RichTextBox>
+                        <TextBox x:Name="ConsoleOutputTextBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
+                                 BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Disabled" Foreground="#FFCC66"
+                                 AcceptsReturn="True" TextWrapping="Wrap" />
                     </Border>
                 </Grid>
 

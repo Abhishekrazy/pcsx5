@@ -9,11 +9,18 @@
 #include "memory/memory.h"
 #include "common/log.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
 
 extern "C" u64 HleDispatch(u64, u64, u64, u64, u64, u64, u64, u64);
 
@@ -118,8 +125,69 @@ void TestResolveAndReport() {
     EXPECT(saw_beta,  "beta in report");
 }
 
-void TestStrictModeFailsLoudly() {
-    std::fprintf(stdout, "[TEST] Strict-import mode refuses to stub\n");
+void TestJsonExport() {
+    std::fprintf(stdout, "[TEST] JSON export and file writer\n");
+
+    HLE::SetStrictImportMode(false);
+    ResetCounters();
+
+    // A NID present in the known-name table (sceKernelMapDirectMemory).
+    HLE::RegisterSymbol("testlib", "pZ9WXcClPO8#T#T",
+                        [](const HLE::GuestArgs& /*a*/) -> u64 { return 0; });
+    guest_addr_t known = HLE::Resolve("testlib", "pZ9WXcClPO8#T#T");
+    EXPECT(known != 0, "Resolve known NID should succeed");
+    u64 known_id = ReadSymbolIdFromThunk(known);
+
+    // An unknown NID — Resolve auto-stubs it.
+    guest_addr_t stub = HLE::Resolve("testlib", "zzUnknownNid0#T#T");
+    EXPECT(stub != 0, "unknown NID should auto-stub");
+    u64 stub_id = ReadSymbolIdFromThunk(stub);
+    EXPECT(HLE::GetUnresolvedImportCount() == 1, "one auto-stubbed import");
+
+    HleDispatch(known_id, 0, 0, 0, 0, 0, 0, 0x1000);
+    HleDispatch(known_id, 0, 0, 0, 0, 0, 0, 0x1000);
+    HleDispatch(known_id, 0, 0, 0, 0, 0, 0, 0x1ABC);
+    HleDispatch(stub_id,  0, 0, 0, 0, 0, 0, 0x2000);
+
+    const std::string json_text = HLE::ExportImportReportJson();
+    nlohmann::json arr = nlohmann::json::parse(json_text, nullptr, false);
+    EXPECT(!arr.is_discarded(), "exported JSON should parse");
+    EXPECT(arr.is_array(), "exported JSON should be an array");
+    EXPECT_EQ(arr.size(), (size_t)2, "JSON should contain both called symbols");
+
+    // Sorted by call_count descending: the known NID (3 calls) first.
+    const auto& first = arr[0];
+    EXPECT_EQ(first["call_count"].get<u64>(), (u64)3, "first entry call_count (sort order)");
+    EXPECT(first["module"] == "testlib", "first entry module");
+    EXPECT(first["nid"] == "pZ9WXcClPO8#T#T", "first entry nid");
+    EXPECT(first["name"] == "sceKernelMapDirectMemory", "known NID resolves to friendly name");
+    EXPECT(first["auto_stubbed"] == false, "registered symbol is not auto-stubbed");
+    EXPECT(first["last_caller_rip"] == "0x1abc", "last caller rip as hex string");
+
+    const auto& second = arr[1];
+    EXPECT_EQ(second["call_count"].get<u64>(), (u64)1, "second entry call_count");
+    EXPECT(second["nid"] == "zzUnknownNid0#T#T", "second entry nid");
+    EXPECT(second["name"] == "zzUnknownNid0#T#T", "unknown NID falls back to raw string");
+    EXPECT(second["auto_stubbed"] == true, "auto-stubbed flag set for stubbed id");
+
+    // WriteImportReportJson produces a parseable file with the same content.
+    char tmp[MAX_PATH] = {};
+    DWORD len = GetTempPathA(MAX_PATH, tmp);
+    EXPECT(len > 0, "GetTempPathA should succeed");
+    const std::string out_path = std::string(tmp) + "pcsx5_import_report_test.json";
+    EXPECT(HLE::WriteImportReportJson(out_path), "WriteImportReportJson should succeed");
+
+    std::ifstream in(out_path);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    in.close();
+    nlohmann::json from_file = nlohmann::json::parse(ss.str(), nullptr, false);
+    EXPECT(!from_file.is_discarded(), "written file should parse");
+    EXPECT(from_file == arr, "written file should match in-memory export");
+    std::remove(out_path.c_str());
+}
+
+void TestStrictModeFailsLoudly() {    std::fprintf(stdout, "[TEST] Strict-import mode refuses to stub\n");
 
     // Disable auto-stubbing.  A request for an unknown NID must return 0.
     HLE::SetStrictImportMode(true);
@@ -153,6 +221,7 @@ int main() {
     }
 
     TestResolveAndReport();
+    TestJsonExport();
     TestStrictModeFailsLoudly();
 
     HLE::Shutdown();

@@ -241,19 +241,28 @@ namespace Loader {
             seg.address = seg_start;
             seg.size = seg_size;
             seg.final_protection = final_protection;
+            // Full ELF program header fields (for boot parser / debugging)
+            seg.type = phdr.p_type;
+            seg.file_offset = phdr.p_offset;
+            seg.file_size = phdr.p_filesz;
+            seg.mem_size = phdr.p_memsz;
+            seg.vaddr = phdr.p_vaddr;
+            seg.flags = phdr.p_flags;
             out_module.segments.push_back(seg);
 
             // Always log the phdr fields we are about to use so a
             // p_filesz=0 anomaly is visible even when the data copy is
             // skipped.
-            LOG_INFO(Loader,
-                     "PT_LOAD p_offset=0x%llx p_vaddr=0x%llx "
-                     "p_filesz=%llu p_memsz=%llu sizeof(Elf64_Phdr)=%zu",
-                     (unsigned long long)phdr.p_offset,
-                     (unsigned long long)phdr.p_vaddr,
-                     (unsigned long long)phdr.p_filesz,
-                     (unsigned long long)phdr.p_memsz,
-                     sizeof(Elf64_Phdr));
+            LOG_INFO(
+                Loader,
+                "PT_LOAD p_offset=0x%llx p_vaddr=0x%llx "
+                "p_filesz=%llu p_memsz=%llu sizeof(Elf64_Phdr)=%zu",
+                (unsigned long long)phdr.p_offset,
+                (unsigned long long)phdr.p_vaddr,
+                (unsigned long long)phdr.p_filesz,
+                (unsigned long long)phdr.p_memsz,
+                sizeof(Elf64_Phdr)
+            );
 
             // Copy data from file
             if (phdr.p_filesz > 0) {
@@ -327,11 +336,20 @@ namespace Loader {
                             break;
                         case DT_STRTAB:
                             // Dynamic pointer tables inside loaded files could be absolute or relative.
-                            // In standard ELF, they are guest addresses.
-                            strtab_addr = base_address + dyn.d_un.d_ptr;
+                            // In standard ELF, for ET_DYN (PIE/shared) they are relative to load base.
+                            // For ET_EXEC (non-PIE), they are absolute virtual addresses.
+                            if (out_module.is_pie) {
+                                strtab_addr = base_address + dyn.d_un.d_ptr;
+                            } else {
+                                strtab_addr = dyn.d_un.d_ptr;
+                            }
                             break;
                         case DT_SYMTAB:
-                            symtab_addr = base_address + dyn.d_un.d_ptr;
+                            if (out_module.is_pie) {
+                                symtab_addr = base_address + dyn.d_un.d_ptr;
+                            } else {
+                                symtab_addr = dyn.d_un.d_ptr;
+                            }
                             break;
                         case DT_STRSZ:
                             strsz = dyn.d_un.d_val;
@@ -340,13 +358,21 @@ namespace Loader {
                             syment = dyn.d_un.d_val;
                             break;
                         case DT_RELA:
-                            rela_addr = base_address + dyn.d_un.d_ptr;
+                            if (out_module.is_pie) {
+                                rela_addr = base_address + dyn.d_un.d_ptr;
+                            } else {
+                                rela_addr = dyn.d_un.d_ptr;
+                            }
                             break;
                         case DT_RELASZ:
                             relasz = dyn.d_un.d_val;
                             break;
                         case DT_JMPREL:
-                            jmprel_addr = base_address + dyn.d_un.d_ptr;
+                            if (out_module.is_pie) {
+                                jmprel_addr = base_address + dyn.d_un.d_ptr;
+                            } else {
+                                jmprel_addr = dyn.d_un.d_ptr;
+                            }
                             break;
                         case DT_PLTRELSZ:
                             pltrelsz = dyn.d_un.d_val;

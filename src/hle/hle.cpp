@@ -1,8 +1,12 @@
 #include "hle.h"
 #include "../memory/memory.h"
 #include "../common/log.h"
+#include "../common/nid.h"
+#include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -148,14 +152,20 @@ namespace HLE {
         return g_strict_import_mode;
     }
 
+    static std::string ResolveFriendlyName(const std::string& raw);
+
     static void RecordStats(const HleSymbol& sym, const GuestArgs& args, guest_addr_t guest_rip) {
         std::lock_guard<std::mutex> sl(g_stats_mutex);
         auto& s = g_stats[sym.id];
         s.module_name     = sym.module_name;
         s.name            = sym.name;
+        if (s.resolved_name.empty()) {
+            s.resolved_name = ResolveFriendlyName(sym.name);
+        }
         s.thunk_address   = sym.thunk_address;
         s.call_count     += 1;
         s.last_caller_rip = guest_rip;
+        s.auto_stubbed    = g_stubbed_ids.count(sym.id) != 0;
         // total_caller_samples is currently a count of recorded calls; tracking
         // distinct RIPs would require additional storage and is unnecessary for
         // the Phase-0 deliverable.
@@ -166,6 +176,70 @@ namespace HLE {
     static void MarkAutoStubbed(u64 symbol_id) {
         std::lock_guard<std::mutex> sl(g_stats_mutex);
         g_stubbed_ids.insert(symbol_id);
+    }
+
+    // Resolve a raw requested symbol string to a friendly name when it parses
+    // as a PS5 NID present in the known-name table; otherwise echo the raw
+    // string back unchanged.
+    static std::string ResolveFriendlyName(const std::string& raw) {
+        auto parsed = Common::ParseNidString(raw);
+        if (parsed) {
+            if (auto friendly = Common::LookupNidName(parsed->nid)) {
+                return std::string(*friendly);
+            }
+        }
+        return raw;
+    }
+
+    // Keys (module::name) whose stub call has already been logged this run.
+    static std::unordered_set<std::string> g_stub_log_keys;
+    static std::mutex                        g_stub_log_mutex;
+
+    void LogStubCallOnce(const std::string& module_name, const std::string& name) {
+        const std::string key = module_name + "::" + name;
+        {
+            std::lock_guard<std::mutex> lock(g_stub_log_mutex);
+            if (!g_stub_log_keys.insert(key).second) {
+                return;  // already logged; stats are still recorded by the dispatcher
+            }
+        }
+        const std::string friendly = ResolveFriendlyName(name);
+        if (friendly != name) {
+            LOG_WARN(HLE, "Unimplemented stub called: %s (nid=%s name=%s)",
+                     key.c_str(), name.c_str(), friendly.c_str());
+        } else {
+            LOG_WARN(HLE, "Unimplemented stub called: %s (nid=%s)", key.c_str(), name.c_str());
+        }
+    }
+
+    std::string ExportImportReportJson() {
+        std::vector<ImportStats> report = GetImportReport();
+        std::sort(report.begin(), report.end(),
+                  [](const ImportStats& a, const ImportStats& b) { return a.call_count > b.call_count; });
+
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& s : report) {
+            char rip[32];
+            std::snprintf(rip, sizeof(rip), "0x%llx", (unsigned long long)s.last_caller_rip);
+            arr.push_back({
+                {"module",          s.module_name},
+                {"nid",             s.name},
+                {"name",            s.resolved_name},
+                {"call_count",      s.call_count},
+                {"auto_stubbed",    s.auto_stubbed},
+                {"last_caller_rip", rip},
+            });
+        }
+        return arr.dump(2);
+    }
+
+    bool WriteImportReportJson(const std::string& path) {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            return false;
+        }
+        out << ExportImportReportJson() << '\n';
+        return out.good();
     }
 
     std::vector<ImportStats> GetImportReport() {
@@ -189,6 +263,10 @@ namespace HLE {
         g_stats.clear();
         g_stubbed_ids.clear();
         g_trace.Clear();
+        {
+            std::lock_guard<std::mutex> ll(g_stub_log_mutex);
+            g_stub_log_keys.clear();
+        }
     }
 
     std::vector<TraceEntry> GetImportTrace(size_t max_count) {
@@ -287,9 +365,8 @@ namespace HLE {
         }
         LOG_WARN(HLE, "Unresolved symbol requested: %s. Creating stub...", key.c_str());
         lock.unlock();
-        RegisterSymbol(module_name, name, [key](const GuestArgs& args) -> u64 {
-            LOG_WARN(HLE, "Called unimplemented stub function: %s (Args: 0x%llx, 0x%llx, 0x%llx)",
-                     key.c_str(), args.arg1, args.arg2, args.arg3);
+        RegisterSymbol(module_name, name, [module_name, name](const GuestArgs& /*args*/) -> u64 {
+            LogStubCallOnce(module_name, name);
             return 0;
         });
 
@@ -334,9 +411,8 @@ namespace HLE {
         std::string stub_key = "unknown::" + name;
         LOG_WARN(HLE, "ResolveAny: Unresolved NID '%s'. Creating cross-module stub...", name.c_str());
         lock.unlock();
-        RegisterSymbol("unknown", name, [stub_key](const GuestArgs& args) -> u64 {
-            LOG_WARN(HLE, "Called unimplemented stub: %s (Args: 0x%llx, 0x%llx, 0x%llx)",
-                     stub_key.c_str(), args.arg1, args.arg2, args.arg3);
+        RegisterSymbol("unknown", name, [name](const GuestArgs& /*args*/) -> u64 {
+            LogStubCallOnce("unknown", name);
             return 0;
         });
         lock.lock();

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "description": "PCSX5 compatibility database index",
+  "titles": [
+    "PPSA01668",
+    "PPSA02929",
+    "PPSA10112",
+    "PPSA20591",
+    "PPSA23885"
+  ]
+}

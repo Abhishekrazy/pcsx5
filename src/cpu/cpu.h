@@ -20,11 +20,13 @@
 //
 
 #include "../common/types.h"
+#include <windows.h> // PCONTEXT
 #include <string>
 #include <vector>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <condition_variable>
 
 // ---------------------------------------------------------------------------
 // CPUState — full x86_64 register context for one guest thread
@@ -76,10 +78,14 @@ struct GuestThread {
     guest_addr_t stack_base = 0;   // guest stack base
     u64 stack_size = 0;            // guest stack size
     guest_addr_t tls_base = 0;     // guest TLS base for this thread
+    u64 argument = 0;              // SysV rdi argument passed to the guest entry point
 
     // Host OS thread handle and native thread ID
     void* host_thread = nullptr;
     unsigned long host_thread_id = 0;
+
+    // Per-thread wake event (HANDLE) for suspend/wake synchronization
+    void* wake_event = nullptr;
 
     // CPU state snapshot (captured on context switch or crash)
     CPUState cpu_state;
@@ -87,6 +93,7 @@ struct GuestThread {
     // Running state
     bool is_running = false;
     bool is_joined = false;
+    bool detached = false;         // auto-cleanup (stack/TLS/handle) on thread exit
 
     // Synchronization
     std::mutex mtx;
@@ -116,10 +123,41 @@ namespace CpuCore {
     void Shutdown();
 
     // Create a new guest thread. Returns the guest thread ID, or 0 on failure.
+    // `argument` is passed to the guest entry point in rdi (SysV ABI first arg).
     u64 CreateThread(guest_addr_t entry_point,
                      guest_addr_t stack_base,
                      u64 stack_size,
+                     guest_addr_t tls_base = 0,
+                     u64 argument = 0,
                      const char* name = nullptr);
+
+    // Register a thread whose host thread was created elsewhere
+    bool RegisterExistingThread(u64 thread_id, void* host_handle,
+                                guest_addr_t entry_point, guest_addr_t stack_base,
+                                u64 stack_size, guest_addr_t tls_base);
+
+    // Mark a thread inactive and release its wake event (kept for join)
+    bool UnregisterThread(u64 thread_id);
+
+    // Current-thread ID tracking (thread-local)
+    void SetCurrentThreadId(u64 thread_id);
+    u64 GetCurrentThreadId();
+
+    // Wait for a thread to finish, fetch its exit code, and release its
+    // resources (guest stack/TLS/handle). Returns false if not joinable.
+    bool JoinThread(u64 thread_id, u64* out_exit_code);
+
+    // Detach a thread: it cleans up its own resources on exit
+    bool DetachThread(u64 thread_id);
+
+    // Suspend the calling thread until woken or the timeout elapses
+    // (timeout_ms < 0 waits forever). Returns true if woken.
+    bool SuspendCurrentThread(s64 timeout_ms);
+
+    // Thread state queries / control
+    bool CheckThreadActive(u64 thread_id);
+    bool TerminateThread(u64 thread_id);
+    guest_addr_t GetThreadTlsBase(u64 thread_id);
 
     // Get the current thread's CPU state (captures registers from VEH context)
     CPUState& CurrentCpuState();
@@ -131,7 +169,7 @@ namespace CpuCore {
     std::vector<GuestThread*> GetAllThreads();
 
     // Signal a thread to wake up (for condvar / wait synchronization)
-    void WakeThread(u64 thread_id);
+    bool WakeThread(u64 thread_id);
 
     // Register a syscall handler for a specific syscall number
     void RegisterSyscall(u32 syscall_number, SyscallHandler handler);
@@ -145,12 +183,12 @@ namespace CpuCore {
                       u64 arg4, u64 arg5, u64 arg6);
 
     // Get the default syscall handler (returns ENOSYS / -38)
-    static u64 DefaultSyscallHandler(u64, u64, u64, u64, u64, u64);
+    u64 DefaultSyscallHandler(u64, u64, u64, u64, u64, u64);
 
     // Register all default syscalls (called during Initialize)
     void RegisterDefaultSyscalls();
 
     // Get the next available guest thread ID
-    static u64 NextThreadId();
+    u64 NextThreadId();
 
 } // namespace CpuCore

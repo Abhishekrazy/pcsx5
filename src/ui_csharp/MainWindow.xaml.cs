@@ -939,6 +939,7 @@ namespace Pcsx5Ui
                 Path.Combine(uiDir, "bin", "Debug", "pcsx5.exe"),
                 Path.Combine(uiDir, "..", "bin", "Release", "pcsx5.exe"),
                 Path.Combine(uiDir, "..", "bin", "Debug", "pcsx5.exe"),
+                Path.Combine(uiDir, "..", "bin", "pcsx5.exe"),
                 Path.Combine(uiDir, "..", "Release", "pcsx5.exe"),
                 Path.Combine(uiDir, "..", "Debug", "pcsx5.exe"),
                 Path.Combine(uiDir, "..", "pcsx5.exe"),
@@ -965,13 +966,22 @@ namespace Pcsx5Ui
                 Path.Combine(uiDir, "bin", "Debug", "pcsx5_snd_decode.exe"),
                 Path.Combine(uiDir, "..", "bin", "Release", "pcsx5_snd_decode.exe"),
                 Path.Combine(uiDir, "..", "bin", "Debug", "pcsx5_snd_decode.exe"),
+                Path.Combine(uiDir, "..", "bin", "pcsx5_snd_decode.exe"),
                 Path.Combine(uiDir, "..", "Release", "pcsx5_snd_decode.exe"),
                 Path.Combine(uiDir, "..", "Debug", "pcsx5_snd_decode.exe"),
                 Path.Combine(uiDir, "..", "pcsx5_snd_decode.exe"),
                 Path.Combine(uiDir, "build", "bin", "Release", "pcsx5_snd_decode.exe"),
                 Path.Combine(uiDir, "build", "bin", "Debug", "pcsx5_snd_decode.exe"),
                 Path.Combine(uiDir, "build", "Release", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "build", "Debug", "pcsx5_snd_decode.exe")
+                Path.Combine(uiDir, "build", "Debug", "pcsx5_snd_decode.exe"),
+                // Build directory at project root (5 levels up from uiDir: src/ui_csharp/bin/Release/net9.0-windows/)
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "pcsx5_snd_decode.exe"),
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "Release", "pcsx5_snd_decode.exe"),
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "Debug", "pcsx5_snd_decode.exe"),
+                // Also check from project root directly
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "pcsx5_snd_decode.exe"),
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "Release", "pcsx5_snd_decode.exe"),
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "Debug", "pcsx5_snd_decode.exe")
             };
 
             foreach (var loc in locations)
@@ -997,7 +1007,15 @@ namespace Pcsx5Ui
                 Path.Combine(uiDir, "build", "bin", "Release", "pcsx5_boot_parser.exe"),
                 Path.Combine(uiDir, "build", "bin", "Debug", "pcsx5_boot_parser.exe"),
                 Path.Combine(uiDir, "build", "Release", "pcsx5_boot_parser.exe"),
-                Path.Combine(uiDir, "build", "Debug", "pcsx5_boot_parser.exe")
+                Path.Combine(uiDir, "build", "Debug", "pcsx5_boot_parser.exe"),
+                // Build directory at project root (5 levels up from uiDir: src/ui_csharp/bin/Release/net9.0-windows/)
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "pcsx5_boot_parser.exe"),
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "Release", "pcsx5_boot_parser.exe"),
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "Debug", "pcsx5_boot_parser.exe"),
+                // Also check from project root directly
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "pcsx5_boot_parser.exe"),
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "Release", "pcsx5_boot_parser.exe"),
+                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "Debug", "pcsx5_boot_parser.exe")
             };
 
             foreach (var loc in locations)

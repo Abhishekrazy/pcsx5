@@ -1,230 +1,148 @@
-# PCSX5 Roadmap
+# PCSX5 Development Roadmap
 
-> **Status:** Early prototype / foundation phase  
-> **Last updated:** 2026-07-13
+A phased plan for building a working PS5 emulator, grounded in the current state of this repository and lessons from PCSX2, RPCS3, shadPS4, Kyty, and RPCSX.
 
-PCSX5 is intended to become a legal, user-friendly PlayStation 5 compatibility
-project for Windows x64. It must only operate on lawfully obtained, user-dumped
-software and must not contain proprietary Sony firmware, keys, or DRM-bypass
-code.
+**Reality check:** No public emulator runs a commercial PS5 game today. PCSX5 already has the right core architecture (native x86-64 execution + HLE, the same model shadPS4 proved out). The GPU/shader-recompiler is the long pole — historically 50%+ of total effort in this class of emulator. Measure progress in phases, not games.
 
-## Principles
+---
 
-- Correctness and diagnostics come before performance enhancements.
-- Vulkan is the primary rendering API. OpenGL is a secondary compatibility and
-  debugging renderer, introduced only after the Vulkan path is correct.
-- Every compatibility fix needs a reproducible test, trace, or documented title
-  regression.
-- Settings have safe global defaults and narrowly scoped per-game overrides.
-- Unknown imports must be visible and actionable; they must not silently pretend
-  to be correct.
+## Current Status Snapshot
 
-## Compatibility milestones
+| Subsystem | State | Notes |
+|---|---|---|
+| Loader (ELF/SELF) | ✅ Solid | `src/loader/elf.cpp` — ELF64, PT_SCE segments, RELA/PLT relocs, TLS, fPKG SELF. No retail decryption. |
+| Kernel | 🟡 Partial | `src/kernel/` — ~30 syscalls, threads, TLS, fd table, VEH + INT3 syscall patching. |
+| HLE modules | 🟡 Thin | `src/hle/` — libkernel has 122 symbols (~half return-0 stubs); pad/videoout/agc are stubs. |
+| CPU layer | ✅ Done | `src/cpu/cpu.cpp` — `CpuCore` owns guest thread state; `src/kernel/thread.cpp` is a shim; pthread routes through it. |
+| GPU | 🔴 Skeleton | `src/gpu/vulkan_backend.cpp` — window + Vulkan init only, no PM4 emulation. |
+| Audio | 🟡 Preview only | ATRAC9 player (`src/ui/snd_player.cpp`); no libSceAudioOut HLE. |
+| Input | 🟡 Basic | XInput/keyboard → PadButtonState in gpu backend; WPF DualSense HID reader. |
+| UI | ✅ Working | WPF .NET 9 frontend (`src/ui_csharp/`) + CLI. |
+| Tests | ✅ Good base | ~20 CTest targets; freestanding guest ELF smoke tests. |
+| Compat infra | 🟡 Seeded | `src/compat/` DB with 6-status taxonomy; `compat/titles/` seeded with 5 titles; 1860 tracker issues created (all `status-nothing`). |
 
-| Label | Meaning |
-| --- | --- |
-| Loads | Executable validation and mapping finish without a fatal error. |
-| Boots | Reaches the application entry point. |
-| Intro | Renders or plays initial application content. |
-| In-game | Reaches interactive gameplay. |
-| Playable | Stable enough for sustained play with known limitations documented. |
+Legend: ✅ working · 🟡 partial · 🔴 not started
 
-## Current baseline
+---
 
-- [x] CMake/MSVC Windows build and modular source layout.
-- [x] ELF64/x86-64 header and load-segment mapping prototype.
-- [x] Basic HLE registry, kernel exception handling, input/video/audio stubs, and
-  Vulkan presenter prototype.
-- [x] A freestanding guest ELF smoke-test source exists in `tests/test_elf/`.
-- [~] Guest TLS has a bounded, testable thread-context model. Guest-code TLS
-  execution still uses the exception bridge and needs a dedicated fixture.
-- [x] Test targets, compatibility database, and reproducible regression suite.
-- [ ] Typed and verified HLE ABI contracts.
-- [ ] PS5-style GPU command processing and rendering.
+## Phase 0 — Foundations & Tooling
 
-## Phase 0 — Engineering foundation (in progress)
+*Goal: unify the architecture and make progress measurable before adding features.*
 
-### Objectives
+- [x] Implement `src/cpu/cpu.cpp` — concrete `CpuCore` behind the API in `cpu.h`; single owner of guest thread state.
+- [x] Consolidate the thread model: merge responsibilities currently split across `src/cpu/cpu.h`, `src/kernel/thread.cpp`, and `src/hle/libkernel.cpp` (pthread) into one documented flow.
+- [x] Structured "unimplemented NID" logging: every stub logs module + NID + resolved name + hit count, exportable as JSON for compat reports (extend `src/hle/hle.cpp` import stats).
+- [x] Seed `compat/titles/` with initial per-title JSONs for the games in `Games/`.
+- [x] Populate `wiki/` with: architecture overview, how-to-add-HLE-symbols, how-to-add-syscalls, debugging guide (VEH, crash dumps).
+- [x] CI workflow (GitHub Actions): build with MSVC + run full CTest suite on PRs.
+- [x] Define compatibility status taxonomy (Nothing / Boot / Intro / Menus / Ingame / Playable) matching the tracker repo labels.
 
-- [x] Add CMake/CTest targets for loader, memory, HLE, and guest smoke tests.
-  - [x] Loader validation target: truncated headers, invalid ELF magic, and
-    unsupported machine architecture.
-  - [x] Memory validation target: Map / Unmap / Protect / Read / Write /
-    Buffer / Translate / Reserve / Commit.
-  - [x] HLE subsystem test target: import reporting, strict mode,
-    NID-variant resolution, and stub accounting.
-  - [x] Guest smoke test target: freestanding syscall ELF and FS-relative
-    TLS ELF driven through the full emulator with `--strict-imports`.
-- [x] Create a test corpus of valid, malformed, PIE, fixed-address,
-  relocation, TLS, thread, and file-I/O ELF fixtures.  Fixtures are
-  self-authored or otherwise redistributable.
-  - [x] Hand-crafted positive corpus (`tests/loader_corpus.cpp`): valid
-    PIE, fixed-address, multi-segment, BSS, PT_DYNAMIC with
-    DT_STRTAB / DT_SYMTAB / DT_RELA.  87 checks.
-  - [x] Hand-crafted negative corpus (`tests/loader_validation.cpp`):
-    truncated headers, bad magic, unsupported architecture, program-header
-    bounds, segment bounds.
-  - [x] Freestanding guest fixtures (`tests/test_elf/`): syscall smoke
-    test, FS-relative TLS test, and a build script for PIE / fixed /
-    relocation variants when clang is on PATH.
-- [x] Define structured logging, a crash-report bundle, and import-call tracing.
-  - [x] Structured log records with timestamp, category, level, file/line/func,
-    and a 1024-entry ring buffer for crash reports.
-  - [x] JSON and ANSI console output, optional file mirror via `--log-file=`.
-  - [x] 256-entry HLE import-call trace (module, NID, args, caller RIP) exposed
-    via `HLE::GetImportTrace` and embedded in the crash bundle.
-  - [x] SEH-based crash filter (`SetUnhandledExceptionFilter`) that captures a
-    full register snapshot, recent log ring, and import trace, then writes a
-    bundle (crash.json, registers.json, recent.log, import_trace.txt,
-    system.txt, minidump.dmp) to `--crash-dir=`.
-  - [x] `diagnostics_tests` CTest target with 26 checks covering the log ring,
-    file mirror, import trace, and bundle layout.
-- [x] Add a versioned configuration service with global and per-title files.
-  - [x] Schema version stamped on every file (`schema_version: 1`) and a
-    migration pass on load.  Unknown future versions are passed through with
-    a warning.
-  - [x] Sectioned config (`logging`, `crash`, `hle`, `graphics`, `audio`,
-    `input`) with `Defaults()` for compile-time fall-back and JSON
-    serialisation handled by a hand-rolled parser (no third-party dep).
-  - [x] Global file at `<config_dir>/global.json` and per-title overrides at
-    `<config_dir>/titles/<title_id>.json`; `EffectiveFor(title_id)` overlays
-    per-title on top of global.
-  - [x] CLI flags `--config-dir=` and `--title-id=` wire the service in
-    `main.cpp` ahead of every other subsystem so logging / crash / HLE
-    settings are applied at startup.
-  - [x] `config_tests` CTest target with 51 checks covering defaults, full
-    round-trip, missing-file auto-write, corrupt-file fall-back, per-title
-    override layering, and forward-compat with newer schema versions.
-- [x] Publish compatibility-report and regression-report templates.
-  - [x] `Reports::CompatSummary` struct (schema `pcsx5.compat.v1`) capturing
-    title, target, status, stage, duration, import counts, top-K imports,
-    ISO-8601 timestamp, and git revision.  Serialised both as a pretty
-    standalone file and a single-line jsonl record.
-  - [x] Per-title history under `<config_dir>/compat/<title_id>.jsonl`
-    (append on every run) and `LoadCompatHistory(dir, title_id, N)` reader.
-  - [x] `Reports::EvaluateRegression(history, current)` returns a
-    `RegressionEntry` with verdict `new` / `stable` / `improvement` /
-    `regression` (pass↔fail status changes dominate, otherwise ±10% on
-    `duration_ms` vs the recent history baseline).
-  - [x] `Reports::WriteRegressionMarkdown` produces an aggregated
-    markdown report with title rows, status, verdict, duration,
-    baseline, delta, sample count, and counters.  CLI flag
-    `--regression-report=<path>` wires it in `main.cpp` for both the
-    success and failure paths.
-  - [x] `report_tests` CTest target with 34 checks covering serialisation,
-    history round-trip, regression evaluation (all four verdicts plus
-    status changes), and aggregated markdown generation.
-- [x] Define supported-host requirements and a contributor build guide.
-  - [x] `BUILDING.md` documents supported host platforms (Windows 10/11,
-    Server 2022; Linux/macOS not yet supported), required MSVC + Windows
-    SDK + CMake versions, optional Vulkan SDK and LLVM/clang toolchains,
-    Configure/Build/Test commands, the full CLI flag reference, project
-    layout, coding conventions, instructions for adding HLE symbols and
-    new CTest targets, a troubleshooting matrix, and a minimal CI script.
-  - [x] `README.md` trimmed to a 3-step quick-start that points at
-    `BUILDING.md` for the full guide.
+## Phase 1 — Loader & Module System
 
-### Current sprint: guest execution correctness
+*Goal: load anything a dumped game actually contains, not just prepared fPKG ELFs.*
 
-1. Wire the existing freestanding guest ELF into an automated smoke test.
-2. [x] Add loader validation tests for truncated headers, invalid ELF identifiers, unsupported architecture, program-header bounds, and segment bounds.
-3. [x] Replace the repeated TLS-read trap with a documented guest TLS/thread-context
-   model and add a dedicated TLS test guest.
-   - [x] Bounded TLS address translation and automated CTest coverage.
-   - [x] Guest ELF fixture exercising FS-relative reads and writes.
-4. Make HLE import resolution report module, NID, caller, call count, and
-   argument ABI; fail loudly in test mode for unresolved imports.
-5. Record the resulting status in the compatibility database.
+- [ ] PKG container extraction (Prospero PKG format; entry table, keys for fake-signed packages).
+- [ ] PFS image parsing/mounting (read-only first) — games ship as PFS inside PKG.
+- [ ] `param.sfo` parser (title id, version, category) feeding the compat DB and UI.
+- [ ] PRX module loading from disk: support loading `libSce*.prx`/`*.sprx` firmware modules the user supplies (shadPS4 model — modules dumped from an exploited console).
+- [ ] Expand NID → name database: scrape/generate from module exports; ship as data file under `assets/`.
+- [ ] Module dependency graph + load-order resolution in `src/loader/`.
+- [ ] Retail SELF decryption — **blocked/out of scope** until console key dumps are user-supplied; document the requirement and the plugin point (`ExtractInnerElf` in `src/loader/elf.cpp`).
+- [ ] Tests: corpus of real (fake-signed) PKG/PFS fixtures in `tests/loader_corpus.cpp`.
 
-**Exit criteria:** self-authored test ELFs can load, execute, use TLS, issue
-supported calls, and exit deterministically; the test run is automated.
+## Phase 2 — Kernel Maturity
 
-## Phase 1 — Loader, memory, process, and kernel
+*Goal: `eboot.bin` of a real game starts executing and survives its early init.*
 
-- [ ] Complete relevant decrypted-input ELF/SELF metadata parsing: dynamic data,
-  relocations, imports/exports, TLS, and module dependencies.
-- [ ] Implement guest virtual memory: reserve/map/unmap/protect/query, fault
-  handling, page alignment, and correct error codes.
-- [ ] Implement guest process and thread lifecycle, scheduler primitives,
-  mutexes, semaphores, condition variables, timers, and events.
-- [ ] Implement a sandboxed virtual filesystem, mount table, save-data paths,
-  and metadata semantics.
-- [ ] Provide a debugger: module view, guest memory view, HLE trace,
-  breakpoints, and fault reports.
+- [ ] Audit and complete the syscall table in `src/kernel/syscalls.cpp` against known Orbis/Prospero syscall numbers; stub-unknown-with-log policy.
+- [ ] Replace return-0 pthread stubs in `src/hle/libkernel.cpp` with real implementations: mutex, condvar, rwlock, sema, event flag, once, tls keys.
+- [ ] Equeue/event queues (`sceKernelCreateEqueue`, wait/poll) — heavily used by system modules.
+- [ ] Memory: flexible mappings, direct/GPU-visible memory pools, `sceKernelReserveVirtualRange`, mprotect semantics — use VirtualAlloc placeholder regions (extend `src/memory/memory.cpp`).
+- [ ] Signal/exception translation: map guest FreeBSD signals ↔ Windows SEH through the VEH path in `src/kernel/kernel.cpp`.
+- [ ] Clock/time accuracy (`sceKernelGetProcessTime`, rtc) — games depend on monotonic timing early.
+- [ ] Tests: extend `guest_syscall_smoke` guest ELFs to cover pthread + equeue + mmap scenarios.
 
-**Exit criteria:** test programs reliably use threads, TLS, synchronization, and
-file I/O.
+## Phase 3 — Core HLE Modules
 
-## Phase 2 — HLE system services
+*Goal: the stub layer every game touches, in priority order. Workflow: stub aggressively, log unimplemented, implement what target games actually call (shadPS4 model).*
 
-- [ ] Convert HLE stubs to typed, versioned module APIs with documented NIDs,
-  layouts, return values, blocking behavior, callbacks, and lifetimes.
-- [ ] Prioritize implementations with import-frequency reports: `libkernel`,
-  system/user services, pad, audio out, video out, save data, networking, and
-  common runtimes.
-- [ ] Build direct HLE API tests and callback/threading tests.
-- [ ] Maintain an unresolved-import queue per title and firmware/API version.
+- [ ] libSceSysmodule (module load/unload routing to the loader).
+- [ ] libSceLibcInternal (malloc family, stdio, string, setjmp) — decide HLE vs load-real-PRX per function.
+- [ ] libSceUserService (user profiles, login state — mostly canned responses).
+- [ ] libSceSystemService (param queries, status events).
+- [ ] libSceNpManager / libSceNpCommon — offline stubs returning "not signed in".
+- [ ] libSceSaveData (dialog-free direct API first).
+- [ ] libSceVideoOut real flip/queue model (feeds Phase 5 presentation).
+- [ ] Auto-generate stub registration from the NID database so every known export at least logs-and-returns.
 
-**Exit criteria:** selected legal test applications reach their main loop with
-no automatic unknown-function success stubs.
+## Phase 4 — First Game Bring-Up
 
-## Phase 3 — Graphics (Vulkan first)
+*Goal: one simple commercial title reaches menus.*
 
-- [ ] Create GPU memory, resource, synchronization, command-buffer, descriptor,
-  render-target, and presentation abstractions.
-- [ ] Decode relevant graphics commands and translate shaders to host Vulkan
-  pipelines.
-- [ ] Add pipeline/shader caches, resource-state tracking, texture caching, GPU
-  markers, validation support, and frame capture/replay.
-- [ ] Implement format, depth/stencil, blending, compute, and presentation paths
-  incrementally, using captured test frames.
-- [ ] Define a renderer interface and add an OpenGL compatibility/debug backend
-  after Vulkan is stable; it must share guest command decoding and shader
-  translation inputs rather than duplicating emulation logic.
+- [ ] Pick 1–3 target titles from `Games/` (prefer smallest/simplest; record pick + rationale in compat DB).
+- [ ] Drive boot to first unimplemented blocker; fix; repeat — log every iteration as a compat report (`src/reports/`).
+- [ ] Real filesystem view for games: mount game PFS + app0/savedata path translation.
+- [ ] Pad input end-to-end: DualSense/XInput → libScePad state → game reads it.
+- [ ] Per-title config overrides exercised in anger (`src/config/`).
+- [ ] Milestone: target title renders menu or reaches "needs GPU" wall — documented in compat tracker.
 
-**Exit criteria:** graphics test applications render repeatable frames, followed
-by menus and 3D scenes in a tracked target title.
+## Phase 5 — GPU (the long pole)
 
-## Phase 4 — Audio and input
+*Goal: translate GNM/PM4 to Vulkan. Expect this to be the largest single investment.*
 
-- [ ] Model audio queues/timing, then provide WASAPI/XAudio2 output with
-  resampling, channel mapping, drift correction, underrun telemetry, and
-  Balanced/Low-latency/Stable profiles.
-- [ ] Add SDL-based controller discovery and mapping: keyboard/mouse, XInput,
-  DualSense, DualShock 4, generic controllers, hot-plugging, dead zones,
-  motion, touchpad, and supported rumble/haptics.
-- [ ] Ship controller setup, input testing, hotkeys, and per-game profiles.
+- [ ] PM4 command-buffer parser: packet dispatch loop, register writes, draw/dispatch packets (`src/gpu/` new `pm4.*`).
+- [ ] Clear + present path: render-target clear and swapchain blit — first visible output.
+- [ ] Resource translation: guest GPU memory → Vulkan buffers/images (builds on Phase 2 direct memory).
+- [ ] Shader recompiler: RDNA 2 ISA → SPIR-V (new `src/gpu/shader/` — this alone is a multi-month sub-project; study shadPS4's `shader_recompiler`).
+- [ ] Pipeline state → Vulkan pipelines; descriptor translation; samplers.
+- [ ] Texture formats/conversion table; tiling/detiling.
+- [ ] Compute queue support.
+- [ ] Shader cache (disk) + async pipeline compilation.
+- [ ] Validation strategy: capture/replay tool for PM4 streams + golden-image tests.
 
-**Exit criteria:** stable audio under load and controller mappings that persist
-across restarts, with measurable latency.
+## Phase 6 — Audio & Input
 
-## Phase 5 — Launcher and user experience
+- [ ] libSceAudioOut HLE: ring-buffer output ports → host backend (XAudio2/SDL); mixing, volume, format conversion.
+- [ ] Integrate ATRAC9 decode (LibAtrac9 already vendored) as an HLE audio codec path, not just the UI preview player.
+- [ ] libScePad completeness: touchpad, motion sensor, headset endpoints.
+- [ ] DualSense haptics/adaptive triggers via HID output (UI already has the HID reader).
+- [ ] Tests: audio ring-buffer unit tests; pad state machine tests.
 
-- [ ] Build a game library with metadata, artwork cache, play time, launch
-  status, logs, saves, and compatibility badges.
-- [ ] Add desktop and controller-first interfaces plus an in-game overlay.
-- [ ] Provide global/per-game settings, hardware capability detection,
-  recommended defaults, onboarding, error reports, and portable mode.
-- [ ] Add patch/mod management through declarative, auditable per-title patches
-  and a controlled plugin API—not an arbitrary process injector.
+## Phase 7 — System Services
 
-## Phase 6 — Enhancements and performance
+- [ ] Savedata write support with per-title encryption keys where required.
+- [ ] PFS write support (savedata images).
+- [ ] Trophy stubs → basic unlock event logging.
+- [ ] Keystone parsing/validation stubs.
+- [ ] Multi-user profile model in config.
 
-- [ ] Add frame pacing, VSync/VRR, HDR where supported, resolution scaling,
-  aspect-ratio controls, texture filtering, screenshots, and capture.
-- [ ] Add an upscaler abstraction: native, bilinear, FSR 1, then temporal FSR
-  only when accurate motion/depth data is available.
-- [ ] Optimize using profiling data: pipeline cache behavior, background shader
-  compilation, scheduler tuning, and per-game accuracy/performance profiles.
+## Phase 8 — Performance & Compatibility Scaling
 
-## Phase 7 — Compatibility operations
+- [ ] Memory fast paths: page-fault-free direct mappings, large-page support.
+- [ ] Shader cache sharing + precompiled pipeline databases per title.
+- [ ] Frame pacing / vsync / uncapped modes.
+- [ ] Automated compat pipeline: run titles → generate reports → update `compat/titles/` → sync statuses to the compatibility tracker repo (extend `deploy_compatibility_repo.py`).
+- [ ] Regression gates: `src/reports/` regression verdicts enforced in CI for target titles.
+- [ ] Performance profiling tooling (frame graph, syscall heatmaps) in diagnostics.
 
-- [ ] Maintain a public compatibility database and title-specific issue tracker.
-- [ ] Add automated boot/regression/performance testing and release criteria.
-- [ ] Publish privacy-respecting diagnostic bundles and contributor procedures.
+---
 
-## Definition of done
+## Reference Architectures (what we borrow from whom)
 
-A feature is done only when its behavior is documented, has tests or a captured
-regression, exposes safe defaults in the UI where relevant, and does not create
-new unresolved-import, crash, or frame-correctness regressions in the test set.
+| Project | Lesson applied in PCSX5 |
+|---|---|
+| **PCSX2** | Mature per-game config/compat taxonomy; plugin-style subsystem boundaries; long-lived project hygiene. |
+| **RPCS3** | Correctness-first HLE; heavy investment in logging/tooling and a public compat DB before per-game fixes; LLVM-grade shader/toolchain ambition. |
+| **shadPS4** | Core architecture: native x86 guest execution + syscall trapping + NID-resolved HLE modules + PM4→Vulkan + shader recompiler. Closest template — study its linker, TLS, and `shader_recompiler`. |
+| **Kyty** | PS4+PS5 dual-target scoping; Lua-driven subsystem init (already adopted in `src/lua/`). |
+| **RPCSX** | RPCS3 veterans' PS4/PS5 path; validates the HLE-of-libkernel approach and slow, kernel-first bring-up. |
+
+Sources: [shadPS4](https://github.com/shadps4-emu/shadPS4), [RPCS3](https://rpcs3.net), [RPCSX](https://github.com/RPCSX/rpcsx), [Kyty](https://github.com/InoriRus/Kyty), [Emulation General Wiki — shadPS4](https://emulation.gametechwiki.com/index.php/ShadPS4).
+
+## Guiding Principles
+
+1. **Native execution, HLE everything else** — no dynarec; keep the VEH/syscall-patch model.
+2. **Stub first, implement on demand** — log unimplemented NIDs; let target games set priorities.
+3. **Tooling before hacks** — every phase ships tests and compat reports, not just code.
+4. **One target title at a time** — breadth comes after depth.
+5. **Legal model** — firmware modules and keys come from the user's own console; never ship them.
