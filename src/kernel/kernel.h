@@ -30,6 +30,19 @@ namespace Kernel {
     void ConfigureModuleResolver(const std::string& game_dir,
                                  const std::string& firmware_modules_dir);
 
+    // Guest filesystem roots.  `SetApp0Directory` is called once with the
+    // main module's directory; `SetSaveDataDirectory` with the host dir that
+    // backs the save-data HLE (HLE::GetSaveDataDir()).  `TranslateGuestPath`
+    // then maps guest paths onto those host directories:
+    //   "/app0/..."      -> app0 dir
+    //   "/savedata0/..." -> save-data dir
+    //   "<rel>"          -> app0 dir (guest CWD is the package root)
+    // Anything else (host-absolute paths, unmapped mounts) is returned
+    // unchanged.
+    void SetApp0Directory(const std::string& dir);
+    void SetSaveDataDirectory(const std::string& dir);
+    std::string TranslateGuestPath(const std::string& guest_path);
+
     // The process-wide module resolver (used by the HLE module-load path).
     Loader::ModuleResolver& GetModuleResolver();
 

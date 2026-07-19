@@ -816,6 +816,15 @@ namespace Loader {
                 if (id >= 0 && id < ehdr.e_phnum) {
                     const auto& phdr = phdrs[id];
                     if (seg.file_size > 0) {
+                        if (phdr.p_offset == 0) {
+                            // A phdr with p_offset == 0 (e.g. an empty PT_TLS)
+                            // has no file payload of its own; copying here
+                            // would clobber the reconstructed ELF header
+                            // (Il2CppUserAssemblies.prx).
+                            LOG_WARN(Loader, "SELF segment id=%d skipped: phdr p_offset is 0 (size=0x%llx)",
+                                     id, seg.file_size);
+                            continue;
+                        }
                         if (seg.file_offset + seg.file_size <= static_cast<u64>(file_size)) {
                             file.clear();
                             file.seekg(static_cast<std::streamoff>(seg.file_offset), std::ios::beg);

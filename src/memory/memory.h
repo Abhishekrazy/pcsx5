@@ -129,4 +129,10 @@ void SetGuestFaultHandler(GuestFaultHandler handler, void* user_data);
 GuestFaultHandler GetGuestFaultHandler();
 void* GetGuestFaultHandlerUserData();
 
+// Demand-commit support: if `address` lies inside a tracked reserved
+// (not yet committed) region, commit the 64 KiB block covering it as
+// read/write and return true.  Returns false when the address is not
+// covered by any reserved region.
+bool CommitOnFault(guest_addr_t address);
+
 } // namespace Memory

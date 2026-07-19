@@ -96,12 +96,16 @@ bool FreeGuestMemory(guest_addr_t addr, u64 size) {
 
 // Change memory protection
 bool ProtectGuestMemory(guest_addr_t addr, u64 size, int prot) {
-    DWORD protect = 0;
-    if (prot & PROT_READ) protect |= PAGE_READONLY;
-    if (prot & PROT_WRITE) protect |= PAGE_READWRITE;
-    if (prot & PROT_EXEC) protect |= PAGE_EXECUTE_READ;
-    if ((prot & PROT_READ) && (prot & PROT_WRITE)) protect = PAGE_READWRITE;
-    if ((prot & PROT_READ) && (prot & PROT_WRITE) && (prot & PROT_EXEC)) protect = PAGE_EXECUTE_READWRITE;
+    // Map guest R/W/X combinations to the exact host page protection;
+    // OR-ing PAGE_* constants together is not a valid translation.
+    const bool r = (prot & PROT_READ)  != 0;
+    const bool w = (prot & PROT_WRITE) != 0;
+    const bool x = (prot & PROT_EXEC)  != 0;
+    DWORD protect;
+    if (x)      protect = w ? PAGE_EXECUTE_READWRITE : (r ? PAGE_EXECUTE_READ : PAGE_EXECUTE);
+    else if (w) protect = PAGE_READWRITE;
+    else if (r) protect = PAGE_READONLY;
+    else        protect = PAGE_NOACCESS;
     
     DWORD old_protect;
     BOOL result = VirtualProtect(

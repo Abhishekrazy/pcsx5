@@ -89,7 +89,7 @@ int main() {
         out << "AAA\tlibkernel\ttooShortNid\n";
         out << "AAAAAAAAAAA\tlibkernel\t\n";
         // Override of a built-in NID: file takes precedence.
-        out << "pZ9WXcClPO8\tlibkernel\toverriddenName\n";
+        out << "L-Q3LEjIbgA\tlibkernel\toverriddenName\n";
         out.close();
         EXPECT(out.good(), "failed to write temp DB file");
 
@@ -111,12 +111,12 @@ int main() {
     }
 
     // 5. Precedence: the file entry overrode the built-in name.
-    ExpectLookup("pZ9WXcClPO8", "overriddenName");
+    ExpectLookup("L-Q3LEjIbgA", "overriddenName");
 
     // 6. Built-in entries not present in the file still resolve.
-    ExpectLookup("byV+FWlAnB4", "sceKernelMapFlexibleMemory");
+    ExpectLookup("IWIBBdTHit4", "sceKernelMapFlexibleMemory");
     ExpectLookup("+P6FRGH4LfA", "memmove");
-    EXPECT(Common::IsKnownNid("9ByRMdo7ywg#T#T"),
+    EXPECT(Common::IsKnownNid("xaxE6OHpkiM#T#T"),
            "IsKnownNid should still hit built-in entries");
 
     // 7. A second load merges alongside the first.

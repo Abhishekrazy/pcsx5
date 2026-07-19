@@ -93,6 +93,55 @@ namespace Kernel {
         return g_module_resolver;
     }
 
+    static std::string g_app0_dir;
+    static std::string g_savedata_dir;
+
+    void SetApp0Directory(const std::string& dir) {
+        g_app0_dir = dir;
+        if (!dir.empty()) {
+            LOG_INFO(Kernel, "Guest /app0 mapped to host dir: %s", dir.c_str());
+        }
+    }
+
+    void SetSaveDataDirectory(const std::string& dir) {
+        g_savedata_dir = dir;
+        if (!dir.empty()) {
+            LOG_INFO(Kernel, "Guest /savedata0 mapped to host dir: %s", dir.c_str());
+        }
+    }
+
+    std::string TranslateGuestPath(const std::string& guest_path) {
+        // "/app0" and friends resolve against the game package directory.
+        constexpr std::string_view kApp0 = "/app0";
+        if (!g_app0_dir.empty()) {
+            if (guest_path == kApp0) return g_app0_dir;
+            if (guest_path.rfind(std::string(kApp0) + "/", 0) == 0) {
+                return g_app0_dir + guest_path.substr(kApp0.size());
+            }
+        }
+        // "/savedata0" resolves against the save-data HLE backing dir so
+        // guest file I/O under the mount point persists to the same place
+        // the libSceSaveData HLE uses.
+        constexpr std::string_view kSaveData0 = "/savedata0";
+        if (!g_savedata_dir.empty()) {
+            if (guest_path == kSaveData0) return g_savedata_dir;
+            if (guest_path.rfind(std::string(kSaveData0) + "/", 0) == 0) {
+                return g_savedata_dir + guest_path.substr(kSaveData0.size());
+            }
+        }
+        // Guest absolute path under an unmapped mount, or a host-absolute
+        // path (drive letter / UNC): pass through unchanged.
+        if (guest_path.empty() || guest_path[0] == '/' || guest_path[0] == '\\' ||
+            guest_path.find(':') != std::string::npos) {
+            return guest_path;
+        }
+        // Relative path: the guest CWD is the package root (/app0).
+        if (!g_app0_dir.empty()) {
+            return g_app0_dir + "/" + guest_path;
+        }
+        return guest_path;
+    }
+
     // Forward declarations
     static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info);
     static LONG CALLBACK HostUnhandledExceptionFilter(PEXCEPTION_POINTERS exception_info);
@@ -120,6 +169,17 @@ namespace Kernel {
         return EXCEPTION_EXECUTE_HANDLER;
     }
 
+    // Demand-commit guest fault handler: if the faulting address lies inside
+    // a reserved-but-uncommitted guest region (sceKernelReserveVirtualRange)
+    // or inside the HLE direct-memory phys pool, commit the covering 64 KiB
+    // block and let execution resume.  Returns false for anything we cannot
+    // cover, so the caller falls through to the normal crash path.
+    static bool DemandCommitFaultHandler(guest_addr_t fault_addr, u64 /*code*/, void* /*user*/) {
+        if (HLE::CommitPhysPool(fault_addr)) return true;
+        if (Memory::CommitOnFault(fault_addr)) return true;
+        return false;
+    }
+
     bool Initialize() {
         LOG_INFO(Kernel, "Initializing Kernel subsystem...");
 
@@ -137,6 +197,12 @@ namespace Kernel {
 
         // Register Top-Level Exception Filter for host crashes
         g_prev_exception_filter = SetUnhandledExceptionFilter(HostUnhandledExceptionFilter);
+
+        // Install the demand-commit fault handler: guest faults on reserved
+        // (not yet committed) pages are committed on first touch instead of
+        // crashing.  Consulted by VectoredExceptionHandler before the crash
+        // path and by Memory's own guest-fault VEH.
+        Memory::SetGuestFaultHandler(&DemandCommitFaultHandler, nullptr);
 
         // Allocate a 128KB block representing the guest's TLS area to support negative offsets (Variant II TLS)
         u64 tls_total_size = 128 * 1024;
@@ -655,6 +721,39 @@ namespace Kernel {
             return false;
         }
     }
+// ---------------------------------------------------------------------------
+// Guest signal <-> host SEH translation policy (Phase 2, document-only)
+//
+// The guest kernel ABI is FreeBSD-flavoured: games expect synchronous faults
+// to be deliverable as signals (SIGSEGV/SIGBUS/SIGILL/SIGFPE/SIGTRAP) to a
+// handler installed via sigaction(2) (syscall 416, currently a benign stub),
+// and asynchronous ones via kill/thr_kill.  Windows delivers everything to us
+// as SEH exceptions through this VEH (and the memory subsystem's own VEH).
+//
+// Current mapping behaviour:
+//   EXCEPTION_BREAKPOINT (0x80000003) on a patched 0xCC 0x90 syscall gate
+//       -> guest syscall dispatch (HandleSyscall), not a signal.  SIGTRAP is
+//          never synthesised because the guest never sees the trap frame.
+//   EXCEPTION_ACCESS_VIOLATION (0xC0000005)
+//       -> 1) Phys-pool demand-commit (HLE::CommitPhysPool) — emulates the
+//             PS5's on-demand direct-memory backing; transparent to the guest.
+//          2) fs:-relative TLS instruction emulation — transparent.
+//       -> otherwise the crash-report path runs and the process dies: we do
+//          NOT translate this into a guest SIGSEGV handler invocation, because
+//          resuming guest execution inside a VEH with a hostile context is
+//          unsound; a game that installs SIGSEGV handlers (rare; mostly debug
+//          crash dumps) will simply not have them called.
+//   EXCEPTION_SINGLE_STEP / everything else -> crash report + terminate.
+//
+// Policy for future work: if a game is found that depends on guest signal
+// delivery, the translation point is here — snapshot the faulting CONTEXT,
+// enqueue a guest sigframe on the faulting thread's guest stack, redirect RIP
+// to the registered handler, and translate codes: AV->SIGSEGV (read=SEGV_MAPERR/
+// write=SEGV_ACCERR), INT 3 (non-syscall-gate)->SIGTRAP, illegal opcode
+// (0xC000001D)->SIGILL, FP exceptions (0xC000008E/8F/90..)->SIGFPE.  Until
+// then, sys_sigaction/sys_sigprocmask (416/340) succeed silently so games
+// that merely *install* handlers continue to run.
+// ---------------------------------------------------------------------------
 static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info) {
         PEXCEPTION_RECORD exception_record = exception_info->ExceptionRecord;
         PCONTEXT context = exception_info->ContextRecord;
@@ -880,6 +979,22 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             }
         }
 
+        // Demand-commit: a guest access violation on a reserved-but-uncommitted
+        // page (direct-memory pool, reserved virtual range) is committed on
+        // first touch and execution resumes; anything else falls through to
+        // the crash path below unchanged.
+        if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+            exception_record->NumberParameters >= 2) {
+            const auto fault_addr =
+                static_cast<guest_addr_t>(exception_record->ExceptionInformation[1]);
+            if (auto handler = Memory::GetGuestFaultHandler()) {
+                if (handler(fault_addr, exception_record->ExceptionCode,
+                            Memory::GetGuestFaultHandlerUserData())) {
+                    return EXCEPTION_CONTINUE_EXECUTION;
+                }
+            }
+        }
+
         u64 ip = context->Rip;
         if (ip >= 0x800000000 && ip < 0x900000000) {
             FILE* f = nullptr;
@@ -914,6 +1029,16 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             LOG_ERROR(Kernel, "  R12: 0x%016llx  R13: 0x%016llx", context->R12, context->R13);
             LOG_ERROR(Kernel, "  R14: 0x%016llx  R15: 0x%016llx", context->R14, context->R15);
             LOG_ERROR(Kernel, "--------------------------------------------------");
+
+            // Context dump: qwords at RDI (and the faulting address) — for
+            // "null table/arena pointer" faults the crash-site object layout
+            // is the fastest route to the missing initialization.
+            LOG_ERROR(Kernel, "Object context dump (qwords at RDI=0x%llx):", context->Rdi);
+            for (u64 off = 0; off < 0x70; off += 8) {
+                u64 val = 0;
+                if (!SafeRead(&val, reinterpret_cast<void*>(context->Rdi + off), 8)) break;
+                LOG_ERROR(Kernel, "  [RDI+0x%02llx] = 0x%016llx", off, val);
+            }
 
             GPU::RunIdleLoop();
             ExitProcess(1);

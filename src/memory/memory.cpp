@@ -284,8 +284,26 @@ Status Protect(guest_addr_t address, u64 size, u32 protection) {
     const DWORD win_prot = TranslateProtection(protection);
     DWORD old_prot = 0;
     void* ptr = reinterpret_cast<void*>(address);
-    if (!VirtualProtect(ptr, aligned_size, win_prot, &old_prot)) {
-        const DWORD err = GetLastError();
+    bool ok = VirtualProtect(ptr, aligned_size, win_prot, &old_prot) != 0;
+    DWORD err = ok ? 0 : GetLastError();
+    if (!ok && err == ERROR_INVALID_ADDRESS) {
+        // The range is reserved but not committed yet (e.g. a PRX segment
+        // loaded into reserved address space).  Commit it, which also applies
+        // the requested protection.
+        ok = VirtualAlloc(ptr, aligned_size, MEM_COMMIT, win_prot) != nullptr;
+        if (ok) {
+            std::lock_guard<std::mutex> lock(g_regions_mutex);
+            for (auto& r : g_regions) {
+                if (r.base <= address && address + aligned_size <= r.base + r.size) {
+                    r.committed = true;
+                    break;
+                }
+            }
+        } else {
+            err = GetLastError();
+        }
+    }
+    if (!ok) {
         LOG_ERROR(Memory, "Protect: VirtualProtect failed at 0x%llx size=0x%llx (err=%lu)",
                   address, aligned_size, err);
         return (err == ERROR_ACCESS_DENIED) ? Status::AccessDenied : Status::Win32Error;
@@ -396,6 +414,40 @@ void WriteBuffer(guest_addr_t addr, const void* src, u64 size) {
         LOG_DEBUG(Memory, "Framebuffer write at guest 0x%llx (size=%llu)", addr, size);
     }
     std::memcpy(reinterpret_cast<void*>(addr), src, size);
+}
+
+bool CommitOnFault(guest_addr_t address) {
+    constexpr u64 kGranularity = 65536; // Windows allocation granularity
+    const guest_addr_t base = address & ~(kGranularity - 1);
+    // Only act when the fault address lies inside a tracked guest region.
+    bool covered = false;
+    {
+        std::lock_guard<std::mutex> lock(g_regions_mutex);
+        for (const auto& r : g_regions) {
+            if (r.base <= address && address < r.base + r.size) {
+                covered = true;
+                break;
+            }
+        }
+    }
+    if (!covered) return false;
+    // The region record may be marked committed as a whole while only a
+    // subrange actually is (Memory::Protect's commit fallback flips the
+    // containing record).  Decide per fault page instead: commit only when
+    // the page is genuinely still reserved (LOST EPIC's Unity heap does
+    // exactly this: reserve 8 MB, mprotect-commit 4 MB, then touch more).
+    MEMORY_BASIC_INFORMATION mbi{};
+    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
+        return false;
+    }
+    if (mbi.State != MEM_RESERVE) return false;
+    if (!VirtualAlloc(reinterpret_cast<void*>(base), kGranularity, MEM_COMMIT, PAGE_READWRITE)) {
+        LOG_WARN(Memory, "CommitOnFault: failed to commit 64 KiB at 0x%llx (err=%lu)",
+                 base, GetLastError());
+        return false;
+    }
+    LOG_INFO(Memory, "CommitOnFault: committed 64 KiB at 0x%llx (fault at 0x%llx)", base, address);
+    return true;
 }
 
 void SetGuestFaultHandler(GuestFaultHandler handler, void* user_data) {

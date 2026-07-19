@@ -13,9 +13,11 @@
 # Malformed lines are skipped with a warning.  Entries loaded from this
 # file take precedence over the built-in table in src/common/nid.cpp.
 # Seeded from the built-in table; a PRX export scraper will extend it.
-pZ9WXcClPO8	libkernel	sceKernelMapDirectMemory
-byV+FWlAnB4	libkernel	sceKernelMapFlexibleMemory
-9ByRMdo7ywg	libkernel	sceKernelAllocateFlexibleMemory
+# NOTE: pZ9WXcClPO8 / byV+FWlAnB4 / 9ByRMdo7ywg are real, frequently-imported
+# NIDs — the libcxxabi RTTI vtables (aerolib.csv).  Earlier revisions misnamed
+# them as sceKernelMapDirectMemory / sceKernelMapFlexibleMemory /
+# sceKernelAllocateFlexibleMemory; the sceKernel* names live at their verified
+# SHA1-scheme NIDs (L-Q3LEjIbgA, IWIBBdTHit4, xaxE6OHpkiM).
 1kZFcktOm+s	libSceAgc	sceAgcDriverInitialize
 -L+-8F0+gBc	libSceAgc	sceAgcDriverUninitialize
 2sWzhYqFH4E	libSceAgc	sceAgcRegisterConfiguration
@@ -71,6 +73,7 @@ byV+FWlAnB4	libkernel	sceKernelMapFlexibleMemory
 1jfXLRVzisc	libKernel	sceKernelUsleep
 1n37q1Bvc5Y	libSceSystemService	sceSystemServiceGetDisplaySafeAreaInfo
 1tKyG7RlMJo	libKernel	scePthreadGetprio
+1uJgoVq3bQU	libc	_Getptolower
 1xxcMiGu2fo	libSceUserService	sceUserServiceGetUserName
 23CPPI1tyBY	libKernel	sceKernelGetEventFilter
 27bAgiJmOh0	libKernel	pthread_cond_timedwait
@@ -84,6 +87,7 @@ byV+FWlAnB4	libkernel	sceKernelMapFlexibleMemory
 2Tb92quprl0	libKernel	scePthreadCondInit
 2X5agFjKxMc	libc	calloc
 2Z+PpY6CaJg	libKernel	pthread_mutex_unlock
+2ccJz9LQI+w	libSceAgc	sceAgcDcbDmaDataGetSize
 2emaaluWzUw	libc	__cxa_guard_abort
 3GPpjQdAMTw	libc	__cxa_guard_acquire
 3JCe3lCbQ8A	libSceHttp2	sceHttp2Init
@@ -142,6 +146,7 @@ byV+FWlAnB4	libkernel	sceKernelMapFlexibleMemory
 7oxv3PPCumo	libKernel	sceKernelReserveVirtualRange
 7uhBFWRAS60	libKernel	sceKernelClearEventFlag
 8+s5BzZjxSg	libKernel	scePthreadAttrGetaffinity
+85zul--eGXs	libSceSaveData	sceSaveDataSetParam
 8G2LB+A3rzg	libc	atexit
 8N2tmT3jmC8	libSceAgc	sceAgcDcbSetIndexCount
 8OnWXlgQlvo	libKernel	_sceKernelRtldThreadAtexitDecrement
@@ -158,6 +163,7 @@ byV+FWlAnB4	libkernel	sceKernelMapFlexibleMemory
 959qrazPIrg	libKernel	sceKernelGetProcParam
 99b82IKXpH4	libSceAppContent	sceAppContentAppParamGetInt
 9BcDykPmo1I	libKernel	__error
+9ByRMdo7ywg	libkernel	_ZTVN10__cxxabiv121__vmi_class_type_infoE
 9KUZFjI1IxA	libSceJson	_ZN3sce4Json6StringC1EPKc
 9T2pDF2Ryqg	libSceNet	sceNetHtonl
 9UK1vLZQft4	libKernel	scePthreadMutexLock
@@ -295,6 +301,7 @@ L-Q3LEjIbgA	libKernel	sceKernelMapDirectMemory
 L1SBTkC+Cvw	libc	abort
 LHMrG7e8G78	libc	wcsmisc
 LJDwdSNTnDg	libKernel	sceKernelDeleteUserEvent
+LOkU+P7322Y	libSceAgc	sceAgcCbAcquireMem
 LN3Zcb72Q0c	libSceRtc	sceRtcGetCurrentAdNetworkTick
 Lcqty+QNWFc	libSceFiber	sceFiberStartContextSizeCheck
 LlodCMDbk3o	libSceRtc	sceRtcInit
@@ -463,7 +470,9 @@ bbFueFP+J4k	libSceAgc	sceAgcDcbSetPredication
 bnZxYgAFeA0	libKernel	sceKernelGetSanitizerNewReplaceExternal
 bt3CTBKmGyI	libKernel	scePthreadSetaffinity
 buYbeLOGWmA	libSceAppContent	sceAppContentTemporaryDataMount2
+byV+FWlAnB4	libkernel	_ZTVN10__cxxabiv117__class_type_infoE
 bzQExy189ZI	libc	_init_env
+c88Yy54Mx0w	libSceSaveData	sceSaveDataSaveIcon
 cFazmnXpJOE	libSceAgc	sceAgcAcbEventWrite
 cG1VE2HMl6c	libSceJson	_ZN3sce4Json6StringD1Ev
 cK6bYHf-Q5E	libSceJson	_ZN3sce4Json11InitializerC1Ev
@@ -620,6 +629,7 @@ pQGpHYopAIY	libSceNet	sceNetNtohl
 pWLG7WOpVcw	libSceAgc	sceAgcDriverUnregisterResource
 pv9CI5VC+R0	libSceVideoOut	sceVideoOutAdjustColor_
 py6L8jiVAN8	libKernel	sceKernelGetSanitizerMallocReplaceExternal
+pZ9WXcClPO8	libkernel	_ZTVN10__cxxabiv120__si_class_type_infoE
 q1cHNfGycLI	libScePad	scePadRead
 q88lQ+GP5Yk	libSceAgc	sceAgcDcbDrawIndex
 qBMjqyBn3OM	libSceJson	_ZN3sce4Json5ValueC1Ev
@@ -698,6 +708,7 @@ w2rJhmD+dsE	libSceAgcDriver	sceAgcDriverAddEqEvent
 w3BY+tAEiQY	libSceVideoOut	sceVideoOutRegisterBuffers
 w6Dj1VJt5qY	libSceAgc	sceAgcSetPacketPredication
 wG+84pnNIuo	libSceNpUniversalDataSystem	sceNpUniversalDataSystemDestroyEvent
+wLlFkwG9UcQ	libc	time
 wPJGwI2RM2I	libSceSystemGesture	sceSystemGestureUpdateAllTouchRecognizer
 wRbq6ZjNop4	libSceAgc	sceAgcGetRegisterDefaults2Internal
 wTpfglkmv34	libSceMsgDialog	sceMsgDialogProgressBarSetValue
@@ -713,6 +724,7 @@ x4AUdbhpRB0	libSceJson	_ZN3sce4Json5ValueC1Em
 x8qnXqh-tiM	libSceMouse	sceMouseRead
 xSAR0LTcRKM	libSceAgc	sceAgcDcbJump
 xa8oL9dmXkM	libSceNgs2	sceNgs2PanInit
+xaxE6OHpkiM	libKernel	sceKernelAllocateFlexibleMemory
 xeYO4u7uyJ0	libc	fopen
 xk0AcarP3V4	libScePad	scePadOpen
 xnd8BJzAxmk	libSceAppContent	sceAppContentGetAddcontInfoList

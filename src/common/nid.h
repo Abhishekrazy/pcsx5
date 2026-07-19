@@ -30,6 +30,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Common {
 
@@ -132,5 +133,18 @@ bool IsKnownNid(std::string_view nid_with_suffix) noexcept;
 // always available without it.  Thread-safe with respect to concurrent
 // LookupNidName() calls.
 bool LoadNidDatabase(const std::filesystem::path& file);
+
+// One entry of the merged NID database (built-in table plus anything merged
+// in via LoadNidDatabase).
+struct NidDbEntry {
+    std::string nid;    // 11-char Sony base64 form
+    std::string module; // exporting library (empty when unknown)
+    std::string name;   // canonical symbol name
+};
+
+// Snapshot of every entry in the merged NID -> name map, with the module
+// column preserved when it came from a database file.  Used by the HLE layer
+// to pre-register log-and-return stubs for every known export.
+std::vector<NidDbEntry> EnumerateNidEntries();
 
 }  // namespace Common

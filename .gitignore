@@ -38,6 +38,13 @@
 /logs/
 /saves/
 
+# Per-title boot-run evidence logs and runtime save-data dir
+/ppsa*_run*.log
+/ppsa*_wave*.log
+/ppsa*_run*_stdout.txt
+/pcsx5_savedata/
+.log
+
 # OS-specific files
 .DS_Store
 Thumbs.db
@@ -84,3 +91,13 @@ sharpemu_clone/
 # Local build/test helper scripts
 build_phase1.bat
 test_phase1.bat
+
+# Scratch / work-in-progress notes
+.work/
+
+# Milestone run logs and capture artifacts
+/ppsa*_m*.log
+/vk_smoke_run.log
+/vk_smoke_frame.png
+/m1b_window.png
+/shader_corpus_report.txt

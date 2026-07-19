@@ -23,6 +23,11 @@ namespace GPU {
     // Query whether the emulator execution window should close
     bool ShouldCloseWindow();
 
+    // True when a presentation window actually exists (false in headless
+    // contexts such as unit tests — ShouldCloseWindow() must not be acted on
+    // there, since it reports "close" whenever no window exists).
+    bool HasWindow();
+
     // Poll keyboard inputs and update event states
     void PollEvents();
 

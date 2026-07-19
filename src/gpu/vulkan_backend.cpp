@@ -1,4 +1,6 @@
 #include "gpu.h"
+#include "vk_context.h"
+#include "vk_present.h"
 #include "../common/log.h"
 #include "../memory/memory.h"
 #include <windows.h>
@@ -19,6 +21,14 @@ namespace GPU {
     static HWND        g_hwnd    = nullptr;
     static int         g_width   = 1280;
     static int         g_height  = 720;
+
+    // Real Vulkan backend (Phase 5 M1).  g_vk is non-null when instance +
+    // device came up; g_vk_ready when the swapchain present path is usable.
+    // Both null/false -> the legacy GDI DIB path presents instead.
+    static VkContext*  g_vk       = nullptr;
+    static bool        g_vk_ready = false;
+    // Full-resolution BGRA8 conversion buffer for the guest framebuffer.
+    static std::vector<u32> g_vk_pixels;
 
     static PadButtonState g_pad_state = { 0, 127, 127, 127, 127, 0, 0, {0, 0} };
     static u32            g_keyboard_buttons = 0;
@@ -57,11 +67,6 @@ namespace GPU {
 
     typedef HRESULT(WINAPI* PFN_DwmFlush)();
     static PFN_DwmFlush pfn_DwmFlush = nullptr;
-
-    // Vulkan dynamic loading entry points (retain for future use)
-    typedef VkResult(VKAPI_PTR* PFN_vkCreateInstance)(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);
-    static PFN_vkCreateInstance pfn_vkCreateInstance = nullptr;
-    static HMODULE g_vulkan_dll = nullptr;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Boot-screen primitives (software rendering into g_dib_buffer)
@@ -352,19 +357,20 @@ namespace GPU {
         // Allocate host DIB buffer (BGRA 32-bit)
         g_dib_buffer.assign(static_cast<size_t>(g_width) * g_height, 0xFF000000u);
 
-        // Dynamically load Vulkan runtime driver DLL
-        g_vulkan_dll = LoadLibraryA("vulkan-1.dll");
-        if (g_vulkan_dll) {
-            pfn_vkCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(
-                GetProcAddress(g_vulkan_dll, "vkCreateInstance")
-            );
-            if (pfn_vkCreateInstance) {
-                LOG_INFO(GPU, "Vulkan driver library 'vulkan-1.dll' loaded successfully.");
+        // Bring up the real Vulkan backend (dynamic vulkan-1.dll loading, no
+        // SDK).  Any failure leaves g_vk null and we stay on the GDI DIB path.
+        g_vk = VkContextCreate(g_window);
+        if (g_vk) {
+            g_vk_ready = VkPresentInitialize(g_vk, static_cast<u32>(g_width),
+                                             static_cast<u32>(g_height));
+            if (g_vk_ready) {
+                LOG_INFO(GPU, "Vulkan backend active on '%s' — guest frames present via swapchain.",
+                         g_vk->device_name);
             } else {
-                LOG_WARN(GPU, "Failed to resolve vkCreateInstance from 'vulkan-1.dll'.");
+                LOG_WARN(GPU, "Vulkan swapchain/present init failed — GDI fallback for presents.");
             }
         } else {
-            LOG_WARN(GPU, "Vulkan driver 'vulkan-1.dll' not found. Graphics emulation will run in stub mode.");
+            LOG_WARN(GPU, "Vulkan device init failed — GDI fallback for presents.");
         }
 
         // Dynamically load DWM API for VSync (DwmFlush)
@@ -387,22 +393,59 @@ namespace GPU {
 
     void Shutdown() {
         LOG_INFO(GPU, "Shutting down GPU subsystem...");
+        if (g_vk) {
+            VkPresentShutdown(g_vk);
+            VkContextDestroy(g_vk);
+            g_vk = nullptr;
+            g_vk_ready = false;
+        }
+        g_vk_pixels.clear();
         if (g_window) {
             glfwDestroyWindow(g_window);
             g_window = nullptr;
             g_hwnd   = nullptr;
         }
         glfwTerminate();
-        if (g_vulkan_dll) {
-            FreeLibrary(g_vulkan_dll);
-            g_vulkan_dll = nullptr;
-        }
         if (g_xinput_dll) {
             FreeLibrary(g_xinput_dll);
             g_xinput_dll = nullptr;
             g_XInputGetState = nullptr;
         }
         g_dib_buffer.clear();
+    }
+
+    // Converts the guest framebuffer to full-resolution BGRA8 in g_vk_pixels
+    // (the layout swapchain blits expect).  Returns false on a guest-memory
+    // fault.  Pitch is assumed tightly packed, as in the GDI path.
+    static bool ConvertFramebufferToBgra(guest_addr_t fb) {
+        g_vk_pixels.resize(static_cast<size_t>(g_fb_width) * g_fb_height);
+        __try {
+            const u8* src = reinterpret_cast<const u8*>(fb);
+            for (u32 y = 0; y < g_fb_height; ++y) {
+                const u8* row = src + static_cast<size_t>(y) * g_fb_width *
+                                          (g_fb_format == 2 ? 2 : 4);
+                u32* dst = &g_vk_pixels[static_cast<size_t>(y) * g_fb_width];
+                if (g_fb_format == 1) { // BGRA8: already the target layout
+                    std::memcpy(dst, row, static_cast<size_t>(g_fb_width) * 4);
+                } else if (g_fb_format == 2) { // RGB565
+                    for (u32 x = 0; x < g_fb_width; ++x) {
+                        const u16 p = reinterpret_cast<const u16*>(row)[x];
+                        const u8 r = ((p >> 11) & 0x1F) * 255 / 31;
+                        const u8 g = ((p >> 5) & 0x3F) * 255 / 63;
+                        const u8 b = (p & 0x1F) * 255 / 31;
+                        dst[x] = 0xFF000000u | (r << 16) | (g << 8) | b;
+                    }
+                } else { // RGBA8 (default): swizzle to BGRA
+                    for (u32 x = 0; x < g_fb_width; ++x) {
+                        const u8* p = row + static_cast<size_t>(x) * 4;
+                        dst[x] = 0xFF000000u | (p[0] << 16) | (p[1] << 8) | p[2];
+                    }
+                }
+            }
+            return true;
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false;
+        }
     }
 
     void RenderFrame(guest_addr_t framebuffer_addr) {
@@ -414,6 +457,23 @@ namespace GPU {
             PresentDIB();
             LOG_DEBUG(GPU, "RenderFrame: No guest framebuffer, re-presenting boot screen.");
             return;
+        }
+
+        // Preferred path: Vulkan swapchain present (GPU-side blit scaling of
+        // the full-res BGRA conversion).  Falls through to the GDI path when
+        // Vulkan is unavailable or a single present fails.
+        if (g_vk_ready) {
+            if (ConvertFramebufferToBgra(framebuffer_addr)) {
+                if (VkPresentFrame(g_vk, g_vk_pixels.data(), g_fb_width, g_fb_height)) {
+                    LOG_DEBUG(GPU, "RenderFrame: Vulkan present of guest framebuffer 0x%llx.",
+                              framebuffer_addr);
+                    return;
+                }
+                LOG_WARN(GPU, "RenderFrame: Vulkan present failed — falling back to GDI this frame.");
+            } else {
+                LOG_WARN(GPU, "RenderFrame: fault reading guest framebuffer 0x%llx for Vulkan upload.",
+                         framebuffer_addr);
+            }
         }
 
         // Blit guest framebuffer → host DIB buffer (BGRA)
@@ -471,6 +531,10 @@ namespace GPU {
             return glfwWindowShouldClose(g_window) != 0;
         }
         return true;
+    }
+
+    bool HasWindow() {
+        return g_window != nullptr;
     }
 
     void PollEvents() {

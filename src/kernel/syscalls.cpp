@@ -6,6 +6,7 @@
 #include "syscalls.h"
 #include "kernel.h"
 #include "fd_table.h"
+#include "guest_clock.h"
 #include "memory.h"
 #include "thread.h"
 #include "../memory/memory.h"
@@ -166,6 +167,14 @@ void InitializeSyscallTable() {
     g_syscall_table[540] = [](CONTEXT* ctx) -> s64 { return SysKernControl(ctx); };
     g_syscall_table[541] = [](CONTEXT* ctx) -> s64 { return SysKernGetpid(ctx); };
     g_syscall_table[542] = [](CONTEXT* ctx) -> s64 { return SysKernGettid(ctx); };
+
+    // Syscall audit (Phase 2): a block of stub-with-log entries for
+    // commonly-hit Orbis numbers (wait4/getuid/madvise/sigaction/kqueue/
+    // kevent/…) was implemented here but REVERTED: its mere presence made
+    // syscall_validation_tests die at process exit with 0xC0000409
+    // (fastfail) when stdout is a pipe, although none of the stubs ever ran.
+    // Root cause is a layout-sensitive latent exit-time bug elsewhere —
+    // re-add the stubs once that is root-caused (see task report).
 }
 
 void RegisterSyscallHandler(u32 syscall_number, SyscallHandler handler) {
@@ -305,6 +314,7 @@ s64 SysOpen(guest_addr_t pathname, u32 flags, u32 mode, CONTEXT*) {
     if (!ReadGuestString(pathname, path, sizeof(path))) {
         return -EFAULT;
     }
+    const std::string host_path = TranslateGuestPath(path);
     LOG_INFO(Kernel, "sys_open: Opening '%s' with flags=0x%x, mode=0%o", path, flags, mode);
     
     DWORD desiredAccess = 0;
@@ -326,7 +336,7 @@ s64 SysOpen(guest_addr_t pathname, u32 flags, u32 mode, CONTEXT*) {
     }
     
     HANDLE hFile = CreateFileA(
-        path,
+        host_path.c_str(),
         desiredAccess,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         nullptr,
@@ -435,6 +445,7 @@ s64 SysStat(guest_addr_t pathname, guest_addr_t statbuf, CONTEXT*) {
         return -EFAULT;
     }
     LOG_INFO(Kernel, "sys_stat: Stat'ing '%s'", path);
+    const std::string host_path = TranslateGuestPath(path);
     
     struct {
         u64 st_dev;
@@ -456,7 +467,7 @@ s64 SysStat(guest_addr_t pathname, guest_addr_t statbuf, CONTEXT*) {
         s64 __unused[3];
     } st = {};
     
-    DWORD attribs = GetFileAttributesA(path);
+    DWORD attribs = GetFileAttributesA(host_path.c_str());
     if (attribs == INVALID_FILE_ATTRIBUTES) {
         return -ENOENT;
     }
@@ -469,7 +480,7 @@ s64 SysStat(guest_addr_t pathname, guest_addr_t statbuf, CONTEXT*) {
     st.st_gid = 0;
     st.st_rdev = 0;
     
-    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE hFile = CreateFileA(host_path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile != INVALID_HANDLE_VALUE) {
         LARGE_INTEGER size;
         if (GetFileSizeEx(hFile, &size)) {
@@ -745,20 +756,12 @@ s64 SysClockGettime(u32 clock_id, guest_addr_t tp, CONTEXT*) {
     }
     timespec ts = {};
     if (clock_id == 0) { // CLOCK_REALTIME
-        FILETIME ft;
-        GetSystemTimePreciseAsFileTime(&ft);
-        ULARGE_INTEGER ul;
-        ul.LowPart = ft.dwLowDateTime;
-        ul.HighPart = ft.dwHighDateTime;
-        u64 unix_time_100ns = ul.QuadPart - 116444736000000000ULL;
-        ts.tv_sec = static_cast<s64>(unix_time_100ns / 10000000ULL);
-        ts.tv_nsec = static_cast<s64>((unix_time_100ns % 10000000ULL) * 100ULL);
-    } else { // CLOCK_MONOTONIC etc.
-        LARGE_INTEGER qpc, freq;
-        QueryPerformanceCounter(&qpc);
-        QueryPerformanceFrequency(&freq);
-        ts.tv_sec = qpc.QuadPart / freq.QuadPart;
-        ts.tv_nsec = ((qpc.QuadPart % freq.QuadPart) * 1000000000ULL) / freq.QuadPart;
+        GuestClockRealtime(&ts.tv_sec, &ts.tv_nsec);
+    } else { // CLOCK_MONOTONIC etc. — shared QPC origin (guest_clock.cpp)
+        const u64 qpc  = GuestClockCounter();
+        const u64 freq = GuestClockCounterFrequency();
+        ts.tv_sec  = static_cast<s64>(qpc / freq);
+        ts.tv_nsec = static_cast<s64>(((qpc % freq) * 1000000000ULL) / freq);
     }
     if (!SafeWriteBuffer(tp, &ts, sizeof(ts))) {
         return -EFAULT;
@@ -776,10 +779,8 @@ s64 SysClockGetres(u32 clock_id, guest_addr_t res, CONTEXT*) {
         ts.tv_sec = 0;
         ts.tv_nsec = 100; // Windows file time resolution is 100ns
     } else {
-        LARGE_INTEGER freq;
-        QueryPerformanceFrequency(&freq);
         ts.tv_sec = 0;
-        ts.tv_nsec = 1000000000ULL / freq.QuadPart;
+        ts.tv_nsec = static_cast<s64>(1000000000ULL / GuestClockCounterFrequency());
     }
     if (!SafeWriteBuffer(res, &ts, sizeof(ts))) {
         return -EFAULT;
@@ -797,7 +798,8 @@ s64 SysAccess(guest_addr_t pathname, u32 mode, CONTEXT*) {
     if (!ReadGuestString(pathname, path, sizeof(path))) {
         return -EFAULT;
     }
-    DWORD attribs = GetFileAttributesA(path);
+    const std::string host_path = TranslateGuestPath(path);
+    DWORD attribs = GetFileAttributesA(host_path.c_str());
     if (attribs == INVALID_FILE_ATTRIBUTES) {
         return -ENOENT;
     }

@@ -28,7 +28,8 @@ extern SetHostStackPointer : proc
 ;   below: guest stack frame
 ;
 ; We will call HleDispatch(u64 symbol_id, u64 rdi, u64 rsi, u64 rdx,
-;                          u64 rcx, u64 r8, u64 r9, u64 guest_rip)
+;                          u64 rcx, u64 r8, u64 r9, u64 guest_rip,
+;                          u64 guest_rsp)
 ; using Windows calling convention on the current (guest) stack.
 ;
 ; Register usage plan:
@@ -64,18 +65,20 @@ HleCommonDispatcher proc
     ; Step 4: Build Windows ABI call frame (need 16-byte aligned rsp before CALL)
     ; entry_rsp was 16n-8 (ret addr pushed by guest CALL). After 8 pushes
     ; (64 bytes): rsp = 16n - 72 -> misaligned. Shadow space = 32 bytes,
-    ; stack args 5-8 = 32 bytes; sub 72: rsp = 16n - 144 = 16-aligned. Good.
-    sub  rsp, 72
+    ; stack args 5-9 = 40 bytes + 8 pad; sub 88: rsp = 16n - 160 = 16-aligned.
+    sub  rsp, 88
 
     ; Stack args for HleDispatch (beyond rcx, rdx, r8, r9).
-    ; r8_orig/r9_orig were pushed before the callee-saved regs; after sub 72
-    ; they live at [rsp + 72 + 56] and [rsp + 72 + 48].
+    ; r8_orig/r9_orig were pushed before the callee-saved regs; after sub 88
+    ; they live at [rsp + 88 + 56] and [rsp + 88 + 48].
     mov  [rsp + 32], rbp    ; arg5 = rcx_orig (SysV arg4)
-    mov  rax, [rsp + 128]   ; r8_orig
+    mov  rax, [rsp + 144]   ; r8_orig
     mov  [rsp + 40], rax    ; arg6 = r8_orig (SysV arg5)
-    mov  rax, [rsp + 120]   ; r9_orig
+    mov  rax, [rsp + 136]   ; r9_orig
     mov  [rsp + 48], rax    ; arg7 = r9_orig (SysV arg6)
     mov  [rsp + 56], r15    ; arg8 = guest_rip
+    lea  rax, [rsp + 152]   ; entry guest rsp (ret addr at [rax], stack args at [rax+8])
+    mov  [rsp + 64], rax    ; arg9 = guest_rsp
 
     mov  rcx, rbx           ; arg1 = symbol_id
     mov  rdx, r12           ; arg2 = rdi_orig
@@ -84,7 +87,13 @@ HleCommonDispatcher proc
 
     call HleDispatch        ; rax = return value
 
-    add  rsp, 72
+    ; Mirror the return value into xmm0 so guest code calling HLE functions
+    ; with floating-point results (strtod, strtof, ...) sees the value where
+    ; the SysV ABI puts it.  Integer/pointer callers ignore xmm0, so this is
+    ; always safe.
+    movq xmm0, rax
+
+    add  rsp, 88
 
     pop  rbx
     pop  rbp
