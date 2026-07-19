@@ -454,6 +454,19 @@ void WriteUi     (JsonValue& root, const UiConfig&       u) {
     root.o["ui"]    = std::move(v);
 }
 
+void ReadLoader  (const JsonValue& root, LoaderConfig&    l) {
+    if (const JsonValue* v = Field(root, "loader"); v && v->is_object()) {
+        if (auto* p = Field(*v, "firmware_modules_dir"))
+            l.firmware_modules_dir = (p->is_string() ? p->s : l.firmware_modules_dir);
+    }
+}
+
+void WriteLoader (JsonValue& root, const LoaderConfig&    l) {
+    JsonValue v; v.type = JsonValue::Type::Object;
+    v.o["firmware_modules_dir"] = StrV(l.firmware_modules_dir);
+    root.o["loader"]            = std::move(v);
+}
+
 } // namespace (json primitives + parser)
 
 // ===========================================================================
@@ -545,6 +558,7 @@ Config EffectiveFor(const std::string& title_id) {
         eff.graphics = t.graphics;
         eff.audio    = t.audio;
         eff.input    = t.input;
+        eff.loader   = t.loader;
         eff.schema_version = t.schema_version;
         eff.loaded_from_disk = t.loaded_from_disk;
     }
@@ -634,6 +648,7 @@ bool LoadFromFile(const std::string& path, Config& out, std::string* error) {
     ReadAudio   (root, out.audio);
     ReadInput   (root, out.input);
     ReadUi      (root, out.ui);
+    ReadLoader  (root, out.loader);
 
     out.schema_version   = version;
     out.loaded_from_disk = true;
@@ -659,6 +674,7 @@ bool SaveToFile(const std::string& path, const Config& cfg, std::string* error) 
     WriteAudio   (root, cfg.audio);
     WriteInput   (root, cfg.input);
     WriteUi      (root, cfg.ui);
+    WriteLoader  (root, cfg.loader);
 
     std::ofstream out(path, std::ios::trunc | std::ios::binary);
     if (!out) {

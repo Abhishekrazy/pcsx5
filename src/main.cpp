@@ -1,5 +1,7 @@
 #include "common/log.h"
+#include "common/nid.h"
 #include "common/types.h"
+#include "loader/pkg.h"
 #include "config/config.h"
 #include "memory/memory.h"
 #include "kernel/kernel.h"
@@ -23,7 +25,9 @@ void PrintUsage() {
     std::printf("  pcsx5.exe [--strict-imports] [--report=<path>] [--regression-report=<path>]\n");
     std::printf("          [--log-file=<path>] [--crash-dir=<path>]\n");
     std::printf("          [--config-dir=<path>] [--title-id=<id>] <path_to_eboot.bin_or_elf>\n");
+    std::printf("  pcsx5.exe --extract-pkg <file.pkg> <outdir>\n");
     std::printf("\nOptions:\n");
+    std::printf("  --extract-pkg <pkg> <outdir> Extract a (fake-signed) PKG into <outdir> and exit.\n");
     std::printf("  --strict-imports             Fail (return non-zero) on unresolved imports.\n");
     std::printf("  --report=<path>              Write a JSON compatibility summary to <path>.\n");
     std::printf("  --regression-report=<path>   Write an aggregated markdown regression report.\n");
@@ -94,6 +98,39 @@ void PersistSummary(const Reports::CompatSummary& summary,
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// --extract-pkg <file.pkg> <outdir>: extract every entry we can handle and
+// print a short summary.  Returns 0 on success, non-zero on failure.
+// ---------------------------------------------------------------------------
+int ExtractPkgCli(const std::string& pkg_path, const std::string& out_dir) {
+    Loader::PkgImage image;
+    if (!Loader::ParsePkg(pkg_path, image)) {
+        std::printf("error: failed to parse PKG: %s\n", pkg_path.c_str());
+        return 1;
+    }
+    if (image.IsRetail()) {
+        std::printf("warning: retail NPDRM PKG; encrypted entries will be skipped.\n");
+    }
+
+    size_t extracted = 0;
+    size_t skipped = 0;
+    for (const auto& entry : image.entries) {
+        const std::filesystem::path dest =
+            std::filesystem::path(out_dir) / Loader::PkgEntryPath(entry);
+        std::error_code ec;
+        std::filesystem::create_directories(dest.parent_path(), ec);
+        if (Loader::ExtractPkgEntry(image, entry, dest.string())) {
+            ++extracted;
+        } else {
+            ++skipped;
+        }
+    }
+
+    std::printf("extracted %zu entr%s, skipped %zu -> %s\n",
+                extracted, extracted == 1 ? "y" : "ies", skipped, out_dir.c_str());
+    return extracted > 0 ? 0 : 1;
+}
+
 int main(int argc, char* argv[]) {
     // Disable stdout/stderr buffering for instant logging on crash
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -112,10 +149,20 @@ int main(int argc, char* argv[]) {
     std::string crash_dir = "pcsx5_crash";
     std::string config_dir;          // empty -> ./pcsx5_config
     std::string title_id;
+    std::string extract_pkg_path;
+    std::string extract_pkg_outdir;
     bool strict_imports = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "--strict-imports") {
+        if (a == "--extract-pkg") {
+            if (i + 2 >= argc) {
+                std::printf("--extract-pkg requires <file.pkg> and <outdir>.\n");
+                PrintUsage();
+                return 2;
+            }
+            extract_pkg_path   = argv[++i];
+            extract_pkg_outdir = argv[++i];
+        } else if (a == "--strict-imports") {
             strict_imports = true;
         } else if (a.rfind("--report=", 0) == 0) {
             report_path = a.substr(9);
@@ -139,6 +186,11 @@ int main(int argc, char* argv[]) {
             PrintUsage();
             return 2;
         }
+    }
+
+    // PKG-extraction mode: run standalone and exit (no emulator startup).
+    if (!extract_pkg_path.empty()) {
+        return ExtractPkgCli(extract_pkg_path, extract_pkg_outdir);
     }
 
     if (target_path.empty()) {
@@ -169,6 +221,39 @@ int main(int argc, char* argv[]) {
     // during subsystem init) is captured.
     Diagnostics::InstallCrashHandler(crash_dir);
 
+    // Load the external NID name database (assets/nid_db.txt) if present.
+    // Look next to the executable first, then in the CWD; missing file is
+    // fine — the built-in table is always available.
+    {
+        std::vector<std::filesystem::path> nid_candidates;
+        {
+            std::error_code ec;
+            const std::filesystem::path exe_abs =
+                std::filesystem::absolute(argv[0], ec);
+            if (!ec) {
+                nid_candidates.push_back(exe_abs.parent_path() / "assets" / "nid_db.txt");
+            }
+        }
+        nid_candidates.emplace_back("assets/nid_db.txt");
+        bool nid_loaded = false;
+        for (const auto& candidate : nid_candidates) {
+            std::error_code ec;
+            if (!std::filesystem::exists(candidate, ec)) continue;
+            if (Common::LoadNidDatabase(candidate)) {
+                LOG_INFO(General, "Loaded NID database: %s",
+                         candidate.string().c_str());
+            } else {
+                LOG_WARN(General, "Failed to read NID database: %s",
+                         candidate.string().c_str());
+            }
+            nid_loaded = true;
+            break;
+        }
+        if (!nid_loaded) {
+            LOG_INFO(General, "No NID database file found; using built-in table only.");
+        }
+    }
+
     if (!title_id.empty()) {
         LOG_INFO(General, "Active title: %s", title_id.c_str());
     }
@@ -191,6 +276,14 @@ int main(int argc, char* argv[]) {
                                                  "fail", "load", 0.0);
 
     auto t0 = std::chrono::steady_clock::now();
+
+    // Configure PRX module resolution: the game's own sce_module/ directory
+    // first, then the user-supplied firmware modules directory from config.
+    {
+        const std::string game_dir =
+            std::filesystem::path(target_path).parent_path().string();
+        Kernel::ConfigureModuleResolver(game_dir, cfg.loader.firmware_modules_dir);
+    }
 
     // 2. Load the main ELF/SELF module
     Loader::LoadedModule main_module;

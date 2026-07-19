@@ -1,6 +1,7 @@
 #pragma once
 #include "../common/types.h"
 #include "../loader/elf.h"
+#include "../loader/module_resolver.h"
 #include "tls.h"
 #include <string>
 #include <vector>
@@ -20,6 +21,17 @@ namespace Kernel {
 
     bool Initialize();
     void Shutdown();
+
+    // Configure PRX module resolution.  `game_dir` is the directory of the
+    // main module (its `sce_module/` sub-directory is searched first);
+    // `firmware_modules_dir` (may be empty) holds user-supplied firmware
+    // PRX/SPRX dumps and is searched second.  Modules that resolve to no
+    // file continue to be served by HLE.
+    void ConfigureModuleResolver(const std::string& game_dir,
+                                 const std::string& firmware_modules_dir);
+
+    // The process-wide module resolver (used by the HLE module-load path).
+    Loader::ModuleResolver& GetModuleResolver();
 
     // Load and link a module (main executable or dynamic library)
     bool LoadModule(const std::string& filepath, Loader::LoadedModule& out_module);

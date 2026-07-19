@@ -129,7 +129,7 @@ int main() {
     TestNameLookup("pZ9WXcClPO8", "sceKernelMapDirectMemory");
     TestNameLookup("byV+FWlAnB4", "sceKernelMapFlexibleMemory");
     TestNameLookup("9ByRMdo7ywg", "sceKernelAllocateFlexibleMemory");
-    TestNameLookup("+P6FRGH4LfA", "sceAgcInit");
+    TestNameLookup("+P6FRGH4LfA", "memmove");
     TestNameLookup("1kZFcktOm+s", "sceAgcDriverInitialize");
 
     // 5. Unknown NID: round-trip still works, lookup misses.

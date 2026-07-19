@@ -9,3 +9,4 @@ PCSX5 is an experimental PlayStation 5 emulator for Windows: a C++20 core (MSVC)
 - [Adding syscalls](adding-syscalls.md) — kernel syscall table, handler signatures, numbering.
 - [Debugging](debugging.md) — crash handling, logging, reports, import trace.
 - [Compatibility](compatibility.md) — compat database statuses, JSON schema, `pcsx5_compat` CLI.
+- [Retail SELF decryption](self-decryption.md) — why retail SELFs are rejected, plugin point, key/legal model.

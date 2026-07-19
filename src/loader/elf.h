@@ -114,6 +114,10 @@ namespace Loader {
     // 0xFE10 is used by retail game executables (the inner ELF extracted
     // from a SELF).  We accept it the same way as the other PS5 types.
     constexpr u16 ET_PS5_GAME_EXEC           = 0xFE10;
+    // 0xFE18 is used by PS5 PRX/SPRX shared modules (the *.prx files under
+    // sce_module/).  Like the other module types it is a PIE-style dynamic
+    // image with a load base of 0.
+    constexpr u16 ET_PS5_PRX_MODULE          = 0xFE18;
 
     // True if `e_type` is one of the PS5 SDK module types we accept.
     inline bool IsPs5ModuleType(u16 e_type) {
@@ -123,6 +127,7 @@ namespace Loader {
             case ET_PS5_RELOCATABLE_EXEC:
             case ET_PS5_STUB_LIBRARY:
             case ET_PS5_GAME_EXEC:
+            case ET_PS5_PRX_MODULE:
                 return true;
             default:
                 return false;

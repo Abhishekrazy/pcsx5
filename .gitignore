@@ -73,3 +73,14 @@ PCSX5.af
 
 dist/
 issues.txt
+
+# .NET build artifacts (accidentally committed earlier)
+src/ui_csharp/obj/
+src/ui_csharp/bin/
+
+# Reference-only clone of sharpemu, not part of the repo
+sharpemu_clone/
+
+# Local build/test helper scripts
+build_phase1.bat
+test_phase1.bat

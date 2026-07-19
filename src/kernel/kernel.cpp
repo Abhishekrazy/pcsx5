@@ -5,13 +5,17 @@
 #include "thread.h"
 #include "../memory/memory.h"
 #include "../hle/hle.h"
+#include "../loader/module_graph.h"
 #include "../common/log.h"
 #include "../gpu/gpu.h"
 #include <windows.h>
 #include <iostream>
 #include <cstring>
+#include <filesystem>
 #include <unordered_map>
+#include <memory>
 #include <mutex>
+#include <set>
 #include <vector>
 #include <string>
 
@@ -37,6 +41,57 @@ namespace Kernel {
     static LPTOP_LEVEL_EXCEPTION_FILTER g_prev_exception_filter = nullptr;
     static GuestTlsContext g_guest_tls;
     static std::vector<Loader::MappedSegment> g_guest_segments;
+    static Loader::ModuleResolver g_module_resolver;
+
+    // ------------------------------------------------------------------
+    // PRX module auto-load state
+    //
+    // When a loaded module declares DT_NEEDED libraries that the resolver
+    // maps to real PRX/SPRX files on disk, those are loaded recursively
+    // (dependency-first) and kept here so their exports can satisfy imports
+    // of other modules before the HLE fallback is consulted.
+    // ------------------------------------------------------------------
+    struct PrxModuleRecord {
+        std::string graph_name;   // DT_NEEDED name this module was requested as
+        std::filesystem::path path;
+        Loader::LoadedModule module;
+        bool linked = false;
+    };
+
+    // Registry of already-loaded PRX modules, keyed by normalized file path
+    // (dedupe).  g_prx_loading holds the keys currently being loaded and
+    // breaks dependency cycles during the recursive walk.
+    static std::unordered_map<std::string, std::unique_ptr<PrxModuleRecord>> g_prx_modules;
+    static std::set<std::string> g_prx_loading;
+    static Loader::ModuleGraph g_module_graph;
+    constexpr u32 kMaxPrxLoadDepth = 32;
+
+    static std::string NormalizePrxPath(const std::filesystem::path& path) {
+        std::string key = std::filesystem::absolute(path).lexically_normal().string();
+        for (auto& ch : key) ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
+        return key;
+    }
+
+    void ConfigureModuleResolver(const std::string& game_dir,
+                                 const std::string& firmware_modules_dir) {
+        std::vector<std::filesystem::path> dirs;
+        // Game-bundled modules (<gamedir>/sce_module/) take precedence over
+        // user-supplied firmware modules.
+        if (!game_dir.empty()) {
+            dirs.emplace_back(std::filesystem::path(game_dir) / "sce_module");
+        }
+        if (!firmware_modules_dir.empty()) {
+            dirs.emplace_back(firmware_modules_dir);
+        }
+        g_module_resolver.SetSearchDirectories(std::move(dirs));
+        for (const auto& dir : g_module_resolver.SearchDirectories()) {
+            LOG_INFO(Kernel, "PRX module search dir: %s", dir.string().c_str());
+        }
+    }
+
+    Loader::ModuleResolver& GetModuleResolver() {
+        return g_module_resolver;
+    }
 
     // Forward declarations
     static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info);
@@ -169,11 +224,32 @@ namespace Kernel {
         LOG_INFO(Kernel, "Patched %llu syscall instructions in executable segments.", patched_count);
     }
 
+    // Look up an import name in the export tables of already-loaded PRX
+    // modules.  Returns 0 when no loaded PRX exports the symbol.
+    static guest_addr_t FindLoadedPrxExport(const std::string& sym_name) {
+        for (const auto& [key, record] : g_prx_modules) {
+            const auto& module = record->module;
+            for (const auto& sym : module.symbols) {
+                if (sym.st_shndx == 0 || sym.st_value == 0) continue; // not an export
+                const char* name = &module.string_table[sym.st_name];
+                if (name && sym_name == name) {
+                    return module.base_address + sym.st_value;
+                }
+            }
+        }
+        return 0;
+    }
+
     static bool LinkModule(Loader::LoadedModule& module) {
         LOG_INFO(Kernel, "Linking module %s at base address 0x%llx...", module.name.c_str(), module.base_address);
 
         auto resolve_external = [&](const std::string& sym_name) -> guest_addr_t {
-            guest_addr_t addr = HLE::ResolveAny(sym_name);
+            // Prefer real exports from loaded PRX modules; fall back to HLE.
+            guest_addr_t addr = FindLoadedPrxExport(sym_name);
+            if (addr != 0) {
+                return addr;
+            }
+            addr = HLE::ResolveAny(sym_name);
             if (addr == 0) {
                 LOG_WARN(Kernel, "Unresolved external symbol: %s", sym_name.c_str());
                 if (HLE::IsStrictImportMode()) {
@@ -259,10 +335,111 @@ namespace Kernel {
         return 0;
     }
 
+    // Recursively map every needed library of `module` that the resolver
+    // maps to an on-disk PRX/SPRX file.  Modules are only mapped here (not
+    // linked); linking happens in graph order via LinkLoadedPrxModules.
+    // Failures never abort the boot: an unloadable PRX is skipped with a
+    // warning and its imports keep being served by HLE.
+    static void LoadNeededPrxModules(Loader::LoadedModule& module, u32 depth) {
+        if (module.needed_libraries.empty()) return;
+        if (depth > kMaxPrxLoadDepth) {
+            LOG_WARN(Kernel, "PRX auto-load depth cap (%u) reached at module '%s'; remaining dependencies fall back to HLE",
+                     kMaxPrxLoadDepth, module.name.c_str());
+            return;
+        }
+
+        for (const auto& res : g_module_resolver.ResolveNeededLibraries(module)) {
+            if (!res.resolved) {
+                LOG_INFO(Kernel, "Needed module '%s' not found on disk; falling back to HLE",
+                         res.name.c_str());
+                continue;
+            }
+
+            const std::string key = NormalizePrxPath(res.path);
+            if (g_prx_modules.count(key)) {
+                continue; // already loaded (dedupe)
+            }
+            if (g_prx_loading.count(key)) {
+                LOG_WARN(Kernel, "Dependency cycle while loading '%s' (requested by '%s'); skipping recursive load",
+                         res.name.c_str(), module.name.c_str());
+                continue;
+            }
+
+            g_prx_loading.insert(key);
+            auto record = std::make_unique<PrxModuleRecord>();
+            record->graph_name = res.name;
+            record->path = res.path;
+
+            if (!Loader::Load(res.path.string(), record->module)) {
+                LOG_WARN(Kernel, "Failed to load resolved PRX '%s' for module '%s'; falling back to HLE",
+                         res.path.string().c_str(), module.name.c_str());
+                g_prx_loading.erase(key);
+                continue;
+            }
+
+            LOG_INFO(Kernel, "Auto-loaded PRX '%s' as '%s' at guest base 0x%llx",
+                     res.name.c_str(), record->path.string().c_str(), record->module.base_address);
+
+            // Record the dependency edge before recursing so the graph
+            // reflects the load that is actually attempted.
+            g_module_graph.AddModule(res.name, record->module.needed_libraries);
+            auto* record_ptr = record.get();
+            g_prx_modules.emplace(key, std::move(record));
+
+            LoadNeededPrxModules(record_ptr->module, depth + 1);
+            g_prx_loading.erase(key);
+        }
+    }
+
+    // Link every mapped PRX module in dependency-first order as computed by
+    // the module graph, then patch syscalls and apply final protections.
+    static void LinkLoadedPrxModules() {
+        Loader::ModuleGraph::CycleReport report;
+        const auto order = g_module_graph.ResolveLoadOrder(&report);
+
+        for (const auto& cycle : report.cycles) {
+            std::string members;
+            for (const auto& name : cycle) {
+                if (!members.empty()) members += ", ";
+                members += name;
+            }
+            LOG_WARN(Kernel, "Module dependency cycle: %s (broken deterministically)", members.c_str());
+        }
+        for (const auto& missing : report.missing) {
+            LOG_INFO(Kernel, "Module dependency '%s' has no loadable module; served by HLE", missing.c_str());
+        }
+
+        // Link in graph order: dependencies before dependents.
+        for (const auto& name : order) {
+            for (const auto& [key, record] : g_prx_modules) {
+                if (record->graph_name != name || record->linked) continue;
+
+                if (!LinkModule(record->module)) {
+                    LOG_WARN(Kernel, "Failed to link PRX module '%s'; its imports stay unresolved",
+                             record->module.name.c_str());
+                }
+                PatchSyscalls(record->module.segments);
+                for (const auto& seg : record->module.segments) {
+                    if (Memory::Protect(seg.address, seg.size, seg.final_protection) != Memory::Status::Ok) {
+                        LOG_WARN(Kernel, "Failed to set final protection for PRX segment at 0x%llx", seg.address);
+                    }
+                }
+                record->linked = true;
+            }
+        }
+    }
+
     bool LoadModule(const std::string& filepath, Loader::LoadedModule& out_module) {
         if (!Loader::Load(filepath, out_module)) {
             return false;
         }
+
+        // Auto-load needed libraries that resolve to on-disk PRX files
+        // (dependency-first) BEFORE linking this module, so imports that a
+        // real PRX exports resolve against it instead of the HLE fallback.
+        g_module_graph.AddModule(out_module.name, out_module.needed_libraries);
+        LoadNeededPrxModules(out_module, 1);
+        LinkLoadedPrxModules();
 
         // Link relocations (apply RELA and PLT patches)
         if (!LinkModule(out_module)) {

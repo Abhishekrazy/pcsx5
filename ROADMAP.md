@@ -37,18 +37,20 @@ Legend: ✅ working · 🟡 partial · 🔴 not started
 - [x] CI workflow (GitHub Actions): build with MSVC + run full CTest suite on PRs.
 - [x] Define compatibility status taxonomy (Nothing / Boot / Intro / Menus / Ingame / Playable) matching the tracker repo labels.
 
-## Phase 1 — Loader & Module System
+## Phase 1 — Loader & Module System ✅ (complete)
 
 *Goal: load anything a dumped game actually contains, not just prepared fPKG ELFs.*
 
-- [ ] PKG container extraction (Prospero PKG format; entry table, keys for fake-signed packages).
-- [ ] PFS image parsing/mounting (read-only first) — games ship as PFS inside PKG.
-- [ ] `param.sfo` parser (title id, version, category) feeding the compat DB and UI.
-- [ ] PRX module loading from disk: support loading `libSce*.prx`/`*.sprx` firmware modules the user supplies (shadPS4 model — modules dumped from an exploited console).
-- [ ] Expand NID → name database: scrape/generate from module exports; ship as data file under `assets/`.
-- [ ] Module dependency graph + load-order resolution in `src/loader/`.
-- [ ] Retail SELF decryption — **blocked/out of scope** until console key dumps are user-supplied; document the requirement and the plugin point (`ExtractInnerElf` in `src/loader/elf.cpp`).
-- [ ] Tests: corpus of real (fake-signed) PKG/PFS fixtures in `tests/loader_corpus.cpp`.
+**Status (2026-07-19): complete — full build green, 24/24 CTest passing.** Recursive PRX auto-load and ModuleGraph→Kernel wiring landed (see items below); NID DB seeded. One follow-up carried forward (marked "carried"): real PKG/PFS fixtures.
+
+- [x] PKG container extraction (Prospero PKG format; entry table, keys for fake-signed packages) — `src/loader/pkg.h/.cpp`; fPKG entry decryption via scene passcode; retail NPDRM detected and skipped. CLI: `pcsx5 --extract-pkg <file.pkg> <outdir>`.
+- [x] PFS image parsing/mounting (read-only first) — games ship as PFS inside PKG. Parsing + extraction done (`src/loader/pfs.h/.cpp`); no guest-visible mount yet.
+- [x] `param.json` parser (title id, version, category) feeding the compat DB and UI — PS5 ships `sce_sys/param.json`, not param.sfo; parser in `src/loader/param_json.h/.cpp`. (PS4-format `param.sfo` entries inside PKGs are only extracted raw by name-mapping; no SFO parser.)
+- [x] PRX module loading from disk — recursive auto-load done in `src/kernel/kernel.cpp`: DT_NEEDED entries that resolve to on-disk PRX/SPRX files (via `ModuleResolver`) are mapped dependency-first (dedupe registry, cycle guard, depth cap 32) and linked against real exports; per-module failures fall back to HLE without aborting boot. PIE base relocation in `src/loader/elf.cpp` lets multiple modules coexist in the guest window.
+- [x] Expand NID → name database — seeded `assets/nid_db.txt` with 706 verified entries (714 total) extracted from SharpEmu's `SysAbiExport` attributes (`sharpemu_clone/src/SharpEmu.Libs/**`), each validated via the PS5 name→NID hash; 8 known-bad mislabeled pairs excluded.
+- [x] Module dependency graph + load-order resolution — `ModuleGraph` (`src/loader/module_graph.h/.cpp`) wired into the Kernel load flow: edges recorded during PRX discovery drive the dependency-first link order; cycles and HLE-served missing deps are logged via `CycleReport`.
+- [x] Retail SELF decryption — **blocked/out of scope** until console key dumps are user-supplied; requirement and plugin point (`ExtractInnerElf` in `src/loader/elf.cpp`) documented in `wiki/self-decryption.md`.
+- [ ] Tests: corpus of real (fake-signed) PKG/PFS fixtures (carried — synthetic fixture builders exist in `tests/pkg_tests.cpp` and `tests/pfs_tests.cpp`; real dumped fixtures not yet used).
 
 ## Phase 2 — Kernel Maturity
 

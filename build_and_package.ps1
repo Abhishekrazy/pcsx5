@@ -72,8 +72,19 @@ if (-not $SkipBuild) {
 # Verify build outputs exist
 $basePath = Join-Path $buildDir $BuildConfig
 
+# Ninja builds place pcsx5.exe under build\bin (RUNTIME_OUTPUT_DIRECTORY in
+# CMakeLists.txt), while VS-generator builds use build\<Config>.  Prefer the
+# freshest copy so -SkipBuild never packages a stale exe.
+$pcsx5Exe = Join-Path $basePath "pcsx5.exe"
+$pcsx5ExeBin = Join-Path (Join-Path $buildDir "bin") "pcsx5.exe"
+if ((Test-Path $pcsx5ExeBin) -and
+    (-not (Test-Path $pcsx5Exe) -or
+     (Get-Item $pcsx5ExeBin).LastWriteTime -gt (Get-Item $pcsx5Exe).LastWriteTime)) {
+    $pcsx5Exe = $pcsx5ExeBin
+}
+
 # Create required files array using individual variables to avoid Join-Path array parsing issue
-$f1 = Join-Path $basePath "pcsx5.exe"
+$f1 = $pcsx5Exe
 $f2 = Join-Path $basePath "pcsx5_ui.exe"
 $f3 = Join-Path $basePath "pcsx5_ui.dll"
 $f4 = Join-Path $basePath "pcsx5_ui.deps.json"
@@ -107,7 +118,7 @@ New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 # Copy main executables and DLLs
 Write-Log "Copying executables and DLLs..."
 $filesToCopy = @(
-    @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5.exe"; Dest = Join-Path $distDir "pcsx5.exe" },
+    @{ Source = $pcsx5Exe; Dest = Join-Path $distDir "pcsx5.exe" },
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.exe"; Dest = Join-Path $distDir "pcsx5_ui.exe" },
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.dll"; Dest = Join-Path $distDir "pcsx5_ui.dll" },
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.deps.json"; Dest = Join-Path $distDir "pcsx5_ui.deps.json" },

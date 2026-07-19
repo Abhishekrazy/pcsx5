@@ -1,6 +1,9 @@
 #include "nid.h"
+#include "log.h"
 #include <array>
 #include <cstring>
+#include <fstream>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -166,6 +169,11 @@ std::optional<ParsedNid> ParseNidString(std::string_view s) noexcept {
 //
 // Each NID is the 11-char Sony base64 form (8 raw bytes, last 2 bits
 // of the encoded form are padding and don't participate in matching).
+//
+// At runtime the table is merged with any entries loaded from a NID
+// database file (see LoadNidDatabase in nid.h); file entries win on
+// collision.  Lookups go through GetNidNameMap(), which is seeded from
+// this table exactly once.
 // ---------------------------------------------------------------------------
 struct NidNameEntry {
     std::string_view nid11;     // 11-char Sony base64 (e.g. "OG+IMOu1KKM")
@@ -181,20 +189,113 @@ constexpr std::array<NidNameEntry, 8> kKnownNidNames = {{
     {"1kZFcktOm+s", "sceAgcDriverInitialize"},
     {"-L+-8F0+gBc", "sceAgcDriverUninitialize"},
     {"2sWzhYqFH4E", "sceAgcRegisterConfiguration"},
-    {"+P6FRGH4LfA", "sceAgcInit"},
     {"-VVn74ZyhEs", "sceAgcRegisterDisplay"},
+    // ---- libc --------------------------------------------------------
+    // NOTE: +P6FRGH4LfA hashes from "memmove" (verified via the PS5
+    // name->NID SHA1 scheme); an earlier revision mislabeled it sceAgcInit.
+    {"+P6FRGH4LfA", "memmove"},
 }};
 
-// Public lookup function.  Iterates the small table; this is O(N) but
-// the table is < 100 entries so it's fine.
+namespace {
+
+using NidNameMap = std::unordered_map<std::string, std::string>;
+
+std::mutex& GetNidNameMutex() {
+    static std::mutex m;
+    return m;
+}
+
+// The merged NID -> name map.  Lazily seeded from kKnownNidNames on
+// first access; LoadNidDatabase() inserts file entries afterwards.
+NidNameMap& GetNidNameMap() {
+    static NidNameMap map = []() {
+        NidNameMap m;
+        m.reserve(kKnownNidNames.size() * 2);
+        for (const auto& e : kKnownNidNames) {
+            m.emplace(e.nid11, e.name);
+        }
+        return m;
+    }();
+    return map;
+}
+
+// Split out the NID from a DB field that is either the bare 11-char
+// base64 form or the tagged "NID#T#T" form.  Returns the 11-char base64
+// key on success.
+std::optional<std::string> ParseDbNidField(std::string_view field) {
+    if (field.size() == kPs5NidEncodedLen) {
+        if (DecodeNid(field)) return std::string(field);
+        return std::nullopt;
+    }
+    auto parsed = ParseNidString(field);
+    if (!parsed) return std::nullopt;
+    return EncodeNid(parsed->nid);
+}
+
+}  // namespace
+
+// Public lookup function.  O(1) hash lookup over the merged map.
 std::optional<std::string_view> LookupNidName(const Ps5Nid& nid) noexcept {
     std::string encoded = EncodeNid(nid);
-    for (const auto& e : kKnownNidNames) {
-        if (e.nid11 == encoded) {
-            return e.name;
-        }
+    std::lock_guard<std::mutex> lock(GetNidNameMutex());
+    const auto& map = GetNidNameMap();
+    auto it = map.find(encoded);
+    if (it != map.end()) {
+        return it->second;
     }
     return std::nullopt;
+}
+
+bool LoadNidDatabase(const std::filesystem::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        LOG_WARN(Loader, "LoadNidDatabase: cannot open '%s'", file.string().c_str());
+        return false;
+    }
+
+    size_t added = 0;
+    size_t skipped = 0;
+    std::string line;
+    size_t line_no = 0;
+    while (std::getline(in, line)) {
+        ++line_no;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+
+        // Skip blank lines and comments.
+        const size_t first = line.find_first_not_of(" \t");
+        if (first == std::string::npos || line[first] == '#') continue;
+
+        // Expect: NID<TAB>module<TAB>name
+        const size_t tab1 = line.find('\t', first);
+        const size_t tab2 = (tab1 == std::string::npos)
+                                ? std::string::npos
+                                : line.find('\t', tab1 + 1);
+        if (tab1 == std::string::npos || tab2 == std::string::npos || tab2 + 1 >= line.size()) {
+            LOG_WARN(Loader, "LoadNidDatabase: skipping malformed line %zu", line_no);
+            ++skipped;
+            continue;
+        }
+
+        auto key = ParseDbNidField(std::string_view(line).substr(first, tab1 - first));
+        if (!key) {
+            LOG_WARN(Loader, "LoadNidDatabase: skipping line %zu (invalid NID)", line_no);
+            ++skipped;
+            continue;
+        }
+
+        std::string name = line.substr(tab2 + 1);
+        // Trim trailing whitespace from the name.
+        const size_t last = name.find_last_not_of(" \t");
+        if (last != std::string::npos) name.resize(last + 1);
+
+        std::lock_guard<std::mutex> lock(GetNidNameMutex());
+        GetNidNameMap().insert_or_assign(std::move(*key), std::move(name));
+        ++added;
+    }
+
+    LOG_INFO(Loader, "LoadNidDatabase: loaded %zu entries from '%s' (%zu skipped)",
+             added, file.string().c_str(), skipped);
+    return true;
 }
 
 bool IsKnownNid(std::string_view nid_with_suffix) noexcept {

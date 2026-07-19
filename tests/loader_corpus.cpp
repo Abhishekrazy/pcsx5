@@ -404,16 +404,18 @@ void TestDynamic() {
     std::memcpy(payload.data() + dyn_off, dyn, sizeof(dyn));
 
     ElfBuilder b(/*type=*/2 /*ET_EXEC*/, /*entry=*/TEXT_VADDR);
-    auto& load_ph = b.AddPhdr(Loader::PT_LOAD, 6 /*PF_R|PF_W*/,
-                              TEXT_VADDR, payload_size, 0x200000);
-    auto& dyn_ph  = b.AddPhdr(Loader::PT_DYNAMIC, 6 /*PF_R|PF_W*/,
-                              dyn_vaddr, sizeof(dyn), 8);
-    b.AddData(load_ph, payload.data(), payload.size());
+    // NOTE: AddPhdr returns a reference into a std::vector — the next AddPhdr
+    // may reallocate and dangle it.  Add both phdrs up front, then patch
+    // through b.phdrs by index instead of holding references.
+    b.AddPhdr(Loader::PT_LOAD, 6 /*PF_R|PF_W*/,
+              TEXT_VADDR, payload_size, 0x200000);
+    b.AddPhdr(Loader::PT_DYNAMIC, 6 /*PF_R|PF_W*/,
+              dyn_vaddr, sizeof(dyn), 8);
+    b.AddData(b.phdrs[0], payload.data(), payload.size());
     // Patch the dynamic phdr so its p_offset points at the dynamic table
-    // inside the file.  AddData pads the phdr table area, then appends our
-    // payload; the dynamic table sits at (load_ph.p_offset + dyn_off).
-    dyn_ph.p_offset = load_ph.p_offset + dyn_off;
-    dyn_ph.p_filesz = sizeof(dyn);
+    // inside the file: (PT_LOAD p_offset + dyn_off).
+    b.phdrs[1].p_offset = b.phdrs[0].p_offset + dyn_off;
+    b.phdrs[1].p_filesz = sizeof(dyn);
     b.Finalize();
 
     auto path = b.Write(kCorpusDir(), "with_dynamic.elf");
