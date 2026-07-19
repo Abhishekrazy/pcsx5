@@ -76,6 +76,40 @@ struct VkFunctions {
     PFN_vkWaitForFences                 WaitForFences = nullptr;
     PFN_vkResetFences                   ResetFences = nullptr;
     PFN_vkQueueSubmit                   QueueSubmit = nullptr;
+
+    // Device-level (Phase 5 M3: draw executor).
+    PFN_vkCreateShaderModule            CreateShaderModule = nullptr;
+    PFN_vkDestroyShaderModule           DestroyShaderModule = nullptr;
+    PFN_vkCreateGraphicsPipelines       CreateGraphicsPipelines = nullptr;
+    PFN_vkDestroyPipeline               DestroyPipeline = nullptr;
+    PFN_vkCreatePipelineLayout          CreatePipelineLayout = nullptr;
+    PFN_vkDestroyPipelineLayout         DestroyPipelineLayout = nullptr;
+    PFN_vkCreateDescriptorSetLayout     CreateDescriptorSetLayout = nullptr;
+    PFN_vkDestroyDescriptorSetLayout    DestroyDescriptorSetLayout = nullptr;
+    PFN_vkCreateDescriptorPool          CreateDescriptorPool = nullptr;
+    PFN_vkDestroyDescriptorPool         DestroyDescriptorPool = nullptr;
+    PFN_vkAllocateDescriptorSets        AllocateDescriptorSets = nullptr;
+    PFN_vkFreeDescriptorSets            FreeDescriptorSets = nullptr;
+    PFN_vkUpdateDescriptorSets          UpdateDescriptorSets = nullptr;
+    PFN_vkCreateSampler                 CreateSampler = nullptr;
+    PFN_vkDestroySampler                DestroySampler = nullptr;
+    PFN_vkCreateRenderPass              CreateRenderPass = nullptr;
+    PFN_vkDestroyRenderPass             DestroyRenderPass = nullptr;
+    PFN_vkCreateFramebuffer             CreateFramebuffer = nullptr;
+    PFN_vkDestroyFramebuffer            DestroyFramebuffer = nullptr;
+    PFN_vkCmdBeginRenderPass            CmdBeginRenderPass = nullptr;
+    PFN_vkCmdEndRenderPass              CmdEndRenderPass = nullptr;
+    PFN_vkCmdBindPipeline               CmdBindPipeline = nullptr;
+    PFN_vkCmdBindDescriptorSets         CmdBindDescriptorSets = nullptr;
+    PFN_vkCmdBindVertexBuffers          CmdBindVertexBuffers = nullptr;
+    PFN_vkCmdBindIndexBuffer            CmdBindIndexBuffer = nullptr;
+    PFN_vkCmdDraw                       CmdDraw = nullptr;
+    PFN_vkCmdDrawIndexed                CmdDrawIndexed = nullptr;
+    PFN_vkCmdSetViewport                CmdSetViewport = nullptr;
+    PFN_vkCmdSetScissor                 CmdSetScissor = nullptr;
+    PFN_vkCmdSetBlendConstants          CmdSetBlendConstants = nullptr;
+    PFN_vkCmdCopyBuffer                 CmdCopyBuffer = nullptr;
+    PFN_vkCmdCopyImage                  CmdCopyImage = nullptr;
 };
 
 struct VkContext {

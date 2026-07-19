@@ -2,6 +2,7 @@
 // Guided transliteration of SharpEmu's Gen5SpirvTranslator.cs (the non-ALU
 // half).  See gcn_translate.h for the translation-model overview.
 #include "gcn_translate_internal.h"
+#include "gcn_eval.h"
 
 #include <algorithm>
 #include <functional>
@@ -802,14 +803,299 @@ bool SpirvTranslateContext::TryEmitScalarMemory(
 }
 
 // ---------------------------------------------------------------------------
-// Buffer loads (BufferLoadFormat*): M2.2 reads raw dwords from the bound
-// block; guest vertex-format decoding lands with M3 descriptors.
+// Guest buffer-format decode (SharpEmu EmitBufferFormatLoad): the descriptor's
+// unified-format field is read at shader-execution time, so decoding stays
+// fully dynamic — a module-level lookup table maps it to (data, number).
+// ---------------------------------------------------------------------------
+void SpirvTranslateContext::DeclareBufferFormatTable() {
+    if (buffer_format_table_ != 0) {
+        return;
+    }
+    constexpr u32 kFormatCount = 128;
+    const u32 table_type = module_.TypeArray(uint_type_, kFormatCount);
+    std::vector<u32> entries(kFormatCount);
+    for (u32 format = 0; format < kFormatCount; ++format) {
+        u32 data_format = 0;
+        u32 number_format = 0;
+        GcnTryDecodeUnifiedFormat(format, data_format, number_format);
+        entries[format] = module_.Constant(uint_type_, data_format | (number_format << 8));
+    }
+    const u32 table_pointer =
+        module_.TypePointer(SpirvStorageClass::Private, table_type);
+    buffer_format_table_ = module_.AddGlobalVariable(
+        table_pointer, SpirvStorageClass::Private,
+        module_.ConstantComposite(table_type, entries));
+    module_.AddName(buffer_format_table_, "gfx10BufferFormats");
+    interfaces_.push_back(buffer_format_table_);
+}
+
+u32 SpirvTranslateContext::DecodeGfx10BufferFormat(u32 unified_format,
+                                                   u32& number_format_out) {
+    DeclareBufferFormatTable();
+    const u32 entry_pointer = module_.AddInstruction(
+        SpirvOp::AccessChain, private_uint_pointer_,
+        {buffer_format_table_, unified_format});
+    const u32 entry = Load(uint_type_, entry_pointer);
+    number_format_out = ShiftRightLogical(entry, UInt(8));
+    number_format_out = BitwiseAnd(number_format_out, UInt(0xFF));
+    return BitwiseAnd(entry, UInt(0xFF));
+}
+
+u32 SpirvTranslateContext::SelectUInt(u32 selector, u32 expected,
+                                      u32 when_true, u32 when_false) {
+    return module_.AddInstruction(
+        SpirvOp::Select, uint_type_,
+        {module_.AddInstruction(SpirvOp::IEqual, bool_type_, {selector, UInt(expected)}),
+         when_true, when_false});
+}
+
+u32 SpirvTranslateContext::Gfx10FormatOne(u32 number_format) {
+    const u32 is_uint =
+        module_.AddInstruction(SpirvOp::IEqual, bool_type_, {number_format, UInt(4)});
+    const u32 is_sint =
+        module_.AddInstruction(SpirvOp::IEqual, bool_type_, {number_format, UInt(5)});
+    return module_.AddInstruction(
+        SpirvOp::Select, uint_type_,
+        {module_.AddInstruction(SpirvOp::LogicalOr, bool_type_, {is_uint, is_sint}),
+         UInt(1), UInt(0x3F800000)});
+}
+
+u32 SpirvTranslateContext::LoadUnalignedBufferWord(int binding, u32 byte_address) {
+    u32 result = UInt(0);
+    for (u32 index = 0; index < 4; ++index) {
+        const u32 address = index == 0 ? byte_address : IAdd(byte_address, UInt(index));
+        const u32 dword_address = ShiftRightLogical(address, UInt(2));
+        const u32 bit_offset = ShiftLeftLogical(BitwiseAnd(address, UInt(3)), UInt(3));
+        const u32 value = BitwiseAnd(
+            ShiftRightLogical(LoadBufferWord(binding, dword_address), bit_offset),
+            UInt(0xFF));
+        result = BitwiseOr(result, ShiftLeftLogical(value, UInt(index * 8)));
+    }
+    return result;
+}
+
+u32 SpirvTranslateContext::DecodeUnsignedMiniFloat(u32 raw, u32 bit_count) {
+    const u32 mantissa_bits = module_.AddInstruction(
+        SpirvOp::ISub, uint_type_, {bit_count, UInt(5)});
+    const u32 mantissa_mask = module_.AddInstruction(
+        SpirvOp::ISub, uint_type_, {ShiftLeftLogical(UInt(1), mantissa_bits), UInt(1)});
+    const u32 mantissa = BitwiseAnd(raw, mantissa_mask);
+    const u32 exponent = BitwiseAnd(ShiftRightLogical(raw, mantissa_bits), UInt(0x1F));
+    const u32 mantissa_shift =
+        module_.AddInstruction(SpirvOp::ISub, uint_type_, {UInt(23), mantissa_bits});
+    const u32 normal_bits = BitwiseOr(
+        ShiftLeftLogical(IAdd(exponent, UInt(112)), UInt(23)),
+        ShiftLeftLogical(mantissa, mantissa_shift));
+    const float inv = 1.0f / 524288.0f; // 2^-19 (10-bit UFLOAT; 11-bit uses 2^-20)
+    const u32 subnormal = Bitcast(
+        uint_type_,
+        module_.AddInstruction(
+            SpirvOp::FMul, float_type_,
+            {module_.AddInstruction(SpirvOp::ConvertUToF, float_type_, {mantissa}),
+             module_.AddInstruction(
+                 SpirvOp::Select, float_type_,
+                 {module_.AddInstruction(
+                      SpirvOp::IEqual, bool_type_, {mantissa_bits, UInt(6)}),
+                  Float(1.0f / 1048576.0f), Float(inv)})}));
+    const u32 special =
+        BitwiseOr(UInt(0x7F800000u), ShiftLeftLogical(mantissa, mantissa_shift));
+    const u32 result = module_.AddInstruction(
+        SpirvOp::Select, uint_type_,
+        {module_.AddInstruction(SpirvOp::IEqual, bool_type_, {exponent, UInt(0)}),
+         subnormal, normal_bits});
+    return module_.AddInstruction(
+        SpirvOp::Select, uint_type_,
+        {module_.AddInstruction(SpirvOp::IEqual, bool_type_, {exponent, UInt(31)}),
+         special, result});
+}
+
+u32 SpirvTranslateContext::ConvertGfx10BufferComponent(
+    u32 raw, u32 bit_count, u32 number_format, u32 data_format) {
+    const u32 width_is_32 =
+        module_.AddInstruction(SpirvOp::IEqual, bool_type_, {bit_count, UInt(32)});
+    u32 low_mask = module_.AddInstruction(
+        SpirvOp::ISub, uint_type_, {ShiftLeftLogical(UInt(1), bit_count), UInt(1)});
+    low_mask = module_.AddInstruction(
+        SpirvOp::Select, uint_type_, {width_is_32, UInt(0xFFFFFFFFu), low_mask});
+
+    const u32 signed_raw = module_.AddInstruction(
+        SpirvOp::BitFieldSExtract, int_type_,
+        {Bitcast(int_type_, raw), UInt(0), bit_count});
+    const u32 signed_bits = Bitcast(uint_type_, signed_raw);
+    const u32 unsigned_float =
+        module_.AddInstruction(SpirvOp::ConvertUToF, float_type_, {raw});
+    const u32 signed_float =
+        module_.AddInstruction(SpirvOp::ConvertSToF, float_type_, {signed_raw});
+
+    const u32 unorm = Bitcast(
+        uint_type_,
+        module_.AddInstruction(
+            SpirvOp::FDiv, float_type_,
+            {unsigned_float,
+             module_.AddInstruction(SpirvOp::ConvertUToF, float_type_, {low_mask})}));
+    const u32 signed_maximum = ShiftRightLogical(low_mask, UInt(1));
+    u32 snorm_float = module_.AddInstruction(
+        SpirvOp::FDiv, float_type_,
+        {signed_float,
+         module_.AddInstruction(SpirvOp::ConvertUToF, float_type_, {signed_maximum})});
+    snorm_float = module_.AddInstruction(
+        SpirvOp::Select, float_type_,
+        {module_.AddInstruction(
+             SpirvOp::FOrdLessThan, bool_type_, {snorm_float, Float(-1.f)}),
+         Float(-1.f), snorm_float});
+    const u32 snorm = Bitcast(uint_type_, snorm_float);
+    const u32 uscaled = Bitcast(uint_type_, unsigned_float);
+    const u32 sscaled = Bitcast(uint_type_, signed_float);
+
+    const u32 unpacked_half = Ext(
+        GlslExt::UnpackHalf2x16, vec2_type_, {BitwiseAnd(raw, UInt(0xFFFF))});
+    const u32 half = Bitcast(
+        uint_type_,
+        module_.AddInstruction(SpirvOp::CompositeExtract, float_type_, {unpacked_half, 0}));
+    u32 floating = module_.AddInstruction(
+        SpirvOp::Select, uint_type_,
+        {module_.AddInstruction(SpirvOp::IEqual, bool_type_, {bit_count, UInt(16)}),
+         half, raw});
+
+    // 10_11_11 / 11_11_10 use unsigned mini-floats under NUM_FORMAT FLOAT.
+    const u32 is_packed_float = module_.AddInstruction(
+        SpirvOp::LogicalOr, bool_type_,
+        {module_.AddInstruction(SpirvOp::IEqual, bool_type_, {data_format, UInt(6)}),
+         module_.AddInstruction(SpirvOp::IEqual, bool_type_, {data_format, UInt(7)})});
+    floating = module_.AddInstruction(
+        SpirvOp::Select, uint_type_,
+        {is_packed_float, DecodeUnsignedMiniFloat(raw, bit_count), floating});
+
+    u32 result = raw;
+    result = SelectUInt(number_format, 0, unorm, result);
+    result = SelectUInt(number_format, 1, snorm, result);
+    result = SelectUInt(number_format, 2, uscaled, result);
+    result = SelectUInt(number_format, 3, sscaled, result);
+    result = SelectUInt(number_format, 4, raw, result);
+    result = SelectUInt(number_format, 5, signed_bits, result);
+    result = SelectUInt(number_format, 7, floating, result);
+    return result;
+}
+
+u32 SpirvTranslateContext::LoadGfx10BufferFormatComponent(
+    int binding, u32 element_address, u32 data_format, u32 number_format,
+    u32 component) {
+    u32 byte_offset = UInt(0);
+    u32 bit_offset = UInt(0);
+    u32 bit_count = UInt(0);
+
+    auto set_layout = [&](u32 format, u32 bytes, u32 bits, u32 count) {
+        const u32 matches =
+            module_.AddInstruction(SpirvOp::IEqual, bool_type_, {data_format, UInt(format)});
+        byte_offset = module_.AddInstruction(
+            SpirvOp::Select, uint_type_, {matches, UInt(bytes), byte_offset});
+        bit_offset = module_.AddInstruction(
+            SpirvOp::Select, uint_type_, {matches, UInt(bits), bit_offset});
+        bit_count = module_.AddInstruction(
+            SpirvOp::Select, uint_type_, {matches, UInt(count), bit_count});
+    };
+
+    // Legacy DATA_FORMAT layouts (SharpEmu table; packed formats keep their
+    // bit offset in the first dword).
+    switch (component) {
+        case 0:
+            set_layout(1, 0, 0, 8);   // 8
+            set_layout(2, 0, 0, 16);  // 16
+            set_layout(3, 0, 0, 8);   // 8_8
+            set_layout(4, 0, 0, 32);  // 32
+            set_layout(5, 0, 0, 16);  // 16_16
+            set_layout(6, 0, 0, 10);  // 10_11_11
+            set_layout(7, 0, 0, 11);  // 11_11_10
+            set_layout(8, 0, 0, 10);  // 10_10_10_2
+            set_layout(9, 0, 0, 2);   // 2_10_10_10
+            set_layout(10, 0, 0, 8);  // 8_8_8_8
+            set_layout(11, 0, 0, 32); // 32_32
+            set_layout(12, 0, 0, 16); // 16_16_16_16
+            set_layout(13, 0, 0, 32); // 32_32_32
+            set_layout(14, 0, 0, 32); // 32_32_32_32
+            break;
+        case 1:
+            set_layout(3, 1, 0, 8);
+            set_layout(5, 2, 0, 16);
+            set_layout(6, 0, 10, 11);
+            set_layout(7, 0, 11, 11);
+            set_layout(8, 0, 10, 10);
+            set_layout(9, 0, 2, 10);
+            set_layout(10, 1, 0, 8);
+            set_layout(11, 4, 0, 32);
+            set_layout(12, 2, 0, 16);
+            set_layout(13, 4, 0, 32);
+            set_layout(14, 4, 0, 32);
+            break;
+        case 2:
+            set_layout(6, 0, 21, 11);
+            set_layout(7, 0, 22, 10);
+            set_layout(8, 0, 20, 10);
+            set_layout(9, 0, 12, 10);
+            set_layout(10, 2, 0, 8);
+            set_layout(12, 4, 0, 16);
+            set_layout(13, 8, 0, 32);
+            set_layout(14, 8, 0, 32);
+            break;
+        default:
+            set_layout(8, 0, 30, 2);
+            set_layout(9, 0, 22, 10);
+            set_layout(10, 3, 0, 8);
+            set_layout(12, 6, 0, 16);
+            set_layout(14, 12, 0, 32);
+            break;
+    }
+
+    const u32 packed = LoadUnalignedBufferWord(binding, IAdd(element_address, byte_offset));
+    const u32 raw = module_.AddInstruction(
+        SpirvOp::BitFieldUExtract, uint_type_, {packed, bit_offset, bit_count});
+    const u32 converted =
+        ConvertGfx10BufferComponent(raw, bit_count, number_format, data_format);
+    const u32 valid =
+        module_.AddInstruction(SpirvOp::INotEqual, bool_type_, {bit_count, UInt(0)});
+    return module_.AddInstruction(
+        SpirvOp::Select, uint_type_,
+        {valid, converted,
+         component == 3 ? Gfx10FormatOne(number_format) : UInt(0)});
+}
+
+void SpirvTranslateContext::EmitBufferFormatLoad(
+    int binding, u32 byte_address, u32 scalar_resource, u32 vector_data,
+    u32 component_count) {
+    const u32 descriptor_word3 = LoadS(scalar_resource + 3);
+    const u32 unified_format =
+        BitwiseAnd(ShiftRightLogical(descriptor_word3, UInt(12)), UInt(0x7F));
+    u32 number_format = 0;
+    const u32 data_format = DecodeGfx10BufferFormat(unified_format, number_format);
+
+    u32 canonical[4];
+    for (u32 component = 0; component < 4; ++component) {
+        canonical[component] = LoadGfx10BufferFormatComponent(
+            binding, byte_address, data_format, number_format, component);
+    }
+
+    const u32 one = Gfx10FormatOne(number_format);
+    for (u32 destination = 0; destination < component_count; ++destination) {
+        const u32 selector = BitwiseAnd(
+            ShiftRightLogical(descriptor_word3, UInt(destination * 3)), UInt(7));
+        u32 value = UInt(0);
+        value = SelectUInt(selector, 1, one, value);
+        value = SelectUInt(selector, 4, canonical[0], value);
+        value = SelectUInt(selector, 5, canonical[1], value);
+        value = SelectUInt(selector, 6, canonical[2], value);
+        value = SelectUInt(selector, 7, canonical[3], value);
+        StoreV(vector_data + destination, value);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Buffer loads.  Raw dword loads read u32 words; BufferLoadFormat* decodes
+// components dynamically from the descriptor (SharpEmu TryEmitBufferMemory).
 // ---------------------------------------------------------------------------
 bool SpirvTranslateContext::TryEmitBufferMemory(
     const GcnInstruction& instruction,
     const GcnBufferMemoryControl& control,
     std::string& error) {
-    (void)error; // no failure modes yet (format decode arrives with M3)
     const auto binding_it = buffer_binding_by_pc_.find(instruction.pc);
     if (binding_it == buffer_binding_by_pc_.end()) {
         for (u32 index = 0; index < control.dword_count; ++index) {
@@ -819,10 +1105,39 @@ bool SpirvTranslateContext::TryEmitBufferMemory(
     }
     const int binding = binding_it->second;
 
-    u32 byte_address = control.index_enabled
+    const u32 scalar_offset = instruction.sources.size() > 2
+        ? GetRawSource(instruction, 2)
+        : UInt(0);
+    u32 stride = ShiftRightLogical(LoadS(control.scalar_resource + 1), UInt(16));
+    stride = BitwiseAnd(stride, UInt(0x3FFF));
+    const u32 vector_index = control.index_enabled
         ? LoadV(control.vector_address)
         : UInt(0);
-    byte_address = IAdd(byte_address, UInt(static_cast<u32>(control.offset_bytes)));
+    const u32 vector_offset = control.offset_enabled
+        ? LoadV(control.vector_address + (control.index_enabled ? 1u : 0u))
+        : UInt(0);
+    u32 byte_address = IAdd(UInt(static_cast<u32>(control.offset_bytes)), scalar_offset);
+    byte_address = IAdd(byte_address, vector_offset);
+    byte_address = IAdd(
+        byte_address,
+        module_.AddInstruction(SpirvOp::IMul, uint_type_, {vector_index, stride}));
+
+    if (instruction.opcode.rfind("BufferStore", 0) == 0 ||
+        instruction.opcode.rfind("TBufferStore", 0) == 0 ||
+        instruction.opcode.rfind("BufferAtomic", 0) == 0 ||
+        instruction.opcode.rfind("TBufferAtomic", 0) == 0) {
+        error = "buffer store/atomic opcodes are not supported yet";
+        return false;
+    }
+
+    if (instruction.opcode.rfind("BufferLoadFormat", 0) == 0 ||
+        instruction.opcode.rfind("TBufferLoadFormat", 0) == 0) {
+        EmitBufferFormatLoad(binding, byte_address, control.scalar_resource,
+                             control.vector_data, control.dword_count);
+        return true;
+    }
+
+    // Raw dword loads.
     const u32 base_dword = ShiftRightLogical(byte_address, UInt(2));
     for (u32 index = 0; index < control.dword_count; ++index) {
         const u32 address =
