@@ -19,6 +19,7 @@
 #include "../common/log.h"
 #include "../memory/memory.h"
 #include "../gpu/shader/gcn_decode.h"
+#include "../gpu/shader/gcn_eval.h"
 #include "../gpu/shader/gcn_translate.h"
 #include <windows.h>
 #include <algorithm>
@@ -549,6 +550,7 @@ u64 AgcShadowShaderAddress(const std::unordered_map<u32, u32>& sh,
 
 bool AgcTranslateDrawShader(u64 code_addr, GPU::Shader::GcnSpirvStage stage,
                             u32 ps_input_enable, u32 ps_input_address,
+                            GPU::Shader::GcnProgram& program_out,
                             std::string& error) {
     using namespace GPU::Shader;
     // Read until the pages stop (decoder halts at S_ENDPGM regardless;
@@ -568,17 +570,16 @@ bool AgcTranslateDrawShader(u64 code_addr, GPU::Shader::GcnSpirvStage stage,
         return false;
     }
 
-    GcnProgram program;
-    if (!GcnDecodeProgram(words.data(), words.size(), program, error)) {
+    if (!GcnDecodeProgram(words.data(), words.size(), program_out, error)) {
         return false;
     }
-    GcnTranslateOptions options = GcnTranslateDefaultOptions(program, stage);
+    GcnTranslateOptions options = GcnTranslateDefaultOptions(program_out, stage);
     if (stage == GcnSpirvStage::Pixel) {
         options.pixel_input_enable  = ps_input_enable;
         options.pixel_input_address = ps_input_address;
     }
     GcnSpirvShader shader;
-    if (!GcnTranslateToSpirv(program, options, shader, error)) {
+    if (!GcnTranslateToSpirv(program_out, options, shader, error)) {
         return false;
     }
 
@@ -594,6 +595,85 @@ bool AgcTranslateDrawShader(u64 code_addr, GPU::Shader::GcnSpirvStage stage,
                   static_cast<std::streamsize>(shader.words.size() * sizeof(u32)));
     }
     return true;
+}
+
+// User-data SGPR register banks (AgcExports.cs SelectExportUserDataRegister:
+// NGG prefers the GS bank, then ES, then VS).  RSRC2 is always base-1 and
+// carries the window size in bits[5:1] (+bit27 as 6th bit on PS/VS/GS).
+struct AgcUserDataBank {
+    u32 base;
+    u32 rsrc2;
+};
+
+AgcUserDataBank AgcSelectUserDataBank(
+    const std::unordered_map<u32, u32>& sh, bool pixel_stage) {
+    if (pixel_stage) {
+        return {0x0C, 0x0B};
+    }
+    if (sh.count(0x8B)) return {0x8C, 0x8B}; // GS bank (NGG)
+    if (sh.count(0xCB)) return {0xCC, 0xCB}; // ES bank
+    return {0x4C, 0x4B};                     // VS bank
+}
+
+std::vector<u32> AgcCollectUserData(
+    const std::unordered_map<u32, u32>& sh, const AgcUserDataBank& bank) {
+    std::vector<u32> user_data;
+    const auto rsrc2_it = sh.find(bank.rsrc2);
+    if (rsrc2_it == sh.end()) {
+        return user_data;
+    }
+    u32 count = (rsrc2_it->second >> 1) & 0x1Fu;
+    if ((rsrc2_it->second & (1u << 27)) != 0) {
+        count |= 0x20;
+    }
+    user_data.reserve(count);
+    for (u32 i = 0; i < count; ++i) {
+        const auto it = sh.find(bank.base + i);
+        user_data.push_back(it != sh.end() ? it->second : 0);
+    }
+    return user_data;
+}
+
+void AgcEvaluateDrawShader(u64 code_addr,
+                           const GPU::Shader::GcnProgram& program,
+                           const std::vector<u32>& user_data,
+                           u32 user_data_base,
+                           const char* tag) {
+    {
+        // One-shot diagnostics: the seeded user SGPRs + RSRC2 decode.
+        std::string dump;
+        char word[16];
+        for (size_t i = 0; i < user_data.size() && i < 16; ++i) {
+            std::snprintf(word, sizeof(word), "%s%zu=0x%X", i ? "," : "", i,
+                          user_data[i]);
+            dump += word;
+        }
+        LOG_DEBUG(HLE, "M3: %s user data base=0x%X count=%zu [%s]",
+                  tag, user_data_base, user_data.size(), dump.c_str());
+    }
+    GPU::Shader::GcnEvaluation evaluation;
+    std::string error;
+    if (!GPU::Shader::GcnEvaluateScalarState(
+            program, code_addr, user_data, user_data_base, evaluation, error)) {
+        LOG_WARN(HLE, "M3: %s scalar evaluation failed (0x%llx): %s",
+                 tag, code_addr, error.c_str());
+        return;
+    }
+    for (const auto& binding : evaluation.image_bindings) {
+        const u64 base =
+            static_cast<u64>(binding.resource_descriptor[0]) |
+            (static_cast<u64>(binding.resource_descriptor[1] & 0xFFFF) << 32);
+        LOG_INFO(HLE, "M3: %s image pc=0x%X %s base=0x%llx fmt=0x%X/0x%X",
+                 tag, binding.pc, binding.opcode.c_str(), base,
+                 binding.resource_descriptor[1] & 0x3F000u,
+                 binding.resource_descriptor[3]);
+    }
+    for (const auto& binding : evaluation.buffer_bindings) {
+        LOG_INFO(HLE, "M3: %s buffer s%u base=0x%llx size=0x%llx pcs=%zu%s",
+                 tag, binding.scalar_address, binding.base_address,
+                 binding.size_bytes, binding.instruction_pcs.size(),
+                 binding.writable ? " (writable)" : "");
+    }
 }
 
 void AgcMaybeTranslateDrawShaders(AgcSubmitShadow& st) {
@@ -614,16 +694,31 @@ void AgcMaybeTranslateDrawShaders(AgcSubmitShadow& st) {
 
     bool ok = true;
     std::string error;
+    GPU::Shader::GcnProgram es_program, ps_program;
     if (es != 0 && !AgcTranslateDrawShader(es, GPU::Shader::GcnSpirvStage::Vertex,
-                                           0, 0, error)) {
+                                           0, 0, es_program, error)) {
         ok = false;
     }
     if (ok && ps != 0 && !AgcTranslateDrawShader(ps, GPU::Shader::GcnSpirvStage::Pixel,
-                                                 ps_ena, ps_addr, error)) {
+                                                 ps_ena, ps_addr, ps_program, error)) {
         ok = false;
     }
     if (ok) {
         LOG_INFO(HLE, "M3: draw shaders translated (es=0x%llx ps=0x%llx)", es, ps);
+        // M3 slice 1: evaluate the scalar state of both stages — resolves
+        // the texture/buffer descriptors the pipeline stage will bind.
+        // SGPR seed bases: PS user data lands at s0; NGG export at s8
+        // (SharpEmu PsTextureUserDataRegister + NggUserDataScalarRegisterBase).
+        if (es != 0) {
+            const AgcUserDataBank bank = AgcSelectUserDataBank(st.sh, false);
+            AgcEvaluateDrawShader(es, es_program,
+                                  AgcCollectUserData(st.sh, bank), 8, "vs");
+        }
+        if (ps != 0) {
+            const AgcUserDataBank bank = AgcSelectUserDataBank(st.sh, true);
+            AgcEvaluateDrawShader(ps, ps_program,
+                                  AgcCollectUserData(st.sh, bank), 0, "ps");
+        }
     } else {
         LOG_WARN(HLE, "M3: draw shader translation failed (es=0x%llx ps=0x%llx): %s",
                  es, ps, error.c_str());
