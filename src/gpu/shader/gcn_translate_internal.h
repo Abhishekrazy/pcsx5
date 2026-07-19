@@ -114,6 +114,21 @@ private:
     u32  LoadImageFloatAddress(const GcnImageControl& image, int component);
     u32  BuildFloatCoordinates(const GcnImageControl& image, int start);
 
+    // ---- guest buffer-format decode (dynamic, descriptor-driven) ----
+    void DeclareBufferFormatTable();
+    u32  DecodeGfx10BufferFormat(u32 unified_format, u32& number_format_out);
+    void EmitBufferFormatLoad(int binding, u32 byte_address, u32 scalar_resource,
+                              u32 vector_data, u32 component_count);
+    u32  LoadGfx10BufferFormatComponent(int binding, u32 element_address,
+                                        u32 data_format, u32 number_format,
+                                        u32 component);
+    u32  ConvertGfx10BufferComponent(u32 raw, u32 bit_count, u32 number_format,
+                                     u32 data_format);
+    u32  DecodeUnsignedMiniFloat(u32 raw, u32 bit_count);
+    u32  Gfx10FormatOne(u32 number_format);
+    u32  SelectUInt(u32 selector, u32 expected, u32 when_true, u32 when_false);
+    u32  LoadUnalignedBufferWord(int binding, u32 byte_address);
+
     // ---- register file helpers (gcn_translate.cpp) ------------------
     u32  ScalarPointer(u32 reg);
     u32  VectorPointer(u32 reg);
@@ -230,6 +245,7 @@ private:
     u32 global_buffers_        = 0;
     u32 storage_block_pointer_ = 0;
     u32 storage_uint_pointer_  = 0;
+    u32 buffer_format_table_   = 0;
 };
 
 } // namespace GPU::Shader

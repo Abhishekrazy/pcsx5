@@ -282,6 +282,10 @@ u64 ComputeScalarStateHash(const std::vector<u32>& registers,
 
 } // namespace
 
+bool GcnTryDecodeUnifiedFormat(u32 unified, u32& data_format, u32& number_format) {
+    return TryDecodeUnifiedFormat(unified, data_format, number_format);
+}
+
 bool GcnTryDecodeBufferDescriptor(const std::vector<u32>& scalar_registers,
                                   u32 base, bool strict_type,
                                   GcnBufferDescriptor& out) {

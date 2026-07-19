@@ -67,6 +67,9 @@ bool GcnTryDecodeBufferDescriptor(const std::vector<u32>& scalar_registers,
                                   u32 base, bool strict_type,
                                   GcnBufferDescriptor& out);
 
+// RDNA2 ISA table 47: unified FORMAT field -> (data format, number format).
+bool GcnTryDecodeUnifiedFormat(u32 unified, u32& data_format, u32& number_format);
+
 // Symbolically executes the program's scalar stream.  `user_data` holds the
 // draw-time user SGPR dwords seeded at `user_data_scalar_register_base`
 // (PS=0x0C, VS=0x4C, GS=0x8C, ES=0xCC).  `program_address` is only used for
