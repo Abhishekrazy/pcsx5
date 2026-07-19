@@ -110,4 +110,12 @@ bool GcnTranslateToSpirv(const GcnProgram&         program,
                          GcnSpirvShader&           out,
                          std::string&              error);
 
+// Builds a standalone binding set for a program with no runtime descriptor
+// state: pixel outputs from export targets, one sampled-2D-float image per
+// image instruction pc, global buffers grouped by scalar base register,
+// vertex output coverage from param exports.  Used by the corpus tool and
+// by the M3 draw path until per-draw descriptor evaluation lands.
+GcnTranslateOptions GcnTranslateDefaultOptions(const GcnProgram& program,
+                                               GcnSpirvStage     stage);
+
 } // namespace GPU::Shader

@@ -117,6 +117,22 @@ set(CPU_SRC
     src/cpu/cpu.cpp
 )
 
+# Shader recompiler (Phase 5 M2) — decoder, metadata reader, SPIR-V builder
+# and the SPIR-V translator.  Required wherever libagc.cpp is linked: the M3
+# draw path translates shaders at draw time.
+set(SHADER_TRANSLATE_SRC
+    src/gpu/shader/gcn_decode.h
+    src/gpu/shader/gcn_decode.cpp
+    src/gpu/shader/metadata.h
+    src/gpu/shader/metadata.cpp
+    src/gpu/shader/spirv_builder.h
+    src/gpu/shader/spirv_builder.cpp
+    src/gpu/shader/gcn_translate.h
+    src/gpu/shader/gcn_translate_internal.h
+    src/gpu/shader/gcn_translate.cpp
+    src/gpu/shader/gcn_translate_alu.cpp
+)
+
 add_executable(pcsx5
     src/main.cpp
     src/common/types.h
@@ -161,6 +177,7 @@ add_executable(pcsx5
     src/gpu/vulkan_backend.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    ${SHADER_TRANSLATE_SRC}
     src/diagnostics/diagnostics.h
     src/diagnostics/diagnostics.cpp
     src/config/config.h
@@ -320,6 +337,7 @@ if(BUILD_TESTING)
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
         src/hle/libscepad.cpp
         src/hle/libsavedata.cpp
         src/hle/libuser_service.cpp
@@ -360,6 +378,7 @@ if(BUILD_TESTING)
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
         src/hle/libscepad.cpp
         src/hle/libsavedata.cpp
         src/hle/libuser_service.cpp
@@ -414,6 +433,7 @@ if(BUILD_TESTING)
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
         src/hle/libscepad.cpp
         src/hle/libsavedata.cpp
         src/hle/libuser_service.cpp
@@ -833,6 +853,7 @@ add_executable(dump_imports
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
         src/hle/libscepad.cpp
         src/hle/libsavedata.cpp
         src/hle/libuser_service.cpp
@@ -874,6 +895,7 @@ add_executable(dump_imports
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
         src/hle/libscepad.cpp
         src/hle/libsavedata.cpp
         src/hle/libuser_service.cpp
@@ -916,6 +938,7 @@ add_executable(dump_imports
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
         src/hle/libscepad.cpp
         src/hle/libsavedata.cpp
         src/hle/libuser_service.cpp
@@ -958,6 +981,7 @@ add_executable(dump_imports
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
         src/hle/libscepad.cpp
         src/hle/libsavedata.cpp
         src/hle/libuser_service.cpp
@@ -1000,6 +1024,7 @@ add_executable(dump_imports
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
         src/hle/libscepad.cpp
         src/hle/libsavedata.cpp
         src/hle/libuser_service.cpp
@@ -1022,16 +1047,7 @@ add_executable(dump_imports
     # CLI target only, NOT a ctest.
     # ------------------------------------------------------------------------
     set(SHADER_SRC
-        src/gpu/shader/gcn_decode.h
-        src/gpu/shader/gcn_decode.cpp
-        src/gpu/shader/metadata.h
-        src/gpu/shader/metadata.cpp
-        src/gpu/shader/spirv_builder.h
-        src/gpu/shader/spirv_builder.cpp
-        src/gpu/shader/gcn_translate.h
-        src/gpu/shader/gcn_translate_internal.h
-        src/gpu/shader/gcn_translate.cpp
-        src/gpu/shader/gcn_translate_alu.cpp
+        ${SHADER_TRANSLATE_SRC}
     )
 
     add_executable(shader_tests

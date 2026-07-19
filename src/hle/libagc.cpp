@@ -18,9 +18,13 @@
 #include "hle.h"
 #include "../common/log.h"
 #include "../memory/memory.h"
+#include "../gpu/shader/gcn_decode.h"
+#include "../gpu/shader/gcn_translate.h"
 #include <windows.h>
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -519,6 +523,116 @@ u32 SubmittedDrawCount(AgcSubmitShadow& st, guest_addr_t packet, u32 length, u32
 }
 
 // ---------------------------------------------------------------------------
+// M3 slice 0: draw-time shader translation.
+//
+// At each draw packet the register shadow knows the bound VS/PS code
+// addresses (SPI_SHADER_PGM_LO/HI_*).  We fetch the shader binaries from
+// guest memory, translate them with the M2.2 recompiler, and cache per
+// address pair — the pipeline/descriptor stage of M3 builds on this.  No
+// rendering yet; success/failure is logged once per unique pair and the
+// modules are dumped to .work/draw_spv/ for inspection.
+// ---------------------------------------------------------------------------
+constexpr u32 kSpiPsInputEna  = 0x1B3;
+constexpr u32 kSpiPsInputAddr = 0x1B4;
+
+std::mutex g_agc_translate_mutex;
+std::unordered_map<u64, bool> g_agc_draw_translate; // es/ps pair key -> ok
+
+u64 AgcShadowShaderAddress(const std::unordered_map<u32, u32>& sh,
+                           u32 lo_reg, u32 hi_reg) {
+    const auto lo = sh.find(lo_reg);
+    const auto hi = sh.find(hi_reg);
+    if (lo == sh.end() || hi == sh.end()) return 0;
+    return (static_cast<u64>(hi->second) << 40) |
+           (static_cast<u64>(lo->second) << 8);
+}
+
+bool AgcTranslateDrawShader(u64 code_addr, GPU::Shader::GcnSpirvStage stage,
+                            u32 ps_input_enable, u32 ps_input_address,
+                            std::string& error) {
+    using namespace GPU::Shader;
+    // Read until the pages stop (decoder halts at S_ENDPGM regardless;
+    // zero padding is tolerated).  Cap at 256KB.
+    std::vector<u32> words;
+    words.reserve(4096);
+    for (u64 offset = 0; offset < 256 * 1024; offset += 0x1000) {
+        if (!Memory::IsReadable(code_addr + offset, 0x1000)) {
+            break;
+        }
+        const size_t base = words.size();
+        words.resize(base + 0x1000 / 4);
+        Memory::ReadBuffer(code_addr + offset, words.data() + base, 0x1000);
+    }
+    if (words.empty()) {
+        error = "code unreadable";
+        return false;
+    }
+
+    GcnProgram program;
+    if (!GcnDecodeProgram(words.data(), words.size(), program, error)) {
+        return false;
+    }
+    GcnTranslateOptions options = GcnTranslateDefaultOptions(program, stage);
+    if (stage == GcnSpirvStage::Pixel) {
+        options.pixel_input_enable  = ps_input_enable;
+        options.pixel_input_address = ps_input_address;
+    }
+    GcnSpirvShader shader;
+    if (!GcnTranslateToSpirv(program, options, shader, error)) {
+        return false;
+    }
+
+    // Dump once for offline inspection (scratch dir, never committed).
+    std::error_code ec;
+    std::filesystem::create_directories(".work/draw_spv", ec);
+    char name[64];
+    std::snprintf(name, sizeof(name), ".work/draw_spv/%s-%llX.spv",
+                  stage == GcnSpirvStage::Pixel ? "ps" : "vs",
+                  static_cast<unsigned long long>(code_addr));
+    if (std::ofstream out{name, std::ios::binary | std::ios::trunc}) {
+        out.write(reinterpret_cast<const char*>(shader.words.data()),
+                  static_cast<std::streamsize>(shader.words.size() * sizeof(u32)));
+    }
+    return true;
+}
+
+void AgcMaybeTranslateDrawShaders(AgcSubmitShadow& st) {
+    const u64 es = AgcShadowShaderAddress(st.sh, kSpiShaderPgmLoEs, kSpiShaderPgmHiEs);
+    const u64 ps = AgcShadowShaderAddress(st.sh, kSpiShaderPgmLoPs, kSpiShaderPgmHiPs);
+    if (es == 0 && ps == 0) return;
+
+    const u64 key = es * 0x9E3779B97F4A7C15ull ^ ps;
+    {
+        std::lock_guard<std::mutex> lk(g_agc_translate_mutex);
+        if (g_agc_draw_translate.count(key)) return;
+    }
+
+    const auto ena_it  = st.cx.find(kSpiPsInputEna);
+    const auto addr_it = st.cx.find(kSpiPsInputAddr);
+    const u32 ps_ena  = ena_it  != st.cx.end() ? ena_it->second  : 0;
+    const u32 ps_addr = addr_it != st.cx.end() ? addr_it->second : 0;
+
+    bool ok = true;
+    std::string error;
+    if (es != 0 && !AgcTranslateDrawShader(es, GPU::Shader::GcnSpirvStage::Vertex,
+                                           0, 0, error)) {
+        ok = false;
+    }
+    if (ok && ps != 0 && !AgcTranslateDrawShader(ps, GPU::Shader::GcnSpirvStage::Pixel,
+                                                 ps_ena, ps_addr, error)) {
+        ok = false;
+    }
+    if (ok) {
+        LOG_INFO(HLE, "M3: draw shaders translated (es=0x%llx ps=0x%llx)", es, ps);
+    } else {
+        LOG_WARN(HLE, "M3: draw shader translation failed (es=0x%llx ps=0x%llx): %s",
+                 es, ps, error.c_str());
+    }
+    std::lock_guard<std::mutex> lk(g_agc_translate_mutex);
+    g_agc_draw_translate[key] = ok;
+}
+
+// ---------------------------------------------------------------------------
 // CP DMA fill/copy execution (Phase 5 M1, SharpEmu ApplySubmittedDmaData).
 //
 // AGC games clear their render targets with CP DMA fills into unified guest
@@ -640,6 +754,7 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
             ++st.total_draws;
             LOG_INFO(HLE, "AGC %s: draw op=0x%02X count=%u instances=%u (frame draw #%u)",
                      queue_name, op, draw_count, st.instances, draws);
+            AgcMaybeTranslateDrawShaders(st);
         }
         if (op == kItNop && reg == kRDrawIndexAuto && length >= 2) {
             const u32 auto_count = Memory::Read<u32>(packet + 4);
@@ -648,6 +763,7 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
                 ++st.total_draws;
                 LOG_INFO(HLE, "AGC %s: draw auto count=%u instances=%u (frame draw #%u)",
                          queue_name, auto_count, st.instances, draws);
+                AgcMaybeTranslateDrawShaders(st);
             }
         }
 
