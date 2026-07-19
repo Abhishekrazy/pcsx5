@@ -32,7 +32,7 @@
 
 # Game dumps, backups, and user logs
 /Games/
-/run*.log
+*.log
 /crash_log.txt
 /user/
 /logs/

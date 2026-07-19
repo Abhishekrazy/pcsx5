@@ -260,6 +260,7 @@ H896Pt-yB4I	libSceAmpr	sceAmprCommandBufferWriteKernelEventQueue_04_00
 HD1YKVU26-M	libSceAvPlayer	sceAvPlayerPostInit
 HF7lK46xzjY	libKernel	pthread_mutexattr_destroy
 HTrcDKlFKuM	libSceMsgDialog	sceMsgDialogClose
+HV4j+E0MBHE	libSceAgc	sceAgcCreateInterpolantMapping
 HWxHOdbM-Pg	libSceRtc	sceRtcGetCurrentRawNetworkTick
 HXzjK9yI30k	libSceVideoOut	sceVideoOutAddFlipEvent
 HZO7xOos4xc	libKernel	sceKernelGetModuleInfoInternal
@@ -398,6 +399,7 @@ Ug8pCwQvh0c	libSceRtc	sceRtcIsLeapYear
 UglJIZjGssM	libSceAgcDriver	sceAgcDriverSubmitDcb
 Ujf3KzMvRmI	libc	memalign
 Up36PTk687E	libSceVideoOut	sceVideoOutOpen
+V++UgBtQhn0	libSceAgc	sceAgcGetDataPacketPayloadAddress
 V-uEeFKARJU	libSceSaveDataDialog	sceSaveDataDialogProgressBarInc
 VfRSmPmj8Q8	libSceNpManager	sceNpRegisterStateCallback
 VmW0Tdpy420	libSceAgc	sceAgcDcbWaitRegMem

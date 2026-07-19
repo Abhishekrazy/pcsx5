@@ -92,13 +92,13 @@ Legend: ✅ working · 🟡 partial · 🔴 not started
 
 *Goal: translate GNM/PM4 to Vulkan. Expect this to be the largest single investment.*
 
-**Status (2026-07-19): in progress — M0/M1/M2.1 done.** Reference: SharpEmu (`sharpemu_clone/`, synced to origin/main 0f224ec) — AGC ABI, PM4 semantics, and the RDNA2→SPIR-V translator being transliterated to C++.
+**Status (2026-07-19): in progress — M0/M1/M2.1/M2.2 done.** Reference: SharpEmu (`sharpemu_clone/`, synced to origin/main 0f224ec) — AGC ABI, PM4 semantics, and the RDNA2→SPIR-V translator being transliterated to C++.
 
 - [x] PM4 command-buffer parser: packet dispatch loop, register writes, draw/dispatch packets — *in `src/hle/libagc.cpp` (M0): 20+ real `sceAgcDcb*` PM4 builders + submit walker (`sceAgcDriverSubmitDcb/Acb/SubmitMultiDcbs`) with Cx/Sh/Uc register shadow state; DMA fills/copies executed into guest memory; RFlip forwarded to videoout.*
 - [x] Clear + present path: render-target clear and swapchain blit — first visible output. *(`src/gpu/vk_context.cpp` + `src/gpu/vk_present.cpp` (M1): volk-style dynamic loading (no SDK), swapchain, guest-FB upload → `vkCmdBlitImage` → present; GDI DIB fallback retained. Pixel-correct presents proven via `tests/vk_present_smoke.cpp`; Vulkan-clear helper ready for the bound-RT model.)*
 - [x] `sceAgcCreateShader` shader ABI — *(M0: header validation, self-relative pointer relocation, PGM_LO/HI patching, real register-defaults tables; unblocked the boot wall.)*
 - [ ] Resource translation: guest GPU memory → Vulkan buffers/images (partial: DMA writes land in guest memory and present uploads read it; no bound buffer/image model yet).
-- [ ] Shader recompiler: RDNA 2 ISA → SPIR-V — **in progress** (`src/gpu/shader/`: decoder for all encoding families, AGC/metadata parser, SPIR-V module builder done (M2.1); corpus of 81 real game shaders fully decodes — 6,666 instructions, 88 distinct opcodes, F32-ALU-heavy, minimal control flow; SPIR-V emission (M2.2) underway, transliterating `SharpEmu.ShaderCompiler.Vulkan`).
+- [x] Shader recompiler: RDNA 2 ISA → SPIR-V — *(`src/gpu/shader/`: decoder for all encoding families, AGC/metadata parser, SPIR-V module builder (M2.1); SPIR-V emission (M2.2) in `gcn_translate.{h,cpp}` + `gcn_translate_alu.cpp` — guided transliteration of `SharpEmu.ShaderCompiler.Vulkan`: PC-dispatcher control-flow model, single-lane wave semantics (VCC/EXEC as per-lane bools synced with s106/s126), SGPR/VGPR register files, SDWA source/destination modifiers, compressed exports, VInterp, image-sample/scalar-load/buffer-load paths with bounds-checked storage-buffer access. Full corpus translates: 81/81 shaders, and all 81 modules are accepted by the NVIDIA ICD via `vkCreateShaderModule` (`shader_dump --translate-corpus` / `--validate-spv`). Remaining by design: DPP/VOP3P/DS/global-memory paths (absent from the corpus; fail loudly), guest vertex-format decode + per-draw descriptor binding (M3).)*
 - [ ] Pipeline state → Vulkan pipelines; descriptor translation; samplers.
 - [ ] Texture formats/conversion table; tiling/detiling.
 - [ ] Compute queue support.
