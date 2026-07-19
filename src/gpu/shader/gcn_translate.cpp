@@ -1329,3 +1329,75 @@ bool GcnTranslateToSpirv(const GcnProgram&          program,
 }
 
 } // namespace GPU::Shader
+
+namespace GPU::Shader {
+
+// ---------------------------------------------------------------------------
+// Default options synthesis (gcn_translate.h): standalone bindings when no
+// runtime descriptor state exists yet.
+// ---------------------------------------------------------------------------
+GcnTranslateOptions GcnTranslateDefaultOptions(const GcnProgram& program,
+                                               GcnSpirvStage     stage) {
+    GcnTranslateOptions options;
+    options.stage = stage;
+
+    if (stage == GcnSpirvStage::Pixel) {
+        bool has_color = false;
+        for (const GcnInstruction& ins : program.instructions) {
+            if (const auto* export_ = std::get_if<GcnExportControl>(&ins.control)) {
+                if (export_->target < 8) {
+                    has_color = true;
+                    options.pixel_outputs.push_back(GcnPixelOutputBinding{
+                        export_->target, export_->target, GcnPixelOutputKind::Float});
+                }
+            }
+        }
+        if (!has_color) {
+            options.pixel_outputs.push_back(
+                GcnPixelOutputBinding{0, 0, GcnPixelOutputKind::Float});
+        }
+    } else {
+        u32 max_param = 0;
+        for (const GcnInstruction& ins : program.instructions) {
+            if (const auto* export_ = std::get_if<GcnExportControl>(&ins.control)) {
+                if (export_->target >= 32 && export_->target < 64) {
+                    max_param = std::max(max_param, export_->target - 32 + 1);
+                }
+            }
+        }
+        options.required_vertex_output_count = static_cast<int>(max_param);
+    }
+
+    for (const GcnInstruction& ins : program.instructions) {
+        if (std::get_if<GcnImageControl>(&ins.control)) {
+            GcnSpirvImageBinding binding;
+            binding.pc = ins.pc;
+            options.image_bindings.push_back(binding);
+        }
+    }
+
+    std::map<u32, std::vector<u32>> pcs_by_base;
+    for (const GcnInstruction& ins : program.instructions) {
+        if (std::get_if<GcnScalarMemoryControl>(&ins.control)) {
+            u32 base = 0;
+            if (!ins.sources.empty() &&
+                ins.sources[0].kind == GcnOperandKind::ScalarRegister) {
+                base = ins.sources[0].value;
+            }
+            pcs_by_base[base].push_back(ins.pc);
+        } else if (const auto* buffer =
+                       std::get_if<GcnBufferMemoryControl>(&ins.control)) {
+            pcs_by_base[buffer->scalar_resource].push_back(ins.pc);
+        }
+    }
+    for (const auto& [base, pcs] : pcs_by_base) {
+        GcnSpirvBufferBinding binding;
+        binding.scalar_address = base;
+        binding.instruction_pcs = pcs;
+        options.buffer_bindings.push_back(binding);
+    }
+
+    return options;
+}
+
+} // namespace GPU::Shader
