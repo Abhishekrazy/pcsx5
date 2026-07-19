@@ -1,7 +1,9 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "hle.h"
+#include "guest_printf.h"
 #include "../kernel/kernel.h"
 #include "../kernel/thread.h"
+#include "../kernel/guest_clock.h"
 #include "../cpu/cpu.h"
 #include "../memory/memory.h"
 #include "../common/log.h"
@@ -23,132 +25,71 @@
 
 namespace HLE {
 
-    struct SysVAmd64VaList {
-        u32 gp_offset;
-        u32 fp_offset;
-        u64 overflow_arg_area;
-        u64 reg_save_area;
-    };
-
+    // SysVAmd64VaList / GetNextVaListArg / SafeReadCharacter / FormatGuestString
+    // moved to src/hle/guest_printf.{h,cpp} (shared with the libc sprintf
+    // family in liblibc.cpp).
     // -----------------------------------------------------------------------
-    // Thread tracking for scePthreadCreate / scePthreadJoin / scePthreadDetach
-    // lives in the CpuCore guest-thread registry (src/cpu/cpu.cpp), reached
-    // through the Kernel:: thread API (src/kernel/thread.cpp).
+    // Physical memory pool (emulates PS5 direct memory / GPU-visible memory)
+    //
+    // On the real PS5:
+    //   AllocateDirectMemory  -> returns a sequential PHYSICAL OFFSET (0-based)
+    //   MapDirectMemory       -> maps [physOffset, physOffset+len) into VA space
+    //
+    // We emulate this with a single large VirtualAlloc reservation.
+    // Physical offsets are just byte offsets into that reservation.
+    // Kept at file scope so the demand-commit fault handler can reach it.
     // -----------------------------------------------------------------------
+    namespace {
+        constexpr u64  PHYS_POOL_SIZE = 2ULL * 1024 * 1024 * 1024; // 2 GB pool
+        guest_addr_t   g_phys_pool_base = 0;
+        u64            g_phys_pool_offset = 0x10000; // start past offset 0
+        std::mutex     g_phys_mutex;
 
-    static u64 GetNextVaListArg(SysVAmd64VaList& valist) {
-        u64 val = 0;
-        if (valist.gp_offset < 48) {
-            val = Memory::Read<u64>(valist.reg_save_area + valist.gp_offset);
-            valist.gp_offset += 8;
-        } else {
-            val = Memory::Read<u64>(valist.overflow_arg_area);
-            valist.overflow_arg_area += 8;
-        }
-        return val;
-    }
-
-    static bool SafeReadCharacter(u64 addr, u8& out_ch) {
-        __try {
-            out_ch = *reinterpret_cast<const u8*>(addr);
+        // Lazily initialise the physical pool on first AllocateDirectMemory
+        bool EnsurePhysPool() {
+            if (g_phys_pool_base) return true;
+            // Reserve (but don't commit) 2 GB.  We'll commit individual pages on Map.
+            void* p = VirtualAlloc(nullptr, PHYS_POOL_SIZE, MEM_RESERVE, PAGE_NOACCESS);
+            if (!p) {
+                LOG_ERROR(HLE, "PhysPool: VirtualAlloc reserve failed!");
+                return false;
+            }
+            g_phys_pool_base = reinterpret_cast<guest_addr_t>(p);
+            LOG_INFO(HLE, "PhysPool: reserved 2 GB at base 0x%llx", g_phys_pool_base);
             return true;
         }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false;
-        }
+    } // namespace
+
+    bool IsPhysPoolAddress(guest_addr_t addr) {
+        return g_phys_pool_base != 0 &&
+               addr >= g_phys_pool_base && addr < g_phys_pool_base + PHYS_POOL_SIZE;
     }
 
-    static std::string FormatGuestString(const std::string& fmt, SysVAmd64VaList& valist) {
-        std::string result;
-        size_t i = 0;
-        while (i < fmt.size()) {
-            if (fmt[i] == '%' && i + 1 < fmt.size()) {
-                i++;
-                if (fmt[i] == '%') {
-                    result += '%';
-                    i++;
-                    continue;
-                }
-                
-                bool is_long = false;
-                bool is_long_long = false;
-                while (i < fmt.size() && (fmt[i] == '-' || fmt[i] == '+' || fmt[i] == ' ' || fmt[i] == '#' || fmt[i] == '0' || (fmt[i] >= '0' && fmt[i] <= '9') || fmt[i] == '.' || fmt[i] == 'l' || fmt[i] == 'h' || fmt[i] == 'z')) {
-                    if (fmt[i] == 'l') {
-                        if (i + 1 < fmt.size() && fmt[i+1] == 'l') {
-                            is_long_long = true;
-                            i++;
-                        } else {
-                            is_long = true;
-                        }
-                    }
-                    i++;
-                }
-                
-                if (i >= fmt.size()) break;
-                
-                char type = fmt[i];
-                i++;
-                
-                u64 arg = GetNextVaListArg(valist);
-                
-                char buf[128];
-                if (type == 's') {
-                    guest_addr_t str_ptr = static_cast<guest_addr_t>(arg);
-                    std::string str_val;
-                    if (str_ptr) {
-                        u64 offset = 0;
-                        while (true) {
-                            u8 ch = 0;
-                            if (!SafeReadCharacter(str_ptr + offset, ch)) {
-                                str_val += "(invalid)";
-                                break;
-                            }
-                            if (ch == 0) break;
-                            str_val += static_cast<char>(ch);
-                            offset++;
-                            if (offset > 4096) break; // prevent infinite loops on unterminated strings
-                        }
-                    } else {
-                        str_val = "(null)";
-                    }
-                    result += str_val;
-                } else if (type == 'd' || type == 'i') {
-                    if (is_long_long) {
-                        snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(arg));
-                    } else if (is_long) {
-                        snprintf(buf, sizeof(buf), "%ld", static_cast<long>(arg));
-                    } else {
-                        snprintf(buf, sizeof(buf), "%d", static_cast<int>(arg));
-                    }
-                    result += buf;
-                } else if (type == 'u') {
-                    if (is_long_long) {
-                        snprintf(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(arg));
-                    } else if (is_long) {
-                        snprintf(buf, sizeof(buf), "%lu", static_cast<unsigned long>(arg));
-                    } else {
-                        snprintf(buf, sizeof(buf), "%u", static_cast<unsigned int>(arg));
-                    }
-                    result += buf;
-                } else if (type == 'x' || type == 'X') {
-                    std::string fmt_str = is_long_long ? "%ll" : (is_long ? "%l" : "%");
-                    fmt_str += type;
-                    snprintf(buf, sizeof(buf), fmt_str.c_str(), arg);
-                    result += buf;
-                } else if (type == 'p') {
-                    snprintf(buf, sizeof(buf), "%p", reinterpret_cast<void*>(arg));
-                    result += buf;
-                } else if (type == 'c') {
-                    result += static_cast<char>(arg);
-                } else {
-                    result += "%" + std::string(1, type);
-                }
-            } else {
-                result += fmt[i];
-                i++;
-            }
+    bool CommitPhysPool(guest_addr_t addr) {
+        if (!IsPhysPoolAddress(addr)) return false;
+        constexpr u64 kGranularity = 65536; // Windows allocation granularity
+        const guest_addr_t base = addr & ~(kGranularity - 1);
+        std::lock_guard<std::mutex> lk(g_phys_mutex);
+        if (!VirtualAlloc(reinterpret_cast<void*>(base), kGranularity, MEM_COMMIT, PAGE_READWRITE)) {
+            LOG_WARN(HLE, "PhysPool: demand-commit failed at 0x%llx (err=%lu)", base, GetLastError());
+            return false;
         }
-        return result;
+        LOG_INFO(HLE, "PhysPool: demand-committed 64 KiB at 0x%llx (fault at 0x%llx)", base, addr);
+        return true;
+    }
+
+    // PS5 protection values may carry CPU/GPU visibility bits (0x10/0x20) in
+    // the high nibble on top of PROT_READ/WRITE/EXEC (0x1/0x2/0x4).  Strip
+    // everything except the RWX bits for host protection translation and warn
+    // only on bits we genuinely do not recognize.
+    static u32 SanitizeGuestProt(u32 prot) {
+        constexpr u32 kCpuGpuFlags = 0x30;
+        constexpr u32 kRwx = Memory::PROT_READ | Memory::PROT_WRITE | Memory::PROT_EXEC;
+        const u32 unknown = prot & ~(kCpuGpuFlags | kRwx);
+        if (unknown) {
+            LOG_WARN(HLE, "SanitizeGuestProt: unknown prot bits 0x%X in 0x%X (stripped)", unknown, prot);
+        }
+        return prot & kRwx;
     }
 
     // Helper to register standard stubs
@@ -268,103 +209,11 @@ namespace HLE {
         });
 
         // =====================================================================
-        // Pthread mutex variants (extending the existing sceKernelMutex stubs)
+        // Pthread mutex/cond/rwlock/once/TLS-key, sceKernel mutex/sema/event
+        // flag/equeue and process-clock symbols are now REAL implementations
+        // registered from src/hle/libkernel_sync.cpp (HLE::RegisterLibKernelSync,
+        // called right after RegisterLibKernel in HLE::Initialize).
         // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadMutexInit", [](const GuestArgs& args) -> u64 {
-            guest_addr_t mutex_ptr = args.arg1;
-            if (mutex_ptr) Memory::Write<u64>(mutex_ptr, 1); // initialized sentinel
-            LOG_DEBUG(HLE, "scePthreadMutexInit(0x%llx) -> OK", mutex_ptr);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadMutexDestroy", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadMutexDestroy(0x%llx) -> OK", args.arg1);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadMutexLock", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadMutexLock(0x%llx) -> OK (stub)", args.arg1);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadMutexUnlock", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadMutexUnlock(0x%llx) -> OK (stub)", args.arg1);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadMutexTrylock", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadMutexTrylock(0x%llx) -> OK (stub)", args.arg1);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadMutexattrInit", [](const GuestArgs& args) -> u64 {
-            if (args.arg1) Memory::Write<u64>(args.arg1, 0);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadMutexattrDestroy", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadMutexattrSettype", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadMutexattrSetprotocol", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-
-        // =====================================================================
-        // Pthread key (thread-local storage keys)
-        // =====================================================================
-        static std::unordered_map<u64, u64> s_tls_keys;  // key -> destructor
-        static std::unordered_map<u64, u64> s_tls_values; // key -> value
-        static std::mutex s_tls_mutex;
-        static u64 s_next_key = 1;
-
-        RegisterSymbol("libkernel", "scePthreadKeyCreate", [](const GuestArgs& args) -> u64 {
-            guest_addr_t key_ptr  = args.arg1;
-            // u64 destructor = args.arg2;
-            std::lock_guard<std::mutex> lock(s_tls_mutex);
-            u64 key = s_next_key++;
-            if (key_ptr) Memory::Write<u64>(key_ptr, key);
-            LOG_DEBUG(HLE, "scePthreadKeyCreate() -> key=%llu", key);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadKeyDelete", [](const GuestArgs& args) -> u64 {
-            std::lock_guard<std::mutex> lock(s_tls_mutex);
-            s_tls_values.erase(args.arg1);
-            LOG_DEBUG(HLE, "scePthreadKeyDelete(key=%llu) -> OK", args.arg1);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadGetspecific", [](const GuestArgs& args) -> u64 {
-            std::lock_guard<std::mutex> lock(s_tls_mutex);
-            auto it = s_tls_values.find(args.arg1);
-            u64 val = (it != s_tls_values.end()) ? it->second : 0;
-            LOG_DEBUG(HLE, "scePthreadGetspecific(key=%llu) -> 0x%llx", args.arg1, val);
-            return val;
-        });
-        RegisterSymbol("libkernel", "scePthreadSetspecific", [](const GuestArgs& args) -> u64 {
-            std::lock_guard<std::mutex> lock(s_tls_mutex);
-            s_tls_values[args.arg1] = args.arg2;
-            LOG_DEBUG(HLE, "scePthreadSetspecific(key=%llu, val=0x%llx) -> OK", args.arg1, args.arg2);
-            return 0;
-        });
-
-        // =====================================================================
-        // Condition variable stubs
-        // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadCondInit", [](const GuestArgs& args) -> u64 {
-            if (args.arg1) Memory::Write<u64>(args.arg1, 1);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadCondDestroy", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadCondWait", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadCondSignal", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadCondBroadcast", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadCondattrInit", [](const GuestArgs& args) -> u64 {
-            if (args.arg1) Memory::Write<u64>(args.arg1, 0);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadCondattrDestroy", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-
-        // =====================================================================
-        // rwlock stubs
-        // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadRwlockInit", [](const GuestArgs& args) -> u64 {
-            if (args.arg1) Memory::Write<u64>(args.arg1, 0);
-            return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadRwlockDestroy", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadRwlockRdlock", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadRwlockWrlock", [](const GuestArgs& /*args*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadRwlockUnlock", [](const GuestArgs& /*args*/) -> u64 { return 0; });
 
         // =====================================================================
         // sceKernelGetProcessType (also registered via NID alias)
@@ -399,36 +248,34 @@ namespace HLE {
             return 0;
         });
 
-        // Mutex operations stubs (mocking mutexes with simple status codes or host handles)
-        RegisterSymbol("libkernel", "sceKernelCreateMutex", [](const GuestArgs& args) -> u64 {
-            guest_addr_t name_ptr = args.arg1;
-            u32 attribute = static_cast<u32>(args.arg2);
-            guest_addr_t opt = args.arg3;
-            (void)opt;
-            
-            const char* name = name_ptr ? reinterpret_cast<const char*>(name_ptr) : "unnamed";
-            LOG_INFO(HLE, "sceKernelCreateMutex(name: '%s', attr: 0x%X)", name, attribute);
-            
-            // Return a mock mutex handle (e.g. 0x1000 + incrementing index)
-            static u32 mock_mutex_id = 0x1000;
-            return mock_mutex_id++;
-        });
+        // clock_gettime (lLMT9vJAck0) — mirrors sys_clock_gettime
+        // (src/kernel/syscalls.cpp) over the shared guest clock:
+        // clock_id 0 = CLOCK_REALTIME, anything else = monotonic QPC origin.
+        // timespec layout: 8-byte tv_sec, 8-byte tv_nsec.
+        auto ClockGettime = [](const GuestArgs& args) -> u64 {
+            const u32 clock_id = static_cast<u32>(args.arg1);
+            const guest_addr_t tp = args.arg2;
+            if (tp == 0) {
+                return static_cast<u64>(-1);
+            }
+            s64 sec = 0, nsec = 0;
+            if (clock_id == 0) { // CLOCK_REALTIME
+                Kernel::GuestClockRealtime(&sec, &nsec);
+            } else { // CLOCK_MONOTONIC etc. — shared QPC origin (guest_clock.cpp)
+                const u64 qpc  = Kernel::GuestClockCounter();
+                const u64 freq = Kernel::GuestClockCounterFrequency();
+                sec  = static_cast<s64>(qpc / freq);
+                nsec = static_cast<s64>(((qpc % freq) * 1000000000ULL) / freq);
+            }
+            Memory::Write<u64>(tp, static_cast<u64>(sec));
+            Memory::Write<u64>(tp + 8, static_cast<u64>(nsec));
+            return 0;
+        };
+        RegisterSymbol("libkernel", "clock_gettime", ClockGettime);
+        RegisterSymbol("libkernel", "lLMT9vJAck0", ClockGettime);
 
-        RegisterSymbol("libkernel", "sceKernelLockMutex", [](const GuestArgs& args) -> u64 {
-            u32 handle = static_cast<u32>(args.arg1);
-            s32 count = static_cast<s32>(args.arg2);
-            guest_addr_t timeout = args.arg3;
-            (void)timeout;
-            LOG_DEBUG(HLE, "sceKernelLockMutex(handle: 0x%X, count: %d)", handle, count);
-            return 0; // Success
-        });
-
-        RegisterSymbol("libkernel", "sceKernelUnlockMutex", [](const GuestArgs& args) -> u64 {
-            u32 handle = static_cast<u32>(args.arg1);
-            s32 count = static_cast<s32>(args.arg2);
-            LOG_DEBUG(HLE, "sceKernelUnlockMutex(handle: 0x%X, count: %d)", handle, count);
-            return 0; // Success
-        });
+        // sceKernelCreateMutex / LockMutex / UnlockMutex / DeleteMutex are real
+        // implementations in src/hle/libkernel_sync.cpp.
 
         // Direct memory allocations (mocking virtual heap allocations)
         RegisterSymbol("libkernel", "sceKernelAllocateMainDirectMemory", [](const GuestArgs& args) -> u64 {
@@ -436,17 +283,33 @@ namespace HLE {
             u64 alignment = args.arg2;
             u32 type = static_cast<u32>(args.arg3);
             guest_addr_t phys_addr_out = args.arg4;
+            (void)type;
 
             LOG_INFO(HLE, "sceKernelAllocateMainDirectMemory(size: %llu, align: %llu, type: %u)", size, alignment, type);
-            
-            // Map virtual memory block representing physical direct memory
-            guest_addr_t virt = 0;
-            if (Memory::Map(0, size, Memory::PROT_READ | Memory::PROT_WRITE, &virt) != Memory::Status::Ok) {
-                return static_cast<u64>(-1);
+
+            // On real hardware this returns a physical direct-memory OFFSET
+            // (0-based), exactly like sceKernelAllocateDirectMemory.  An
+            // earlier revision mapped a separate host buffer and returned its
+            // VA as the "phys addr"; games then passed that VA as physOff to
+            // sceKernelMapDirectMemory, so the mapped VA and the backing
+            // buffer were disjoint and data written through one view was
+            // invisible through the other.  Carve from the phys pool instead
+            // so physOff always refers to pool memory (LOST EPIC).
+            if (!phys_addr_out || !size) return 0x800D0004; // EINVAL
+            if (alignment < 0x1000) alignment = 0x1000;
+
+            std::lock_guard<std::mutex> lk(g_phys_mutex);
+            if (!EnsurePhysPool()) return 0x800D0006;
+
+            const u64 phys_offset = (g_phys_pool_offset + alignment - 1) & ~(alignment - 1);
+            if (phys_offset + size > PHYS_POOL_SIZE) {
+                LOG_ERROR(HLE, "sceKernelAllocateMainDirectMemory: out of physical pool space!");
+                return 0x800D0006;
             }
-            if (phys_addr_out) {
-                Memory::Write<u64>(phys_addr_out, virt); // We simplify: phys addr = virt addr
-            }
+            g_phys_pool_offset = phys_offset + size;
+
+            Memory::Write<u64>(phys_addr_out, phys_offset);
+            LOG_INFO(HLE, "sceKernelAllocateMainDirectMemory -> physOffset: 0x%llx (size: 0x%llx)", phys_offset, size);
             return 0; // Success
         });
 
@@ -461,8 +324,8 @@ namespace HLE {
             (void)alignment;
 
             LOG_INFO(HLE, "sceKernelMapDirectMemory(start: 0x%llx, size: %llu, phys: 0x%llx)", start, size, phys_addr);
-            // Protect direct memory range
-            if (Memory::Protect(start, size, prot) != Memory::Status::Ok) {
+            // Protect direct memory range (strip PS5 CPU/GPU prot flag bits)
+            if (Memory::Protect(start, size, SanitizeGuestProt(prot)) != Memory::Status::Ok) {
                 LOG_WARN(HLE, "sceKernelMapDirectMemory: Protect failed");
             }
             return 0; // Success
@@ -504,6 +367,10 @@ namespace HLE {
                 LOG_INFO(HLE, "sceKernelLoadStartModule: resolved '%s' to PRX '%s'",
                          path, resolved->string().c_str());
                 filepath = resolved->string();
+            } else {
+                // Guest paths ("/app0/...") must be translated to host paths
+                // before hitting the filesystem (LOST EPIC's Unity modules).
+                filepath = Kernel::TranslateGuestPath(path);
             }
 
             // Attempt to load the module using our kernel loader
@@ -569,35 +436,10 @@ namespace HLE {
 
         // vsnprintf (Q2V+iqvjgC0#T#T)
         RegisterSymbol("libkernel", "Q2V+iqvjgC0#T#T", [](const GuestArgs& args) -> u64 {
-            guest_addr_t dest = args.arg1;
-            u64 size = args.arg2;
-            guest_addr_t fmt_ptr = args.arg3;
-            guest_addr_t valist_ptr = args.arg4;
-            
-            if (!fmt_ptr) return 0;
-            
-            std::string fmt;
-            u64 offset = 0;
-            while (true) {
-                u8 ch = Memory::Read<u8>(fmt_ptr + offset++);
-                if (ch == 0) break;
-                fmt += static_cast<char>(ch);
-            }
-            
-            SysVAmd64VaList valist;
-            Memory::ReadBuffer(valist_ptr, &valist, sizeof(SysVAmd64VaList));
-            
-            std::string formatted = FormatGuestString(fmt, valist);
-            LOG_DEBUG(HLE, "libkernel::vsnprintf(dest: 0x%llx, size: %llu, fmt: '%s') -> Result: '%s'", 
-                      dest, size, fmt.c_str(), formatted.c_str());
-            
-            if (dest && size > 0) {
-                u64 copy_len = (formatted.size() < size - 1) ? formatted.size() : size - 1;
-                Memory::WriteBuffer(dest, formatted.c_str(), copy_len);
-                Memory::Write<u8>(dest + copy_len, 0);
-            }
-            
-            return formatted.size();
+            const u64 written = GuestVsnprintf(args);
+            LOG_DEBUG(HLE, "libkernel::vsnprintf(dest: 0x%llx, size: %llu) -> %llu",
+                      args.arg1, args.arg2, written);
+            return written;
         });
 
         // fputs (QrZZdJ8XsX0#T#T)
@@ -639,37 +481,12 @@ namespace HLE {
             return DIRECT_MEM_SIZE;
         });
 
-        // =====================================================================
-        // Physical memory pool (emulates PS5 direct memory / GPU-visible memory)
-        //
-        // On the real PS5:
-        //   AllocateDirectMemory  -> returns a sequential PHYSICAL OFFSET (0-based)
-        //   MapDirectMemory       -> maps [physOffset, physOffset+len) into VA space
-        //
-        // We emulate this with a single large VirtualAlloc reservation.
-        // Physical offsets are just byte offsets into that reservation.
-        // =====================================================================
-        static constexpr u64 PHYS_POOL_SIZE = 2ULL * 1024 * 1024 * 1024; // 2 GB pool
-        static guest_addr_t  g_phys_pool_base = 0;
-        static u64           g_phys_pool_offset = 0x10000; // start past offset 0
-        static std::mutex    g_phys_mutex;
-
-        // Lazily initialise the physical pool on first AllocateDirectMemory
-        auto EnsurePhysPool = [&]() -> bool {
-            if (g_phys_pool_base) return true;
-            // Reserve (but don't commit) 2 GB.  We'll commit individual pages on Map.
-            void* p = VirtualAlloc(nullptr, PHYS_POOL_SIZE, MEM_RESERVE, PAGE_NOACCESS);
-            if (!p) {
-                LOG_ERROR(HLE, "PhysPool: VirtualAlloc reserve failed!");
-                return false;
-            }
-            g_phys_pool_base = reinterpret_cast<guest_addr_t>(p);
-            LOG_INFO(HLE, "PhysPool: reserved 2 GB at base 0x%llx", g_phys_pool_base);
-            return true;
-        };
+        // Physical memory pool state lives at file scope (see EnsurePhysPool /
+        // IsPhysPoolAddress / CommitPhysPool above) so the demand-commit fault
+        // handler can commit pool pages on first touch.
 
         // sceKernelAllocateDirectMemory (rTXw65xmLIA#S#N)
-        RegisterSymbol("libkernel", "rTXw65xmLIA#S#N", [EnsurePhysPool](const GuestArgs& args) -> u64 {
+        RegisterSymbol("libkernel", "rTXw65xmLIA#S#N", [](const GuestArgs& args) -> u64 {
             u64 search_start = args.arg1;
             u64 search_end   = args.arg2;
             u64 length       = args.arg3;
@@ -705,7 +522,7 @@ namespace HLE {
             return 0;
         });
 
-        auto MapDirectMemoryImpl = [EnsurePhysPool](const GuestArgs& args) -> u64 {
+        auto MapDirectMemoryImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t addr_ptr  = args.arg1; // in/out: pointer to VA hint
             u64 length             = args.arg2;
             u32 prot               = static_cast<u32>(args.arg3);
@@ -726,15 +543,13 @@ namespace HLE {
             std::lock_guard<std::mutex> lk(g_phys_mutex);
             if (!EnsurePhysPool()) return 0x800D0006;
 
-            // Sanitize prot
-            if (prot > 0xF) {
-                LOG_WARN(HLE, "sceKernelMapDirectMemory: bad prot=0x%X -> defaulting to RW", prot);
-                prot = 3;
-            }
+            // Sanitize prot: PS5 prot values legitimately include CPU/GPU flag
+            // bits (0x10/0x20) above the RWX nibble (e.g. 0x33); strip them.
+            const u32 rwx = SanitizeGuestProt(prot);
 
             // Determine Windows protection
             DWORD win_prot = PAGE_READWRITE;
-            bool r = (prot & 1), w = (prot & 2), x = (prot & 4);
+            bool r = (rwx & 1), w = (rwx & 2), x = (rwx & 4);
             if (x)      win_prot = w ? PAGE_EXECUTE_READWRITE : (r ? PAGE_EXECUTE_READ : PAGE_EXECUTE_READ); // Always Exec+Read for safety
             else if (w) win_prot = PAGE_READWRITE;
             else if (r) win_prot = PAGE_READONLY;
@@ -746,31 +561,74 @@ namespace HLE {
             bool alloc_ok = false;
             if (hint != 0) {
                 target = reinterpret_cast<void*>(hint);
-                // Reserve and commit at the hint address
-                if (VirtualAlloc(target, rounded, MEM_RESERVE | MEM_COMMIT, win_prot)) {
-                    alloc_ok = true;
-                } else {
-                    // Try to commit only in case it's already reserved
+                // If the hint lies inside an existing reservation (the phys
+                // pool or a sceKernelReserveVirtualRange region), a
+                // RESERVE|COMMIT fails with ERROR_INVALID_ADDRESS — commit in
+                // place instead.
+                Memory::MemoryInfo qinfo{};
+                const bool already_reserved =
+                    (Memory::Query(hint, &qinfo) == Memory::Status::Ok) && qinfo.is_reserved;
+                if (already_reserved) {
                     if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
                         alloc_ok = true;
                     } else {
                         DWORD err = GetLastError();
-                        LOG_ERROR(HLE, "MapDirectMemoryImpl: VirtualAlloc failed at 0x%llx size=0x%llx (err=%lu)",
+                        LOG_ERROR(HLE, "MapDirectMemoryImpl: commit-in-place failed at 0x%llx size=0x%llx (err=%lu)",
                                   hint, rounded, err);
                     }
-                }
-            } else {
-                target = reinterpret_cast<void*>(g_phys_pool_base + phys_offset);
-                if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
-                    alloc_ok = true;
                 } else {
-                    DWORD old;
-                    if (VirtualProtect(target, rounded, win_prot, &old)) {
+                    // Reserve and commit at the hint address
+                    if (VirtualAlloc(target, rounded, MEM_RESERVE | MEM_COMMIT, win_prot)) {
                         alloc_ok = true;
                     } else {
-                        DWORD err = GetLastError();
-                        LOG_ERROR(HLE, "MapDirectMemoryImpl: Phys pool commit failed at 0x%llx size=0x%llx (err=%lu)",
-                                  (u64)target, rounded, err);
+                        // Try to commit only in case it's already reserved
+                        if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
+                            alloc_ok = true;
+                        } else {
+                            DWORD err = GetLastError();
+                            LOG_ERROR(HLE, "MapDirectMemoryImpl: VirtualAlloc failed at 0x%llx size=0x%llx (err=%lu)",
+                                      hint, rounded, err);
+                        }
+                    }
+                }
+                if (!alloc_ok) {
+                    LOG_WARN(HLE, "MapDirectMemoryImpl: hint 0x%llx unusable; falling back to phys pool mapping", hint);
+                }
+            }
+            if (!alloc_ok) {
+                if (phys_offset == 0) {
+                    // No physical backing requested.  This is how games
+                    // reserve distinct VA windows (prot=0, committed later
+                    // via sceKernelMprotect) or grab anonymous committed
+                    // memory.  An earlier revision fell back to
+                    // pool_base+0 for every such call, aliasing ALL of the
+                    // game's independent mappings onto one address; the
+                    // resulting heap corruption crashed LOST EPIC's dlmalloc
+                    // (chunk headers overlapping unrelated buffers).
+                    guest_addr_t va = 0;
+                    if (rwx == 0) {
+                        alloc_ok = (Memory::Reserve(0, rounded, &va) == Memory::Status::Ok);
+                    } else {
+                        alloc_ok = (Memory::Map(0, rounded, rwx, &va) == Memory::Status::Ok);
+                    }
+                    target = reinterpret_cast<void*>(va);
+                    if (!alloc_ok) {
+                        LOG_ERROR(HLE, "MapDirectMemoryImpl: failed to allocate distinct VA (size=0x%llx, prot=0x%X)",
+                                  rounded, prot);
+                    }
+                } else {
+                    target = reinterpret_cast<void*>(g_phys_pool_base + phys_offset);
+                    if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
+                        alloc_ok = true;
+                    } else {
+                        DWORD old;
+                        if (VirtualProtect(target, rounded, win_prot, &old)) {
+                            alloc_ok = true;
+                        } else {
+                            DWORD err = GetLastError();
+                            LOG_ERROR(HLE, "MapDirectMemoryImpl: Phys pool commit failed at 0x%llx size=0x%llx (err=%lu)",
+                                      (u64)target, rounded, err);
+                        }
                     }
                 }
             }
@@ -787,7 +645,58 @@ namespace HLE {
         };
 
         RegisterSymbol("libkernel", "L-Q3LEjIbgA#S#N", MapDirectMemoryImpl);
-        RegisterSymbol("libkernel", "7oxv3PPCumo#y#J", MapDirectMemoryImpl);
+        // NOTE: NID 7oxv3PPCumo is sceKernelReserveVirtualRange (verified via
+        // the PS5 name->NID SHA1 scheme); it is registered to
+        // ReserveVirtualRangeImpl below.  An earlier revision also aliased it
+        // to MapDirectMemoryImpl under a bogus "#y#J" tag — removed.
+        // Plain-name alias — overwrites the naive Protect-only stub above,
+        // which never wrote the mapped VA back to the caller.
+        RegisterSymbol("libkernel", "sceKernelMapDirectMemory", MapDirectMemoryImpl);
+
+        // sceKernelReserveVirtualRange (7oxv3PPCumo)
+        auto ReserveVirtualRangeImpl = [](const GuestArgs& args) -> u64 {
+            guest_addr_t addr_ptr = args.arg1; // in/out: VA hint / result
+            u64 length            = args.arg2;
+            u32 flags             = static_cast<u32>(args.arg3);
+            u64 alignment         = args.arg4;
+            (void)flags;
+            (void)alignment;
+
+            LOG_INFO(HLE, "sceKernelReserveVirtualRange(addr_ptr: 0x%llx, len: 0x%llx, flags: 0x%X, align: 0x%llx)",
+                     addr_ptr, length, flags, alignment);
+
+            if (!addr_ptr || !length) return 0x800D0004; // EINVAL
+
+            guest_addr_t hint = Memory::Read<u64>(addr_ptr);
+            guest_addr_t out = 0;
+            if (Memory::Reserve(hint, length, &out) != Memory::Status::Ok) {
+                if (hint == 0) return 0x800D0006; // ENOMEM
+                LOG_WARN(HLE, "sceKernelReserveVirtualRange: hint 0x%llx failed; retrying without hint", hint);
+                if (Memory::Reserve(0, length, &out) != Memory::Status::Ok) return 0x800D0006;
+            }
+            Memory::Write<u64>(addr_ptr, out);
+            LOG_INFO(HLE, "sceKernelReserveVirtualRange -> va: 0x%llx", out);
+            return 0;
+        };
+        RegisterSymbol("libkernel", "7oxv3PPCumo", ReserveVirtualRangeImpl);
+        RegisterSymbol("libkernel", "sceKernelReserveVirtualRange", ReserveVirtualRangeImpl);
+
+        // sceKernelMprotect (vSMAm3cxYTY)
+        auto MprotectImpl = [](const GuestArgs& args) -> u64 {
+            guest_addr_t addr = args.arg1;
+            u64 length        = args.arg2;
+            u32 prot          = static_cast<u32>(args.arg3);
+
+            LOG_INFO(HLE, "sceKernelMprotect(addr: 0x%llx, len: 0x%llx, prot: 0x%X)", addr, length, prot);
+
+            if (!addr || !length) return 0x800D0004; // EINVAL
+            if (Memory::Protect(addr, length, SanitizeGuestProt(prot)) != Memory::Status::Ok) {
+                return 0x800D0006; // ENOMEM
+            }
+            return 0;
+        };
+        RegisterSymbol("libkernel", "vSMAm3cxYTY", MprotectImpl);
+        RegisterSymbol("libkernel", "sceKernelMprotect", MprotectImpl);
 
         // __cxa_guard_acquire (3GPpjQdAMTw#T#T)
         // C++ one-time static init guard. Returns 1 if caller must initialize, 0 if already done.
@@ -895,6 +804,31 @@ namespace HLE {
             return mem;
         });
 
+        // _Getptolower (1uJgoVq3bQU#T#T) — Dinkum CRT internal.
+        // Returns a pointer to the persistent tolower conversion table
+        // (one u16 per char, indexed directly as table[c]).  Games link
+        // against it via libSceLibcInternal; returning null here caused
+        // the PPSA02929 boot crash (movzx byte [rax+r12*2], RAX=0).
+        RegisterSymbol("libkernel", "1uJgoVq3bQU#T#T", [](const GuestArgs& args) -> u64 {
+            (void)args;
+            static guest_addr_t table_addr = 0;
+            if (table_addr == 0) {
+                if (Memory::Map(0, 0x1000,
+                                Memory::PROT_READ | Memory::PROT_WRITE,
+                                &table_addr) != Memory::Status::Ok) {
+                    LOG_ERROR(HLE, "_Getptolower: failed to map tolower table");
+                    return 0;
+                }
+                for (u32 i = 0; i < 256; ++i) {
+                    const u16 v = (i >= 'A' && i <= 'Z') ? static_cast<u16>(i + 32)
+                                                         : static_cast<u16>(i);
+                    Memory::Write<u16>(table_addr + i * 2, v);
+                }
+            }
+            LOG_INFO(HLE, "_Getptolower() -> 0x%llx", table_addr);
+            return table_addr;
+        });
+
         // free (tIhsqj0qsFE#T#T)
         RegisterSymbol("libkernel", "tIhsqj0qsFE#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t ptr = args.arg1;
@@ -933,7 +867,7 @@ namespace HLE {
             std::string path, mode;
             for (u64 i = 0; ; ++i) { u8 c = Memory::Read<u8>(path_ptr + i); if (!c) break; path += (char)c; }
             for (u64 i = 0; ; ++i) { u8 c = Memory::Read<u8>(mode_ptr + i); if (!c) break; mode += (char)c; }
-            FILE* f = fopen(path.c_str(), mode.c_str());
+            FILE* f = fopen(Kernel::TranslateGuestPath(path).c_str(), mode.c_str());
             LOG_INFO(HLE, "libkernel::fopen('%s', '%s') -> %p", path.c_str(), mode.c_str(), f);
             return reinterpret_cast<u64>(f);
         });
@@ -1018,7 +952,7 @@ namespace HLE {
             std::string path;
             for (u64 i = 0; i < 4096; ++i) { u8 c = Memory::Read<u8>(path_ptr + i); if (!c) break; path += (char)c; }
             // Map O_RDONLY=0, O_WRONLY=1, O_RDWR=2 — same on Windows with _open
-            int fd = _open(path.c_str(), flags | _O_BINARY, mode);
+            int fd = _open(Kernel::TranslateGuestPath(path).c_str(), flags | _O_BINARY, mode);
             LOG_INFO(HLE, "sceKernelOpen('%s', flags=0x%X, mode=0x%X) -> %d", path.c_str(), flags, mode, fd);
             return (u64)(s64)fd;
         });
@@ -1071,11 +1005,19 @@ namespace HLE {
         });
 
         // sceKernelVirtualQuery (rVjRvHJ0X6c#S#N)
+        // Real signature: sceKernelVirtualQuery(const void* addr, int flags,
+        //                                       SceKernelVirtualQueryInfo* info,
+        //                                       size_t infoSize)
+        // (An earlier version of this handler treated arg2 as `info`, missing
+        // the flags parameter: LOST EPIC passes flags=0, got EINVAL back, and
+        // then crashed dereferencing the never-written info struct.)
         RegisterSymbol("libkernel", "rVjRvHJ0X6c#S#N", [](const GuestArgs& args) -> u64 {
             guest_addr_t addr = args.arg1;
-            guest_addr_t info_ptr = args.arg2;
-            u64 info_size = args.arg3;
-            LOG_INFO(HLE, "sceKernelVirtualQuery(addr: 0x%llx, info: 0x%llx, size: %llu)", addr, info_ptr, info_size);
+            int flags = static_cast<int>(args.arg2);
+            guest_addr_t info_ptr = args.arg3;
+            u64 info_size = args.arg4;
+            LOG_INFO(HLE, "sceKernelVirtualQuery(addr: 0x%llx, flags: %d, info: 0x%llx, size: %llu)",
+                     addr, flags, info_ptr, info_size);
 
             if (!info_ptr || info_size < 16) {
                 return 0x80020016; // EINVAL
@@ -1195,27 +1137,10 @@ namespace HLE {
             return 0;
         });
 
-        // scePthreadMutexInit / Lock / Unlock / Destroy (stubs)
-        RegisterSymbol("libkernel", "scePthreadMutexInit", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadMutexLock", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadMutexUnlock", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadMutexDestroy", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-
-        // scePthreadCondInit / Wait / Signal / Broadcast / Destroy (stubs)
-        RegisterSymbol("libkernel", "scePthreadCondInit", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadCondWait", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadCondSignal", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadCondBroadcast", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "scePthreadCondDestroy", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-
-        // Missing mutex/init NIDs hit by PPSA01668
-        RegisterSymbol("libkernel", "F8bUHwAG284#k#N", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "iMp8QpE+XO4#k#N", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "1FGvU0i9saQ#k#N", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "cmo1RIYva9o#k#N", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "smWEktiyyG0#k#N", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "188x57JYp0g#k#N", [](const GuestArgs& /*a*/) -> u64 { return 0; });
-
+        // scePthreadMutex/Cond init/lock/unlock/destroy and the mutex-attr NIDs
+        // hit by PPSA01668 (F8bUHwAG284, iMp8QpE+XO4, 1FGvU0i9saQ, cmo1RIYva9o,
+        // smWEktiyyG0, 188x57JYp0g) resolve via the NID-database friendly-name
+        // bridge to the real implementations in src/hle/libkernel_sync.cpp.
 
         // =====================================================================
         // String utilities
@@ -1230,9 +1155,55 @@ namespace HLE {
         });
 
         // strcpy
-        RegisterSymbol("libkernel", "strcpy#T#T", [](const GuestArgs& args) -> u64 {
+        auto StrcpyImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
             if (dst && src) strcpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
+            return dst;
+        };
+        RegisterSymbol("libkernel", "strcpy#T#T", StrcpyImpl);
+        RegisterSymbol("libkernel", "kiZSXIWd9vg#T#T", StrcpyImpl); // libc strcpy NID
+
+        // strcat (Ls4tzzhimqQ#T#T)
+        auto StrcatImpl = [](const GuestArgs& args) -> u64 {
+            guest_addr_t dst = args.arg1, src = args.arg2;
+            if (dst && src) strcat(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
+            return dst;
+        };
+        RegisterSymbol("libkernel", "strcat#T#T", StrcatImpl);
+        RegisterSymbol("libkernel", "Ls4tzzhimqQ#T#T", StrcatImpl);
+
+        // strlen — plain-name alias of j4ViWNHEgww#T#T
+        RegisterSymbol("libkernel", "strlen#T#T", [](const GuestArgs& args) -> u64 {
+            guest_addr_t str = args.arg1;
+            if (!str) return 0;
+            return strlen(reinterpret_cast<const char*>(str));
+        });
+
+        // memcpy — plain-name alias of Q3VBxCXhUHs#T#T
+        RegisterSymbol("libkernel", "memcpy#T#T", [](const GuestArgs& args) -> u64 {
+            guest_addr_t dst = args.arg1, src = args.arg2;
+            u64 n = args.arg3;
+            if (dst && src && n > 0 && n < 0x10000000ULL)
+                std::memmove(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), n);
+            return dst;
+        });
+
+        // memmove — plain-name alias of +P6FRGH4LfA#T#T
+        RegisterSymbol("libkernel", "memmove#T#T", [](const GuestArgs& args) -> u64 {
+            guest_addr_t dst = args.arg1, src = args.arg2;
+            u64 n = args.arg3;
+            if (dst && src && n > 0 && n < 0x10000000ULL)
+                std::memmove(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), n);
+            return dst;
+        });
+
+        // memset — plain-name alias of 8zTFvBIAIN8#T#T
+        RegisterSymbol("libkernel", "memset#T#T", [](const GuestArgs& args) -> u64 {
+            guest_addr_t dst = args.arg1;
+            u32 ch = static_cast<u32>(args.arg2);
+            u64 n = args.arg3;
+            if (dst && n > 0 && n < 0x10000000ULL)
+                std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n);
             return dst;
         });
 
@@ -1244,6 +1215,17 @@ namespace HLE {
             return (u64)(s64)cmp;
         });
 
+        // strncmp (aesyjrHVWy4#T#T)
+        auto StrncmpImpl = [](const GuestArgs& args) -> u64 {
+            guest_addr_t a = args.arg1, b = args.arg2;
+            u64 n = args.arg3;
+            if (!a || !b || n == 0 || n > 0x10000000ULL) return (u64)(s64)-1;
+            int cmp = strncmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b), n);
+            return (u64)(s64)cmp;
+        };
+        RegisterSymbol("libkernel", "strncmp#T#T", StrncmpImpl);
+        RegisterSymbol("libkernel", "aesyjrHVWy4#T#T", StrncmpImpl);
+
         // AV6ipCNa4Rw = strcasecmp
         RegisterSymbol("libkernel", "AV6ipCNa4Rw#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t a = args.arg1, b = args.arg2;
@@ -1252,30 +1234,16 @@ namespace HLE {
             return (u64)(s64)cmp;
         });
 
-        // sprintf (g7zzzLDYGw0#T#T) — simple passthrough, format string already in guest memory
+        // sprintf (g7zzzLDYGw0#T#T) — real implementation (SysV varargs via
+        // dispatcher-captured registers + guest stack overflow args).
         RegisterSymbol("libkernel", "g7zzzLDYGw0#T#T", [](const GuestArgs& args) -> u64 {
-            guest_addr_t dst = args.arg1;
-            guest_addr_t fmt_ptr = args.arg2;
-            if (!dst || !fmt_ptr) return 0;
-            // For safety we'll just copy the format string as-is (no va_args support here)
-            std::string fmt;
-            for (u64 i = 0; i < 512; ++i) { u8 c = Memory::Read<u8>(fmt_ptr + i); if (!c) break; fmt += (char)c; }
-            std::memcpy(reinterpret_cast<void*>(dst), fmt.c_str(), fmt.size() + 1);
-            return fmt.size();
+            return GuestSprintf(args);
         });
 
         // =====================================================================
-        // Semaphore stubs (sceKernelCreate/Wait/Signal/PollSema)
+        // Semaphore symbols (sceKernelCreate/Wait/Signal/Poll/DeleteSema) are
+        // real implementations in src/hle/libkernel_sync.cpp.
         // =====================================================================
-        RegisterSymbol("libkernel", "Zxa0VhQVTsk#S#N", [](const GuestArgs& /*a*/) -> u64 {
-            LOG_DEBUG(HLE, "sceKernelWaitSema() -> stub 0"); return 0;
-        });
-        RegisterSymbol("libkernel", "12wOHk8ywb0#S#N", [](const GuestArgs& /*a*/) -> u64 {
-            LOG_DEBUG(HLE, "sceKernelPollSema() -> stub 0"); return 0;
-        });
-        RegisterSymbol("libkernel", "4czppHBiriw#S#N", [](const GuestArgs& /*a*/) -> u64 {
-            LOG_DEBUG(HLE, "sceKernelSignalSema() -> stub 0"); return 0;
-        });
 
         // =====================================================================
         // Misc stubs — return success/0 for unresolved PS5-specific functions
@@ -1284,25 +1252,27 @@ namespace HLE {
         // Unknown PS5-specific NIDs (return 0 to allow game to continue)
         for (const char* nid : {
             "Q4rRL34CEeE#T#T", "pztV4AF18iI#T#T", "8zsu04XNsZ4#T#T",
-            "YQ0navp+YIc#T#T", "Ls4tzzhimqQ#T#T", "weDug8QD-lE#T#T",
-            "RQXLbdT2lc4#T#T", "-P6FNMzk2Kc#T#T", "s9e3+YpRnzw#H#I",
-            "4tPhsP6FpDI#H#I", "m5-2bsNfv7s#S#N", "2Tb92quprl0#S#N",
-            "waPcxYiR3WA#S#N", "g+PZd2hiacg#S#N", "4wSze92BhLI#S#N",
+            "YQ0navp+YIc#T#T", "weDug8QD-lE#T#T",
+            "RQXLbdT2lc4#T#T", "-P6FNMzk2Kc#T#T",
+            // Note: cond/mutex-attr and cond NIDs (m5-2bsNfv7s, 2Tb92quprl0,
+            // waPcxYiR3WA, g+PZd2hiacg) moved to real implementations in
+            // src/hle/libkernel_sync.cpp — do not re-add them here.
+            "4tPhsP6FpDI#H#I",
+            "4wSze92BhLI#S#N",
             "-Wreprtu0Qs#S#N", "DzES9hQF4f4#S#N", "x1X76arYMxU#S#N",
-            "-quPa4SEJUw#S#N", "ie7qhZ4X0Cc#G#H", "AUXVxWeJU-A#S#N",
+            "-quPa4SEJUw#S#N", "AUXVxWeJU-A#S#N",
             "MBuItvba6z8#S#N", "hT0IAEvN+M0#E#F", "5zBnau1uIEo#E#F",
             "tpFJ8LIKvPw#E#F", "AUIHb7jUX3I#E#F", "sUXGfNMalIo#F#G",
             "Bagshr7OQ6Q#F#G", "p+GcLqwpL9M#E#F", "YE4dbtbz6OE#E#F",
             "CzkKf7ahIyU#E#F", "wG+84pnNIuo#E#F", "MfDb+4Nln64#E#F",
             "Wxbg5x3pTXA#E#F", "4llLk7YJRTE#E#F", "3kg7rT0NQIs#S#N",
-            "TywrFKCoLGY#G#H", "gjRZNnw0JPE#G#H", "dyIhnXq-0SM#G#H",
-            "ZP4e7rlzOUk#G#H", "sDCBrmc61XU#G#H", "85zul--eGXs#G#H",
-            "c88Yy54Mx0w#G#H", "fPhymKNvK-A#U#U", "xk0AcarP3V4#L#M",
+            "85zul--eGXs#G#H",
+            "c88Yy54Mx0w#G#H", "xk0AcarP3V4#L#M",
             "clVvL4ZDntw#L#M", "gjP9-KQzoUk#L#M", "YndgXqQVV7c#L#M",
             "rPo6tV8D9bM#Q#R", "656LMQSrg6U#Q#R", "jEIXUAr9XE8#R#S",
             "rPl0INNc-M8#R#S", "hZIg1EWGsHM#P#Q", "Vo5V8KAwCmk#Q#R",
-            "j3YMu1MVNNo#U#U", "hv1luiJrqQM#L#M", "uoUpLGNkygk#O#P",
-            "ERKzksauAJA#H#I", "fMP5NHUOaMk#D#E", "yKDy8S5yLA0#G#H",
+            "hv1luiJrqQM#L#M",
+            "fMP5NHUOaMk#D#E", "yKDy8S5yLA0#G#H",
             "6ncge5+l5Qs#L#M", "bwFjS+bX9mA#U#U", "eR2bZFAAU0Q#D#E",
             "d-kSG2fLrvI#P#Q", "ekNvsT22rsY#N#O", "b+uAV89IlxE#N#O",
             "QOQtbeDqsT4#N#O", "s1--uE9mBFw#N#O"

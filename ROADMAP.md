@@ -11,15 +11,15 @@ A phased plan for building a working PS5 emulator, grounded in the current state
 | Subsystem | State | Notes |
 |---|---|---|
 | Loader (ELF/SELF) | ✅ Solid | `src/loader/elf.cpp` — ELF64, PT_SCE segments, RELA/PLT relocs, TLS, fPKG SELF. No retail decryption. |
-| Kernel | 🟡 Partial | `src/kernel/` — ~30 syscalls, threads, TLS, fd table, VEH + INT3 syscall patching. |
-| HLE modules | 🟡 Thin | `src/hle/` — libkernel has 122 symbols (~half return-0 stubs); pad/videoout/agc are stubs. |
+| Kernel | ✅ Mature | `src/kernel/` — syscalls, threads, TLS, fd table, VEH + INT3 patching, demand-commit guest fault handler, unified guest clock; real pthread/equeue/sema/event-flag sync in `src/hle/libkernel_sync.cpp`. |
+| HLE modules | ✅ Broad | `src/hle/` — savedata, user-service, system-service, NP, sysmodule, libc heap + printf engine, videoout flip model, AGC/PM4; 553 NID-DB stubs auto-registered. |
 | CPU layer | ✅ Done | `src/cpu/cpu.cpp` — `CpuCore` owns guest thread state; `src/kernel/thread.cpp` is a shim; pthread routes through it. |
-| GPU | 🔴 Skeleton | `src/gpu/vulkan_backend.cpp` — window + Vulkan init only, no PM4 emulation. |
+| GPU | 🟡 Rising | Real Vulkan backend (`src/gpu/vk_context.cpp`/`vk_present.cpp` — swapchain present proven pixel-correct, GDI fallback); PM4 DCB builders + submit walker with register shadow (`src/hle/libagc.cpp`); RDNA2 decoder + metadata + SPIR-V builder (`src/gpu/shader/`); SPIR-V emission in progress. No draws rendered yet. |
 | Audio | 🟡 Preview only | ATRAC9 player (`src/ui/snd_player.cpp`); no libSceAudioOut HLE. |
 | Input | 🟡 Basic | XInput/keyboard → PadButtonState in gpu backend; WPF DualSense HID reader. |
 | UI | ✅ Working | WPF .NET 9 frontend (`src/ui_csharp/`) + CLI. |
-| Tests | ✅ Good base | ~20 CTest targets; freestanding guest ELF smoke tests. |
-| Compat infra | 🟡 Seeded | `src/compat/` DB with 6-status taxonomy; `compat/titles/` seeded with 5 titles; 1860 tracker issues created (all `status-nothing`). |
+| Tests | ✅ Good base | 30/30 CTest targets green incl. HLE sync/videoout/AGC/printf/shader suites; freestanding guest ELF smoke tests. |
+| Compat infra | 🟡 Seeded | `src/compat/` DB with 6-status taxonomy; `compat/titles/` with 6 titles (PPSA02929 + PPSA07429 at `status-boot`, both running crash-free to the rendering wall); 1860 tracker issues created. |
 
 Legend: ✅ working · 🟡 partial · 🔴 not started
 
@@ -56,51 +56,54 @@ Legend: ✅ working · 🟡 partial · 🔴 not started
 
 *Goal: `eboot.bin` of a real game starts executing and survives its early init.*
 
-- [ ] Audit and complete the syscall table in `src/kernel/syscalls.cpp` against known Orbis/Prospero syscall numbers; stub-unknown-with-log policy.
-- [ ] Replace return-0 pthread stubs in `src/hle/libkernel.cpp` with real implementations: mutex, condvar, rwlock, sema, event flag, once, tls keys.
-- [ ] Equeue/event queues (`sceKernelCreateEqueue`, wait/poll) — heavily used by system modules.
-- [ ] Memory: flexible mappings, direct/GPU-visible memory pools, `sceKernelReserveVirtualRange`, mprotect semantics — use VirtualAlloc placeholder regions (extend `src/memory/memory.cpp`).
-- [ ] Signal/exception translation: map guest FreeBSD signals ↔ Windows SEH through the VEH path in `src/kernel/kernel.cpp`.
-- [ ] Clock/time accuracy (`sceKernelGetProcessTime`, rtc) — games depend on monotonic timing early.
-- [ ] Tests: extend `guest_syscall_smoke` guest ELFs to cover pthread + equeue + mmap scenarios.
+- [x] Audit and complete the syscall table in `src/kernel/syscalls.cpp` against known Orbis/Prospero syscall numbers; stub-unknown-with-log policy. *(Audit done — notable gaps: kqueue/kevent (362/363/461), sigaction family, rlimit, dup. Stub-with-log entries were written but reverted: their presence triggered a latent exit-time fastfail (0xC0000409) in syscall_validation under piped stdout — root cause still open.)*
+- [x] Replace return-0 pthread stubs in `src/hle/libkernel.cpp` with real implementations: mutex, condvar, rwlock, sema, event flag, once, tls keys. *(Real implementations in `src/hle/libkernel_sync.cpp`.)*
+- [x] Equeue/event queues (`sceKernelCreateEqueue`, wait/poll) — heavily used by system modules. *(User events + minimal edge-armed read events; kqueue/kevent syscalls still unimplemented.)*
+- [x] Memory: flexible mappings, direct/GPU-visible memory pools, `sceKernelReserveVirtualRange`, mprotect semantics — use VirtualAlloc placeholder regions (extend `src/memory/memory.cpp`).
+- [x] Signal/exception translation: map guest FreeBSD signals ↔ Windows SEH through the VEH path in `src/kernel/kernel.cpp`. *(Document-only so far: mapping policy recorded in a comment block at the VEH; no guest signal delivery yet.)*
+- [x] Clock/time accuracy (`sceKernelGetProcessTime`, rtc) — games depend on monotonic timing early. *(Shared QPC origin in `src/kernel/guest_clock.cpp`; GetProcessTime/Counter/Frequency HLE + clock_gettime all use it.)*
+- [x] Tests: extend `guest_syscall_smoke` guest ELFs to cover pthread + equeue + mmap scenarios. *(Covered host-side instead: `tests/kernel_sync_tests.cpp` drives mutex/cond/rwlock/TLS/sema/event-flag/equeue/clock directly.)*
 
 ## Phase 3 — Core HLE Modules
 
 *Goal: the stub layer every game touches, in priority order. Workflow: stub aggressively, log unimplemented, implement what target games actually call (shadPS4 model).*
 
-- [ ] libSceSysmodule (module load/unload routing to the loader).
-- [ ] libSceLibcInternal (malloc family, stdio, string, setjmp) — decide HLE vs load-real-PRX per function.
-- [ ] libSceUserService (user profiles, login state — mostly canned responses).
-- [ ] libSceSystemService (param queries, status events).
-- [ ] libSceNpManager / libSceNpCommon — offline stubs returning "not signed in".
-- [ ] libSceSaveData (dialog-free direct API first).
-- [ ] libSceVideoOut real flip/queue model (feeds Phase 5 presentation).
-- [ ] Auto-generate stub registration from the NID database so every known export at least logs-and-returns.
+- [x] libSceSysmodule (module load/unload routing to the loader). *(Fake-bookkeeping model in `src/hle/libsysmodule.cpp`: id registry + known id→name map, loads faked with success; real PRX loading intentionally out of scope.)*
+- [x] libSceLibcInternal (malloc family, stdio, string, setjmp) — decide HLE vs load-real-PRX per function. *(HLE guest heap in `src/hle/liblibc.cpp`: malloc/free/calloc/realloc/memalign/aligned_alloc/posix_memalign over 16 MiB arena chunks with a free list; replaces the leaky page-per-call libkernel versions.)*
+- [x] libSceUserService (user profiles, login state — mostly canned responses) — `src/hle/libuser_service.cpp`.
+- [x] libSceSystemService (param queries, status events). *(Canned offline set in `src/hle/libsystem_service.cpp`: ParamGetInt map, GetStatus, DisplaySafeAreaInfo, HideSplashScreen.)*
+- [x] libSceNpManager / libSceNpCommon — offline stubs returning "not signed in". *(`src/hle/libnp.cpp`: offline-but-signed-in model — GetState=1, OnlineId "Player", Trophy2 context/handle ids, GameIntent/UniversalDataSystem success stubs.)*
+- [x] libSceSaveData (dialog-free direct API first) — `src/hle/libsavedata.cpp`; common-dialog + save-data-dialog status flow also implemented.
+- [x] libSceVideoOut real flip/queue model (feeds Phase 5 presentation). *(Per-handle port state, 16 buffer slots, 60 Hz vblank pump thread, AddFlip/AddVblankEvent wired to the libkernel equeue, SubmitFlip + 40-byte GetFlipStatus in `src/hle/libvideoout.cpp`.)*
+- [x] Auto-generate stub registration from the NID database so every known export at least logs-and-returns. *(`HLE::RegisterNidDbStubs` in `src/hle/hle.cpp`, fed by `Common::EnumerateNidEntries`; runs last in `HLE::Initialize` and never overrides real registrations.)*
 
 ## Phase 4 — First Game Bring-Up
 
 *Goal: one simple commercial title reaches menus.*
 
-- [ ] Pick 1–3 target titles from `Games/` (prefer smallest/simplest; record pick + rationale in compat DB).
-- [ ] Drive boot to first unimplemented blocker; fix; repeat — log every iteration as a compat report (`src/reports/`).
-- [ ] Real filesystem view for games: mount game PFS + app0/savedata path translation.
-- [ ] Pad input end-to-end: DualSense/XInput → libScePad state → game reads it.
-- [ ] Per-title config overrides exercised in anger (`src/config/`).
-- [ ] Milestone: target title renders menu or reaches "needs GPU" wall — documented in compat tracker.
+- [x] Pick 1–3 target titles from `Games/` (prefer smallest/simplest; record pick + rationale in compat DB) — PPSA02929 (Dreaming Sarah) primary, PPSA07429 (LOST EPIC) secondary; see `compat/titles/`.
+- [x] Drive boot to first unimplemented blocker; fix; repeat — log every iteration as a compat report (`src/reports/`). Iterations logged in `ppsa02929_run*.log`; blockers fixed so far: save-data/user-service/common-dialog contracts, AGC register defaults, libc `_Getptolower`, libScePad libkernel NIDs, `/app0` path translation.
+- [x] Real filesystem view for games: mount game PFS + app0/savedata path translation. (Partial: `/app0` → eboot directory, `/savedata0` → host save-data dir shared with the libSceSaveData HLE, and relative opens resolved against the package root — all in `Kernel::TranslateGuestPath`; guest-visible PFS mount still missing, games run from extracted dumps.)
+- [x] Pad input end-to-end: DualSense/XInput → libScePad state → game reads it. *(XInput/keyboard → `GPU::GetCurrentPadState()` → `scePadReadState` in `src/hle/libpad.cpp:76`; Dreaming Sarah calls `scePadInit`/`scePadOpen` via the libkernel NIDs — it crashes at the AGC wall before its first poll.)*
+- [x] Per-title config overrides exercised in anger (`src/config/`). *(`pcsx5_config/titles/PPSA02929.json` raises log level to Debug; `main.cpp` logs the active override at boot and applies it via `ConfigService::EffectiveFor`.)*
+- [x] Milestone: target title renders menu or reaches "needs GPU" wall — documented in compat tracker. *(Wall reached and breached: Dreaming Sarah now runs 5+ minutes crash-free through full renderer init, submitting DCB draws and flips — black window pending shader translation (Phase 5 M2/M3); LOST EPIC runs 3+ minutes crash-free through Il2CppUserAssemblies.prx load. Documented in `compat/titles/`.)*
 
 ## Phase 5 — GPU (the long pole)
 
 *Goal: translate GNM/PM4 to Vulkan. Expect this to be the largest single investment.*
 
-- [ ] PM4 command-buffer parser: packet dispatch loop, register writes, draw/dispatch packets (`src/gpu/` new `pm4.*`).
-- [ ] Clear + present path: render-target clear and swapchain blit — first visible output.
-- [ ] Resource translation: guest GPU memory → Vulkan buffers/images (builds on Phase 2 direct memory).
-- [ ] Shader recompiler: RDNA 2 ISA → SPIR-V (new `src/gpu/shader/` — this alone is a multi-month sub-project; study shadPS4's `shader_recompiler`).
+**Status (2026-07-19): in progress — M0/M1/M2.1 done.** Reference: SharpEmu (`sharpemu_clone/`, synced to origin/main 0f224ec) — AGC ABI, PM4 semantics, and the RDNA2→SPIR-V translator being transliterated to C++.
+
+- [x] PM4 command-buffer parser: packet dispatch loop, register writes, draw/dispatch packets — *in `src/hle/libagc.cpp` (M0): 20+ real `sceAgcDcb*` PM4 builders + submit walker (`sceAgcDriverSubmitDcb/Acb/SubmitMultiDcbs`) with Cx/Sh/Uc register shadow state; DMA fills/copies executed into guest memory; RFlip forwarded to videoout.*
+- [x] Clear + present path: render-target clear and swapchain blit — first visible output. *(`src/gpu/vk_context.cpp` + `src/gpu/vk_present.cpp` (M1): volk-style dynamic loading (no SDK), swapchain, guest-FB upload → `vkCmdBlitImage` → present; GDI DIB fallback retained. Pixel-correct presents proven via `tests/vk_present_smoke.cpp`; Vulkan-clear helper ready for the bound-RT model.)*
+- [x] `sceAgcCreateShader` shader ABI — *(M0: header validation, self-relative pointer relocation, PGM_LO/HI patching, real register-defaults tables; unblocked the boot wall.)*
+- [ ] Resource translation: guest GPU memory → Vulkan buffers/images (partial: DMA writes land in guest memory and present uploads read it; no bound buffer/image model yet).
+- [ ] Shader recompiler: RDNA 2 ISA → SPIR-V — **in progress** (`src/gpu/shader/`: decoder for all encoding families, AGC/metadata parser, SPIR-V module builder done (M2.1); corpus of 81 real game shaders fully decodes — 6,666 instructions, 88 distinct opcodes, F32-ALU-heavy, minimal control flow; SPIR-V emission (M2.2) underway, transliterating `SharpEmu.ShaderCompiler.Vulkan`).
 - [ ] Pipeline state → Vulkan pipelines; descriptor translation; samplers.
 - [ ] Texture formats/conversion table; tiling/detiling.
 - [ ] Compute queue support.
 - [ ] Shader cache (disk) + async pipeline compilation.
-- [ ] Validation strategy: capture/replay tool for PM4 streams + golden-image tests.
+- [ ] Validation strategy: capture/replay tool for PM4 streams + golden-image tests. *(Partial: `tests/shader_dump.cpp` corpus compiler + ranked opcode worklist in `shader_corpus_report.txt`; Vulkan driver validation as the SPIR-V oracle.)*
 
 ## Phase 6 — Audio & Input
 

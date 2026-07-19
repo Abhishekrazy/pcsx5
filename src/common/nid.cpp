@@ -177,28 +177,38 @@ std::optional<ParsedNid> ParseNidString(std::string_view s) noexcept {
 // ---------------------------------------------------------------------------
 struct NidNameEntry {
     std::string_view nid11;     // 11-char Sony base64 (e.g. "OG+IMOu1KKM")
+    std::string_view module;    // exporting library (informational)
     std::string_view name;      // canonical symbol name
 };
 
 constexpr std::array<NidNameEntry, 8> kKnownNidNames = {{
     // ---- libkernel (the top references we observed in PPSA02929) ----
-    {"pZ9WXcClPO8", "sceKernelMapDirectMemory"},
-    {"byV+FWlAnB4", "sceKernelMapFlexibleMemory"},
-    {"9ByRMdo7ywg", "sceKernelAllocateFlexibleMemory"},
+    // NIDs verified against the PS5 name->NID SHA1 scheme (see
+    // tools/nid_scan.cpp).  (The values used before — pZ9WXcClPO8,
+    // byV+FWlAnB4, 9ByRMdo7ywg — are real NIDs too: the libcxxabi RTTI
+    // vtables.  They live in assets/nid_db.txt with their true names.)
+    {"L-Q3LEjIbgA", "libkernel", "sceKernelMapDirectMemory"},
+    {"IWIBBdTHit4", "libkernel", "sceKernelMapFlexibleMemory"},
+    {"xaxE6OHpkiM", "libkernel", "sceKernelAllocateFlexibleMemory"},
     // ---- libSceAgc (graphics core) ---------------------------------
-    {"1kZFcktOm+s", "sceAgcDriverInitialize"},
-    {"-L+-8F0+gBc", "sceAgcDriverUninitialize"},
-    {"2sWzhYqFH4E", "sceAgcRegisterConfiguration"},
-    {"-VVn74ZyhEs", "sceAgcRegisterDisplay"},
+    {"1kZFcktOm+s", "libSceAgc", "sceAgcDriverInitialize"},
+    {"-L+-8F0+gBc", "libSceAgc", "sceAgcDriverUninitialize"},
+    {"2sWzhYqFH4E", "libSceAgc", "sceAgcRegisterConfiguration"},
+    {"-VVn74ZyhEs", "libSceAgc", "sceAgcRegisterDisplay"},
     // ---- libc --------------------------------------------------------
     // NOTE: +P6FRGH4LfA hashes from "memmove" (verified via the PS5
     // name->NID SHA1 scheme); an earlier revision mislabeled it sceAgcInit.
-    {"+P6FRGH4LfA", "memmove"},
+    {"+P6FRGH4LfA", "libc", "memmove"},
 }};
 
 namespace {
 
-using NidNameMap = std::unordered_map<std::string, std::string>;
+struct NidNameValue {
+    std::string name;
+    std::string module;
+};
+
+using NidNameMap = std::unordered_map<std::string, NidNameValue>;
 
 std::mutex& GetNidNameMutex() {
     static std::mutex m;
@@ -212,7 +222,7 @@ NidNameMap& GetNidNameMap() {
         NidNameMap m;
         m.reserve(kKnownNidNames.size() * 2);
         for (const auto& e : kKnownNidNames) {
-            m.emplace(e.nid11, e.name);
+            m.emplace(e.nid11, NidNameValue{std::string(e.name), std::string(e.module)});
         }
         return m;
     }();
@@ -241,7 +251,7 @@ std::optional<std::string_view> LookupNidName(const Ps5Nid& nid) noexcept {
     const auto& map = GetNidNameMap();
     auto it = map.find(encoded);
     if (it != map.end()) {
-        return it->second;
+        return it->second.name;
     }
     return std::nullopt;
 }
@@ -283,19 +293,32 @@ bool LoadNidDatabase(const std::filesystem::path& file) {
             continue;
         }
 
+        std::string module = line.substr(tab1 + 1, tab2 - tab1 - 1);
         std::string name = line.substr(tab2 + 1);
         // Trim trailing whitespace from the name.
         const size_t last = name.find_last_not_of(" \t");
         if (last != std::string::npos) name.resize(last + 1);
 
         std::lock_guard<std::mutex> lock(GetNidNameMutex());
-        GetNidNameMap().insert_or_assign(std::move(*key), std::move(name));
+        GetNidNameMap().insert_or_assign(std::move(*key),
+                                         NidNameValue{std::move(name), std::move(module)});
         ++added;
     }
 
     LOG_INFO(Loader, "LoadNidDatabase: loaded %zu entries from '%s' (%zu skipped)",
              added, file.string().c_str(), skipped);
     return true;
+}
+
+std::vector<NidDbEntry> EnumerateNidEntries() {
+    std::lock_guard<std::mutex> lock(GetNidNameMutex());
+    const auto& map = GetNidNameMap();
+    std::vector<NidDbEntry> out;
+    out.reserve(map.size());
+    for (const auto& kv : map) {
+        out.push_back(NidDbEntry{kv.first, kv.second.module, kv.second.name});
+    }
+    return out;
 }
 
 bool IsKnownNid(std::string_view nid_with_suffix) noexcept {

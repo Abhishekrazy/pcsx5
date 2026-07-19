@@ -26,8 +26,8 @@ compat/
 ```
 
 Index: `{"schema_version": 1, "description": "...", "titles": [...]}`
-(src/compat/compat.cpp:438-448). Currently 5 seeded titles: PPSA01668,
-PPSA02929, PPSA10112, PPSA20591, PPSA23885.
+(src/compat/compat.cpp:438-448). Currently 6 seeded titles: PPSA01668,
+PPSA02929, PPSA07429, PPSA10112, PPSA20591, PPSA23885.
 
 ## Per-title JSON schema
 

@@ -205,6 +205,15 @@ int main(int argc, char* argv[]) {
 
     // Apply the effective (global + per-title) configuration to the runtime.
     const ConfigService::Config& cfg = ConfigService::EffectiveFor(title_id);
+    if (!title_id.empty() && ConfigService::ForTitle(title_id) != nullptr) {
+        LOG_INFO(General, "Per-title config overrides active for %s (%s/titles/%s.json): "
+                 "log level %s, strict imports %s",
+                 title_id.c_str(), ConfigService::Directory().c_str(), title_id.c_str(),
+                 cfg.logging.min_level == LogLevel::Debug ? "Debug" :
+                 cfg.logging.min_level == LogLevel::Info  ? "Info"  :
+                 cfg.logging.min_level == LogLevel::Warn  ? "Warn"  : "Error",
+                 cfg.hle.strict_imports ? "on" : "off");
+    }
     if (!cfg.logging.file_path.empty()) {
         LogConfig::SetFileOutput(cfg.logging.file_path, cfg.logging.file_append);
     } else if (!log_file_path.empty()) {
@@ -269,6 +278,10 @@ int main(int argc, char* argv[]) {
     // Post-init configuration that requires the HLE subsystem to be ready.
     HLE::SetStrictImportMode(strict_imports);
     HLE::ResetRunStatistics();
+    HLE::SetSaveDataTitleId(title_id);
+    // Route guest /savedata0 file I/O to the same host dir the save-data HLE
+    // uses (creates the dir if needed).
+    Kernel::SetSaveDataDirectory(HLE::GetSaveDataDir());
 
     LOG_INFO(General, "All subsystems initialized successfully.");
 
@@ -283,6 +296,7 @@ int main(int argc, char* argv[]) {
         const std::string game_dir =
             std::filesystem::path(target_path).parent_path().string();
         Kernel::ConfigureModuleResolver(game_dir, cfg.loader.firmware_modules_dir);
+        Kernel::SetApp0Directory(game_dir);
     }
 
     // 2. Load the main ELF/SELF module

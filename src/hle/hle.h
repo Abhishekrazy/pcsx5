@@ -15,6 +15,11 @@ namespace HLE {
         u64 arg4; // rcx
         u64 arg5; // r8
         u64 arg6; // r9
+        // Guest address of the first stack-resident argument (SysV overflow
+        // arg area): [guest_rsp_at_thunk_entry + 8].  Variadic HLE handlers
+        // (sprintf family) read overflow varargs from here.  0 if the
+        // dispatcher did not capture the guest stack pointer.
+        u64 stack_args = 0;
     };
 
     using HleHandler = std::function<u64(const GuestArgs& args)>;
@@ -96,6 +101,13 @@ namespace HLE {
     // Register an HLE function handler for a library symbol
     void RegisterSymbol(const std::string& module_name, const std::string& name, HleHandler handler);
 
+    // Registers log-and-return-0 stubs (under their real names) for every NID
+    // database entry that no HLE module implemented.  Called automatically at
+    // the end of Initialize(); exposed so tests can re-run it after loading
+    // an additional NID database file.  Never overrides an existing
+    // registration (existing keys are skipped before RegisterSymbol runs).
+    void RegisterNidDbStubs();
+
     // Resolve symbol by exact module+name key; returns thunk address or 0
     guest_addr_t Resolve(const std::string& module_name, const std::string& name);
 
@@ -111,8 +123,34 @@ namespace HLE {
     void SetDtInitAddress(guest_addr_t addr);
     guest_addr_t GetDtInitAddress();
 
-    // Dynamic dispatcher callback (called by assembly bridge)
-    extern "C" u64 HleDispatch(u64 symbol_id, u64 rdi, u64 rsi, u64 rdx, u64 rcx, u64 r8, u64 r9, u64 guest_rip);
+    // Save-data host backing directory (libsavedata.cpp).  The title id is
+    // supplied by main() from --title-id; GetSaveDataDir() creates and returns
+    // <cwd>/pcsx5_savedata/<title-id>/.
+    void SetSaveDataTitleId(const std::string& title_id);
+    std::string GetSaveDataDir();
+
+    // Direct-memory phys pool access for the demand-commit fault handler.
+    // IsPhysPoolAddress reports whether `addr` lies inside the 2 GB direct
+    // memory reservation; CommitPhysPool commits the 64 KiB block covering
+    // `addr` (read/write) and returns true on success.
+    bool IsPhysPoolAddress(guest_addr_t addr);
+    bool CommitPhysPool(guest_addr_t addr);
+
+    // AGC → VideoOut flip forwarding (libvideoout.cpp): runs the SubmitFlip
+    // path (counters, flip events, GPU present) for an RFlip packet found in
+    // an AGC DCB.  Returns the SubmitFlip error code (0 on success).
+    u64 VideoOutSubmitFlipFromAgc(u32 handle, s32 buffer_index, u32 flip_mode, s64 flip_arg);
+
+    // AGC submitted-DCB walker introspection (libagc.cpp; tests + M1-M3).
+    // which: 0 = total draws, 1 = total dispatches, 2 = total flips (graphics queue).
+    u64 AgcGetSubmittedStats(u32 which);
+    // Reads the graphics-queue register shadow (space: 0 = cx, 1 = sh, 2 = uc).
+    bool AgcGetShadowRegister(u32 space, u32 reg, u32* value_out);
+
+    // Dynamic dispatcher callback (called by assembly bridge).
+    // guest_rsp is the guest stack pointer at thunk entry (points at the guest
+    // return address; the first SysV stack argument is at guest_rsp + 8).
+    extern "C" u64 HleDispatch(u64 symbol_id, u64 rdi, u64 rsi, u64 rdx, u64 rcx, u64 r8, u64 r9, u64 guest_rip, u64 guest_rsp);
 }
 // namespace HLE
 

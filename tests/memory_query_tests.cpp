@@ -292,6 +292,97 @@ void TestStatusOnlyApi() {
 
 } // namespace
 
+// 7. Protect on a reserved-but-uncommitted range commits it and applies the
+//    requested protection (fixes "Failed to set final protection" warnings).
+// ---------------------------------------------------------------------------
+void TestProtectOnReservedCommits() {
+    std::fprintf(stdout, "[TEST] Protect on reserved range commits it\n");
+    EXPECT(Memory::Initialize(), "Initialize");
+
+    guest_addr_t reserved = 0;
+    CheckStatus(Memory::Reserve(0, 4 * PAGE_SIZE, &reserved),
+                Memory::Status::Ok, __FILE__, __LINE__, "Reserve succeeds");
+    EXPECT(reserved != 0, "Reserve returned non-zero");
+
+    // Protect must succeed even though the pages are not committed yet.
+    CheckStatus(Memory::Protect(reserved, 4 * PAGE_SIZE,
+                                Memory::PROT_READ | Memory::PROT_WRITE),
+                Memory::Status::Ok, __FILE__, __LINE__,
+                "Protect on reserved range succeeds");
+
+    Memory::MemoryInfo info{};
+    CheckStatus(Memory::Query(reserved, &info), Memory::Status::Ok,
+                __FILE__, __LINE__, "Query after Protect");
+    EXPECT(info.is_committed, "Region is committed after Protect");
+
+    // The pages must be usable for read/write now.
+    Memory::Write<u64>(reserved, 0x1122334455667788ULL);
+    EXPECT_EQ(Memory::Read<u64>(reserved), 0x1122334455667788ULL,
+              "Read/write works on demand-committed pages");
+
+    CheckStatus(Memory::Unmap(reserved, 4 * PAGE_SIZE), Memory::Status::Ok,
+                __FILE__, __LINE__, "Unmap ok");
+
+    Memory::Shutdown();
+}
+
+// 8. CommitOnFault: commits 64 KiB blocks inside reserved regions, refuses
+//    anything outside.
+// ---------------------------------------------------------------------------
+void TestCommitOnFault() {
+    std::fprintf(stdout, "[TEST] CommitOnFault demand-commit\n");
+    EXPECT(Memory::Initialize(), "Initialize");
+
+    guest_addr_t reserved = 0;
+    CheckStatus(Memory::Reserve(0, 4 * 65536, &reserved),
+                Memory::Status::Ok, __FILE__, __LINE__, "Reserve succeeds");
+    EXPECT(reserved != 0, "Reserve returned non-zero");
+
+    // Address outside any reserved region -> not handled.
+    EXPECT(!Memory::CommitOnFault(0xDEADBEEF0000ULL),
+           "CommitOnFault outside reserved region returns false");
+
+    // Address inside the reserved region -> handled, page usable.
+    const guest_addr_t fault = reserved + 65536 + 0x1234; // second 64 KiB block
+    EXPECT(Memory::CommitOnFault(fault), "CommitOnFault inside reserved region");
+    Memory::Write<u64>(fault, 0xA5A5A5A5A5A5A5A5ULL);
+    EXPECT_EQ(Memory::Read<u64>(fault), 0xA5A5A5A5A5A5A5A5ULL,
+              "Demand-committed page is readable/writable");
+
+    // The first block must still be uncommitted (faults are per-64 KiB block).
+    Memory::MemoryInfo info{};
+    CheckStatus(Memory::Query(reserved, &info), Memory::Status::Ok,
+                __FILE__, __LINE__, "Query reserved region");
+    EXPECT(!info.is_committed, "Region tracking still marks region reserved");
+
+    CheckStatus(Memory::Unmap(reserved, 4 * 65536), Memory::Status::Ok,
+                __FILE__, __LINE__, "Unmap ok");
+
+    Memory::Shutdown();
+}
+
+// 9. PS5 prot values with CPU/GPU flag bits (e.g. 0x33) must translate using
+//    only the low RWX bits.
+// ---------------------------------------------------------------------------
+void TestHighProtBitsIgnored() {
+    std::fprintf(stdout, "[TEST] High prot bits (0x33) ignored in translation\n");
+    EXPECT(Memory::Initialize(), "Initialize");
+
+    guest_addr_t addr = 0;
+    CheckStatus(Memory::Map(0, PAGE_SIZE, 0x33, &addr),
+                Memory::Status::Ok, __FILE__, __LINE__, "Map with prot 0x33 succeeds");
+    EXPECT(addr != 0, "Map returned non-zero address");
+
+    EXPECT(Memory::IsReadable(addr, PAGE_SIZE), "prot 0x33 is readable (bit 0)");
+    EXPECT(Memory::IsWritable(addr, PAGE_SIZE), "prot 0x33 is writable (bit 1)");
+    EXPECT(!Memory::IsExecutable(addr, PAGE_SIZE), "prot 0x33 is not executable (bit 2 clear)");
+
+    CheckStatus(Memory::Unmap(addr, PAGE_SIZE), Memory::Status::Ok,
+                __FILE__, __LINE__, "Unmap ok");
+
+    Memory::Shutdown();
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
@@ -302,6 +393,9 @@ int main() {
     TestGuestFaultHandler();
     TestStats();
     TestStatusOnlyApi();
+    TestProtectOnReservedCommits();
+    TestCommitOnFault();
+    TestHighProtBitsIgnored();
 
     std::fprintf(stdout, "Memory query: %d check(s), %d failure(s)\n", g_checks, g_failures);
     if (g_failures == 0) {

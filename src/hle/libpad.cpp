@@ -25,15 +25,21 @@ namespace HLE {
     void RegisterLibPad() {
         LOG_INFO(HLE, "Registering libScePad HLE symbols...");
 
-        // scePadInit
-        RegisterSymbol("libScePad", "scePadInit", [](const GuestArgs& args) -> u64 {
+        // Handler bodies are shared between the plain-name registrations and
+        // the raw-NID registrations under "libkernel" below: the games we
+        // boot resolve pad imports module-scoped against libkernel by NID
+        // (e.g. libkernel::xk0AcarP3V4#L#M == scePadOpen), which the
+        // cross-module friendly-name bridge in Resolve() cannot reach.
+
+        auto PadInit = [](const GuestArgs& args) -> u64 {
             (void)args;
             LOG_INFO(HLE, "scePadInit() called");
             return 0; // Success
-        });
+        };
+        RegisterSymbol("libScePad", "scePadInit", PadInit);
+        RegisterSymbol("libkernel", "hv1luiJrqQM#L#M", PadInit);
 
-        // scePadOpen
-        RegisterSymbol("libScePad", "scePadOpen", [](const GuestArgs& args) -> u64 {
+        auto PadOpen = [](const GuestArgs& args) -> u64 {
             u32 userId = static_cast<u32>(args.arg1);
             u32 type = static_cast<u32>(args.arg2);
             u32 index = static_cast<u32>(args.arg3);
@@ -45,17 +51,19 @@ namespace HLE {
             // Return a mock pad handle
             static u32 mock_pad_handle = 0x3000;
             return mock_pad_handle++;
-        });
+        };
+        RegisterSymbol("libScePad", "scePadOpen", PadOpen);
+        RegisterSymbol("libkernel", "xk0AcarP3V4#L#M", PadOpen);
 
-        // scePadClose
-        RegisterSymbol("libScePad", "scePadClose", [](const GuestArgs& args) -> u64 {
+        auto PadClose = [](const GuestArgs& args) -> u64 {
             u32 handle = static_cast<u32>(args.arg1);
             LOG_INFO(HLE, "scePadClose(handle: 0x%X) called", handle);
             return 0; // Success
-        });
+        };
+        RegisterSymbol("libScePad", "scePadClose", PadClose);
+        RegisterSymbol("libkernel", "6ncge5+l5Qs#L#M", PadClose);
 
-        // scePadReadState
-        RegisterSymbol("libScePad", "scePadReadState", [](const GuestArgs& args) -> u64 {
+        auto PadReadState = [](const GuestArgs& args) -> u64 {
             u32 handle = static_cast<u32>(args.arg1);
             (void)handle;
             guest_addr_t data_ptr = args.arg2;
@@ -87,24 +95,28 @@ namespace HLE {
             Memory::WriteBuffer(data_ptr, &pad_data, sizeof(ScePadData));
 
             return 0; // Success
-        });
+        };
+        RegisterSymbol("libScePad", "scePadReadState", PadReadState);
+        RegisterSymbol("libkernel", "YndgXqQVV7c#L#M", PadReadState);
 
-        // scePadSetLightBar
-        RegisterSymbol("libScePad", "scePadSetLightBar", [](const GuestArgs& args) -> u64 {
-            u32 handle = static_cast<u32>(args.arg1);
-            guest_addr_t color = args.arg2;
-            (void)color;
-            LOG_DEBUG(HLE, "scePadSetLightBar(handle: 0x%X) called", handle);
-            return 0; // Success
-        });
+        // scePadSetMotionSensorState(handle, enabled, ...) — no-op success.
+        auto PadNoop0 = [](const GuestArgs& args) -> u64 {
+            (void)args;
+            return 0;
+        };
+        RegisterSymbol("libkernel", "clVvL4ZDntw#L#M", PadNoop0);
 
-        // scePadSetVibration
-        RegisterSymbol("libScePad", "scePadSetVibration", [](const GuestArgs& args) -> u64 {
-            u32 handle = static_cast<u32>(args.arg1);
-            guest_addr_t motor = args.arg2;
-            (void)motor;
-            LOG_DEBUG(HLE, "scePadSetVibration(handle: 0x%X) called", handle);
-            return 0; // Success
-        });
+        // scePadGetControllerInformation(handle, ScePadControllerInformation* out)
+        // — report a connected DualSense-style controller.
+        auto PadGetControllerInformation = [](const GuestArgs& args) -> u64 {
+            guest_addr_t out = args.arg2;
+            if (!out) return 0x80100001;
+            // Conservatively zero the struct (the game only checks fields it
+            // knows); real firmware reports touchpad/motion/stick capability.
+            u8 zeros[0x120] = {};
+            Memory::WriteBuffer(out, zeros, sizeof(zeros));
+            return 0;
+        };
+        RegisterSymbol("libkernel", "gjP9-KQzoUk#L#M", PadGetControllerInformation);
     }
 }

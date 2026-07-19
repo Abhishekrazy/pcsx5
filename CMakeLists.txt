@@ -98,6 +98,8 @@ set(KERNEL_SRC
     src/kernel/kernel.cpp
     src/kernel/fd_table.h
     src/kernel/fd_table.cpp
+    src/kernel/guest_clock.h
+    src/kernel/guest_clock.cpp
     src/kernel/memory.h
     src/kernel/memory.cpp
     src/kernel/thread.h
@@ -139,15 +141,26 @@ add_executable(pcsx5
     src/hle/hle.h
     src/hle/hle.cpp
     src/hle/libkernel.cpp
+    src/hle/libkernel_sync.h
+    src/hle/libkernel_sync.cpp
     src/hle/libpad.cpp
     src/hle/libvideoout.cpp
     src/hle/libagc.cpp
     src/hle/libscepad.cpp
+    src/hle/libsavedata.cpp
+    src/hle/libuser_service.cpp
+    src/hle/libsysmodule.cpp
+    src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+    src/hle/libsystem_service.cpp
+    src/hle/libnp.cpp
     src/common/nid.cpp
     ${KERNEL_SRC}
     ${CPU_SRC}
     src/gpu/gpu.h
     src/gpu/vulkan_backend.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
     src/diagnostics/diagnostics.h
     src/diagnostics/diagnostics.cpp
     src/config/config.h
@@ -162,6 +175,21 @@ add_executable(pcsx5
 
 include(CTest)
 if(BUILD_TESTING)
+    # Manual GPU smoke tool (Phase 5 M1) — NOT a ctest: requires a real GPU
+    # and opens a window.  Presents synthetic frames through the same
+    # GPU::RenderFrame entry point the videoout flip path uses.
+    add_executable(vk_present_smoke
+        tests/vk_present_smoke.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    )
+    target_include_directories(vk_present_smoke PRIVATE src)
+    target_compile_options(vk_present_smoke PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(vk_present_smoke PRIVATE glfw Vulkan::Headers)
+
     add_executable(loader_validation_tests
         tests/loader_validation.cpp
         src/common/log.cpp
@@ -209,6 +237,15 @@ if(BUILD_TESTING)
     target_include_directories(memory_query_tests PRIVATE src)
     target_compile_options(memory_query_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME memory_query COMMAND memory_query_tests)
+
+    # Kernel guest-memory protection mapping tests (ProtectGuestMemory).
+    add_executable(kernel_memory_tests
+        tests/kernel_memory_tests.cpp
+        src/kernel/memory.cpp
+    )
+    target_include_directories(kernel_memory_tests PRIVATE src)
+    target_compile_options(kernel_memory_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME kernel_memory COMMAND kernel_memory_tests)
 
     add_executable(elf_metadata_tests
         tests/elf_metadata_tests.cpp
@@ -273,12 +310,24 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
         src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+    src/hle/libsysmodule.cpp
+    src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+    src/hle/libsystem_service.cpp
+    src/hle/libnp.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_import_report_tests PRIVATE src)
@@ -301,12 +350,24 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
         src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+    src/hle/libsysmodule.cpp
+    src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+    src/hle/libsystem_service.cpp
+    src/hle/libnp.cpp
         src/reports/reports.cpp
         ${DISPATCHER_SRC}
     )
@@ -343,12 +404,24 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
         src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+    src/hle/libsysmodule.cpp
+    src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+    src/hle/libsystem_service.cpp
+    src/hle/libnp.cpp
         src/diagnostics/diagnostics.cpp
         ${DISPATCHER_SRC}
     )
@@ -750,16 +823,226 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
         src/hle/libpad.cpp
         src/hle/libvideoout.cpp
         src/hle/libagc.cpp
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+    src/hle/libsysmodule.cpp
+    src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+    src/hle/libsystem_service.cpp
+    src/hle/libnp.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(syscall_validation_tests PRIVATE src)
     target_compile_options(syscall_validation_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     target_link_libraries(syscall_validation_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
     add_test(NAME syscall_validation COMMAND syscall_validation_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 2 — kernel sync primitive tests: real pthread mutex/cond/rwlock,
+    # TLS keys, kernel semaphores, event flags, equeue, and the shared guest
+    # clock (src/hle/libkernel_sync.cpp + src/kernel/guest_clock.cpp).
+    # ------------------------------------------------------------------------
+    add_executable(kernel_sync_tests
+        tests/kernel_sync_tests.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+    src/hle/libsysmodule.cpp
+    src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+    src/hle/libsystem_service.cpp
+    src/hle/libnp.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(kernel_sync_tests PRIVATE src)
+    target_compile_options(kernel_sync_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(kernel_sync_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    add_test(NAME kernel_sync COMMAND kernel_sync_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 3 — HLE module tests: libSceSysmodule id registry, libc guest
+    # heap, libSceSystemService canned parameters, NP offline-signed-in set,
+    # libSceVideoOut port/flip model with equeue notifications, and the
+    # NID-database gap-filler stubs (tests/hle_phase3_tests.cpp).
+    # ------------------------------------------------------------------------
+    add_executable(hle_phase3_tests
+        tests/hle_phase3_tests.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+        src/hle/libsysmodule.cpp
+        src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(hle_phase3_tests PRIVATE src)
+    target_compile_options(hle_phase3_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(hle_phase3_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    add_test(NAME hle_phase3 COMMAND hle_phase3_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 5 M0 — AGC HLE tests: sceAgcCreateShader shader ABI (relocation,
+    # PGM patch, handle contract), Gen5 register-defaults blobs, sceAgcDcb*
+    # PM4 builders, and the sceAgcDriverSubmitDcb packet-stream walker
+    # (tests/hle_agc_tests.cpp).
+    # ------------------------------------------------------------------------
+    add_executable(hle_agc_tests
+        tests/hle_agc_tests.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+        src/hle/libsysmodule.cpp
+        src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(hle_agc_tests PRIVATE src)
+    target_compile_options(hle_agc_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(hle_agc_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    add_test(NAME hle_agc COMMAND hle_agc_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 5 M1 — guest printf family tests: SysV varargs formatting
+    # (%s/%d/%x/%u/%%, width, precision, length modifiers, '*' + stack
+    # overflow args) and the registered libc::sprintf/libc::memcmp symbols
+    # (tests/guest_printf_tests.cpp).
+    # ------------------------------------------------------------------------
+    add_executable(guest_printf_tests
+        tests/guest_printf_tests.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+        src/hle/libsysmodule.cpp
+        src/hle/guest_printf.cpp
+        src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(guest_printf_tests PRIVATE src)
+    target_compile_options(guest_printf_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(guest_printf_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    add_test(NAME guest_printf COMMAND guest_printf_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 5 M2 slice 1 — shader recompiler foundation: RDNA2 (GCN Gen5)
+    # instruction decoder, AGC shader metadata reader, SPIR-V module builder
+    # (tests/shader_tests.cpp).  shader_dump is the offline corpus tool — a
+    # CLI target only, NOT a ctest.
+    # ------------------------------------------------------------------------
+    set(SHADER_SRC
+        src/gpu/shader/gcn_decode.h
+        src/gpu/shader/gcn_decode.cpp
+        src/gpu/shader/metadata.h
+        src/gpu/shader/metadata.cpp
+        src/gpu/shader/spirv_builder.h
+        src/gpu/shader/spirv_builder.cpp
+    )
+
+    add_executable(shader_tests
+        tests/shader_tests.cpp
+        ${SHADER_SRC}
+    )
+    target_include_directories(shader_tests PRIVATE src)
+    target_compile_options(shader_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME shader COMMAND shader_tests)
+
+    add_executable(shader_dump
+        tests/shader_dump.cpp
+        ${SHADER_SRC}
+    )
+    target_include_directories(shader_dump PRIVATE src)
+    target_compile_options(shader_dump PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
 
 endif()

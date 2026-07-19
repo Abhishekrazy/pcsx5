@@ -32,9 +32,17 @@ extern "C" void SetHostStackPointer(uintptr_t rsp) {
 
 namespace HLE {
     void RegisterLibKernel();
+    void RegisterLibKernelSync();
     void RegisterLibPad();
+    void RegisterLibScePad();
     void RegisterLibVideoOut();
     void RegisterLibAgc();
+    void RegisterLibSaveData();
+    void RegisterLibUserService();
+    void RegisterLibSysmodule();
+    void RegisterLibLibc();
+    void RegisterLibSystemService();
+    void RegisterLibNp();
 
     static std::unordered_map<std::string, HleSymbol> g_symbol_registry;
     static std::unordered_map<u64, HleSymbol>         g_id_index;       // fast O(1) dispatch
@@ -102,9 +110,83 @@ namespace HLE {
         return nid.substr(0, pos);
     }
 
+    // -------------------------------------------------------------------------
+    // Symmetric symbol-name matching for Resolve/ResolveAny.
+    //
+    // The registry holds a mix of plain names ("strcpy#T#T") and NIDs
+    // ("kiZSXIWd9vg#T#T"), while the guest may request either form.  A bare
+    // "strcpy" must match a registered "strcpy#T#T", and a NID request must
+    // match a plain-name registration when the NID database knows the name.
+    // Both directions are compared on their reduced base forms plus, when
+    // available, the friendly name from the NID table.
+    // -------------------------------------------------------------------------
+    static std::string FriendlyNameFor(const std::string& raw) {
+        auto parsed = Common::ParseNidString(raw);
+        if (parsed) {
+            if (auto friendly = Common::LookupNidName(parsed->nid)) {
+                return std::string(*friendly);
+            }
+        }
+        return {};
+    }
+
+    static bool SymbolNamesMatch(const std::string& requested, const std::string& registered) {
+        if (requested == registered) return true;
+        const std::string req_base = NidBase(requested);
+        const std::string reg_base = NidBase(registered);
+        if (!req_base.empty() && req_base == reg_base) return true;
+        // Bridge via the NID->name table in both directions.
+        const std::string req_friendly = FriendlyNameFor(requested);
+        if (!req_friendly.empty() && req_friendly == reg_base) return true;
+        const std::string reg_friendly = FriendlyNameFor(registered);
+        if (!reg_friendly.empty() && reg_friendly == req_base) return true;
+        return false;
+    }
+
+    // -------------------------------------------------------------------------
+    // NID-database gap filler.
+    //
+    // Walks the merged NID name table (built-in + assets/nid_db.txt, loaded by
+    // main() before HLE::Initialize) and registers a log-and-return-0 stub
+    // under its real name for every entry no HLE module implemented.  Called
+    // LAST in Initialize(): RegisterSymbol is last-registration-win, so this
+    // function must check-and-skip existing keys instead of blindly
+    // overwriting — a real implementation registered earlier always wins.
+    // Truly unknown NIDs still fall through to the Resolve-time auto-stub.
+    // -------------------------------------------------------------------------
+    void RegisterNidDbStubs() {
+        const auto entries = Common::EnumerateNidEntries();
+        size_t added = 0;
+        for (const auto& e : entries) {
+            if (e.name.empty()) continue;
+            std::string module = e.module.empty() ? "unknown" : e.module;
+            // The DB spells the kernel library "libKernel" while every HLE
+            // module registers under "libkernel".  Normalize so the existence
+            // check below shares one key space — otherwise a DB stub could
+            // shadow a real implementation in ResolveAny's friendly-name
+            // bridge (both base names would match).
+            if (_stricmp(module.c_str(), "libKernel") == 0) module = "libkernel";
+            {
+                std::lock_guard<std::mutex> lock(g_hle_mutex);
+                if (g_symbol_registry.count(module + "::" + e.name)) continue;
+                // A registration under the NID itself also counts as implemented.
+                if (g_symbol_registry.count(module + "::" + e.nid)) continue;
+                if (g_symbol_registry.count(module + "::" + e.name + "#T#T")) continue;
+            }
+            const std::string mod_copy = module;
+            const std::string name_copy = e.name;
+            RegisterSymbol(mod_copy, name_copy,
+                           [mod_copy, name_copy](const GuestArgs& /*args*/) -> u64 {
+                               LogStubCallOnce(mod_copy, name_copy);
+                               return 0;
+                           });
+            ++added;
+        }
+        LOG_INFO(HLE, "Registered %zu NID-database stub(s) (%zu entries scanned).", added, entries.size());
+    }
+
     bool Initialize() {
         LOG_INFO(HLE, "Initializing HLE subsystem...");
-
         // Allocate a large executable page for our thunks (1 MB = 32768 32-byte slots)
         if (Memory::Map(0, THUNK_PAGE_SIZE,
                         Memory::PROT_READ | Memory::PROT_WRITE | Memory::PROT_EXEC,
@@ -117,9 +199,27 @@ namespace HLE {
         LOG_INFO(HLE, "Allocated HLE thunk page at: 0x%llx", g_thunk_page_base);
 
         RegisterLibKernel();
+        // Real sync/equeue/clock implementations — registered after
+        // RegisterLibKernel() so they overwrite any legacy stub registrations
+        // for the same symbols (RegisterSymbol is last-registration-win).
+        RegisterLibKernelSync();
         RegisterLibPad();
+        RegisterLibScePad();
         RegisterLibVideoOut();
         RegisterLibAgc();
+        RegisterLibSaveData();
+        RegisterLibUserService();
+        RegisterLibSysmodule();
+        // Real guest-heap libc family — replaces the leaky page-per-call
+        // malloc/calloc/realloc registrations in libkernel (last-win).
+        RegisterLibLibc();
+        RegisterLibSystemService();
+        RegisterLibNp();
+
+        // Gap filler: log-and-return-0 stubs under their real names for every
+        // NID-database entry no module implemented.  Must run LAST so it
+        // never overrides a real registration (it skips existing keys).
+        RegisterNidDbStubs();
 
         return true;
     }
@@ -195,6 +295,10 @@ namespace HLE {
     static std::unordered_set<std::string> g_stub_log_keys;
     static std::mutex                        g_stub_log_mutex;
 
+    // Guest RIP of the in-flight HLE call, set by HleDispatch so the stub
+    // logger can attribute a call site (invaluable for unknown-NID stubs).
+    static thread_local u64 g_current_guest_rip = 0;
+
     void LogStubCallOnce(const std::string& module_name, const std::string& name) {
         const std::string key = module_name + "::" + name;
         {
@@ -205,10 +309,11 @@ namespace HLE {
         }
         const std::string friendly = ResolveFriendlyName(name);
         if (friendly != name) {
-            LOG_WARN(HLE, "Unimplemented stub called: %s (nid=%s name=%s)",
-                     key.c_str(), name.c_str(), friendly.c_str());
+            LOG_WARN(HLE, "Unimplemented stub called: %s (nid=%s name=%s) from guest RIP 0x%llx",
+                     key.c_str(), name.c_str(), friendly.c_str(), g_current_guest_rip);
         } else {
-            LOG_WARN(HLE, "Unimplemented stub called: %s (nid=%s)", key.c_str(), name.c_str());
+            LOG_WARN(HLE, "Unimplemented stub called: %s (nid=%s) from guest RIP 0x%llx",
+                     key.c_str(), name.c_str(), g_current_guest_rip);
         }
     }
 
@@ -310,6 +415,19 @@ namespace HLE {
         std::lock_guard<std::mutex> lock(g_hle_mutex);
 
         std::string key = module_name + "::" + name;
+
+        // Last-registration-win, made explicit: if this exact key already
+        // exists, keep its symbol id and thunk (so any previously resolved
+        // thunk address stays valid) and only replace the handler.
+        auto existing = g_symbol_registry.find(key);
+        if (existing != g_symbol_registry.end()) {
+            existing->second.handler = handler;
+            g_id_index[existing->second.id] = existing->second;
+            LOG_DEBUG(HLE, "Re-registered HLE Symbol: %s (ID: %llu) -> Thunk: 0x%llx",
+                      key.c_str(), existing->second.id, existing->second.thunk_address);
+            return;
+        }
+
         u64 symbol_id = g_symbol_registry.size() + 1;
 
         guest_addr_t thunk_addr = CreateThunk(symbol_id);
@@ -341,18 +459,26 @@ namespace HLE {
             return it->second.thunk_address;
         }
 
-        // 2. Base NID match — try every registered key whose base matches this NID's base.
-        //    Allows  bzQExy189ZI#j#j  to resolve via  bzQExy189ZI#T#T
-        std::string base = NidBase(name);
-        if (!base.empty() && base != name) {
+        // 2. Base NID / friendly-name match — try every registered key in this
+        //    module whose reduced name matches (e.g. bzQExy189ZI#j#j via
+        //    bzQExy189ZI#T#T, or NID kiZSXIWd9vg#T#T via plain "strcpy#T#T").
+        //    Two passes: exact base-NID equality first, the NID-database
+        //    friendly-name bridge only afterwards, so a plain-name
+        //    registration can never shadow a real NID registration.
+        const std::string req_base = NidBase(name);
+        for (int pass = 0; pass < 2; ++pass) {
             for (auto& kv : g_symbol_registry) {
-                // key format: "module::nid#X#Y"
+                // key format: "module::name"
                 auto pos = kv.first.find("::");
                 if (pos == std::string::npos) continue;
                 std::string kmod = kv.first.substr(0, pos);
                 std::string kname = kv.first.substr(pos + 2);
-                if (kmod == module_name && NidBase(kname) == base) {
-                    LOG_DEBUG(HLE, "NID variant match: %s -> %s", key.c_str(), kv.first.c_str());
+                if (kmod != module_name) continue;
+                bool match = (pass == 0)
+                    ? (!req_base.empty() && req_base == NidBase(kname))
+                    : SymbolNamesMatch(name, kname);
+                if (match) {
+                    LOG_DEBUG(HLE, "Name variant match: %s -> %s", key.c_str(), kv.first.c_str());
                     return kv.second.thunk_address;
                 }
             }
@@ -384,22 +510,31 @@ namespace HLE {
     guest_addr_t ResolveAny(const std::string& name) {
         std::unique_lock<std::mutex> lock(g_hle_mutex);
 
-        std::string base = NidBase(name);
-
-        // 1. Scan every registered symbol for an exact or base NID match
+        // 1. Scan every registered symbol for an exact, base-NID, or
+        //    friendly-name match.  Exact matches win first, then base-NID
+        //    equality, and only then the NID-database friendly-name bridge
+        //    (see SymbolNamesMatch) — so plain-name registrations never
+        //    shadow a symbol registered under the requested NID itself.
+        const std::string req_base = NidBase(name);
         for (auto& kv : g_symbol_registry) {
             auto pos = kv.first.find("::");
             if (pos == std::string::npos) continue;
-            std::string kname = kv.first.substr(pos + 2);
-
-            // Exact match
-            if (kname == name) {
+            if (kv.first.substr(pos + 2) == name) {
                 return kv.second.thunk_address;
             }
-            // Base NID match (ignore #X#Y suffix variant)
-            if (!base.empty() && NidBase(kname) == base) {
-                LOG_DEBUG(HLE, "ResolveAny NID variant match: %s -> %s", name.c_str(), kv.first.c_str());
-                return kv.second.thunk_address;
+        }
+        for (int pass = 0; pass < 2; ++pass) {
+            for (auto& kv : g_symbol_registry) {
+                auto pos = kv.first.find("::");
+                if (pos == std::string::npos) continue;
+                std::string kname = kv.first.substr(pos + 2);
+                bool match = (pass == 0)
+                    ? (!req_base.empty() && req_base == NidBase(kname))
+                    : SymbolNamesMatch(name, kname);
+                if (match) {
+                    LOG_DEBUG(HLE, "ResolveAny name variant match: %s -> %s", name.c_str(), kv.first.c_str());
+                    return kv.second.thunk_address;
+                }
             }
         }
 
@@ -500,7 +635,7 @@ namespace HLE {
         }
     }
 
-    extern "C" u64 HleDispatch(u64 symbol_id, u64 rdi, u64 rsi, u64 rdx, u64 rcx, u64 r8, u64 r9, u64 guest_rip) {
+    extern "C" u64 HleDispatch(u64 symbol_id, u64 rdi, u64 rsi, u64 rdx, u64 rcx, u64 r8, u64 r9, u64 guest_rip, u64 guest_rsp) {
         HleSymbol target_sym;
         bool found = false;
         {
@@ -530,6 +665,9 @@ namespace HLE {
         args.arg4 = rcx;
         args.arg5 = r8;
         args.arg6 = r9;
+        // First SysV stack argument sits right above the guest return address.
+        args.stack_args = guest_rsp ? guest_rsp + 8 : 0;
+        g_current_guest_rip = guest_rip;
 
         // Push the call into the import-call trace ring.  Done before invoking
         // the handler so the trace reflects what the guest requested, not

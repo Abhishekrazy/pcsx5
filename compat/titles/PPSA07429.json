@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "title_id": "PPSA07429",
+  "name": "LOST EPIC",
+  "region": "",
+  "version": "",
+  "status": "boot",
+  "notes": "Second bring-up target. Dump path: Games/PPSA07429-extracted/. Boots through module linking and AGC map calls; tn3VlD0hG60#k#N returns a 1MB mapped buffer. Crashes writing [RAX] with RAX=0 at RIP 0x800e27823 (instruction bytes 48 89 00 = mov [rax],rax) immediately after the AGC mapping sequence — the AGC memory contract (what the mapped buffer must contain / which out-params the caller expects filled) is not yet honored. Phase-4 re-check 2026-07-19 (ppsa07429_run3.log): identical wall, unchanged — same RIP, same null-RAX store. Log refs: ppsa07429_run3.log (latest), ppsa07429_run2.log.",
+  "curated_at": "2026-07-19",
+  "workarounds": [],
+  "auto": {
+    "last_tested": "2026-07-19",
+    "last_run_status": "boot",
+    "last_run_git_revision": "",
+    "last_run_duration_ms": 0,
+    "last_run_resolved_imports": 0,
+    "last_run_unresolved_imports": 0
+  }
+}

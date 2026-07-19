@@ -6,7 +6,9 @@
 //   - ParseNidString splits the 4-char type tag correctly (the
 //     "#T#T", "#A#B", "#S#N", "#B#C" forms).
 //   - LookupNidName hits the small known-name table for the top three
-//     NIDs observed in PPSA02929 (pZ9WXcClPO8, byV+FWlAnB4, 9ByRMdo7ywg).
+//     NIDs observed in PPSA02929 (L-Q3LEjIbgA, IWIBBdTHit4, xaxE6OHpkiM —
+//     verified against the PS5 name->NID SHA1 scheme; earlier revisions used
+//     stale values pZ9WXcClPO8 / byV+FWlAnB4 / 9ByRMdo7ywg).
 //
 // Self-contained: no Memory / Loader / HLE dependencies.
 
@@ -126,9 +128,9 @@ int main() {
 
     // 4. Known-name lookup.  The table is small; we hit the three
     //    top PPSA02929 NIDs and a couple of libSceAgc entries.
-    TestNameLookup("pZ9WXcClPO8", "sceKernelMapDirectMemory");
-    TestNameLookup("byV+FWlAnB4", "sceKernelMapFlexibleMemory");
-    TestNameLookup("9ByRMdo7ywg", "sceKernelAllocateFlexibleMemory");
+    TestNameLookup("L-Q3LEjIbgA", "sceKernelMapDirectMemory");
+    TestNameLookup("IWIBBdTHit4", "sceKernelMapFlexibleMemory");
+    TestNameLookup("xaxE6OHpkiM", "sceKernelAllocateFlexibleMemory");
     TestNameLookup("+P6FRGH4LfA", "memmove");
     TestNameLookup("1kZFcktOm+s", "sceAgcDriverInitialize");
 

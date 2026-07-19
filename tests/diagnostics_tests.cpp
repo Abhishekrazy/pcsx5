@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-extern "C" u64 HleDispatch(u64, u64, u64, u64, u64, u64, u64, u64);
+extern "C" u64 HleDispatch(u64, u64, u64, u64, u64, u64, u64, u64, u64);
 
 namespace {
 
@@ -149,8 +149,8 @@ void TestHleImportTrace() {
     EXPECT(symbol_id != 0, "Extracted symbol id");
 
     HLE::ClearImportTrace();
-    HleDispatch(symbol_id, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0xCAFE);
-    HleDispatch(symbol_id, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0xBEEF);
+    HleDispatch(symbol_id, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0xCAFE, 0);
+    HleDispatch(symbol_id, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0xBEEF, 0);
 
     auto trace = HLE::GetImportTrace();
     EXPECT_EQ(trace.size(), (size_t)2, "two trace entries");
