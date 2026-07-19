@@ -512,20 +512,20 @@ namespace Pcsx5Ui
                 VerticalAlignment = VerticalAlignment.Center
             };
 
+            var tileGrid = new Grid();
             var coverImage = LoadImageHelper(game.CoverPath);
             if (coverImage != null)
             {
-                border.Background = new ImageBrush
+                tileGrid.Children.Add(new Image
                 {
-                    ImageSource = coverImage,
+                    Source = coverImage,
                     Stretch = Stretch.UniformToFill
-                };
+                });
             }
             else
             {
                 // Fallback text
-                var fallbackGrid = new Grid();
-                fallbackGrid.Children.Add(new TextBlock
+                tileGrid.Children.Add(new TextBlock
                 {
                     Text = game.Title,
                     HorizontalAlignment = HorizontalAlignment.Center,
@@ -537,8 +537,16 @@ namespace Pcsx5Ui
                     TextAlignment = TextAlignment.Center,
                     Margin = new Thickness(5)
                 });
-                border.Child = fallbackGrid;
             }
+
+            // Highlight overlay sits above the cover; handlers only touch this,
+            // never border.Background, so the thumbnail is never erased.
+            var overlay = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(0, 255, 255, 255))
+            };
+            tileGrid.Children.Add(overlay);
+            border.Child = tileGrid;
 
             // Hover effects
             border.MouseEnter += (s, e) =>
@@ -546,7 +554,7 @@ namespace Pcsx5Ui
                 if (_selectedGame != game)
                 {
                     border.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 153, 255));
-                    border.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
+                    overlay.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
                 }
             };
             border.MouseLeave += (s, e) =>
@@ -554,7 +562,7 @@ namespace Pcsx5Ui
                 if (_selectedGame != game)
                 {
                     border.BorderBrush = new SolidColorBrush(Color.FromArgb(15, 255, 255, 255));
-                    border.Background = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255));
+                    overlay.Background = new SolidColorBrush(Color.FromArgb(0, 255, 255, 255));
                     border.Effect = null;
                 }
             };
@@ -624,10 +632,12 @@ namespace Pcsx5Ui
             // Update border highlight in carousel
             foreach (Border card in GamesWrapPanel.Children)
             {
+                var cardOverlay = (card.Child as Grid)?.Children.OfType<Border>().FirstOrDefault();
                 if (card.Tag == game)
                 {
                     card.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 153, 255));
-                    card.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
+                    if (cardOverlay != null)
+                        cardOverlay.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
                     card.Effect = new System.Windows.Media.Effects.DropShadowEffect
                     {
                         Color = Color.FromRgb(0, 153, 255),
@@ -639,7 +649,8 @@ namespace Pcsx5Ui
                 else
                 {
                     card.BorderBrush = new SolidColorBrush(Color.FromArgb(15, 255, 255, 255));
-                    card.Background = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255));
+                    if (cardOverlay != null)
+                        cardOverlay.Background = new SolidColorBrush(Color.FromArgb(0, 255, 255, 255));
                     card.Effect = null;
                 }
             }

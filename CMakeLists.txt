@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-cmake_policy(VERSION 3.5)
+cmake_policy(VERSION 3.20)
 project(pcsx5 LANGUAGES CXX C)
 
 # Force C++20
@@ -122,8 +122,20 @@ add_executable(pcsx5
     src/common/log.cpp
     src/memory/memory.h
     src/memory/memory.cpp
+    src/common/crypto.h
+    src/common/crypto.cpp
     src/loader/elf.h
     src/loader/elf.cpp
+    src/loader/param_json.h
+    src/loader/param_json.cpp
+    src/loader/pkg.h
+    src/loader/pkg.cpp
+    src/loader/pfs.h
+    src/loader/pfs.cpp
+    src/loader/module_graph.h
+    src/loader/module_graph.cpp
+    src/loader/module_resolver.h
+    src/loader/module_resolver.cpp
     src/hle/hle.h
     src/hle/hle.cpp
     src/hle/libkernel.cpp
@@ -256,6 +268,8 @@ if(BUILD_TESTING)
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
@@ -282,6 +296,8 @@ if(BUILD_TESTING)
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
@@ -322,6 +338,8 @@ if(BUILD_TESTING)
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
@@ -491,6 +509,22 @@ add_executable(dump_imports
     target_compile_options(dump_imports PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME dump_imports COMMAND dump_imports)
 
+    # ------------------------------------------------------------------------
+    # nid_scan — scan dumped PS5 PRX/SPRX modules and emit nid_db.txt lines
+    # (NID<TAB>module<TAB>name) on stdout.  Standalone dev tool; requires
+    # real module dumps as input, so it is not registered as a ctest test
+    # (same policy as make_test_covers).
+    # ------------------------------------------------------------------------
+    add_executable(nid_scan
+        tools/nid_scan.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+    )
+    target_include_directories(nid_scan PRIVATE src)
+    target_compile_options(nid_scan PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+
     # Dump the dynamic-tag table of a real PS5 game ELF to identify
     # which DT_* / PT_* tags are actually used (Sony-specific tags
     # are common).  Mirrors the constants in Kyty's loader.
@@ -624,6 +658,84 @@ add_executable(dump_imports
     target_compile_options(system_info_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
 
     # ------------------------------------------------------------------------
+    # Phase 1 — crypto primitives (AES-128, SHA-256) test vectors.
+    # ------------------------------------------------------------------------
+    add_executable(crypto_tests
+        tests/crypto_tests.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+    )
+    target_include_directories(crypto_tests PRIVATE src)
+    target_compile_options(crypto_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME crypto COMMAND crypto_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 1 — param.json parser tests (title id, version, category).
+    # ------------------------------------------------------------------------
+    add_executable(param_json_tests
+        tests/param_json_tests.cpp
+        src/common/log.cpp
+        src/loader/param_json.cpp
+    )
+    target_include_directories(param_json_tests PRIVATE src)
+    target_compile_options(param_json_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(param_json_tests PRIVATE nlohmann_json::nlohmann_json)
+    add_test(NAME param_json COMMAND param_json_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 1 — PKG container tests — synthetic fake-PKG fixtures: header,
+    # entry table, passcode key derivation, AES decrypt, extraction.
+    # ------------------------------------------------------------------------
+    add_executable(pkg_tests
+        tests/pkg_tests.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+        src/loader/pkg.cpp
+    )
+    target_include_directories(pkg_tests PRIVATE src)
+    target_compile_options(pkg_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME pkg COMMAND pkg_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 1 — PFS image parser tests (read-only) — synthetic PFS fixtures.
+    # ------------------------------------------------------------------------
+    add_executable(pfs_tests
+        tests/pfs_tests.cpp
+        src/common/log.cpp
+        src/loader/pfs.cpp
+    )
+    target_include_directories(pfs_tests PRIVATE src)
+    target_compile_options(pfs_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME pfs COMMAND pfs_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 1 — NID database file tests — parse assets/nid_db.txt format,
+    # merge over built-in table, precedence rules.
+    # ------------------------------------------------------------------------
+    add_executable(nid_db_tests
+        tests/nid_db_tests.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+    )
+    target_include_directories(nid_db_tests PRIVATE src)
+    target_compile_options(nid_db_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME nid_db COMMAND nid_db_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 1 — Module dependency graph tests — topological load order with
+    # chains, diamonds, cycles, and missing nodes.
+    # ------------------------------------------------------------------------
+    add_executable(module_graph_tests
+        tests/module_graph_tests.cpp
+        src/common/log.cpp
+        src/loader/module_graph.cpp
+        src/loader/module_resolver.cpp
+    )
+    target_include_directories(module_graph_tests PRIVATE src)
+    target_compile_options(module_graph_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME module_graph COMMAND module_graph_tests)
+
+    # ------------------------------------------------------------------------
     # Syscall HLE validation tests — round-trip, arguments mapping, logging,
     # and exception handling verification.
     # ------------------------------------------------------------------------
@@ -633,6 +745,8 @@ add_executable(dump_imports
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp

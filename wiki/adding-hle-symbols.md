@@ -22,6 +22,12 @@ name; the friendly name is stored in stats as `resolved_name`
 (src/hle/hle.cpp:184-192). Register the exact NID string the guest requests,
 or rely on base-variant matching for `#X#Y` suffix differences.
 
+Names come from a small built-in table plus a runtime text database:
+`Common::LoadNidDatabase(path)` (src/common/nid.cpp:246) loads
+`NID<TAB>module<TAB>name` lines, and file entries override built-ins. The
+shipped seed is `assets/nid_db.txt` — contributors can add friendly names
+there instead of touching code.
+
 ## Auto-stub behavior
 
 If the guest requests an unregistered symbol (and strict mode is off),

@@ -26,6 +26,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -88,16 +89,48 @@ struct ParsedNid {
 
 std::optional<ParsedNid> ParseNidString(std::string_view s) noexcept;
 
-// Look up a NID in the built-in name table.  Returns the function/data
+// Look up a NID in the name table.  Returns the function/data
 // name (e.g. "sceKernelLoadStartModule") on hit, std::nullopt on miss.
 //
-// The table covers the most common libkernel / libScePad /
-// libSceVideoOut / libSceAgc / libc / libSceFiber symbols.  Anything
-// not in the table is shown by its raw base64 form.
+// The lookup covers both the small built-in table (libkernel / libScePad /
+// libSceVideoOut / libSceAgc / libc / libSceFiber symbols) and any entries
+// merged in from a NID database file via LoadNidDatabase().  Anything not
+// found is shown by its raw base64 form.
 std::optional<std::string_view> LookupNidName(const Ps5Nid& nid) noexcept;
 
 // True if a NID string (with or without the type suffix) is a known
 // name in the table.
 bool IsKnownNid(std::string_view nid_with_suffix) noexcept;
+
+// ---------------------------------------------------------------------------
+// NID database file (see assets/nid_db.txt for the canonical seed).
+//
+// Format: plain text, one entry per line:
+//
+//     NID<TAB>module<TAB>name
+//
+//   - `NID` is the 11-char Sony base64 form, optionally followed by a
+//     4-char type tag (e.g. "pZ9WXcClPO8" or "pZ9WXcClPO8#T#T"); a tag,
+//     if present, is accepted and stripped via ParseNidString().
+//   - `module` is the exporting library (e.g. "libkernel").  It is
+//     informational only at present and is not used by LookupNidName().
+//   - `name` is the canonical symbol name (rest of the line after the
+//     second TAB; may contain spaces).
+//
+// Lines starting with '#' are comments and blank lines are ignored.
+// Malformed lines (fewer than 3 TAB-separated fields, invalid NID) are
+// skipped with a warning log; they never abort the load.
+// ---------------------------------------------------------------------------
+
+// Load a NID database file and merge its entries into the lookup map.
+// File-loaded entries take precedence over the built-in table (and over
+// entries from earlier LoadNidDatabase() calls) on NID collision.
+//
+// Returns false if the file cannot be opened.  Returns true if the file
+// was read, even if some individual lines were skipped as malformed.
+// Safe to call multiple times; never required — the built-in table is
+// always available without it.  Thread-safe with respect to concurrent
+// LookupNidName() calls.
+bool LoadNidDatabase(const std::filesystem::path& file);
 
 }  // namespace Common

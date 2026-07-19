@@ -162,9 +162,12 @@ namespace Loader {
 
         // For PS5, if base vaddr is 0 (PIE binary), we assign a base guest address.
         // Let's choose 0x800000000 (32GB line) for dynamic base mapping.
+        constexpr guest_addr_t kPieBaseHint    = 0x800000000;
+        constexpr guest_addr_t kGuestWindowEnd = 0x900000000; // guest modules live in [kPieBaseHint, kGuestWindowEnd)
+        constexpr guest_addr_t kPieBaseStep    = 0x10000000;  // 256 MB between module base candidates
         guest_addr_t base_address = 0;
         if (load_base == 0) {
-            base_address = 0x800000000;
+            base_address = kPieBaseHint;
             LOG_INFO(Loader, "Position Independent Executable (PIE) detected. Mapping at base base: 0x%llx", base_address);
         } else {
             base_address = 0; // Loaded at their absolute addresses
@@ -178,8 +181,26 @@ namespace Loader {
         // Reserve the entire virtual address range for the image first
         guest_addr_t reserved_base = 0;
         if (Memory::Reserve(base_address + load_base, total_size, &reserved_base) != Memory::Status::Ok) {
-            LOG_ERROR(Loader, "Failed to reserve virtual address range for the module (size: %llu)", total_size);
-            return false;
+            // The preferred base is taken (e.g. the main module already sits
+            // at 0x800000000).  PIE modules are relocatable: walk upward in
+            // the guest window until a free range is found so that several
+            // PRX modules can coexist with the main module.
+            bool reserved = false;
+            if (load_base == 0) {
+                for (guest_addr_t hint = kPieBaseHint + kPieBaseStep;
+                     hint + total_size < kGuestWindowEnd;
+                     hint += kPieBaseStep) {
+                    if (Memory::Reserve(hint, total_size, &reserved_base) == Memory::Status::Ok) {
+                        LOG_INFO(Loader, "Preferred PIE base busy; relocated module to guest base 0x%llx", hint);
+                        reserved = true;
+                        break;
+                    }
+                }
+            }
+            if (!reserved) {
+                LOG_ERROR(Loader, "Failed to reserve virtual address range for the module (size: %llu)", total_size);
+                return false;
+            }
         }
         
         // Update base address if OS allocated dynamically (PIE)

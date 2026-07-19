@@ -73,6 +73,14 @@ struct UiConfig {
     std::string language = "en-US";            // BCP-47 tag, e.g. "en-US", "ja-JP"
 };
 
+struct LoaderConfig {
+    // Directory holding user-supplied firmware PRX/SPRX modules.  Empty
+    // disables firmware-module resolution; unresolved modules fall back to
+    // the HLE implementations.  Game-bundled modules (<gamedir>/sce_module/)
+    // are always searched first regardless of this setting.
+    std::string firmware_modules_dir;
+};
+
 // Top-level config — covers both global defaults and per-title overrides.
 // When loaded as a per-title file, only the fields the user touched are
 // populated; the rest should fall back to the global view at lookup time.
@@ -84,6 +92,7 @@ struct Config {
     AudioConfig    audio;
     InputConfig    input;
     UiConfig       ui;
+    LoaderConfig   loader;
 
     // -- helpers -----------------------------------------------------------
     static Config Defaults();                   // compiled-in defaults

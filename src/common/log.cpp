@@ -137,9 +137,9 @@ const char* LevelAnsiColor(LogLevel l) {
 bool IsCategoryEnabled(LogCategory c, LogLevel l) {
     const int idx = static_cast<int>(c);
     if (idx < 0 || idx >= 7) return true;
-    return static_cast<int>(l) <= static_cast<int>(g_min_levels[idx])
-        ? true
-        : (l == LogLevel::Error || l == LogLevel::Warn || l == LogLevel::Critical);
+    // "Suppress messages below `level`" (see LogConfig::SetLevel): a record
+    // is emitted iff its severity is at or above the category minimum.
+    return static_cast<int>(l) >= static_cast<int>(g_min_levels[idx]);
 }
 
 // Build a JSON object for a single entry.  Strings are escaped.

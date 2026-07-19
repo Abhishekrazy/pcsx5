@@ -496,10 +496,19 @@ namespace HLE {
             const char* path = path_ptr ? reinterpret_cast<const char*>(path_ptr) : "unknown";
             LOG_INFO(HLE, "sceKernelLoadStartModule(path: '%s', flags: 0x%X)", path, flags);
 
+            // Consult the module resolver first: if the guest asked for a
+            // module by name (or guest path) and the user supplied a real
+            // PRX for it, load that instead of falling back to HLE.
+            std::string filepath = path;
+            if (auto resolved = Kernel::GetModuleResolver().ResolveModuleFile(path)) {
+                LOG_INFO(HLE, "sceKernelLoadStartModule: resolved '%s' to PRX '%s'",
+                         path, resolved->string().c_str());
+                filepath = resolved->string();
+            }
+
             // Attempt to load the module using our kernel loader
             Loader::LoadedModule loaded_lib;
-            std::string filepath = path;
-            
+
             if (Kernel::LoadModule(filepath, loaded_lib)) {
                 static u32 mock_module_id = 0x2000;
                 u32 mod_id = mock_module_id++;
