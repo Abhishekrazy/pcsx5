@@ -131,6 +131,8 @@ set(SHADER_TRANSLATE_SRC
     src/gpu/shader/gcn_translate_internal.h
     src/gpu/shader/gcn_translate.cpp
     src/gpu/shader/gcn_translate_alu.cpp
+    src/gpu/shader/gcn_eval.h
+    src/gpu/shader/gcn_eval.cpp
 )
 
 add_executable(pcsx5
@@ -1053,6 +1055,8 @@ add_executable(dump_imports
     add_executable(shader_tests
         tests/shader_tests.cpp
         ${SHADER_SRC}
+        src/memory/memory.cpp
+        src/common/log.cpp
     )
     target_include_directories(shader_tests PRIVATE src)
     target_compile_options(shader_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
@@ -1061,6 +1065,8 @@ add_executable(dump_imports
     add_executable(shader_dump
         tests/shader_dump.cpp
         ${SHADER_SRC}
+        src/memory/memory.cpp
+        src/common/log.cpp
     )
     target_include_directories(shader_dump PRIVATE src)
     target_compile_options(shader_dump PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)

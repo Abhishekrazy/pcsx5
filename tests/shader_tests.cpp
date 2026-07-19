@@ -5,6 +5,7 @@
 //  - SPIR-V module builder: golden word stream, id/dedup invariants.
 
 #include "gpu/shader/gcn_decode.h"
+#include "gpu/shader/gcn_eval.h"
 #include "gpu/shader/gcn_translate.h"
 #include "gpu/shader/metadata.h"
 #include "gpu/shader/spirv_builder.h"
@@ -756,8 +757,7 @@ void TestTranslateAluFlow() {
 }
 
 // Unsupported controls fail translation with a named cause.
-void TestTranslateRejectsDpp() {
-    GcnProgram program;
+void TestTranslateRejectsDpp() {    GcnProgram program;
     GcnInstruction ins;
     ins.pc = 0;
     ins.encoding = GcnEncoding::Vop1;
@@ -780,6 +780,111 @@ void TestTranslateRejectsDpp() {
     EXPECT(!GcnTranslateToSpirv(program, options, shader, error),
            "dpp program rejected");
     EXPECT(error.find("DPP") != std::string::npos, "error names DPP");
+}
+
+// ---------------------------------------------------------------------------
+// Scalar evaluator (Phase 5 M3 slice 1).
+// ---------------------------------------------------------------------------
+
+// Buffer-descriptor decode: null / valid / typed.
+void TestEvalBufferDescriptor() {
+    std::vector<u32> regs(256, 0);
+    GcnBufferDescriptor desc;
+    EXPECT(GcnTryDecodeBufferDescriptor(regs, 4, true, desc),
+           "null descriptor decodes");
+    EXPECT_EQ(desc.base_address, 0ull, "null base");
+
+    // Valid type-0 buffer: base 0x123456780, stride 16, 4 records.
+    regs[4] = 0x23456780;
+    regs[5] = (0x10u << 16) | 0x1; // stride 16, base hi 1
+    regs[6] = 4;                   // num_records
+    regs[7] = 52u << 12;           // unified format 52 -> (9,2)
+    EXPECT(GcnTryDecodeBufferDescriptor(regs, 4, true, desc),
+           "valid descriptor decodes");
+    EXPECT_EQ(desc.base_address, 0x123456780ull, "desc base");
+    EXPECT_EQ(desc.stride, 16u, "desc stride");
+    EXPECT_EQ(desc.num_records, 4u, "desc records");
+    EXPECT_EQ(desc.size_bytes, 64ull, "desc size");
+    EXPECT_EQ(desc.data_format, 9u, "desc data format");
+    EXPECT_EQ(desc.number_format, 2u, "desc number format");
+
+    // Typed (image-style) descriptor: strict rejects, lenient sees null.
+    regs[7] = 0x40000000u; // type = 1
+    EXPECT(!GcnTryDecodeBufferDescriptor(regs, 4, true, desc),
+           "typed rejected when strict");
+    EXPECT(GcnTryDecodeBufferDescriptor(regs, 4, false, desc),
+           "typed tolerated when lenient");
+    EXPECT_EQ(desc.base_address, 0ull, "typed degrades to null");
+}
+
+// Image bindings copy the descriptor dwords verbatim from evaluated SGPRs
+// (SpriteMachine-style PS: no loads, descriptors direct in user SGPRs).
+void TestEvalImageBinding() {
+    GcnProgram program;
+    GcnInstruction sample;
+    sample.pc = 0;
+    sample.encoding = GcnEncoding::Mimg;
+    sample.opcode = "ImageSample";
+    sample.words = {0xF0800F08, 0x00400206};
+    GcnImageControl image;
+    image.dmask = 15;
+    image.vector_address = 6;
+    image.vector_data = 2;
+    image.scalar_resource = 0;
+    image.scalar_sampler = 8;
+    sample.control = image;
+    GcnInstruction end;
+    end.pc = 8;
+    end.encoding = GcnEncoding::Sopp;
+    end.opcode = "SEndpgm";
+    end.words = {0xBF810000};
+    program.instructions = {sample, end};
+
+    std::vector<u32> user_data(16, 0);
+    for (u32 i = 0; i < 8; ++i) {
+        user_data[i] = 0xA5000000u + i;  // resource descriptor
+        user_data[8 + i] = 0x5A000000u + i; // sampler descriptor
+    }
+    GcnEvaluation eval;
+    std::string error;
+    EXPECT(GcnEvaluateScalarState(program, 0, user_data, 0, eval, error),
+           "image evaluation succeeds");
+    EXPECT_EQ(eval.image_bindings.size(), 1u, "one image binding");
+    if (!eval.image_bindings.empty()) {
+        const auto& binding = eval.image_bindings[0];
+        EXPECT_EQ(binding.pc, 0u, "binding pc");
+        EXPECT_EQ(binding.resource_descriptor[0], 0xA5000000u, "resource word 0");
+        EXPECT_EQ(binding.resource_descriptor[7], 0xA5000007u, "resource word 7");
+        EXPECT(binding.has_sampler, "sampler present");
+        EXPECT_EQ(binding.sampler_descriptor[3], 0x5A000003u, "sampler word 3");
+    }
+    // Seeding: user data lands at SGPR base 0.
+    EXPECT_EQ(eval.initial_scalar_registers[0], 0xA5000000u, "s0 seeded");
+    EXPECT_EQ(eval.initial_scalar_registers[15], 0x5A000007u, "s15 seeded");
+    // EXEC pair initialized for a full wave32.
+    EXPECT_EQ(eval.initial_scalar_registers[126], 0xFFFFFFFFu, "exec lo");
+    EXPECT_EQ(eval.initial_scalar_registers[127], 0u, "exec hi");
+}
+
+// saveexec / branch flow: SAndSaveexecB64 + SCbranchExecz walk without
+// crashing and converge the path queue.
+void TestEvalBranchFlow() {
+    const std::vector<u32> dwords = {
+        0xBEFE0A7E, // SWqmB64 s126, s126
+        0xBE80047E, // SAndSaveexecB64 s4, s126
+        0xBF880002, // SCbranchExecz +2 (skip next)
+        0xBEFC030C, // SMovB32 s124, s12
+        0xBF810000, // SEndpgm
+    };
+    GcnProgram program;
+    std::string error;
+    EXPECT(GcnDecodeProgram(dwords.data(), dwords.size(), program, error),
+           "branch program decodes");
+    GcnEvaluation eval;
+    EXPECT(GcnEvaluateScalarState(program, 0, {}, 0, eval, error),
+           "branch evaluation succeeds");
+    EXPECT(eval.image_bindings.empty(), "no image bindings");
+    EXPECT(eval.buffer_bindings.empty(), "no buffer bindings");
 }
 
 } // namespace
@@ -817,6 +922,9 @@ int main() {
     TestTranslatePixel();
     TestTranslateAluFlow();
     TestTranslateRejectsDpp();
+    TestEvalBufferDescriptor();
+    TestEvalImageBinding();
+    TestEvalBranchFlow();
 
     std::fprintf(stderr, "shader_tests: %d checks, %d failures\n", g_checks,
                  g_failures);
