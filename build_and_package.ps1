@@ -26,7 +26,13 @@ param(
     [switch]$CleanBuild,
 
     [Parameter(Mandatory=$false)]
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$CreateInstaller,
+
+    [Parameter(Mandatory=$false)]
+    [string]$Version = "0.0.0-dev"
 )
 
 $ErrorActionPreference = "Stop"
@@ -257,6 +263,53 @@ if ($CreateZip) {
     Compress-Archive -Path (Join-Path $distDir "*") -DestinationPath $zipPath -Force
     Write-Log "  Created: $zipPath"
     Write-Log "  Size: $([math]::Round((Get-Item $zipPath).Length / 1MB, 2)) MB"
+}
+
+# Build the Inno Setup installer if requested
+if ($CreateInstaller) {
+    Write-Log "Locating Inno Setup compiler (ISCC.exe)..."
+    $iscc = $null
+
+    if ($env:INNO_SETUP -and (Test-Path $env:INNO_SETUP)) {
+        $iscc = $env:INNO_SETUP
+    }
+
+    if (-not $iscc) {
+        $uninstallRoots = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup*",
+            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup*",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup*"
+        )
+        foreach ($root in $uninstallRoots) {
+            $entry = Get-ItemProperty -Path $root -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($entry -and $entry.InstallLocation) {
+                $candidate = Join-Path $entry.InstallLocation "ISCC.exe"
+                if (Test-Path $candidate) { $iscc = $candidate; break }
+            }
+        }
+    }
+
+    if (-not $iscc) {
+        $fallback = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+        if (Test-Path $fallback) { $iscc = $fallback }
+    }
+
+    if (-not $iscc) {
+        Write-ErrorAndExit "Inno Setup 6 (ISCC.exe) not found. Install it from https://jrsoftware.org/isinfo.php or set the INNO_SETUP environment variable to ISCC.exe."
+    }
+
+    Write-Log "Compiling installer with: $iscc (version $Version)"
+    $issPath = Join-Path $scriptDir "installer\pcsx5.iss"
+    & $iscc "/DMyAppVersion=$Version" $issPath
+    if ($LASTEXITCODE -ne 0) { Write-ErrorAndExit "Inno Setup compilation failed (exit code $LASTEXITCODE)" }
+
+    $setupExe = Get-ChildItem -Path (Join-Path $scriptDir "installer\Output") -Filter "*-Setup.exe" |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($setupExe) {
+        Write-Log "  Created: $($setupExe.FullName)"
+        Write-Log "  Size: $([math]::Round($setupExe.Length / 1MB, 2)) MB"
+    }
 }
 
 # Summary

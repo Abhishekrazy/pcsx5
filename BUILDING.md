@@ -270,7 +270,42 @@ rewrites the identifier.  Use `exc_code` (or any other suffix) instead.
 
 ---
 
-## 11. CI
+## 11. Building the installer (Inno Setup)
+
+Release builds can be wrapped in a Windows installer produced with
+[Inno Setup 6](https://jrsoftware.org/isinfo.php).  The script lives at
+[`installer/pcsx5.iss`](installer/pcsx5.iss) and packages whatever
+`build_and_package.ps1` placed in `dist/`.
+
+The installer wizard shows:
+
+1. an **introduction page** (`installer/INTRO.txt`) with requirements and
+   a note about the games folder,
+2. the **license / terms page** (the repo `LICENSE`),
+3. the standard **installation path** picker (default
+   `%ProgramFiles%\PCSX5`),
+4. a **games folder page** whose value is written to
+   `[Paths] GameFolders` in `config.ini`,
+5. a **"Launch PCSX5"** checkbox on the finish page.
+
+To build it locally, install Inno Setup 6 and run:
+
+```powershell
+.\build_and_package.ps1 -CreateInstaller -Version 1.0.0
+```
+
+The script auto-detects `ISCC.exe` from the registry or
+`%ProgramFiles(x86)%\Inno Setup 6`; set the `INNO_SETUP` environment
+variable to the full path of `ISCC.exe` to override.  The result is
+`installer\Output\PCSX5-<version>-win64-Setup.exe`.
+
+CI builds both the portable ZIP and the installer on every push, and
+attaches them to the GitHub Release when a `v*` tag is pushed
+(see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+---
+
+## 12. CI
 
 The repository ships an out-of-the-box CTest configuration; a minimal CI
 script looks like:
@@ -289,7 +324,7 @@ A typical CI runner image needs:
 
 ---
 
-## 12. License
+## 13. License
 
 This project is licensed under the [MIT License](LICENSE).  By submitting
 a pull request you agree to license your contribution under the same
