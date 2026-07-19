@@ -221,6 +221,10 @@ void TestNewModulesResolve() {
     EXPECT(HLE::Resolve("libSceCommonDialog", "sceCommonDialogInitialize") != 0, "common dialog resolves");
     EXPECT(HLE::Resolve("libSceSaveDataDialog", "sceSaveDataDialogGetStatus") != 0, "dialog status resolves");
     EXPECT(HLE::Resolve("libSceAgc", "sceAgcGetRegisterDefaults2") != 0, "agc defaults2 resolves");
+    EXPECT(HLE::Resolve("libSceAgc", "sceAgcCreateInterpolantMapping") != 0, "agc interpolant mapping resolves");
+    EXPECT(HLE::Resolve("libSceAgc", "sceAgcGetDataPacketPayloadAddress") != 0, "agc packet payload resolves");
+    EXPECT(HLE::Resolve("libSceAgc", "HV4j+E0MBHE") != 0, "agc interpolant mapping via NID");
+    EXPECT(HLE::Resolve("libSceAgc", "V++UgBtQhn0") != 0, "agc packet payload via NID");
 
     // Games weakly import these through libkernel by NID — must not auto-stub.
     EXPECT(HLE::Resolve("libkernel", "TywrFKCoLGY#G#H") != 0, "savedata init3 via libkernel NID");

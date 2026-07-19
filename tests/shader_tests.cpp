@@ -5,6 +5,7 @@
 //  - SPIR-V module builder: golden word stream, id/dedup invariants.
 
 #include "gpu/shader/gcn_decode.h"
+#include "gpu/shader/gcn_translate.h"
 #include "gpu/shader/metadata.h"
 #include "gpu/shader/spirv_builder.h"
 
@@ -635,6 +636,154 @@ void TestSpirvDedup() {
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// Translation (Phase 5 M2 slice 2): decoded program -> SPIR-V module.
+// ---------------------------------------------------------------------------
+namespace {
+
+// Walks a SPIR-V word stream looking for an instruction with `opcode`.
+bool SpirvContainsOp(const std::vector<u32>& words, u16 opcode) {
+    size_t cursor = 5; // header
+    while (cursor < words.size()) {
+        const u32 word = words[cursor];
+        const u16 op = static_cast<u16>(word & 0xFFFF);
+        const u32 count = word >> 16;
+        if (count == 0) {
+            return false; // malformed stream
+        }
+        if (op == opcode) {
+            return true;
+        }
+        cursor += count;
+    }
+    return false;
+}
+
+// Finds an instruction carrying control type T and returns its pc.
+template <typename T>
+bool FindControlPc(const GcnProgram& program, u32& pc) {
+    for (const GcnInstruction& ins : program.instructions) {
+        if (std::get_if<T>(&ins.control)) {
+            pc = ins.pc;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Vertex: v_mov -> export -> endpgm.  Real encodings from the corpus.
+void TestTranslateVertex() {
+    const std::vector<u32> dwords = {
+        0x7E1402F2,             // VMovB32 v10, src[242]
+        0xF8000941, 0x00000000, // Exp v0, v0, v0, v0
+        0xBF810000,             // SEndpgm
+    };
+    GcnProgram program;
+    std::string error;
+    EXPECT(GcnDecodeProgram(dwords.data(), dwords.size(), program, error),
+           "vertex program decodes");
+
+    GcnTranslateOptions options;
+    options.stage = GcnSpirvStage::Vertex;
+    GcnSpirvShader shader;
+    EXPECT(GcnTranslateToSpirv(program, options, shader, error),
+           "vertex program translates");
+    EXPECT(shader.words.size() > 5, "spirv non-empty");
+    EXPECT_EQ(shader.words[0], 0x07230203u, "spirv magic");
+    // OpEntryPoint (15), OpDecorate (71), OpLoopMerge (246) dispatcher.
+    EXPECT(SpirvContainsOp(shader.words, 15), "entry point present");
+    EXPECT(SpirvContainsOp(shader.words, 71), "decorations present");
+    EXPECT(SpirvContainsOp(shader.words, 246), "pc dispatcher loop present");
+}
+
+// Pixel: interp + image sample + arithmetic + export, corpus encodings.
+void TestTranslatePixel() {
+    const std::vector<u32> dwords = {
+        0xC8100000,             // VInterpP1F32 v4, v0
+        0xC8110001,             // VInterpP2F32 v4, v1
+        0xF0800F08, 0x00400004, // ImageSample v0, v4, s0, s8
+        0xBF8C0070,             // SWaitcnt
+        0x10000010,             // VMulF32 v0, s16, v0
+        0x5E000300,             // VCvtPkrtzF16F32 v0, v0, v1
+        0xF8001C0F, 0x00000100, // Exp v0, v1, v0, v0 (compressed)
+        0xBF810000,             // SEndpgm
+    };
+    GcnProgram program;
+    std::string error;
+    EXPECT(GcnDecodeProgram(dwords.data(), dwords.size(), program, error),
+           "pixel program decodes");
+
+    GcnTranslateOptions options;
+    options.stage = GcnSpirvStage::Pixel;
+    options.pixel_outputs.push_back(
+        GcnPixelOutputBinding{0, 0, GcnPixelOutputKind::Float});
+    u32 image_pc = 0;
+    EXPECT(FindControlPc<GcnImageControl>(program, image_pc),
+           "image instruction present");
+    GcnSpirvImageBinding binding;
+    binding.pc = image_pc;
+    options.image_bindings.push_back(binding);
+
+    GcnSpirvShader shader;
+    EXPECT(GcnTranslateToSpirv(program, options, shader, error),
+           "pixel program translates");
+    EXPECT_EQ(shader.words[0], 0x07230203u, "spirv magic");
+    EXPECT(SpirvContainsOp(shader.words, 87), "image sample implicit lod");
+    EXPECT(SpirvContainsOp(shader.words, 246), "pc dispatcher loop present");
+    // Compressed export path emits UnpackHalf2x16 as an ExtInst (12).
+    EXPECT(SpirvContainsOp(shader.words, 12), "ext inst (unpack half)");
+}
+
+// Scalar + vector ALU flow through the dispatcher.
+void TestTranslateAluFlow() {
+    const std::vector<u32> dwords = {
+        0xBEFC0310, // SMovB32 s124, s16
+        0xBEFE0A7E, // SWqmB64 s126, s126
+        0x10000010, // VMulF32 v0, s16, v0
+        0xBF810000, // SEndpgm
+    };
+    GcnProgram program;
+    std::string error;
+    EXPECT(GcnDecodeProgram(dwords.data(), dwords.size(), program, error),
+           "alu program decodes");
+
+    GcnTranslateOptions options;
+    options.stage = GcnSpirvStage::Vertex;
+    GcnSpirvShader shader;
+    EXPECT(GcnTranslateToSpirv(program, options, shader, error),
+           "alu program translates");
+    EXPECT(SpirvContainsOp(shader.words, 133), "fmul emitted"); // OpFMul
+}
+
+// Unsupported controls fail translation with a named cause.
+void TestTranslateRejectsDpp() {
+    GcnProgram program;
+    GcnInstruction ins;
+    ins.pc = 0;
+    ins.encoding = GcnEncoding::Vop1;
+    ins.opcode = "VMovB32";
+    ins.words = {0x7E0002FF};
+    ins.sources = {GcnOperand::Vector(1)};
+    ins.destinations = {GcnOperand::Vector(0)};
+    ins.control = GcnDppControl{};
+    GcnInstruction end;
+    end.pc = 4;
+    end.encoding = GcnEncoding::Sopp;
+    end.opcode = "SEndpgm";
+    end.words = {0xBF810000};
+    program.instructions = {ins, end};
+
+    GcnTranslateOptions options;
+    options.stage = GcnSpirvStage::Vertex;
+    GcnSpirvShader shader;
+    std::string error;
+    EXPECT(!GcnTranslateToSpirv(program, options, shader, error),
+           "dpp program rejected");
+    EXPECT(error.find("DPP") != std::string::npos, "error names DPP");
+}
+
+} // namespace
+
 int main() {
     TestSop2();
     TestSop2Literal();
@@ -664,6 +813,10 @@ int main() {
     TestMetadataElf();
     TestSpirvGolden();
     TestSpirvDedup();
+    TestTranslateVertex();
+    TestTranslatePixel();
+    TestTranslateAluFlow();
+    TestTranslateRejectsDpp();
 
     std::fprintf(stderr, "shader_tests: %d checks, %d failures\n", g_checks,
                  g_failures);

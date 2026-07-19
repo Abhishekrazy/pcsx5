@@ -1099,6 +1099,7 @@ void RegisterLibAgc() {
         return 0;
     };
     RegisterSymbol("libSceAgc", "HV4j+E0MBHE", CreateInterpolantMappingNid);
+    RegisterSymbol("libSceAgc", "sceAgcCreateInterpolantMapping", CreateInterpolantMappingNid);
 
     // ------------------------------------------------------------------
     // V++UgBtQhn0 (AgcExports.cs:866-905) — data-packet payload-address
@@ -1128,6 +1129,7 @@ void RegisterLibAgc() {
         return 0;
     };
     RegisterSymbol("libSceAgc", "V++UgBtQhn0", GetDataPacketPayloadAddressNid);
+    RegisterSymbol("libSceAgc", "sceAgcGetDataPacketPayloadAddress", GetDataPacketPayloadAddressNid);
 
     // ------------------------------------------------------------------
     // RegIndirectPatch family (AgcExports.cs SetIndirectPatchAddress /

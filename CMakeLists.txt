@@ -1028,6 +1028,10 @@ add_executable(dump_imports
         src/gpu/shader/metadata.cpp
         src/gpu/shader/spirv_builder.h
         src/gpu/shader/spirv_builder.cpp
+        src/gpu/shader/gcn_translate.h
+        src/gpu/shader/gcn_translate_internal.h
+        src/gpu/shader/gcn_translate.cpp
+        src/gpu/shader/gcn_translate_alu.cpp
     )
 
     add_executable(shader_tests
@@ -1044,5 +1048,6 @@ add_executable(dump_imports
     )
     target_include_directories(shader_dump PRIVATE src)
     target_compile_options(shader_dump PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(shader_dump PRIVATE Vulkan::Headers)
 
 endif()
