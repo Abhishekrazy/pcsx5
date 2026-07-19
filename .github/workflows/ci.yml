@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -35,15 +37,35 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') {
+            $version = $Matches[1]
+          } else {
+            $version = "0.0.0-dev+$($env:GITHUB_SHA.Substring(0,7))"
+          }
+          "PCSX5_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Package
         shell: pwsh
-        run: ./build_and_package.ps1 -SkipBuild -CreateZip
+        run: ./build_and_package.ps1 -SkipBuild -CreateZip -CreateInstaller -Version $env:PCSX5_VERSION
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: PCSX5-windows-x64
           path: PCSX5_*_Release.zip
+          if-no-files-found: error
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: PCSX5-windows-x64-setup
+          path: installer/Output/*-Setup.exe
           if-no-files-found: error
 
   release:
@@ -57,8 +79,15 @@ jobs:
         with:
           name: PCSX5-windows-x64
 
+      - name: Download installer artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: PCSX5-windows-x64-setup
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: PCSX5_*_Release.zip
+          files: |
+            PCSX5_*_Release.zip
+            *-Setup.exe
           generate_release_notes: true

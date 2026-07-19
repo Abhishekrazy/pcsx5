@@ -95,6 +95,9 @@ test_phase1.bat
 # Scratch / work-in-progress notes
 .work/
 
+# Inno Setup compiler output
+installer/Output/
+
 # Milestone run logs and capture artifacts
 /ppsa*_m*.log
 /vk_smoke_run.log
