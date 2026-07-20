@@ -19,6 +19,10 @@ constexpr u64 ORBIS_GEN2_ERROR_INVALID_ARGUMENT = 0x80020016;
 std::atomic<u32> g_np_next_context{1};
 std::atomic<u32> g_np_next_handle{1};
 
+// Last title id passed to sceNpSetNpTitleId — included in structured trophy
+// logs so compat reports can attribute unlock events to a title.
+std::string g_np_title_id;
+
 std::string ReadGuestString(guest_addr_t ptr, u64 max_len) {
     std::string out;
     if (!ptr) return out;
@@ -113,6 +117,7 @@ void RegisterLibNp() {
     auto SetNpTitleIdImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1 || !args.arg2) return ORBIS_GEN2_ERROR_INVALID_ARGUMENT;
         const std::string title = ReadGuestString(args.arg1, 16);
+        g_np_title_id = title;
         LOG_INFO(HLE, "sceNpSetNpTitleId(title: '%s') -> 0", title.c_str());
         return 0;
     };
@@ -122,8 +127,15 @@ void RegisterLibNp() {
     // ------------------------------------------------------------------
     // libSceNpTrophy2 — context/handle lifecycle with incrementing ids.
     // ------------------------------------------------------------------
+    // Structured trophy-event logging (compat-report friendly): every line
+    // carries a stable TROPHY_* tag plus title_id so reports can be parsed.
     auto CreateContextImpl = [](const GuestArgs& args) -> u64 {
-        return WriteIdAndReturnOk(args.arg1, g_np_next_context, "sceNpTrophy2CreateContext");
+        const u64 rc = WriteIdAndReturnOk(args.arg1, g_np_next_context, "sceNpTrophy2CreateContext");
+        if (rc == 0) {
+            LOG_INFO(HLE, "TROPHY_CTX_CREATE title_id=%s context_id=%u",
+                     g_np_title_id.c_str(), Memory::Read<u32>(args.arg1));
+        }
+        return rc;
     };
     RegisterSymbol("libSceNpTrophy2", "sceNpTrophy2CreateContext", CreateContextImpl);
     RegisterSymbol("libSceNpTrophy2", "Bagshr7OQ6Q#T#T", CreateContextImpl);
@@ -143,16 +155,55 @@ void RegisterLibNp() {
     RegisterSymbol("libSceNpTrophy2", "d8P11CI40KE#T#T", TrophyOkImpl);
     RegisterSymbol("libSceNpTrophy2", "sceNpTrophy2AbortHandle", TrophyOkImpl);
     RegisterSymbol("libSceNpTrophy2", "fYapWA9xVmA#T#T", TrophyOkImpl);
-    RegisterSymbol("libSceNpTrophy2", "sceNpTrophy2RegisterContext", TrophyOkImpl);
-    RegisterSymbol("libSceNpTrophy2", "bIDov3wBu5Q#T#T", TrophyOkImpl);
-    RegisterSymbol("libSceNpTrophy2", "sceNpTrophy2RegisterUnlockCallback", TrophyOkImpl);
-    RegisterSymbol("libSceNpTrophy2", "sUXGfNMalIo#T#T", TrophyOkImpl);
+
+    // RegisterContext(context, handle, options) — trophy set becomes active.
+    auto RegisterContextImpl = [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "TROPHY_CTX_REGISTER title_id=%s context_id=%u handle=%u",
+                 g_np_title_id.c_str(), static_cast<u32>(args.arg1),
+                 static_cast<u32>(args.arg2));
+        return 0;
+    };
+    RegisterSymbol("libSceNpTrophy2", "sceNpTrophy2RegisterContext", RegisterContextImpl);
+    RegisterSymbol("libSceNpTrophy2", "bIDov3wBu5Q#T#T", RegisterContextImpl);
+
+    // RegisterUnlockCallback(context, callback, arg) — game subscribes to
+    // unlock events; no trophies exist yet, so the callback never fires.
+    auto RegisterUnlockCbImpl = [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "TROPHY_UNLOCK_CB title_id=%s context_id=%u callback=0x%llx",
+                 g_np_title_id.c_str(), static_cast<u32>(args.arg1), args.arg2);
+        return 0;
+    };
+    RegisterSymbol("libSceNpTrophy2", "sceNpTrophy2RegisterUnlockCallback", RegisterUnlockCbImpl);
+    RegisterSymbol("libSceNpTrophy2", "sUXGfNMalIo#T#T", RegisterUnlockCbImpl);
     // libkernel-scoped NID import variant — overwrites the legacy stub.
-    RegisterSymbol("libkernel", "sUXGfNMalIo#F#G", TrophyOkImpl);
+    RegisterSymbol("libkernel", "sUXGfNMalIo#F#G", RegisterUnlockCbImpl);
     RegisterSymbol("libSceNpTrophy2", "sceNpTrophy2UnregisterUnlockCallback", TrophyOkImpl);
     RegisterSymbol("libSceNpTrophy2", "wVqxM58sIKs#T#T", TrophyOkImpl);
     RegisterSymbol("libSceNpTrophy2", "sceNpTrophy2ShowTrophyList", TrophyOkImpl);
     RegisterSymbol("libSceNpTrophy2", "EHQEDVXZ0TI#T#T", TrophyOkImpl);
+
+    // ------------------------------------------------------------------
+    // libSceNpTrophy (legacy PS4-era API) — unlock-relevant subset, log-only.
+    // No NID aliases exist in the local nid_db / SharpEmu, so these are
+    // name-only registrations; unlocks are recorded as structured INFO lines.
+    // ------------------------------------------------------------------
+    RegisterSymbol("libSceNpTrophy", "sceNpTrophyCreateContext", CreateContextImpl);
+    RegisterSymbol("libSceNpTrophy", "sceNpTrophyRegisterContext", RegisterContextImpl);
+    // sceNpTrophyUnlockTrophy(context, handle, trophyId, platinumId).
+    RegisterSymbol("libSceNpTrophy", "sceNpTrophyUnlockTrophy", [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "TROPHY_UNLOCK title_id=%s trophy_id=%d context_id=%u handle=%u platinum_id=%d",
+                 g_np_title_id.c_str(), static_cast<s32>(args.arg3),
+                 static_cast<u32>(args.arg1), static_cast<u32>(args.arg2),
+                 static_cast<s32>(args.arg4));
+        return 0;
+    });
+    // sceNpTrophySetTrophyFlag(context, handle, trophyId, flag).
+    RegisterSymbol("libSceNpTrophy", "sceNpTrophySetTrophyFlag", [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "TROPHY_FLAG title_id=%s trophy_id=%d flag=%u context_id=%u",
+                 g_np_title_id.c_str(), static_cast<s32>(args.arg3),
+                 static_cast<u32>(args.arg4), static_cast<u32>(args.arg1));
+        return 0;
+    });
 
     // ------------------------------------------------------------------
     // libSceNpGameIntent.

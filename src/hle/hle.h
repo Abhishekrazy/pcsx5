@@ -120,6 +120,12 @@ namespace HLE {
     void SetGuestMainAddress(guest_addr_t addr);
     guest_addr_t GetGuestMainAddress();
 
+    // Tell the HLE C++ exception unwinder (liblibc.cpp) where the main
+    // module's .eh_frame_hdr lives in guest memory.  Called from main() after
+    // LoadModule with LoadedModule::eh_frame_hdr_addr; 0 disables unwinding
+    // (__cxa_throw then logs and survives instead of unwinding).
+    void SetGuestEhFrameHdr(guest_addr_t addr, u64 size);
+
     // Store the VA of the DT_INIT function (global ctor runner) for re-invocation if needed
     void SetDtInitAddress(guest_addr_t addr);
     guest_addr_t GetDtInitAddress();
@@ -193,6 +199,12 @@ namespace HLE {
 // rcx = guest_func_va, rdx = rdi_arg, r8 = rsi_arg, r9 = rdx_arg
 // Returns: rax = guest return value
 extern "C" u64 InvokeGuestFunction(u64 guest_func_va, u64 rdi_arg, u64 rsi_arg, u64 rdx_arg);
+
+// Six-argument variant used by the HLE C++ exception unwinder (liblibc.cpp)
+// to call guest personality routines (5 args) and exception destructors.
+// rcx = guest_func_va, rdx = pointer to an array of 6 u64 SysV arguments
+// (rdi, rsi, rdx, rcx, r8, r9).  Returns: rax = guest return value.
+extern "C" u64 InvokeGuestFunction6(u64 guest_func_va, const u64* args6);
 
 // Per-thread host stack pointer helpers called by dispatcher.asm.
 // Each guest/host thread gets its own private copy via __declspec(thread).

@@ -34,6 +34,41 @@ struct PresentState {
 PresentState g_ps;
 std::mutex   g_present_mutex;
 
+// Largest centered rect of aspect src_w:src_h inside the swapchain extent
+// (letterbox/pillarbox).  Returned as {x0, y0, x1, y1} blit dst offsets.
+void ComputeFitRect(u32 src_w, u32 src_h, s32 out[4]) {
+    const u32 win_w = g_ps.extent.width;
+    const u32 win_h = g_ps.extent.height;
+    s32 x0 = 0, y0 = 0, x1 = static_cast<s32>(win_w), y1 = static_cast<s32>(win_h);
+    if (src_w != 0 && src_h != 0 && win_w != 0 && win_h != 0) {
+        // Compare src_w/src_h vs win_w/win_h cross-multiplied (no floats).
+        if (static_cast<u64>(src_w) * win_h > static_cast<u64>(src_h) * win_w) {
+            // Source is wider: letterbox (bars top/bottom).
+            const u32 fit_h = static_cast<u32>((static_cast<u64>(win_w) * src_h) / src_w);
+            y0 = static_cast<s32>((win_h - fit_h) / 2);
+            y1 = y0 + static_cast<s32>(fit_h);
+        } else if (static_cast<u64>(src_w) * win_h < static_cast<u64>(src_h) * win_w) {
+            // Source is taller: bars left/right.
+            const u32 fit_w = static_cast<u32>((static_cast<u64>(win_h) * src_w) / src_h);
+            x0 = static_cast<s32>((win_w - fit_w) / 2);
+            x1 = x0 + static_cast<s32>(fit_w);
+        }
+    }
+    out[0] = x0; out[1] = y0; out[2] = x1; out[3] = y1;
+}
+
+// Clears the whole target black (letterbox bars) — the image starts in
+// UNDEFINED, so without this the bars would show garbage.
+void ClearBlack(VkContext* ctx, VkImage target) {
+    VkClearColorValue black = {};
+    VkImageSubresourceRange range = {};
+    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    range.levelCount = 1;
+    range.layerCount = 1;
+    ctx->fn.CmdClearColorImage(g_ps.cmd, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               &black, 1, &range);
+}
+
 void Barrier(VkContext* ctx, VkImage image, VkImageLayout from, VkImageLayout to,
              VkAccessFlags src_access, VkAccessFlags dst_access,
              VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage) {
@@ -320,6 +355,23 @@ bool VkPresentIsReady() {
     return g_ps.swapchain != VK_NULL_HANDLE;
 }
 
+bool VkPresentResize(VkContext* ctx, u32 width, u32 height) {
+    if (!ctx || !ctx->device || width == 0 || height == 0) return false;
+    std::lock_guard<std::mutex> lk(g_present_mutex);
+    if (g_ps.swapchain == VK_NULL_HANDLE) return false;
+    if (g_ps.extent.width == width && g_ps.extent.height == height) return true;
+    ctx->fn.DeviceWaitIdle(ctx->device);
+    ctx->fn.DestroySwapchainKHR(ctx->device, g_ps.swapchain, nullptr);
+    g_ps.swapchain = VK_NULL_HANDLE;
+    g_ps.images.clear();
+    if (!CreateSwapchain(ctx, width, height)) {
+        LOG_WARN(GPU, "Vulkan present: swapchain recreate failed (%ux%u) — GDI fallback.", width, height);
+        return false;
+    }
+    LOG_INFO(GPU, "Vulkan present: swapchain recreated for %ux%u.", width, height);
+    return true;
+}
+
 void VkPresentShutdown(VkContext* ctx) {
     std::lock_guard<std::mutex> lk(g_present_mutex);
     if (!ctx || !ctx->device) return;
@@ -375,8 +427,11 @@ bool VkPresentFrame(VkContext* ctx, const void* bgra_pixels, u32 fb_w, u32 fb_h)
         blit.srcOffsets[1] = { static_cast<s32>(fb_w), static_cast<s32>(fb_h), 1 };
         blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.dstSubresource.layerCount = 1;
-        blit.dstOffsets[1] = { static_cast<s32>(g_ps.extent.width),
-                               static_cast<s32>(g_ps.extent.height), 1 };
+        s32 fit[4];
+        ComputeFitRect(fb_w, fb_h, fit);
+        blit.dstOffsets[0] = { fit[0], fit[1], 0 };
+        blit.dstOffsets[1] = { fit[2], fit[3], 1 };
+        ClearBlack(ctx, target);
         ctx->fn.CmdBlitImage(g_ps.cmd, g_ps.tex, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                              target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
                              VK_FILTER_LINEAR);
@@ -409,8 +464,11 @@ bool VkPresentFromImage(VkContext* ctx, VkImage src, u32 src_w, u32 src_h) {
         blit.srcOffsets[1] = { static_cast<s32>(src_w), static_cast<s32>(src_h), 1 };
         blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.dstSubresource.layerCount = 1;
-        blit.dstOffsets[1] = { static_cast<s32>(g_ps.extent.width),
-                               static_cast<s32>(g_ps.extent.height), 1 };
+        s32 fit[4];
+        ComputeFitRect(src_w, src_h, fit);
+        blit.dstOffsets[0] = { fit[0], fit[1], 0 };
+        blit.dstOffsets[1] = { fit[2], fit[3], 1 };
+        ClearBlack(ctx, target);
         ctx->fn.CmdBlitImage(g_ps.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                              target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
                              VK_FILTER_LINEAR);

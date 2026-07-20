@@ -3,6 +3,14 @@
 
 namespace GPU {
 
+    // One touch-pad finger sample (ScePadTouch semantics).
+    struct PadTouchPoint {
+        u16 x;      // 0..1919
+        u16 y;      // 0..941
+        u8 id;      // firmware-assigned finger id
+        u8 active;  // 1 while the finger contacts the pad
+    };
+
     // Structure matching PlayStation's controller button state reporting format
     struct PadButtonState {
         u32 buttons;      // Bitmask of digital buttons pressed
@@ -13,6 +21,15 @@ namespace GPU {
         u8 l2_trigger;    // 0 - 255
         u8 r2_trigger;
         u8 padding[2];
+
+        // DualSense HID extras (M4).  All zero when no DualSense feed is live
+        // — the keyboard/XInput fallback leaves these fields neutral.
+        u8 dualsense_connected; // 1 when a DualSense HID report stream is live
+        u8 touch_count;         // 0..2 fingers currently contacting the pad
+        u8 pad_ext[2];
+        PadTouchPoint touch[2]; // finger slots 0 and 1
+        float accel[3];         // accelerometer x/y/z, in g (approx)
+        float gyro[3];          // gyroscope pitch/yaw/roll, rad/s (approx)
     };
 
     bool Initialize();
@@ -47,6 +64,26 @@ namespace GPU {
     // Drive the primary XInput controller's rumble motors (0..255 each).
     // No-op when no XInput controller is connected.
     void SetPadVibration(u8 large_motor, u8 small_motor);
+
+    // Boot/loading screen status.  Reports a REAL boot milestone (the stage
+    // currently executing) and renders it to the window: dark screen with the
+    // stage text plus a determinate progress bar when `total` > 0.  Safe to
+    // call from any thread (main thread during subsystem init/module load,
+    // guest worker thread afterwards); rendering happens under a mutex via
+    // the GDI DIB path, so stages posted while the main thread is blocked in
+    // init/load still appear.  No-op once the first guest frame has been
+    // presented (IsBootScreenActive() == false) or when no window exists.
+    void SetBootStatus(const char* stage, int done = -1, int total = -1);
+
+    // True while the boot screen is still displayed.  Flips to false on the
+    // first presented guest frame (the game takes over the window).
+    bool IsBootScreenActive();
+
+    // Embedded mode (--embed): the presentation window is created hidden so
+    // the launcher UI can reparent it into its own window.  Must be called
+    // before Initialize().  The window handle is always printed to stdout as
+    // PCSX5_WINDOW_HANDLE=<decimal HWND> right after creation.
+    void SetEmbeddedMode(bool enabled);
 
     // Keep the presentation window alive and responsive until the user closes it.
     // Called from the main thread after the guest thread has finished (it

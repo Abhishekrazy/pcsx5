@@ -24,9 +24,16 @@
 //   * Index buffer: host-visible snapshot of index_count*(index_size?4:2)
 //     bytes at index_addr; vkCmdDrawIndexed (vkCmdDraw for DrawIndexAuto).
 //
-// Recording strategy is deliberately minimal: one command buffer per draw,
-// submitted on the graphics queue and awaited (SharpEmu batches; that is a
-// later optimization once pixels are on screen).
+// Recording strategy (M6): draws accumulate into one command buffer per
+// flip and are submitted as a single batch when the presenter looks up the
+// render target (VkDrawFlush).  The submit is not awaited — the present
+// submit goes to the same queue afterwards, so queue order keeps the
+// guarantee that the blit reads the image only after the draws finish.  The
+// batch fence is waited only when per-batch resources are reused (once per
+// flip on the steady path): per-draw host-visible uploads come from
+// bump-allocated rings (staging / scalars / indices) sized for a batch, and
+// replaced guest buffers are retired until the fence signals instead of
+// being destroyed or overwritten in place.
 #pragma once
 #include "../common/types.h"
 #include "vk_context.h"
@@ -98,6 +105,11 @@ bool VkDrawIsReady();
 // Executes one guest draw.  Returns false (with a log line, throttled per
 // failure class) when the draw cannot be built — the frame simply misses it.
 bool VkDrawExecute(const VkDrawCall& call);
+
+// M6: submits the accumulated batch without waiting for it.  Called at the
+// flip boundary (VkDrawLookupRenderTarget, which the backend invokes right
+// before presenting) and at shutdown; also safe to call any time.
+void VkDrawFlush();
 
 // M3.2d: looks up the GPU image backing a guest render-target address.
 // Returns false when no image exists for it (caller keeps the CPU upload

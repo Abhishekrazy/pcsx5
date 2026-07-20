@@ -1,12 +1,16 @@
 // libSceAudioOut HLE module.
 //
 // Per-port audio output: sceAudioOutInit/Open/Close/Output/SetVolume/
-// GetPortState/GetInfo.  The host backend is winmm waveOut (48 kHz s16
-// stereo), mirroring SharpEmu's AudioOutExports.cs + WindowsWaveOutAudio.
-//
-// When AudioConfig.backend == 0 (Off) no wave device is opened; Output
-// keeps real-time pacing (PaceSilence) so games that time their audio
-// thread off submission rate still run at the correct speed.
+// GetPortState/GetInfo.  Host backends (AudioConfig.backend):
+//   0 = Off     — no device; Output keeps real-time pacing (PaceSilence) so
+//                 games that time their audio thread off submission rate
+//                 still run at the correct speed.
+//   1 = WASAPI  — shared-mode, event-driven IAudioClient render (falls back
+//                 to waveOut with a WARN when the device/mix format is
+//                 unsuitable).
+//   2 = XAudio2 — TODO; currently maps to waveOut.
+// The waveOut path mirrors SharpEmu's AudioOutExports.cs +
+// WindowsWaveOutAudio (48 kHz s16 stereo).
 
 #include "hle.h"
 #include "../common/log.h"
@@ -25,7 +29,10 @@
 #define NOMINMAX
 #include <windows.h>
 #include <mmsystem.h>
+#include <mmdeviceapi.h>
+#include <audioclient.h>
 #pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "ole32.lib")
 
 namespace HLE {
 namespace {
@@ -47,6 +54,23 @@ struct OutBuffer {
     bool prepared = false;
 };
 
+// WASAPI shared-mode render state (one per open port when backend == 1).
+// A dedicated thread waits on the buffer event and pulls converted stereo
+// s16 blocks out of `queue` (guarded by AudioOutPort::mu); Output blocks
+// when the queue reaches kMaxBuffersInFlight, which paces the guest at
+// real-time rate exactly like the waveOut path.
+struct WasapiState {
+    IAudioClient*        client = nullptr;
+    IAudioRenderClient*  render = nullptr;
+    HANDLE               event  = nullptr;
+    std::thread          thread;
+    std::atomic<bool>    stop{false};
+    bool                 own_com    = false; // we called CoInitializeEx
+    bool                 mix_float  = false; // host mix is float32 (else s16)
+    u32                  buffer_frames = 0;  // device buffer capacity
+    std::deque<std::vector<s16>> queue;      // stereo s16 blocks, under port.mu
+};
+
 struct AudioOutPort {
     int      handle         = 0;
     int      user_id        = 0;
@@ -59,8 +83,9 @@ struct AudioOutPort {
     bool     is_float       = false;
     float    volume         = 1.0f;
 
-    // Host backend (null when audio is configured Off or waveOutOpen failed).
+    // Host backend (null when audio is configured Off or the backend failed).
     HWAVEOUT wave_out = nullptr;
+    WasapiState wasapi;
     std::mutex mu;
     std::condition_variable cv;
     std::deque<OutBuffer*> free_buffers;
@@ -176,9 +201,34 @@ void CloseWaveBackend(AudioOutPort& port) {
     ::waveOutClose(hwo);
 }
 
-// Convert the guest buffer (mono/stereo/8ch, s16 or float32) to stereo
-// PCM16 with volume scaling, then submit it to waveOut.  Blocks (paced by
-// WOM_DONE) when too many buffers are queued.
+// Convert one guest buffer (mono/stereo/8ch, s16 or float32) to stereo
+// PCM16 with volume scaling.  Shared by the waveOut and WASAPI backends.
+void ConvertToStereoS16(const AudioOutPort& port, const u8* src, s16* dst) {
+    const u32 frames = port.buffer_length;
+    const float vol = port.volume * GetConfiguredVolume();
+    const int in_ch = port.channels;
+    for (u32 f = 0; f < frames; ++f) {
+        float l = 0.0f, r = 0.0f;
+        const u8* frame = src + static_cast<size_t>(f) * in_ch * port.bytes_per_sample;
+        if (port.is_float) {
+            const float* s = reinterpret_cast<const float*>(frame);
+            if (in_ch == 1) { l = r = s[0]; }
+            else            { l = s[0]; r = s[1]; }
+        } else {
+            const s16* s = reinterpret_cast<const s16*>(frame);
+            if (in_ch == 1) { l = r = s[0] / 32768.0f; }
+            else            { l = s[0] / 32768.0f; r = s[1] / 32768.0f; }
+        }
+        l *= vol; r *= vol;
+        if (l > 1.0f) l = 1.0f; else if (l < -1.0f) l = -1.0f;
+        if (r > 1.0f) r = 1.0f; else if (r < -1.0f) r = -1.0f;
+        dst[f * 2 + 0] = static_cast<s16>(l * 32767.0f);
+        dst[f * 2 + 1] = static_cast<s16>(r * 32767.0f);
+    }
+}
+
+// Convert the guest buffer to stereo PCM16, then submit it to waveOut.
+// Blocks (paced by WOM_DONE) when too many buffers are queued.
 void SubmitToBackend(AudioOutPort& port, const u8* src) {
     const u32 frames = port.buffer_length;
     const size_t out_bytes = static_cast<size_t>(frames) * 2 * sizeof(s16);
@@ -200,27 +250,7 @@ void SubmitToBackend(AudioOutPort& port, const u8* src) {
         ++port.in_flight;
     }
 
-    const float vol = port.volume * GetConfiguredVolume();
-    s16* dst = reinterpret_cast<s16*>(buf->data.data());
-    const int in_ch = port.channels;
-    for (u32 f = 0; f < frames; ++f) {
-        float l = 0.0f, r = 0.0f;
-        const u8* frame = src + static_cast<size_t>(f) * in_ch * port.bytes_per_sample;
-        if (port.is_float) {
-            const float* s = reinterpret_cast<const float*>(frame);
-            if (in_ch == 1) { l = r = s[0]; }
-            else            { l = s[0]; r = s[1]; }
-        } else {
-            const s16* s = reinterpret_cast<const s16*>(frame);
-            if (in_ch == 1) { l = r = s[0] / 32768.0f; }
-            else            { l = s[0] / 32768.0f; r = s[1] / 32768.0f; }
-        }
-        l *= vol; r *= vol;
-        if (l > 1.0f) l = 1.0f; else if (l < -1.0f) l = -1.0f;
-        if (r > 1.0f) r = 1.0f; else if (r < -1.0f) r = -1.0f;
-        dst[f * 2 + 0] = static_cast<s16>(l * 32767.0f);
-        dst[f * 2 + 1] = static_cast<s16>(r * 32767.0f);
-    }
+    ConvertToStereoS16(port, src, reinterpret_cast<s16*>(buf->data.data()));
 
     if (!buf->prepared) {
         std::memset(&buf->hdr, 0, sizeof(buf->hdr));
@@ -240,6 +270,206 @@ void SubmitToBackend(AudioOutPort& port, const u8* src) {
         port.free_buffers.push_back(buf);
         --port.in_flight;
     }
+}
+
+// ---------------------------------------------------------------------------
+// WASAPI backend (Windows Core Audio): shared-mode, event-driven render.
+// A render thread waits on the IAudioClient buffer event and feeds the
+// device from a queue of converted stereo s16 blocks; Output blocks when
+// the queue is full, so the guest is paced at real-time rate.
+// ---------------------------------------------------------------------------
+
+// True when either host backend is live (silent pacing only when false).
+bool BackendActive(const AudioOutPort& port) {
+    return port.wave_out != nullptr || port.wasapi.client != nullptr;
+}
+
+void CloseWasapiBackend(AudioOutPort& port);
+
+void WasapiThreadMain(AudioOutPort* port) {
+    ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    WasapiState& ws = port->wasapi;
+    std::vector<s16> current;   // block being drained
+    size_t offset = 0;          // samples consumed from `current`
+    while (!ws.stop.load(std::memory_order_acquire)) {
+        const DWORD wait = ::WaitForSingleObject(ws.event, 200);
+        if (ws.stop.load(std::memory_order_acquire)) break;
+        if (wait != WAIT_OBJECT_0) continue;
+
+        UINT32 padding = 0;
+        if (FAILED(ws.client->GetCurrentPadding(&padding)) || padding >= ws.buffer_frames) {
+            continue;
+        }
+        UINT32 avail = ws.buffer_frames - padding;
+        while (avail > 0 && !ws.stop.load(std::memory_order_acquire)) {
+            BYTE* data = nullptr;
+            if (FAILED(ws.render->GetBuffer(avail, &data)) || !data) break;
+
+            UINT32 written = 0;
+            while (written < avail) {
+                if (offset >= current.size()) {
+                    offset = 0;
+                    current.clear();
+                    {
+                        std::lock_guard<std::mutex> lock(port->mu);
+                        if (!ws.queue.empty()) {
+                            current = std::move(ws.queue.front());
+                            ws.queue.pop_front();
+                        }
+                    }
+                    port->cv.notify_all();
+                    if (current.empty()) break; // underrun: zero-fill below
+                }
+                const UINT32 frames_left =
+                    static_cast<UINT32>((current.size() - offset) / 2);
+                const UINT32 frames = (frames_left < avail - written)
+                                      ? frames_left : (avail - written);
+                if (ws.mix_float) {
+                    float* dst = reinterpret_cast<float*>(data) +
+                                 static_cast<size_t>(written) * 2;
+                    for (UINT32 i = 0; i < frames * 2; ++i) {
+                        dst[i] = current[offset + i] / 32768.0f;
+                    }
+                } else {
+                    s16* dst = reinterpret_cast<s16*>(data) +
+                               static_cast<size_t>(written) * 2;
+                    std::memcpy(dst, current.data() + offset,
+                                frames * 2 * sizeof(s16));
+                }
+                offset += frames * 2;
+                written += frames;
+            }
+            if (written < avail) { // underrun remainder -> silence
+                const size_t zero_off = static_cast<size_t>(written) * 2 *
+                                        (ws.mix_float ? sizeof(float) : sizeof(s16));
+                const size_t zero_len = static_cast<size_t>(avail - written) * 2 *
+                                        (ws.mix_float ? sizeof(float) : sizeof(s16));
+                std::memset(data + zero_off, 0, zero_len);
+            }
+            ws.render->ReleaseBuffer(avail, 0);
+            avail = 0;
+        }
+    }
+    ::CoUninitialize();
+}
+
+// Open a shared-mode WASAPI stream on the default render endpoint.
+// Requires a stereo mix at the port's sample rate (s16 or float32);
+// anything else fails so the caller can fall back to waveOut.
+bool OpenWasapiBackend(AudioOutPort& port, u32 frequency) {
+    WasapiState& ws = port.wasapi;
+
+    const HRESULT com_hr = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(com_hr) && com_hr != RPC_E_CHANGED_MODE) {
+        LOG_WARN(HLE, "sceAudioOut: CoInitializeEx failed (hr=0x%08lX)",
+                 static_cast<unsigned long>(com_hr));
+        return false;
+    }
+    ws.own_com = SUCCEEDED(com_hr);
+
+    bool ok = false;
+    IMMDeviceEnumerator* enumerator = nullptr;
+    IMMDevice* device = nullptr;
+    WAVEFORMATEX* mix = nullptr;
+    do {
+        if (FAILED(::CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
+                                      CLSCTX_ALL, IID_PPV_ARGS(&enumerator)))) break;
+        if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device))) break;
+        if (FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                                    reinterpret_cast<void**>(&ws.client)))) break;
+        if (FAILED(ws.client->GetMixFormat(&mix)) || !mix) break;
+
+        bool mix_float = false;
+        if (mix->wFormatTag == WAVE_FORMAT_IEEE_FLOAT && mix->wBitsPerSample == 32) {
+            mix_float = true;
+        } else if (mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+                   mix->cbSize >= sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) {
+            const auto* ext = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(mix);
+            if (ext->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT && mix->wBitsPerSample == 32) {
+                mix_float = true;
+            } else if (!(ext->SubFormat == KSDATAFORMAT_SUBTYPE_PCM && mix->wBitsPerSample == 16)) {
+                break; // unsupported subformat
+            }
+        } else if (!(mix->wFormatTag == WAVE_FORMAT_PCM && mix->wBitsPerSample == 16)) {
+            break; // unsupported mix format
+        }
+        if (mix->nChannels != 2 || mix->nSamplesPerSec != frequency) {
+            LOG_WARN(HLE, "sceAudioOut: WASAPI mix is %u Hz/%u ch (port wants %u Hz stereo)",
+                     mix->nSamplesPerSec, mix->nChannels, frequency);
+            break;
+        }
+        ws.mix_float = mix_float;
+
+        // 40 ms device buffer, event-driven feeding.
+        const REFERENCE_TIME duration = 400000; // 100 ns units
+        if (FAILED(ws.client->Initialize(AUDCLNT_SHAREMODE_SHARED,
+                                         AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                         duration, 0, mix, nullptr))) break;
+        UINT32 buffer_frames = 0;
+        if (FAILED(ws.client->GetBufferSize(&buffer_frames))) break;
+        ws.buffer_frames = buffer_frames;
+        if (FAILED(ws.client->GetService(IID_PPV_ARGS(&ws.render)))) break;
+
+        ws.event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr); // auto-reset
+        if (!ws.event) break;
+        if (FAILED(ws.client->SetEventHandle(ws.event))) break;
+        if (FAILED(ws.client->Start())) break;
+
+        ws.stop.store(false, std::memory_order_release);
+        ws.thread = std::thread(WasapiThreadMain, &port);
+        ok = true;
+    } while (false);
+
+    if (mix) ::CoTaskMemFree(mix);
+    if (device) device->Release();
+    if (enumerator) enumerator->Release();
+    if (!ok) {
+        LOG_WARN(HLE, "sceAudioOut: WASAPI init failed; falling back to waveOut");
+        CloseWasapiBackend(port);
+    }
+    return ok;
+}
+
+void CloseWasapiBackend(AudioOutPort& port) {
+    WasapiState& ws = port.wasapi;
+    ws.stop.store(true, std::memory_order_release);
+    if (ws.event) ::SetEvent(ws.event);
+    if (ws.thread.joinable()) ws.thread.join();
+    if (ws.client) {
+        ws.client->Stop();
+        ws.client->Release();
+        ws.client = nullptr;
+    }
+    if (ws.render) {
+        ws.render->Release();
+        ws.render = nullptr;
+    }
+    if (ws.event) {
+        ::CloseHandle(ws.event);
+        ws.event = nullptr;
+    }
+    ws.buffer_frames = 0;
+    {
+        std::lock_guard<std::mutex> lock(port.mu);
+        ws.queue.clear();
+    }
+    if (ws.own_com) {
+        ws.own_com = false;
+        ::CoUninitialize();
+    }
+}
+
+// Convert the guest buffer to stereo PCM16 and enqueue it for the WASAPI
+// render thread.  Blocks when the queue is full (paced by the render
+// thread's consumption at device rate).
+void SubmitToWasapi(AudioOutPort& port, const u8* src) {
+    std::vector<s16> block(static_cast<size_t>(port.buffer_length) * 2);
+    ConvertToStereoS16(port, src, block.data());
+    std::unique_lock<std::mutex> lock(port.mu);
+    port.cv.wait(lock, [&] {
+        return port.wasapi.queue.size() < static_cast<size_t>(kMaxBuffersInFlight);
+    });
+    port.wasapi.queue.push_back(std::move(block));
 }
 
 // No host device: sleep so the *next* output() completes at real-time rate.
@@ -326,7 +556,15 @@ void RegisterLibAudioOut() {
         g_ports_used[slot]   = true;
 
         const char* backend_name = "silent";
-        if (GetConfiguredBackend() != 0) {
+        const int backend = GetConfiguredBackend();
+        if (backend == 1) {
+            if (OpenWasapiBackend(port, frequency)) {
+                backend_name = "WASAPI";
+            } else if (OpenWaveBackend(port, frequency)) {
+                backend_name = "waveOut";
+            }
+        } else if (backend != 0) {
+            // backend 2 (XAudio2) is TODO; map to waveOut for now.
             if (OpenWaveBackend(port, frequency)) {
                 backend_name = "waveOut";
             }
@@ -345,6 +583,7 @@ void RegisterLibAudioOut() {
         AudioOutPort* port = FindPort(handle);
         if (!port) return kErrorInvalidArgument;
         CloseWaveBackend(*port);
+        CloseWasapiBackend(*port);
         g_ports_used[handle - 1] = false;
         LOG_INFO(HLE, "sceAudioOutClose(%d) -> 0", handle);
         return 0;
@@ -364,7 +603,7 @@ void RegisterLibAudioOut() {
         if (!port) return kErrorInvalidArgument;
         if (!src) {
             // NULL source = one buffer period of silence; keep pacing only.
-            if (!port->wave_out) PaceSilence(*port);
+            if (!BackendActive(*port)) PaceSilence(*port);
             return 0;
         }
 
@@ -379,11 +618,15 @@ void RegisterLibAudioOut() {
                      static_cast<unsigned long long>(n), handle, byte_len);
         }
 
-        if (!port->wave_out) {
+        if (!BackendActive(*port)) {
             PaceSilence(*port);
             return 0;
         }
-        SubmitToBackend(*port, guest_buf.data());
+        if (port->wasapi.client) {
+            SubmitToWasapi(*port, guest_buf.data());
+        } else {
+            SubmitToBackend(*port, guest_buf.data());
+        }
         return 0;
     };
     RegisterSymbol("libSceAudioOut", "sceAudioOutOutput", AudioOutOutput);

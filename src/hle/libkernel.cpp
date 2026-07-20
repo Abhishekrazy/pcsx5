@@ -36,13 +36,24 @@ namespace HLE {
     //   MapDirectMemory       -> maps [physOffset, physOffset+len) into VA space
     //
     // We emulate this with a single large VirtualAlloc reservation.
-    // Physical offsets are just byte offsets into that reservation.
-    // Kept at file scope so the demand-commit fault handler can reach it.
+    // Physical offsets are just byte offsets into that reservation, and the
+    // reservation is committed in 16 MiB chunks ahead of the bump pointer
+    // (see EnsurePhysCommitted).  Kept at file scope so the demand-commit
+    // fault handler can reach it.
     // -----------------------------------------------------------------------
     namespace {
         constexpr u64  PHYS_POOL_SIZE = 2ULL * 1024 * 1024 * 1024; // 2 GB pool
+        // Commit-ahead granularity.  Allocation requests bump the phys offset
+        // without touching pages; we commit the pool in large chunks ahead of
+        // the bump pointer so that neither sceKernelMapDirectMemory nor a
+        // guest first-touch has to pay a per-64KiB commit (the latter used to
+        // go through the demand-commit VEH fault path: one exception + one
+        // Info log line per 64 KiB block — Dreaming Sarah's content load
+        // issues 450+ such blocks).
+        constexpr u64  PHYS_COMMIT_CHUNK = 16ULL * 1024 * 1024; // 16 MB
         guest_addr_t   g_phys_pool_base = 0;
         u64            g_phys_pool_offset = 0x10000; // start past offset 0
+        u64            g_phys_pool_committed = 0;    // bytes committed from base
         std::mutex     g_phys_mutex;
 
         // Lazily initialise the physical pool on first AllocateDirectMemory
@@ -56,6 +67,25 @@ namespace HLE {
             }
             g_phys_pool_base = reinterpret_cast<guest_addr_t>(p);
             LOG_INFO(HLE, "PhysPool: reserved 2 GB at base 0x%llx", g_phys_pool_base);
+            return true;
+        }
+
+        // Ensure pool bytes [0, end_offset) are committed, committing whole
+        // PHYS_COMMIT_CHUNK blocks.  Caller must hold g_phys_mutex.
+        bool EnsurePhysCommitted(u64 end_offset) {
+            while (g_phys_pool_committed < end_offset) {
+                const guest_addr_t at = g_phys_pool_base + g_phys_pool_committed;
+                if (!VirtualAlloc(reinterpret_cast<void*>(at), PHYS_COMMIT_CHUNK,
+                                  MEM_COMMIT, PAGE_READWRITE)) {
+                    LOG_ERROR(HLE, "PhysPool: chunk commit failed at 0x%llx (err=%lu)",
+                              at, GetLastError());
+                    return false;
+                }
+                g_phys_pool_committed += PHYS_COMMIT_CHUNK;
+                LOG_DEBUG(HLE, "PhysPool: committed chunk at +0x%llx (%llu MiB total)",
+                          g_phys_pool_committed - PHYS_COMMIT_CHUNK,
+                          g_phys_pool_committed >> 20);
+            }
             return true;
         }
     } // namespace
@@ -74,7 +104,7 @@ namespace HLE {
             LOG_WARN(HLE, "PhysPool: demand-commit failed at 0x%llx (err=%lu)", base, GetLastError());
             return false;
         }
-        LOG_INFO(HLE, "PhysPool: demand-committed 64 KiB at 0x%llx (fault at 0x%llx)", base, addr);
+        LOG_DEBUG(HLE, "PhysPool: demand-committed 64 KiB at 0x%llx (fault at 0x%llx)", base, addr);
         return true;
     }
 
@@ -309,6 +339,7 @@ namespace HLE {
                 return 0x800D0006;
             }
             g_phys_pool_offset = phys_offset + size;
+            if (!EnsurePhysCommitted(phys_offset + size)) return 0x800D0006;
 
             Memory::Write<u64>(phys_addr_out, phys_offset);
             LOG_INFO(HLE, "sceKernelAllocateMainDirectMemory -> physOffset: 0x%llx (size: 0x%llx)", phys_offset, size);
@@ -518,6 +549,9 @@ namespace HLE {
                 return 0x800D0006;
             }
             g_phys_pool_offset = phys_offset + aligned_size;
+            // Commit-ahead in large chunks so MapDirectMemory / guest first
+            // touch never hit the per-64KiB demand-commit fault path.
+            if (!EnsurePhysCommitted(phys_offset + aligned_size)) return 0x800D0006;
 
             // Write the physical OFFSET (not a host address!) back to the game
             Memory::Write<u64>(out_ptr, phys_offset);

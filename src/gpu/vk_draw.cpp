@@ -7,6 +7,7 @@
 #include <cstring>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace GPU {
@@ -55,9 +56,24 @@ struct DrawState {
     VkFence          fence = VK_NULL_HANDLE;
     VkDescriptorPool desc_pool = VK_NULL_HANDLE;
 
-    HostBuffer staging; // texel/seed uploads (host-visible)
-    HostBuffer scalars[2]; // [0] = PS scalars, [1] = VS scalars (256 dwords)
-    HostBuffer index_buffer;
+    // M6 batching: draws accumulate in `cmd` between flips; the batch is
+    // submitted (not awaited) when the presenter looks up the render target.
+    bool recording  = false; // cmd is open, not yet submitted
+    bool in_flight  = false; // a batch was submitted; fence not yet consumed
+    u32  draw_slot  = 0;     // draws recorded in the current batch
+
+    HostBuffer   staging;     // texel/seed upload ring (host-visible)
+    VkDeviceSize staging_off = 0;
+    HostBuffer   scalar_ring; // kBatchDraws * 2 slots of 256 dwords
+    HostBuffer   index_ring;  // bump-allocated per draw
+    VkDeviceSize index_off = 0;
+
+    // Host buffers replaced mid-batch; destroyed once the fence signals.
+    std::vector<HostBuffer> retired;
+    // Guest buffer bases already snapshotted by an earlier draw this batch
+    // (a second upload of the same base gets a fresh buffer instead of
+    // clobbering the snapshot the earlier draw will read).
+    std::unordered_set<u64> uploaded_bases;
 
     std::unordered_map<u64, HostBuffer>     guest_buffers;  // base -> upload
     std::unordered_map<u64, TextureEntry>   textures;       // identity hash
@@ -69,6 +85,13 @@ struct DrawState {
     std::unordered_map<u64, VkPipelineLayout>      pipe_layouts;
     std::unordered_map<u64, VkPipeline>     pipelines;      // state hash
 };
+
+// Per-batch limits.  Exceeding one rotates the batch (submit + one fence
+// wait), so the wait is the resource-reuse sync point, not a per-draw one.
+constexpr u32          kBatchDraws      = 64;
+constexpr VkDeviceSize kScalarSlotBytes = 256 * sizeof(u32);
+constexpr VkDeviceSize kIndexRingBytes  = 16ull * 1024 * 1024;
+constexpr VkDeviceSize kStagingRingBytes = 64ull * 1024 * 1024;
 
 DrawState  g_ds;
 std::mutex g_draw_mutex;
@@ -119,14 +142,122 @@ bool EnsureHostBuffer(HostBuffer& b, VkDeviceSize size, VkBufferUsageFlags usage
     return true;
 }
 
-bool WriteHostBuffer(const HostBuffer& b, const void* data, size_t size) {
+bool WriteHostBuffer(const HostBuffer& b, VkDeviceSize offset,
+                     const void* data, size_t size) {
     VkContext* ctx = g_ds.ctx;
     void* mapped = nullptr;
-    if (ctx->fn.MapMemory(ctx->device, b.mem, 0, size, 0, &mapped) != VK_SUCCESS) {
+    if (ctx->fn.MapMemory(ctx->device, b.mem, offset, size, 0, &mapped) != VK_SUCCESS) {
         return false;
     }
     std::memcpy(mapped, data, size);
     ctx->fn.UnmapMemory(ctx->device, b.mem);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Batch lifecycle (M6).  Draws record into one command buffer; the batch is
+// submitted at the flip (VkDrawFlush, called from VkDrawLookupRenderTarget)
+// without waiting — the present submit goes to the same queue afterwards, so
+// queue order guarantees the draws complete before the blit reads the image.
+// The fence is waited exactly once per batch, when its host-visible rings
+// (staging/scalars/indices), descriptor pool and retired buffers are reused.
+// ---------------------------------------------------------------------------
+bool BeginBatch() {
+    VkContext* ctx = g_ds.ctx;
+    if (g_ds.in_flight) {
+        ctx->fn.WaitForFences(ctx->device, 1, &g_ds.fence, VK_TRUE, UINT64_MAX);
+        ctx->fn.ResetFences(ctx->device, 1, &g_ds.fence);
+        g_ds.in_flight = false;
+        for (auto& b : g_ds.retired) DestroyHostBuffer(b);
+        g_ds.retired.clear();
+        ctx->fn.ResetDescriptorPool(ctx->device, g_ds.desc_pool, 0);
+    }
+    g_ds.draw_slot = 0;
+    g_ds.staging_off = 0;
+    g_ds.index_off = 0;
+    g_ds.uploaded_bases.clear();
+    ctx->fn.ResetCommandBuffer(g_ds.cmd, 0);
+
+    VkCommandBufferBeginInfo bi = {};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    ctx->fn.BeginCommandBuffer(g_ds.cmd, &bi);
+    g_ds.recording = true;
+    return true;
+}
+
+void FlushBatch() {
+    if (!g_ds.recording) return;
+    VkContext* ctx = g_ds.ctx;
+    ctx->fn.EndCommandBuffer(g_ds.cmd);
+    VkSubmitInfo si = {};
+    si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    si.commandBufferCount = 1;
+    si.pCommandBuffers = &g_ds.cmd;
+    if (ctx->fn.QueueSubmit(ctx->queue, 1, &si, g_ds.fence) != VK_SUCCESS) {
+        LOG_WARN(GPU, "draw: vkQueueSubmit failed.");
+        g_ds.recording = false;
+        return;
+    }
+    g_ds.recording = false;
+    g_ds.in_flight = true;
+}
+
+// Ends the current batch and immediately opens a fresh one; used when a
+// per-batch ring (draw slots / staging / indices / descriptor pool) is
+// exhausted.  BeginBatch's fence wait is the buffer-reuse sync.
+bool RotateBatch() {
+    FlushBatch();
+    return BeginBatch();
+}
+
+// Bump-allocates `size` bytes (256-aligned) from the staging ring for one
+// upload in the current batch; rotates when full, grows the ring when a
+// single upload exceeds its capacity (after the rotate, so the recorded
+// copies referencing the old buffer have completed).
+bool StagingAlloc(VkDeviceSize size, VkDeviceSize* offset) {
+    if (!EnsureHostBuffer(g_ds.staging, kStagingRingBytes,
+                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT)) {
+        return false;
+    }
+    if (size > g_ds.staging.size) {
+        if (!RotateBatch()) return false;
+        if (!EnsureHostBuffer(g_ds.staging, size,
+                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT)) {
+            return false;
+        }
+    }
+    VkDeviceSize aligned = (g_ds.staging_off + 255) & ~static_cast<VkDeviceSize>(255);
+    if (aligned + size > g_ds.staging.size) {
+        if (!RotateBatch()) return false;
+        aligned = 0;
+    }
+    g_ds.staging_off = aligned + size;
+    *offset = aligned;
+    return true;
+}
+
+// Same for the index ring (16-aligned; index offsets must be a multiple of
+// the index size).
+bool IndexAlloc(VkDeviceSize size, VkDeviceSize* offset) {
+    if (!EnsureHostBuffer(g_ds.index_ring, kIndexRingBytes,
+                          VK_BUFFER_USAGE_INDEX_BUFFER_BIT)) {
+        return false;
+    }
+    if (size > g_ds.index_ring.size) {
+        if (!RotateBatch()) return false;
+        if (!EnsureHostBuffer(g_ds.index_ring, size,
+                              VK_BUFFER_USAGE_INDEX_BUFFER_BIT)) {
+            return false;
+        }
+    }
+    VkDeviceSize aligned = (g_ds.index_off + 15) & ~static_cast<VkDeviceSize>(15);
+    if (aligned + size > g_ds.index_ring.size) {
+        if (!RotateBatch()) return false;
+        aligned = 0;
+    }
+    g_ds.index_off = aligned + size;
+    *offset = aligned;
     return true;
 }
 
@@ -207,13 +338,16 @@ VkImageView CreateImageView2D(VkImage image, VkFormat format, u32 dst_select) {
     return view;
 }
 
-// Copies `bytes` from staging into `image` (UNDEFINED/any -> SHADER_READ_ONLY
-// or COLOR_ATTACHMENT_OPTIMAL) using the open command buffer.
-void StageIntoImage(VkImage image, u32 w, u32 h, VkImageLayout final_layout) {
+// Copies `bytes` from the staging ring at `staging_offset` into `image`
+// (UNDEFINED/any -> SHADER_READ_ONLY or COLOR_ATTACHMENT_OPTIMAL) using the
+// open command buffer.
+void StageIntoImage(VkImage image, u32 w, u32 h, VkImageLayout final_layout,
+                    VkDeviceSize staging_offset) {
     ImageBarrier(image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                  0, VK_ACCESS_TRANSFER_WRITE_BIT,
                  VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
     VkBufferImageCopy region = {};
+    region.bufferOffset = staging_offset;
     region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     region.imageSubresource.layerCount = 1;
     region.imageExtent = { w, h, 1 };
@@ -256,6 +390,9 @@ TextureEntry* EnsureTexture(const VkDrawTexture& t, VkFormat format) {
     auto it = g_ds.textures.find(key);
     if (it != g_ds.textures.end()) return &it->second;
     if (g_ds.textures.size() > 512) { // bound the cache; recreate everything
+        // Recorded copies in the open batch may reference these images —
+        // submit + wait first, then destroying them is safe.
+        RotateBatch();
         for (auto& [k, e] : g_ds.textures) {
             g_ds.ctx->fn.DestroyImageView(g_ds.ctx->device, e.view, nullptr);
             g_ds.ctx->fn.DestroyImage(g_ds.ctx->device, e.image, nullptr);
@@ -283,16 +420,14 @@ TextureEntry* EnsureTexture(const VkDrawTexture& t, VkFormat format) {
     return &g_ds.textures.emplace(key, e).first->second;
 }
 
-// Uploads linear guest texels into the texture (staging, open cmd buffer).
+// Uploads linear guest texels into the texture (staging ring, open cmd
+// buffer).
 bool UploadTexture(TextureEntry& e, const VkDrawTexture& t, VkFormat format) {
     const u32 bpp = Gfx10::FormatBytesPerPixel(format);
     const u32 pitch = t.pitch ? t.pitch : t.width;
     if (bpp == 0) return false;
     const VkDeviceSize need = static_cast<VkDeviceSize>(pitch) * t.height * bpp;
     if (need == 0 || need > 256ull * 1024 * 1024) return false;
-    if (!EnsureHostBuffer(g_ds.staging, need, VK_BUFFER_USAGE_TRANSFER_SRC_BIT)) {
-        return false;
-    }
     // Tightly repack rows (guest pitch may exceed width).
     std::vector<u8> pixels(static_cast<size_t>(t.width) * t.height * bpp);
     const VkDeviceSize row = static_cast<VkDeviceSize>(t.width) * bpp;
@@ -307,8 +442,10 @@ bool UploadTexture(TextureEntry& e, const VkDrawTexture& t, VkFormat format) {
             }
         }
     }
-    if (!WriteHostBuffer(g_ds.staging, pixels.data(), pixels.size())) return false;
-    StageIntoImage(e.image, t.width, t.height, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    VkDeviceSize off = 0;
+    if (!StagingAlloc(static_cast<VkDeviceSize>(pixels.size()), &off)) return false;
+    if (!WriteHostBuffer(g_ds.staging, off, pixels.data(), pixels.size())) return false;
+    StageIntoImage(e.image, t.width, t.height, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, off);
     return true;
 }
 
@@ -334,9 +471,9 @@ TextureEntry* EnsureFallbackTexture() {
     e.width = e.height = 1;
     e.format = VK_FORMAT_R8G8B8A8_UNORM;
     const u32 white = 0xFFFFFFFFu;
-    if (EnsureHostBuffer(g_ds.staging, 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT) &&
-        WriteHostBuffer(g_ds.staging, &white, 4)) {
-        StageIntoImage(e.image, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    VkDeviceSize off = 0;
+    if (StagingAlloc(4, &off) && WriteHostBuffer(g_ds.staging, off, &white, 4)) {
+        StageIntoImage(e.image, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, off);
     }
     return &g_ds.textures.emplace(kKey, e).first->second;
 }
@@ -432,7 +569,8 @@ RenderTargetEntry* EnsureRenderTarget(u64 base, u32 w, u32 h, VkFormat format) {
     // Seed from guest memory (PS5 render targets alias unified memory; this
     // is what makes the M1 CPU-side DMA clear visible on the GPU image).
     const VkDeviceSize need = static_cast<VkDeviceSize>(w) * h * bpp;
-    if (EnsureHostBuffer(g_ds.staging, need, VK_BUFFER_USAGE_TRANSFER_SRC_BIT)) {
+    VkDeviceSize off = 0;
+    if (StagingAlloc(need, &off)) {
         std::vector<u8> zeros;
         const u8* src = nullptr;
         std::vector<u8> pixels;
@@ -444,8 +582,8 @@ RenderTargetEntry* EnsureRenderTarget(u64 base, u32 w, u32 h, VkFormat format) {
             zeros.assign(static_cast<size_t>(need), 0);
             src = zeros.data();
         }
-        if (WriteHostBuffer(g_ds.staging, src, static_cast<size_t>(need))) {
-            StageIntoImage(e.image, w, h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        if (WriteHostBuffer(g_ds.staging, off, src, static_cast<size_t>(need))) {
+            StageIntoImage(e.image, w, h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, off);
         }
     }
 
@@ -678,7 +816,9 @@ HostBuffer* EnsureGuestBuffer(u64 base, u64 size) {
         return &it->second;
     }
     if (g_ds.guest_buffers.size() > 256) {
-        for (auto& [k, b] : g_ds.guest_buffers) DestroyHostBuffer(b);
+        // Retire rather than destroy: recorded batches may still reference
+        // these buffers; they are freed once the batch fence signals.
+        for (auto& [k, b] : g_ds.guest_buffers) g_ds.retired.push_back(b);
         g_ds.guest_buffers.clear();
         it = g_ds.guest_buffers.end();
     }
@@ -686,7 +826,7 @@ HostBuffer* EnsureGuestBuffer(u64 base, u64 size) {
     if (!EnsureHostBuffer(b, size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)) {
         return nullptr;
     }
-    if (it != g_ds.guest_buffers.end()) DestroyHostBuffer(it->second);
+    if (it != g_ds.guest_buffers.end()) g_ds.retired.push_back(it->second);
     return &g_ds.guest_buffers.insert_or_assign(base, b).first->second;
 }
 
@@ -721,8 +861,8 @@ bool VkDrawInitialize(VkContext* ctx) {
         return false;
     }
 
-    // Per-draw descriptor sets, recycled via vkResetDescriptorPool after the
-    // fence wait (one draw in flight at a time).
+    // Per-draw descriptor sets, recycled via vkResetDescriptorPool when the
+    // batch fence is consumed (BeginBatch).
     const VkDescriptorPoolSize sizes[] = {
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024 },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024 },
@@ -739,14 +879,15 @@ bool VkDrawInitialize(VkContext* ctx) {
         return false;
     }
 
-    // Scalar-state slots: 256 dwords each, uploaded per draw.
-    for (auto& s : g_ds.scalars) {
-        if (!EnsureHostBuffer(s, 256 * sizeof(u32), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)) {
-            g_ds.ctx = nullptr;
-            return false;
-        }
+    // Scalar-state ring: kBatchDraws slot pairs of 256 dwords each, one pair
+    // per draw in the batch (PS slot at even offsets, VS at odd).
+    if (!EnsureHostBuffer(g_ds.scalar_ring,
+                          kBatchDraws * 2 * kScalarSlotBytes,
+                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)) {
+        g_ds.ctx = nullptr;
+        return false;
     }
-    LOG_INFO(GPU, "Guest draw executor initialized (M3.2c).");
+    LOG_INFO(GPU, "Guest draw executor initialized (M6 batched).");
     return true;
 }
 
@@ -758,6 +899,7 @@ void VkDrawShutdown() {
     std::lock_guard<std::mutex> lk(g_draw_mutex);
     VkContext* ctx = g_ds.ctx;
     if (!ctx) return;
+    FlushBatch(); // submit any recorded-but-unflushed draws before teardown
     ctx->fn.DeviceWaitIdle(ctx->device);
     for (auto& [k, p] : g_ds.pipelines) ctx->fn.DestroyPipeline(ctx->device, p, nullptr);
     for (auto& [k, l] : g_ds.pipe_layouts) ctx->fn.DestroyPipelineLayout(ctx->device, l, nullptr);
@@ -777,18 +919,29 @@ void VkDrawShutdown() {
         ctx->fn.FreeMemory(ctx->device, e.mem, nullptr);
     }
     for (auto& [k, b] : g_ds.guest_buffers) DestroyHostBuffer(b);
-    for (auto& s : g_ds.scalars) DestroyHostBuffer(s);
+    for (auto& b : g_ds.retired) DestroyHostBuffer(b);
+    DestroyHostBuffer(g_ds.scalar_ring);
+    DestroyHostBuffer(g_ds.index_ring);
     DestroyHostBuffer(g_ds.staging);
-    DestroyHostBuffer(g_ds.index_buffer);
     if (g_ds.desc_pool) ctx->fn.DestroyDescriptorPool(ctx->device, g_ds.desc_pool, nullptr);
     if (g_ds.fence) ctx->fn.DestroyFence(ctx->device, g_ds.fence, nullptr);
     if (g_ds.cmd_pool) ctx->fn.DestroyCommandPool(ctx->device, g_ds.cmd_pool, nullptr);
     g_ds = DrawState{};
 }
 
+void VkDrawFlush() {
+    std::lock_guard<std::mutex> lk(g_draw_mutex);
+    if (!g_ds.ctx) return;
+    FlushBatch();
+}
+
 bool VkDrawLookupRenderTarget(u64 guest_base, VkImage* image,
                               u32* width, u32* height) {
     std::lock_guard<std::mutex> lk(g_draw_mutex);
+    // Flip boundary: submit the pending batch (no wait — the present submit
+    // goes to the same queue after this, so queue order keeps the M3.2d
+    // guarantee that the blit reads the image only after the draws finish).
+    if (g_ds.ctx) FlushBatch();
     auto it = g_ds.render_targets.find(guest_base);
     if (it == g_ds.render_targets.end()) return false;
     const RenderTargetEntry& e = it->second;
@@ -814,28 +967,22 @@ bool VkDrawExecute(const VkDrawCall& call) {
     const u64 vs_digest = call.vs_words ? SpirvDigest(call.vs_words, call.vs_word_count) : 0;
     const u64 ps_digest = call.ps_words ? SpirvDigest(call.ps_words, call.ps_word_count) : 0;
 
-    // One draw in flight: the previous submission must complete before the
-    // descriptor pool / command buffer / host buffers are reused.
-    ctx->fn.WaitForFences(ctx->device, 1, &g_ds.fence, VK_TRUE, UINT64_MAX);
-    ctx->fn.ResetFences(ctx->device, 1, &g_ds.fence);
-    ctx->fn.ResetCommandBuffer(g_ds.cmd, 0);
-    ctx->fn.ResetDescriptorPool(ctx->device, g_ds.desc_pool, 0);
-
-    VkCommandBufferBeginInfo bi = {};
-    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    ctx->fn.BeginCommandBuffer(g_ds.cmd, &bi);
+    // M6: accumulate draws into one command buffer per flip; the batch is
+    // submitted (not awaited) by VkDrawFlush at present time.  The fence is
+    // waited only when per-batch resources are reused (BeginBatch) — once
+    // per flip on the steady path.
+    if (!g_ds.recording) BeginBatch();
+    if (g_ds.draw_slot >= kBatchDraws) RotateBatch();
+    const u32 draw_slot = g_ds.draw_slot++;
 
     // Render target + render pass + framebuffer (guest image model).
     RenderTargetEntry* rt =
         EnsureRenderTarget(call.rt_base, call.rt_width, call.rt_height, rt_format);
     if (!rt) {
-        ctx->fn.EndCommandBuffer(g_ds.cmd);
         return false;
     }
     VkRenderPass pass = EnsureRenderPass(rt->format);
     if (!pass || !EnsureFramebuffer(*rt, pass)) {
-        ctx->fn.EndCommandBuffer(g_ds.cmd);
         return false;
     }
 
@@ -852,12 +999,10 @@ bool VkDrawExecute(const VkDrawCall& call) {
             if (tex && !UploadTexture(*tex, t, format)) tex = nullptr;
         }
         if (!tex) {
-            ctx->fn.EndCommandBuffer(g_ds.cmd);
             return false;
         }
         VkSampler sampler = EnsureSampler(t.sampler);
         if (!sampler) {
-            ctx->fn.EndCommandBuffer(g_ds.cmd);
             return false;
         }
         image_infos[i].sampler = sampler;
@@ -872,16 +1017,30 @@ bool VkDrawExecute(const VkDrawCall& call) {
         u64 size = b.size_bytes ? b.size_bytes : 4;
         size = (size + 3) & ~3ull;
         if (size > 64ull * 1024 * 1024) size = 64ull * 1024 * 1024;
-        HostBuffer* hb = EnsureGuestBuffer(b.guest_addr, size);
+        HostBuffer* hb = nullptr;
+        if (g_ds.uploaded_bases.count(b.guest_addr) != 0) {
+            // An earlier draw in this batch already snapshotted this base;
+            // re-uploading in place would clobber the data that draw reads.
+            // Give this draw a fresh buffer and retire the old one at the
+            // batch fence instead of waiting.
+            HostBuffer fresh;
+            if (!EnsureHostBuffer(fresh, size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)) {
+                return false;
+            }
+            auto prev = g_ds.guest_buffers.find(b.guest_addr);
+            if (prev != g_ds.guest_buffers.end()) g_ds.retired.push_back(prev->second);
+            hb = &g_ds.guest_buffers.insert_or_assign(b.guest_addr, fresh).first->second;
+        } else {
+            hb = EnsureGuestBuffer(b.guest_addr, size);
+        }
         if (!hb) {
-            ctx->fn.EndCommandBuffer(g_ds.cmd);
             return false;
         }
+        g_ds.uploaded_bases.insert(b.guest_addr);
         void* mapped = nullptr;
         if (ctx->fn.MapMemory(ctx->device, hb->mem, 0, size, 0, &mapped) != VK_SUCCESS ||
             !Memory::IsReadable(b.guest_addr, size)) {
             if (mapped) ctx->fn.UnmapMemory(ctx->device, hb->mem);
-            ctx->fn.EndCommandBuffer(g_ds.cmd);
             return false;
         }
         Memory::ReadBuffer(b.guest_addr, mapped, static_cast<size_t>(size));
@@ -891,48 +1050,50 @@ bool VkDrawExecute(const VkDrawCall& call) {
         buffer_infos[i].range = size;
     }
 
-    // Scalar-state slots (PS then VS — the translator's binding order).
+    // Scalar-state slots (PS then VS — the translator's binding order), one
+    // slot pair per draw from the scalar ring.
+    const VkDeviceSize ps_off = draw_slot * 2 * kScalarSlotBytes;
+    const VkDeviceSize vs_off = ps_off + kScalarSlotBytes;
+    const VkDeviceSize scalar_offs[2] = { ps_off, vs_off };
     const std::vector<u32>* scalar_data[2] = { &call.ps_scalars, &call.vs_scalars };
     for (u32 s = 0; s < 2; ++s) {
         const u32 slot = static_cast<u32>(call.buffers.size()) + s;
         std::vector<u32> zeros(256, 0);
         const std::vector<u32>& data =
             scalar_data[s]->size() >= 256 ? *scalar_data[s] : zeros;
-        if (!WriteHostBuffer(g_ds.scalars[s], data.data(), 256 * sizeof(u32))) {
-            ctx->fn.EndCommandBuffer(g_ds.cmd);
+        if (!WriteHostBuffer(g_ds.scalar_ring, scalar_offs[s], data.data(),
+                             kScalarSlotBytes)) {
             return false;
         }
-        buffer_infos[slot].buffer = g_ds.scalars[s].buf;
-        buffer_infos[slot].offset = 0;
-        buffer_infos[slot].range = 256 * sizeof(u32);
+        buffer_infos[slot].buffer = g_ds.scalar_ring.buf;
+        buffer_infos[slot].offset = scalar_offs[s];
+        buffer_infos[slot].range = kScalarSlotBytes;
     }
 
-    // Index buffer snapshot.
+    // Index buffer snapshot (bump-allocated from the per-batch index ring).
+    VkDeviceSize index_off = 0;
     if (call.indexed) {
         const u64 bytes = static_cast<u64>(call.index_count) *
                           (call.index_size != 0 ? 4 : 2);
         if (bytes == 0 || bytes > 64ull * 1024 * 1024 ||
-            !EnsureHostBuffer(g_ds.index_buffer, bytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT)) {
-            ctx->fn.EndCommandBuffer(g_ds.cmd);
+            !IndexAlloc(bytes, &index_off)) {
             return false;
         }
         void* mapped = nullptr;
-        if (ctx->fn.MapMemory(ctx->device, g_ds.index_buffer.mem, 0, bytes, 0,
+        if (ctx->fn.MapMemory(ctx->device, g_ds.index_ring.mem, index_off, bytes, 0,
                               &mapped) != VK_SUCCESS ||
             !Memory::IsReadable(call.index_addr, bytes)) {
-            if (mapped) ctx->fn.UnmapMemory(ctx->device, g_ds.index_buffer.mem);
-            ctx->fn.EndCommandBuffer(g_ds.cmd);
+            if (mapped) ctx->fn.UnmapMemory(ctx->device, g_ds.index_ring.mem);
             return false;
         }
         Memory::ReadBuffer(call.index_addr, mapped, static_cast<size_t>(bytes));
-        ctx->fn.UnmapMemory(ctx->device, g_ds.index_buffer.mem);
+        ctx->fn.UnmapMemory(ctx->device, g_ds.index_ring.mem);
     }
 
     // Layout, modules, pipeline (cached).
     VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
     VkPipelineLayout layout = EnsurePipelineLayout(buffer_count, image_count, &set_layout);
     if (!layout) {
-        ctx->fn.EndCommandBuffer(g_ds.cmd);
         return false;
     }
     VkShaderModule vs = call.vs_words ? EnsureModule(call.vs_words, call.vs_word_count, vs_digest)
@@ -940,18 +1101,16 @@ bool VkDrawExecute(const VkDrawCall& call) {
     VkShaderModule ps = call.ps_words ? EnsureModule(call.ps_words, call.ps_word_count, ps_digest)
                                       : VK_NULL_HANDLE;
     if ((call.vs_words && !vs) || (call.ps_words && !ps)) {
-        ctx->fn.EndCommandBuffer(g_ds.cmd);
         return false;
     }
     const u64 pipe_key = PipelineKey(vs_digest, ps_digest, call, buffer_count,
                                      image_count, rt_format);
     VkPipeline pipeline = EnsurePipeline(call, pipe_key, vs, ps, layout, pass);
     if (!pipeline) {
-        ctx->fn.EndCommandBuffer(g_ds.cmd);
         return false;
     }
 
-    // Descriptor set.
+    // Descriptor set (pool recycled when the batch fence is consumed).
     VkDescriptorSetAllocateInfo dsai = {};
     dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     dsai.descriptorPool = g_ds.desc_pool;
@@ -959,8 +1118,12 @@ bool VkDrawExecute(const VkDrawCall& call) {
     dsai.pSetLayouts = &set_layout;
     VkDescriptorSet set = VK_NULL_HANDLE;
     if (ctx->fn.AllocateDescriptorSets(ctx->device, &dsai, &set) != VK_SUCCESS) {
-        ctx->fn.EndCommandBuffer(g_ds.cmd);
-        return false;
+        // Pool exhausted mid-batch: rotate (submit + wait + pool reset) and
+        // retry the allocation once in the fresh batch.
+        if (!RotateBatch()) return false;
+        if (ctx->fn.AllocateDescriptorSets(ctx->device, &dsai, &set) != VK_SUCCESS) {
+            return false;
+        }
     }
     std::vector<VkWriteDescriptorSet> writes;
     writes.reserve(1 + image_count);
@@ -1008,7 +1171,7 @@ bool VkDrawExecute(const VkDrawCall& call) {
     ctx->fn.CmdBindDescriptorSets(g_ds.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                   layout, 0, 1, &set, 0, nullptr);
     if (call.indexed) {
-        ctx->fn.CmdBindIndexBuffer(g_ds.cmd, g_ds.index_buffer.buf, 0,
+        ctx->fn.CmdBindIndexBuffer(g_ds.cmd, g_ds.index_ring.buf, index_off,
                                    call.index_size != 0 ? VK_INDEX_TYPE_UINT32
                                                         : VK_INDEX_TYPE_UINT16);
         ctx->fn.CmdDrawIndexed(g_ds.cmd, call.index_count, call.instances, 0, 0, 0);
@@ -1016,16 +1179,7 @@ bool VkDrawExecute(const VkDrawCall& call) {
         ctx->fn.CmdDraw(g_ds.cmd, call.index_count, call.instances, 0, 0);
     }
     ctx->fn.CmdEndRenderPass(g_ds.cmd);
-    ctx->fn.EndCommandBuffer(g_ds.cmd);
-
-    VkSubmitInfo si = {};
-    si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    si.commandBufferCount = 1;
-    si.pCommandBuffers = &g_ds.cmd;
-    if (ctx->fn.QueueSubmit(ctx->queue, 1, &si, g_ds.fence) != VK_SUCCESS) {
-        LOG_WARN(GPU, "draw: vkQueueSubmit failed.");
-        return false;
-    }
+    // The batch stays open; VkDrawFlush (flip) submits it.
     return true;
 }
 

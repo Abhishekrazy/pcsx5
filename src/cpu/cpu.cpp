@@ -12,6 +12,8 @@
 #include "../common/log.h"
 #include "../hle/hle.h"
 #include "../kernel/syscalls.h"
+#include "../kernel/kernel.h"
+#include "../kernel/tls_patch.h"
 #include <unordered_map>
 
 namespace {
@@ -119,6 +121,18 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
     const u64 argument  = self->argument;
 
     CpuCore::SetCurrentThreadId(id);
+
+    // This host thread executes guest code: bind its guest thread pointer so
+    // patched TLS stubs (Kernel::TlsPatch) resolve fs-relative accesses for
+    // this thread.  The value MUST match what the VEH emulation path would
+    // use (Kernel::ResolveGuestThreadPointer) — binding the CpuCore tls_base
+    // directly diverges when the kernel map has no entry for this thread
+    // (shared-TLS fallback) and corrupts worker threads.
+    Kernel::TlsPatch::BindCurrentThread(Kernel::ResolveGuestThreadPointer(id));
+    {
+        ULONG guarantee = 64 * 1024;
+        SetThreadStackGuarantee(&guarantee);
+    }
 
     // Initialize this thread's per-thread host stack pointer.
     // SetHostStackPointer stores the current RSP so that if the very first HLE call

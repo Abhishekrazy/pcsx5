@@ -29,7 +29,8 @@ namespace HLE {
         u32 buttons;          // 0x00
         u8 lx, ly, rx, ry;    // 0x04
         u8 l2, r2;            // 0x08
-        u8 reserved0[0x0E];   // 0x0A
+        u8 padding0[0x02];    // 0x0A
+        float accel[3];       // 0x0C (official ScePadData acceleration offset)
         float touch_scale;    // 0x18 (1.0f)
         u8 reserved1[0x04];   // 0x1C
         u8 touch_num;         // 0x20
@@ -84,11 +85,24 @@ namespace HLE {
         out->l2 = state.l2_trigger;
         out->r2 = state.r2_trigger;
         out->touch_scale = 1.0f;
-        // Touch state: the click itself rides in the buttons bitmask (T key /
-        // XInput BACK -> 0x100000); touchNum stays 0 (neutral, no fingers).
-        // Real finger positions need the DualSense HID path (see the C#
-        // launcher's WindowsDualSenseReader.cs) — not integrated here.
-        out->touch_num = 0;
+        // Touch fingers: filled from the DualSense HID feed (M4) when one is
+        // attached; stays neutral (touchNum = 0) on the keyboard/XInput path.
+        // The touch-pad click itself rides in the buttons bitmask (0x100000).
+        out->touch_num = state.touch_count;
+        for (int i = 0; i < 2; ++i) {
+            if (state.touch[i].active) {
+                out->touch[i].x = state.touch[i].x;
+                out->touch[i].y = state.touch[i].y;
+                out->touch[i].id = state.touch[i].id;
+            }
+        }
+        // Acceleration at the official ScePadData offset (0x0C).  Neutral
+        // zeros without a DualSense.  Angular velocity has no free slot in
+        // this SharpEmu-compatible layout (0x18 carries the touch scale), so
+        // gyro stays in GPU::PadButtonState only for now.
+        for (int i = 0; i < 3; ++i) {
+            out->accel[i] = state.accel[i];
+        }
         out->touch_connected = 1;
         out->timestamp = NowMicroseconds();
         out->connected_count = 1;

@@ -100,6 +100,7 @@ namespace Loader {
         // Validate all file-backed ranges and PT_LOAD address ranges before
         // reserving guest memory or copying any segment data.
         int inner_idx = 0;
+        u64 eh_frame_vaddr = 0, eh_frame_filesz = 0;
         for (const auto& phdr : phdrs) {
             LOG_INFO(Loader, "  Inner Phdr[%d]: type=%u, p_offset=0x%llx, p_filesz=0x%llx, file_size=0x%llx",
                      inner_idx++, phdr.p_type,
@@ -119,6 +120,12 @@ namespace Loader {
                     LOG_ERROR(Loader, "PT_LOAD virtual address range overflows.");
                     return false;
                 }
+            }
+            // PT_GNU_EH_FRAME points at .eh_frame_hdr inside a PT_LOAD; the
+            // HLE C++ exception unwinder needs its runtime address.
+            if (phdr.p_type == PT_GNU_EH_FRAME && phdr.p_vaddr != 0 && phdr.p_filesz != 0) {
+                eh_frame_vaddr  = phdr.p_vaddr;
+                eh_frame_filesz = phdr.p_filesz;
             }
             // Sony PS5 SDK p_types (PT_SCE_*, PT_GNU_RELRO, etc.) carry
             // no PT_LOAD data, so we don't need to validate them.  A
@@ -177,6 +184,13 @@ namespace Loader {
         out_module.base_address = base_address;
         out_module.image_size = total_size;
         out_module.entry_point = base_address + ehdr.e_entry;
+        if (eh_frame_vaddr != 0) {
+            out_module.eh_frame_hdr_addr = base_address + eh_frame_vaddr;
+            out_module.eh_frame_hdr_size = eh_frame_filesz;
+            LOG_INFO(Loader, ".eh_frame_hdr at guest 0x%llx (%llu bytes) — C++ exceptions supported.",
+                     static_cast<unsigned long long>(out_module.eh_frame_hdr_addr),
+                     static_cast<unsigned long long>(eh_frame_filesz));
+        }
 
         // Reserve the entire virtual address range for the image first
         guest_addr_t reserved_base = 0;

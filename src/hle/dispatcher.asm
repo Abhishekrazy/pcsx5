@@ -214,4 +214,47 @@ InvokeGuestFunction proc
     ret
 InvokeGuestFunction endp
 
+;=============================================================================
+; InvokeGuestFunction6
+; Windows ABI: rcx=entry, rdx=pointer to 6 u64 SysV args (rdi,rsi,rdx,rcx,r8,r9)
+; Used by the HLE C++ exception unwinder to invoke guest personality routines
+; (5 args) and guest exception destructors. Returns: rax = guest return value
+;=============================================================================
+InvokeGuestFunction6 proc
+    push rbx
+    push rbp
+    push r12
+    push r13
+    push r14
+    push r15
+    sub  rsp, 40
+
+    mov  rbx, rcx           ; entry_point
+    mov  r12, rdx           ; args pointer
+
+    ; Update per-thread host RSP so HleCommonDispatcher can switch back if needed
+    lea  rcx, [rsp]
+    call SetHostStackPointer
+
+    ; Load SysV args from the array (order: rdi,rsi,rdx,rcx,r8,r9)
+    mov  rdi, [r12]
+    mov  rsi, [r12 + 8]
+    mov  rdx, [r12 + 16]
+    mov  rcx, [r12 + 24]
+    mov  r8,  [r12 + 32]
+    mov  r9,  [r12 + 40]
+    xor  rax, rax
+
+    call rbx                ; rax = guest return value
+
+    add  rsp, 40
+    pop  r15
+    pop  r14
+    pop  r13
+    pop  r12
+    pop  rbp
+    pop  rbx
+    ret
+InvokeGuestFunction6 endp
+
 end

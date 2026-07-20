@@ -18,14 +18,16 @@
 //
 #include "../common/log.h"
 #include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace ConfigService {
 
 // ---------------------------------------------------------------------------
 // Schema versioning
 // ---------------------------------------------------------------------------
-inline constexpr int kCurrentSchemaVersion = 2;
+inline constexpr int kCurrentSchemaVersion = 3;
 
 // ---------------------------------------------------------------------------
 // Sectioned config.  Each section is plain data so it can be serialised /
@@ -81,6 +83,23 @@ struct LoaderConfig {
     std::string firmware_modules_dir;
 };
 
+// ---------------------------------------------------------------------------
+// Multi-user profile model (global-only; per-title overrides never touch it).
+// ---------------------------------------------------------------------------
+inline constexpr std::uint32_t kFirstUserId = 0x10000000; // first local user id
+
+struct UserProfile {
+    std::uint32_t id = kFirstUserId;     // stable local user id
+    std::string   name      = "Player";  // display name
+    std::string   online_id = "Player";  // PSN-style online id
+};
+
+struct UsersConfig {
+    // Default install: a single local "Player" profile.
+    std::vector<UserProfile> profiles = {UserProfile{}};
+    int                      active_user = 0; // index into `profiles`
+};
+
 // Top-level config — covers both global defaults and per-title overrides.
 // When loaded as a per-title file, only the fields the user touched are
 // populated; the rest should fall back to the global view at lookup time.
@@ -93,6 +112,7 @@ struct Config {
     InputConfig    input;
     UiConfig       ui;
     LoaderConfig   loader;
+    UsersConfig    users;   // global-only; EffectiveFor never overlays it
 
     // -- helpers -----------------------------------------------------------
     static Config Defaults();                   // compiled-in defaults
@@ -142,6 +162,21 @@ bool SavePerTitle(const std::string& title_id);
 // I/O primitives — used by tests, also by the public save functions.
 bool LoadFromFile(const std::string& path, Config& out, std::string* error);
 bool SaveToFile(const std::string& path, const Config& cfg, std::string* error);
+
+// ---------------------------------------------------------------------------
+// User profile accessors (global view only — per-title files never carry
+// users).  These are the accessors the HLE user-service / libpad user-id
+// validation should consume instead of hardcoding 0x10000000 / "Player1".
+// ---------------------------------------------------------------------------
+
+// Active profile, or nullptr when the profile list is empty / index invalid.
+const UserProfile* ActiveUserProfile();
+
+// Look up a profile by its stable user id; nullptr when unknown.
+const UserProfile* FindUserProfile(std::uint32_t id);
+
+// Convenience: id of the active profile, or 0 when none exists.
+std::uint32_t ActiveUserId();
 
 // Migrate a config read from an older schema version to the current schema.
 // Returns true on success.  `from_version` is the version stamp on disk;
