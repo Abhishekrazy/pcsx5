@@ -114,9 +114,11 @@ namespace HLE {
 
             LOG_INFO(HLE, "XKRegsFpEpk (catchReturnFromMain): exit_status=%llu — signalling process exit", exit_status);
 
-            // Signal the guest dispatch loop to terminate cleanly.
-            // GPU::RunIdleLoop() + std::exit() will be called by the Execute() caller.
-            std::exit(static_cast<int>(exit_status));
+            // Signal the guest dispatch loop to terminate cleanly by jumping
+            // back into Kernel::Execute (HLE::ExitGuestProcess longjmps to the
+            // armed setjmp buffer); the main thread's window loop then
+            // proceeds through the normal shutdown path.
+            HLE::ExitGuestProcess(static_cast<u32>(exit_status));
         });
 
         // =====================================================================
@@ -468,9 +470,10 @@ namespace HLE {
         RegisterSymbol("libkernel", "uMei1W9uyNo#T#T", [](const GuestArgs& args) -> u64 {
             u32 code = static_cast<u32>(args.arg1);
             LOG_ERROR(Kernel, "Guest requested exit with code: %u", code);
-            // Keep the window (and last rendered frame) alive until the user closes it
-            GPU::RunIdleLoop();
-            std::exit(static_cast<int>(code));
+            // Jump back into Kernel::Execute (HLE::ExitGuestProcess longjmps
+            // to the armed setjmp buffer); the main thread keeps the final
+            // frame visible until the window is closed.
+            HLE::ExitGuestProcess(code);
         });
 
         // sceKernelGetDirectMemorySize (pO96TwzOm5E#S#N)
@@ -1284,8 +1287,12 @@ namespace HLE {
             "hv1luiJrqQM#L#M",
             "fMP5NHUOaMk#D#E", "yKDy8S5yLA0#G#H",
             "6ncge5+l5Qs#L#M", "bwFjS+bX9mA#U#U", "eR2bZFAAU0Q#D#E",
-            "d-kSG2fLrvI#P#Q", "ekNvsT22rsY#N#O", "b+uAV89IlxE#N#O",
-            "QOQtbeDqsT4#N#O", "s1--uE9mBFw#N#O"
+            "d-kSG2fLrvI#P#Q"
+            // The libkernel audio aliases (ekNvsT22rsY/b+uAV89IlxE/
+            // QOQtbeDqsT4/s1--uE9mBFw with #N#O) are NOT stubbed here:
+            // libaudioout.cpp binds them to the real paced handlers —
+            // Dreaming Sarah's audio thread busy-floods 64KB direct-memory
+            // allocations when sceAudioOutOutput returns instantly.
         }) {
             RegisterSymbol("libkernel", nid, [nid](const GuestArgs& /*a*/) -> u64 {
                 LogStubCallOnce("libkernel", nid);

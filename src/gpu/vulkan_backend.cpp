@@ -11,6 +11,8 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 #include <vulkan/vulkan.h>
+#include <atomic>
+#include <chrono>
 #include <mutex>
 #include <vector>
 #include <cstring>
@@ -363,7 +365,6 @@ namespace GPU {
             glfwTerminate();
             return false;
         }
-
         g_hwnd = glfwGetWin32Window(g_window);
         glfwSetKeyCallback(g_window, KeyCallback);
         LOG_INFO(GPU, "GLFW Window created successfully (%dx%d).", g_width, g_height);
@@ -571,10 +572,19 @@ namespace GPU {
         return g_window != nullptr;
     }
 
-    void PollEvents() {
+    void PumpWindowEvents() {
+        // GLFW event processing is only valid on the thread that created the
+        // window (the process main thread); the guest worker thread never
+        // calls this — it goes through GetCurrentPadState() instead.
         if (g_window) {
             glfwPollEvents();
         }
+    }
+
+    void PollEvents() {
+        // NOTE: no glfwPollEvents() here — GLFW event processing lives in
+        // PumpWindowEvents(), driven by the main thread's window loop.  This
+        // function only refreshes the pad state (keyboard + XInput).
 
         // Initialize XInput if not already done
         static bool xinput_inited = false;

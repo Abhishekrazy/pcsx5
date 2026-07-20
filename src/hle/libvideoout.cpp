@@ -200,14 +200,10 @@ u64 SubmitFlipImpl(const GuestArgs& args) {
     LOG_DEBUG(HLE, "sceVideoOutSubmitFlip(0x%X, buffer: %d, arg: %lld) -> flip #%llu",
               handle, bufferIndex, flipArg, port->flip_count);
 
-    // Present (or re-present the boot screen when no buffer is bound) and keep
-    // the host window responsive.
+    // Present (or re-present the boot screen when no buffer is bound).  GLFW
+    // event pumping, pad polling, and window-close handling all live on the
+    // main thread's window loop — the guest thread never touches GLFW.
     GPU::RenderFrame(fb_addr);
-    GPU::PollEvents();
-    if (GPU::HasWindow() && GPU::ShouldCloseWindow()) {
-        LOG_INFO(HLE, "GLFW Window close requested. Terminating emulator.");
-        ExitProcess(0);
-    }
     return 0;
 }
 

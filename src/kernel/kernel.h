@@ -49,8 +49,9 @@ namespace Kernel {
     // Load and link a module (main executable or dynamic library)
     bool LoadModule(const std::string& filepath, Loader::LoadedModule& out_module);
 
-    // Run the main module starting from its entry point
-    bool Execute(const Loader::LoadedModule& main_module);
+    // Run the main module starting from its entry point.  Returns the guest's
+    // exit code via `out_guest_exit_code` (0 when the guest simply returned).
+    bool Execute(const Loader::LoadedModule& main_module, u32* out_guest_exit_code = nullptr);
 
     // Register a thread
     void RegisterThread(const ThreadContext& context);

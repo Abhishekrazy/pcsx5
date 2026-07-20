@@ -657,9 +657,38 @@ namespace Kernel {
         return true;
     }
 
-    bool Execute(const Loader::LoadedModule& main_module) {
+    // Cooperative guest exit: HleDispatch observes the window-close stop flag
+    // (and guest exit()/libc exit paths call HLE::ExitGuestProcess directly),
+    // which longjmps back to the setjmp below.  SEH unwinding cannot cross
+    // guest/asm frames, so a setjmp/longjmp pair on the same (host) stack is
+    // used instead.  C4611 is suppressed locally: the longjmp target frame
+    // holds no C++ objects, and frames abandoned by the jump (guest/asm and
+    // the current HleDispatch) intentionally skip destruction.
+#pragma warning(push)
+#pragma warning(disable: 4611)
+    static bool StartGuestCaptured(guest_addr_t entry_point, guest_addr_t sp, u32* out_exit_code) {
+        if (setjmp(HLE::GuestExitEnv()) == 0) {
+            HLE::ArmGuestExitEnv(true);
+            bool ok = TryStartGuest(entry_point, sp);
+            HLE::ArmGuestExitEnv(false);
+            return ok;
+        }
+        *out_exit_code = HLE::GuestExitCode();
+        LOG_INFO(Kernel, "Guest requested process termination (exit code %u).", *out_exit_code);
+        return true;
+    }
+#pragma warning(pop)
+
+    bool Execute(const Loader::LoadedModule& main_module, u32* out_guest_exit_code) {
         LOG_INFO(Kernel, "Starting execution of %s at Entry Point: 0x%llx", 
                  main_module.name.c_str(), main_module.entry_point);
+
+        // Guest runs on this thread (the dedicated guest worker).  Remember
+        // its OS thread id so the HLE exit path knows which thread carries
+        // the armed setjmp buffer that can be longjmp'd out of guest code.
+        // Note the global qualifier: Kernel::GetCurrentThreadId() (guest id)
+        // shadows the Win32 API inside this namespace.
+        HLE::SetMainGuestThreadId(static_cast<unsigned long>(::GetCurrentThreadId()));
 
         g_guest_segments = main_module.segments;
 
@@ -697,7 +726,11 @@ namespace Kernel {
 
         LOG_INFO(Kernel, "Guest stack frame configured on dedicated stack at sp = 0x%llx", sp);
 
-        bool success = TryStartGuest(main_module.entry_point, sp);
+        u32 guest_exit_code = 0;
+        bool success = StartGuestCaptured(main_module.entry_point, sp, &guest_exit_code);
+        if (out_guest_exit_code) {
+            *out_guest_exit_code = guest_exit_code;
+        }
 
         if (!success) {
             return false;
@@ -764,7 +797,12 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         // re-faults inside its own probes, which is the recurring
         // first-chance memcpy AV noise seen in debugger output.
         if (exception_record->ExceptionCode == 0x40010006 ||  // DBG_PRINTEXCEPTION_C
-            exception_record->ExceptionCode == 0x4001000A) {  // DBG_PRINTEXCEPTION_WIDE_C
+            exception_record->ExceptionCode == 0x4001000A ||  // DBG_PRINTEXCEPTION_WIDE_C
+            exception_record->ExceptionCode == 0x406D1388) {  // MS_VC_EXCEPTION (SetThreadDescription)
+            // 0x406D1388 is the benign Visual C++ thread-naming exception —
+            // GPU driver threads (e.g. nvwgf2umx) raise it on the host when
+            // they lazily start worker threads minutes into a run; treating
+            // it as a crash killed the emulator mid-game.
             return EXCEPTION_CONTINUE_SEARCH;
         }
 
@@ -1050,7 +1088,8 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 LOG_ERROR(Kernel, "  [RDI+0x%02llx] = 0x%016llx", off, val);
             }
 
-            GPU::RunIdleLoop();
+            // The main thread's window loop is still pumping; terminate the
+            // process directly (crash report already written above).
             ExitProcess(1);
         }
 

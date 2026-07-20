@@ -452,6 +452,15 @@ void RegisterLibAudioOut() {
         return 0;
     };
     RegisterSymbol("libSceAudioOut", "sceAudioOutGetInfo", AudioOutGetInfo);
+
+    // GameMaker titles (Dreaming Sarah) import the audio entry points from
+    // libkernel instead of libSceAudioOut (same NIDs, #N#O suffix).  Route
+    // those aliases to the real handlers — the paced Output matters: a
+    // return-0 stub lets the guest audio thread spin unthrottled.
+    RegisterSymbol("libkernel", "ekNvsT22rsY#N#O", AudioOutOpen);
+    RegisterSymbol("libkernel", "QOQtbeDqsT4#N#O", AudioOutOutput);
+    RegisterSymbol("libkernel", "b+uAV89IlxE#N#O", AudioOutSetVolume);
+    RegisterSymbol("libkernel", "s1--uE9mBFw#N#O", AudioOutClose);
 }
 
 } // namespace HLE

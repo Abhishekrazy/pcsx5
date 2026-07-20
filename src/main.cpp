@@ -17,6 +17,8 @@
 #include <chrono>
 #include <vector>
 #include <cstdio>
+#include <atomic>
+#include <thread>
 
 namespace {
 
@@ -317,11 +319,38 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // 3. Execute the guest application
+    // 3. Execute the guest application on a dedicated worker thread.  The
+    //    GLFW window was created on this (main) thread during subsystem init,
+    //    so all GLFW event processing must stay here: the main thread runs the
+    //    window/message loop at a steady cadence while the guest runs.
     LOG_INFO(General, "Starting guest execution loop...");
-    bool run_success = Kernel::Execute(main_module);
+    std::atomic<bool> guest_done{false};
+    bool run_success = false;
+    u32 guest_exit_code = 0;
+    std::thread guest_thread([&]() {
+        run_success = Kernel::Execute(main_module, &guest_exit_code);
+        guest_done.store(true, std::memory_order_release);
+    });
+
+    while (!guest_done.load(std::memory_order_acquire)) {
+        GPU::PumpWindowEvents();
+        GPU::PollEvents();
+        if (GPU::HasWindow() && GPU::ShouldCloseWindow()) {
+            // The guest observes the stop flag on its next HLE dispatch and
+            // unwinds back into Kernel::Execute.
+            HLE::RequestStop();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 Hz
+    }
+    guest_thread.join();
 
     auto t1 = std::chrono::steady_clock::now();
+
+    // Guest finished: keep the final frame visible until the user closes the
+    // window (replaces the old GPU-side idle spin that ran on guest threads).
+    if (GPU::HasWindow()) {
+        GPU::RunIdleLoop();
+    }
     summary.duration_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
     if (run_success) {
@@ -352,5 +381,5 @@ int main(int argc, char* argv[]) {
     }
 
     LOG_INFO(General, "pcsx5 shutdown cleanly.");
-    return run_success ? 0 : -1;
+    return run_success ? static_cast<int>(guest_exit_code) : -1;
 }
