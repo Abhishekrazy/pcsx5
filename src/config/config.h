@@ -17,8 +17,10 @@
 // persist it with `SavePerTitle(title_id)`.
 //
 #include "../common/log.h"
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -84,6 +86,19 @@ struct LoaderConfig {
 };
 
 // ---------------------------------------------------------------------------
+// Per-title savedata crypto keys.  When enabled, the save-data HLE treats the
+// title's savedata area as an AES-128-XTS encrypted image instead of a plain
+// host directory (see libsavedata.cpp, SAVEDATA_CRYPTO logs).  Keys are the
+// two raw 16-byte XTS keys (data key + tweak key), serialised as hex.
+// Per-title only in practice; the global file may carry it as a fallback.
+// ---------------------------------------------------------------------------
+struct SaveDataCrypto {
+    bool enabled = false;
+    std::array<std::uint8_t, 16> xts_key1{};  // XTS data key
+    std::array<std::uint8_t, 16> xts_key2{};  // XTS tweak key
+};
+
+// ---------------------------------------------------------------------------
 // Multi-user profile model (global-only; per-title overrides never touch it).
 // ---------------------------------------------------------------------------
 inline constexpr std::uint32_t kFirstUserId = 0x10000000; // first local user id
@@ -112,6 +127,7 @@ struct Config {
     InputConfig    input;
     UiConfig       ui;
     LoaderConfig   loader;
+    SaveDataCrypto savedata_crypto; // per-title savedata XTS keys (see above)
     UsersConfig    users;   // global-only; EffectiveFor never overlays it
 
     // -- helpers -----------------------------------------------------------
@@ -177,6 +193,12 @@ const UserProfile* FindUserProfile(std::uint32_t id);
 
 // Convenience: id of the active profile, or 0 when none exists.
 std::uint32_t ActiveUserId();
+
+// Per-title savedata crypto keys.  Returns the effective (per-title overlaid
+// on global) SaveDataCrypto for `title_id`, but only when it is enabled;
+// std::nullopt otherwise.  Malformed key material is coerced to disabled at
+// load time (LOG_WARN), so an enabled result always carries valid keys.
+std::optional<SaveDataCrypto> SaveDataKeysFor(const std::string& title_id);
 
 // Migrate a config read from an older schema version to the current schema.
 // Returns true on success.  `from_version` is the version stamp on disk;

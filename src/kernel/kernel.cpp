@@ -4,6 +4,7 @@
 #include "syscalls.h"
 #include "thread.h"
 #include "tls_patch.h"
+#include "../cpu/amd_compat.h"
 #include "../memory/memory.h"
 #include "../hle/hle.h"
 #include "../loader/module_graph.h"
@@ -206,12 +207,16 @@ namespace Kernel {
         }
         // "/savedata0" resolves against the save-data HLE backing dir so
         // guest file I/O under the mount point persists to the same place
-        // the libSceSaveData HLE uses.
+        // the libSceSaveData HLE uses.  The effective dir is queried per
+        // translation so per-user switching (multi-profile configs) takes
+        // effect without re-calling SetSaveDataDirectory; g_savedata_dir
+        // (set once from main) acts as the enable flag / legacy fallback.
         constexpr std::string_view kSaveData0 = "/savedata0";
         if (!g_savedata_dir.empty()) {
-            if (guest_path == kSaveData0) return g_savedata_dir;
+            const std::string sd_dir = HLE::GetEffectiveSaveDataDir();
+            if (guest_path == kSaveData0) return sd_dir;
             if (guest_path.rfind(std::string(kSaveData0) + "/", 0) == 0) {
-                return g_savedata_dir + guest_path.substr(kSaveData0.size());
+                return sd_dir + guest_path.substr(kSaveData0.size());
             }
         }
         // Guest absolute path under an unmapped mount, or a host-absolute
@@ -608,6 +613,12 @@ namespace Kernel {
                         LOG_WARN(Kernel, "Failed to set final protection for PRX segment at 0x%llx", seg.address);
                     }
                 }
+                // Register the PRX's own unwind table so guest C++ exceptions
+                // can unwind through frames that live in this module.
+                if (record->module.eh_frame_hdr_addr != 0) {
+                    HLE::SetGuestEhFrameHdr(record->module.eh_frame_hdr_addr,
+                                            record->module.eh_frame_hdr_size);
+                }
                 record->linked = true;
             }
         }
@@ -877,6 +888,87 @@ namespace Kernel {
             return false;
         }
     }
+
+    // ------------------------------------------------------------------
+    // AMD-only instruction software fallback (port of SharpEmu commit 8ef5a54,
+    // "cpu: emulate AMD-only Zen 2 instructions in software (#449)").
+    //
+    // Guest Zen 2 code may use SSE4a EXTRQ/INSERTQ (immediate form) or
+    // MONITORX/MWAITX; Intel hosts raise STATUS_ILLEGAL_INSTRUCTION instead of
+    // executing them.  Decode the faulting instruction and emulate it on the
+    // live CONTEXT, then resume past it.  MONITORX is a no-op (arming a watch
+    // we never honour has no side effect) and MWAITX becomes a thread yield so
+    // idle/wait loops keep making forward progress.
+    // ------------------------------------------------------------------
+    static u64 g_sse4a_instructions_emulated = 0;
+    static u64 g_monitorx_instructions_emulated = 0;
+
+    static M128A* XmmSlot(PCONTEXT context, u8 index) {
+        switch (index) {
+            case 0:  return &context->Xmm0;  case 1:  return &context->Xmm1;
+            case 2:  return &context->Xmm2;  case 3:  return &context->Xmm3;
+            case 4:  return &context->Xmm4;  case 5:  return &context->Xmm5;
+            case 6:  return &context->Xmm6;  case 7:  return &context->Xmm7;
+            case 8:  return &context->Xmm8;  case 9:  return &context->Xmm9;
+            case 10: return &context->Xmm10; case 11: return &context->Xmm11;
+            case 12: return &context->Xmm12; case 13: return &context->Xmm13;
+            case 14: return &context->Xmm14; case 15: return &context->Xmm15;
+            default: return nullptr;
+        }
+    }
+
+    static bool TryRecoverAmdCompatInstruction(PCONTEXT context, u64 rip) {
+        u8 bytes[8] = {0};
+        if (!SafeRead(bytes, reinterpret_cast<const void*>(rip), sizeof(bytes))) {
+            return false;
+        }
+        CpuCore::AmdCompat::DecodedInstruction insn{};
+        if (!CpuCore::AmdCompat::Decode(bytes, sizeof(bytes), &insn)) {
+            return false;
+        }
+        using CpuCore::AmdCompat::InstructionKind;
+
+        if (insn.kind == InstructionKind::Monitorx || insn.kind == InstructionKind::Mwaitx) {
+            if (insn.kind == InstructionKind::Mwaitx) {
+                std::this_thread::yield();
+            }
+            context->Rip = rip + insn.length;
+            if (++g_monitorx_instructions_emulated == 1) {
+                LOG_INFO(Kernel, "Host lacks AMD MONITORX/MWAITX used by the guest; "
+                                 "emulating those instructions in software.");
+            }
+            return true;
+        }
+
+        // EXTRQ / INSERTQ immediate form: validate the bit field before
+        // touching any register, and decline undefined forms so they still
+        // reach the normal crash path.
+        if (!CpuCore::AmdCompat::IsValidBitField(insn.field_len, insn.field_idx)) {
+            return false;
+        }
+        M128A* dest = XmmSlot(context, insn.dest_xmm);
+        if (!dest) {
+            return false;
+        }
+        if (insn.kind == InstructionKind::Extrq) {
+            dest->Low = CpuCore::AmdCompat::ExtractBitField(
+                dest->Low, insn.field_len, insn.field_idx);
+        } else {
+            M128A* src = XmmSlot(context, insn.src_xmm);
+            if (!src) {
+                return false;
+            }
+            dest->Low = CpuCore::AmdCompat::InsertBitField(
+                dest->Low, src->Low, insn.field_len, insn.field_idx);
+        }
+        dest->High = 0;
+        context->Rip = rip + insn.length;
+        if (++g_sse4a_instructions_emulated == 1) {
+            LOG_INFO(Kernel, "Host lacks SSE4a EXTRQ/INSERTQ used by the guest; "
+                             "emulating those instructions in software.");
+        }
+        return true;
+    }
 // ---------------------------------------------------------------------------
 // Guest signal <-> host SEH translation policy (Phase 2, document-only)
 //
@@ -899,6 +991,10 @@ namespace Kernel {
 //          resuming guest execution inside a VEH with a hostile context is
 //          unsound; a game that installs SIGSEGV handlers (rare; mostly debug
 //          crash dumps) will simply not have them called.
+//   EXCEPTION_ILLEGAL_INSTRUCTION (0xC000001D)
+//       -> AMD-only instruction software fallback (SSE4a EXTRQ/INSERTQ,
+//          MONITORX/MWAITX; TryRecoverAmdCompatInstruction) — transparent to
+//          the guest; anything unrecognized falls through to the crash path.
 //   EXCEPTION_SINGLE_STEP / everything else -> crash report + terminate.
 //
 // Policy for future work: if a game is found that depends on guest signal
@@ -984,6 +1080,14 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 context->Rip += 2;
                 return EXCEPTION_CONTINUE_EXECUTION;
             }
+        }
+
+        // AMD-only instruction software fallback (SSE4a EXTRQ/INSERTQ,
+        // MONITORX/MWAITX).  Only claims STATUS_ILLEGAL_INSTRUCTION — access
+        // violations keep flowing to the TLS/demand-commit paths below.
+        if (exception_record->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION &&
+            TryRecoverAmdCompatInstruction(context, context->Rip)) {
+            return EXCEPTION_CONTINUE_EXECUTION;
         }
 
         if (exception_record->ExceptionCode == STATUS_ACCESS_VIOLATION || exception_record->ExceptionCode == 0xC0000005) {

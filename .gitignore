@@ -104,3 +104,6 @@ installer/Output/
 /vk_smoke_frame.png
 /m1b_window.png
 /shader_corpus_report.txt
+
+# Runtime shader disk cache (regenerated at runtime)
+/Cache/

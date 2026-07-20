@@ -1,7 +1,10 @@
 // Guest-GPU draw executor (Phase 5 M3.2c).
 //
 // Turns one AGC draw packet plus the Cx/Uc register shadow into real Vulkan
-// work, keeping the 2D path only (no depth, linear tiling assumed):
+// work, keeping the 2D path only (no depth).  Texture uploads handle linear
+// surfaces directly and deswizzle the verified Gfx10 2D swizzle modes
+// (Gfx10::DetileSurface) before upload; BC formats upload in their native
+// VkFormat at 4x4-block granularity:
 //
 //   * Guest image model: CB_COLOR0_BASE -> persistent VkImage + view +
 //     framebuffer (render pass cached per attachment format).  Images are
@@ -9,8 +12,8 @@
 //     visible; they live in COLOR_ATTACHMENT_OPTIMAL until M3.2d presents
 //     from them.
 //   * Textures: evaluated 8-dword image descriptors decoded via
-//     gfx10_state, guest texels uploaded through a staging buffer
-//     (linear), bound as combined image samplers.
+//     gfx10_state, guest texels detiled + uploaded through a staging
+//     buffer, bound as combined image samplers.
 //   * Pipeline: topology (VGT_PRIMITIVE_TYPE 0x242), blend
 //     (CB_BLEND0_CONTROL + CB_TARGET_MASK), raster (PA_SU_SC_MODE_CNTL),
 //     dynamic viewport/scissor/blend-constants.  Cached by (spirv digests
@@ -49,6 +52,14 @@ struct VkDrawTexture {
     u32 pitch = 0;            // texels per row, linear (0 = width)
     u32 data_format = 10, number_format = 0;
     u32 dst_select = 0xFAC;
+    u32 tile_mode = 0;        // image-descriptor SWIZZLE_MODE (0 = linear)
+    u32 mip_levels = 1;       // resource mip count (MAX_MIP+1, clamped)
+    u32 depth = 1;            // array layers (2D/1D-array descriptors), else 1
+    // The shader samples this binding through an arrayed image (MIMG DIM
+    // names an array and the opcode is a sample/gather): the view must be
+    // 2D_ARRAY — with `depth` layers when > 1, a one-layer array view for
+    // fallbacks/single-layer sources — or it mismatches the declared type.
+    bool arrayed_view = false;
     std::array<u32, 4> sampler{};
 };
 
@@ -115,7 +126,9 @@ void VkDrawFlush();
 // Returns false when no image exists for it (caller keeps the CPU upload
 // present path).  Render-target images live in COLOR_ATTACHMENT_OPTIMAL
 // between draws; the presenter must restore that layout after blitting.
+// `format` (optional) reports the image's VkFormat so the presenter can
+// sRGB-encode linear-float flips (#448).
 bool VkDrawLookupRenderTarget(u64 guest_base, VkImage* image,
-                              u32* width, u32* height);
+                              u32* width, u32* height, VkFormat* format);
 
 } // namespace GPU

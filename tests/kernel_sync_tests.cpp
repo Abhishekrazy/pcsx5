@@ -2,6 +2,7 @@
 // src/hle/libkernel_sync.cpp directly with GuestArgs structs (no thunk
 // round-trip), plus the shared guest clock in src/kernel/guest_clock.cpp.
 #include "hle/libkernel_sync.h"
+#include "hle/hle.h"
 #include "kernel/guest_clock.h"
 #include "kernel/kernel.h"
 #include "memory/memory.h"
@@ -12,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
+#include <vector>
 
 // The Release build defines NDEBUG, which would compile every assert() away
 // and silently neuter this suite.  Redefine assert to an always-on check.
@@ -31,6 +33,9 @@ namespace {
 
 constexpr u64 SCE_KERNEL_ERROR_ETIMEDOUT = 0x8002003C;
 constexpr u64 SCE_KERNEL_ERROR_EBUSY     = 0x80020010;
+constexpr u64 SCE_KERNEL_ERROR_EINVAL    = 0x80020016;
+constexpr u64 SCE_KERNEL_ERROR_EPERM     = 0x80020001;
+constexpr u64 SCE_KERNEL_ERROR_EDEADLK   = 0x80020023;
 
 guest_addr_t g_page = 0; // 64 KiB scratch page mapped in main()
 
@@ -68,6 +73,158 @@ void TestMutex() {
 
     assert(ScePthreadMutexDestroy(Args(mtx)) == 0);
     std::printf("  mutex: OK\n");
+}
+
+// Mutex type semantics, ported from SharpEmu's PthreadMutexSemanticsTests
+// (commit 90c72eb — the UE adaptive self-lock fix).
+void TestMutexTypes() {
+    const guest_addr_t attr = g_page + 0x140;
+    const guest_addr_t mtx  = g_page + 0x148;
+
+    // ADAPTIVE: a duplicate lock from the owner is idempotent — a single
+    // matching unlock fully releases the mutex.
+    assert(ScePthreadMutexattrInit(Args(attr)) == 0);
+    assert(ScePthreadMutexattrSettype(Args(attr, 4)) == 0);
+    assert(ScePthreadMutexInit(Args(mtx, attr)) == 0);
+    assert(ScePthreadMutexLock(Args(mtx)) == 0);
+    assert(ScePthreadMutexLock(Args(mtx)) == 0);   // idempotent self-lock
+    assert(ScePthreadMutexTrylock(Args(mtx)) == SCE_KERNEL_ERROR_EBUSY);
+    assert(ScePthreadMutexUnlock(Args(mtx)) == 0); // fully released
+    assert(ScePthreadMutexUnlock(Args(mtx)) == SCE_KERNEL_ERROR_EINVAL);
+    assert(ScePthreadMutexTrylock(Args(mtx)) == 0); // free again
+    assert(ScePthreadMutexUnlock(Args(mtx)) == 0);
+    assert(ScePthreadMutexDestroy(Args(mtx)) == 0);
+
+    // A guest word of 1 is the static adaptive-mutex initializer.
+    const guest_addr_t smtx = g_page + 0x150;
+    Memory::Write<u64>(smtx, 1);
+    assert(ScePthreadMutexLock(Args(smtx)) == 0);
+    assert(ScePthreadMutexLock(Args(smtx)) == 0);
+    assert(ScePthreadMutexUnlock(Args(smtx)) == 0);
+    assert(ScePthreadMutexUnlock(Args(smtx)) == SCE_KERNEL_ERROR_EINVAL);
+    assert(ScePthreadMutexDestroy(Args(smtx)) == 0);
+
+    // ERRORCHECK (default type): self-lock is EDEADLK / EBUSY.
+    const guest_addr_t emtx = g_page + 0x158;
+    assert(ScePthreadMutexInit(Args(emtx, 0)) == 0);
+    assert(ScePthreadMutexLock(Args(emtx)) == 0);
+    assert(ScePthreadMutexLock(Args(emtx)) == SCE_KERNEL_ERROR_EDEADLK);
+    assert(ScePthreadMutexTrylock(Args(emtx)) == SCE_KERNEL_ERROR_EBUSY);
+    assert(ScePthreadMutexUnlock(Args(emtx)) == 0);
+    assert(ScePthreadMutexDestroy(Args(emtx)) == 0);
+
+    // RECURSIVE: self-lock nests and must be fully unwound.
+    const guest_addr_t rmtx = g_page + 0x160;
+    assert(ScePthreadMutexattrSettype(Args(attr, 2)) == 0);
+    assert(ScePthreadMutexInit(Args(rmtx, attr)) == 0);
+    assert(ScePthreadMutexLock(Args(rmtx)) == 0);
+    assert(ScePthreadMutexLock(Args(rmtx)) == 0);
+    assert(ScePthreadMutexUnlock(Args(rmtx)) == 0);
+    // still held: another thread cannot take it
+    std::atomic<u64> other{0};
+    std::thread t([&] { other = ScePthreadMutexTrylock(Args(rmtx)); });
+    t.join();
+    assert(other == SCE_KERNEL_ERROR_EBUSY);
+    assert(ScePthreadMutexUnlock(Args(rmtx)) == 0);
+    assert(ScePthreadMutexUnlock(Args(rmtx)) == SCE_KERNEL_ERROR_EINVAL);
+    assert(ScePthreadMutexDestroy(Args(rmtx)) == 0);
+
+    // NORMAL: compatibility recursion, like RECURSIVE.
+    const guest_addr_t nmtx = g_page + 0x168;
+    assert(ScePthreadMutexattrSettype(Args(attr, 3)) == 0);
+    assert(ScePthreadMutexInit(Args(nmtx, attr)) == 0);
+    assert(ScePthreadMutexLock(Args(nmtx)) == 0);
+    assert(ScePthreadMutexLock(Args(nmtx)) == 0);
+    assert(ScePthreadMutexTrylock(Args(nmtx)) == SCE_KERNEL_ERROR_EBUSY);
+    assert(ScePthreadMutexUnlock(Args(nmtx)) == 0);
+    assert(ScePthreadMutexUnlock(Args(nmtx)) == 0);
+
+    // Unlock from a non-owner is EPERM.
+    assert(ScePthreadMutexLock(Args(nmtx)) == 0);
+    std::atomic<u64> thief{0};
+    std::thread t2([&] { thief = ScePthreadMutexUnlock(Args(nmtx)); });
+    t2.join();
+    assert(thief == SCE_KERNEL_ERROR_EPERM);
+    assert(ScePthreadMutexUnlock(Args(nmtx)) == 0);
+    assert(ScePthreadMutexDestroy(Args(nmtx)) == 0);
+
+    assert(ScePthreadMutexattrDestroy(Args(attr)) == 0);
+    std::printf("  mutex types: OK\n");
+}
+
+// Unlock grants the mutex directly to the head waiter (commit 73e8821): after
+// the owner unlocks, the first-queued waiter owns the mutex — it is never
+// observable as free-with-waiter — and its unlock passes ownership to the next.
+void TestMutexHandoff() {
+    const guest_addr_t mtx = g_page + 0x170;
+    assert(ScePthreadMutexInit(Args(mtx, 0)) == 0);
+    assert(ScePthreadMutexLock(Args(mtx)) == 0);
+
+    std::atomic<int> acquired{0};
+    std::atomic<int> first_order{0};
+    std::atomic<int> second_order{0};
+    std::atomic<bool> release_first{false};
+    auto waiter = [&](std::atomic<int>& order, bool hold) {
+        if (ScePthreadMutexLock(Args(mtx)) != 0) {
+            order = -1;
+            return;
+        }
+        order = ++acquired;
+        while (hold && !release_first.load()) std::this_thread::yield();
+        ScePthreadMutexUnlock(Args(mtx));
+    };
+    std::thread t1(waiter, std::ref(first_order), true);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // t1 queued first
+    std::thread t2(waiter, std::ref(second_order), false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // t2 queued second
+
+    assert(acquired == 0);
+    assert(ScePthreadMutexUnlock(Args(mtx)) == 0);
+    // The head waiter (t1) owns the mutex now; t2 must still be blocked and
+    // the main thread must not be able to barge past the granted head.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    assert(acquired == 1);
+    assert(first_order == 1);
+    assert(ScePthreadMutexTrylock(Args(mtx)) == SCE_KERNEL_ERROR_EBUSY);
+    release_first = true;
+    t1.join();
+    t2.join();
+    assert(second_order == 2);
+    assert(ScePthreadMutexDestroy(Args(mtx)) == 0);
+    std::printf("  mutex handoff: OK\n");
+}
+
+// Mutual exclusion under host-thread contention (upstream stress test).
+void TestMutexStress() {
+    const guest_addr_t mtx = g_page + 0x178;
+    assert(ScePthreadMutexInit(Args(mtx, 0)) == 0);
+
+    constexpr int kWorkers = 4;
+    constexpr int kIterations = 250;
+    std::atomic<bool> start{false};
+    std::atomic<int> inside{0};
+    std::atomic<int> violations{0};
+    std::atomic<int> counter{0};
+    std::vector<std::thread> workers;
+    for (int w = 0; w < kWorkers; ++w) {
+        workers.emplace_back([&] {
+            while (!start.load()) std::this_thread::yield();
+            for (int i = 0; i < kIterations; ++i) {
+                assert(ScePthreadMutexLock(Args(mtx)) == 0);
+                if (inside.fetch_add(1) != 0) ++violations;
+                ++counter;
+                std::this_thread::yield();
+                --inside;
+                assert(ScePthreadMutexUnlock(Args(mtx)) == 0);
+            }
+        });
+    }
+    start = true;
+    for (auto& t : workers) t.join();
+    assert(violations == 0);
+    assert(counter == kWorkers * kIterations);
+    assert(ScePthreadMutexDestroy(Args(mtx)) == 0);
+    std::printf("  mutex stress: OK\n");
 }
 
 void TestCondvar() {
@@ -286,10 +443,13 @@ void TestGuestPathTranslation() {
     assert(Kernel::TranslateGuestPath("/app0") == "C:/games/mytitle");
     assert(Kernel::TranslateGuestPath("/app0/shaders/a.vert") ==
            "C:/games/mytitle/shaders/a.vert");
-    assert(Kernel::TranslateGuestPath("/savedata0") ==
-           "C:/emu/pcsx5_savedata/MYTITLE01");
+    // Phase 7: /savedata0 resolves via HLE::GetEffectiveSaveDataDir() (the
+    // config-aware save-data backing dir); SetSaveDataDirectory only gates
+    // whether the mount is mapped at all.
+    const std::string sd_dir = HLE::GetEffectiveSaveDataDir();
+    assert(Kernel::TranslateGuestPath("/savedata0") == sd_dir);
     assert(Kernel::TranslateGuestPath("/savedata0/slot0/save.bin") ==
-           "C:/emu/pcsx5_savedata/MYTITLE01/slot0/save.bin");
+           sd_dir + "/slot0/save.bin");
     // Guest CWD is the package root: relative opens resolve under /app0.
     assert(Kernel::TranslateGuestPath("data/file.dat") ==
            "C:/games/mytitle/data/file.dat");
@@ -317,6 +477,9 @@ int main() {
 
     std::printf("Running kernel sync tests...\n");
     TestMutex();
+    TestMutexTypes();
+    TestMutexHandoff();
+    TestMutexStress();
     TestCondvar();
     TestRwlock();
     TestTlsKeys();

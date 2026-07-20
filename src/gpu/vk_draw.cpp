@@ -36,8 +36,13 @@ struct TextureEntry {
     VkDeviceMemory mem = VK_NULL_HANDLE;
     VkImageView    view = VK_NULL_HANDLE;
     u32            width = 0, height = 0;
+    u32            layers = 1;     // > 1 for 2D-array uploads
+    bool           arrayed = false; // view is VK_IMAGE_VIEW_TYPE_2D_ARRAY
     VkFormat       format = VK_FORMAT_UNDEFINED;
     u32            dst_select = 0;
+    // Guest write-tracker generation of the last upload; -1 when the source
+    // range is untracked (content treated as always stale — re-uploaded).
+    s64            write_generation = -1;
 };
 
 struct RenderTargetEntry {
@@ -263,7 +268,8 @@ bool IndexAlloc(VkDeviceSize size, VkDeviceSize* offset) {
 
 void ImageBarrier(VkImage image, VkImageLayout from, VkImageLayout to,
                   VkAccessFlags src_access, VkAccessFlags dst_access,
-                  VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage) {
+                  VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage,
+                  u32 layers = 1) {
     VkImageMemoryBarrier b = {};
     b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     b.srcAccessMask = src_access;
@@ -275,13 +281,14 @@ void ImageBarrier(VkImage image, VkImageLayout from, VkImageLayout to,
     b.image = image;
     b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     b.subresourceRange.levelCount = 1;
-    b.subresourceRange.layerCount = 1;
+    b.subresourceRange.layerCount = layers;
     g_ds.ctx->fn.CmdPipelineBarrier(g_ds.cmd, src_stage, dst_stage, 0,
                                     0, nullptr, 0, nullptr, 1, &b);
 }
 
 bool CreateDeviceImage(VkImage& image, VkDeviceMemory& mem, u32 w, u32 h,
-                       VkFormat format, VkImageUsageFlags usage) {
+                       VkFormat format, VkImageUsageFlags usage,
+                       u32 layers = 1) {
     VkContext* ctx = g_ds.ctx;
     VkImageCreateInfo ici = {};
     ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -289,7 +296,7 @@ bool CreateDeviceImage(VkImage& image, VkDeviceMemory& mem, u32 w, u32 h,
     ici.format = format;
     ici.extent = { w, h, 1 };
     ici.mipLevels = 1;
-    ici.arrayLayers = 1;
+    ici.arrayLayers = layers;
     ici.samples = VK_SAMPLE_COUNT_1_BIT;
     ici.tiling = VK_IMAGE_TILING_OPTIMAL;
     ici.usage = usage;
@@ -320,17 +327,19 @@ bool CreateDeviceImage(VkImage& image, VkDeviceMemory& mem, u32 w, u32 h,
     return true;
 }
 
-VkImageView CreateImageView2D(VkImage image, VkFormat format, u32 dst_select) {
+VkImageView CreateImageView2D(VkImage image, VkFormat format, u32 dst_select,
+                              bool arrayed = false, u32 layers = 1) {
     VkContext* ctx = g_ds.ctx;
     VkImageViewCreateInfo vci = {};
     vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     vci.image = image;
-    vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    vci.viewType = arrayed ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
+                           : VK_IMAGE_VIEW_TYPE_2D;
     vci.format = format;
     vci.components = Gfx10::DecodeComponentMapping(dst_select);
     vci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     vci.subresourceRange.levelCount = 1;
-    vci.subresourceRange.layerCount = 1;
+    vci.subresourceRange.layerCount = layers;
     VkImageView view = VK_NULL_HANDLE;
     if (ctx->fn.CreateImageView(ctx->device, &vci, nullptr, &view) != VK_SUCCESS) {
         return VK_NULL_HANDLE;
@@ -342,14 +351,15 @@ VkImageView CreateImageView2D(VkImage image, VkFormat format, u32 dst_select) {
 // (UNDEFINED/any -> SHADER_READ_ONLY or COLOR_ATTACHMENT_OPTIMAL) using the
 // open command buffer.
 void StageIntoImage(VkImage image, u32 w, u32 h, VkImageLayout final_layout,
-                    VkDeviceSize staging_offset) {
+                    VkDeviceSize staging_offset, u32 layers = 1) {
     ImageBarrier(image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                  0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                 layers);
     VkBufferImageCopy region = {};
     region.bufferOffset = staging_offset;
     region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.layerCount = 1;
+    region.imageSubresource.layerCount = layers;
     region.imageExtent = { w, h, 1 };
     g_ds.ctx->fn.CmdCopyBufferToImage(g_ds.cmd, g_ds.staging.buf, image,
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
@@ -363,7 +373,8 @@ void StageIntoImage(VkImage image, u32 w, u32 h, VkImageLayout final_layout,
                  final_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
                      ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
                      : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-                           VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+                           VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                 layers);
 }
 
 // Reads a guest memory range; false when unreadable.
@@ -382,6 +393,14 @@ u64 TextureIdentity(const VkDrawTexture& t, VkFormat format) {
     h = HashU64(h, (static_cast<u64>(t.width) << 32) | t.height);
     h = HashU64(h, (static_cast<u64>(t.pitch) << 32) | t.dst_select);
     h = HashU64(h, static_cast<u64>(format));
+    h = HashU64(h, (static_cast<u64>(t.tile_mode) << 32) |
+                       ((static_cast<u64>(t.data_format) << 8) |
+                        t.number_format));
+    // mip_levels selects the mip-0 read offset inside the guest allocation.
+    h = HashU64(h, t.mip_levels);
+    // Array bindings upload/view a layered image (SharpEmu #471).
+    h = HashU64(h, (static_cast<u64>(t.depth) << 1) |
+                       (t.arrayed_view ? 1ull : 0ull));
     return h;
 }
 
@@ -402,14 +421,21 @@ TextureEntry* EnsureTexture(const VkDrawTexture& t, VkFormat format) {
     }
 
     TextureEntry e;
+    // Arrayed bindings with real layers upload as one 2D-array image
+    // (SharpEmu #471); single-layer arrayed bindings still get an array
+    // view so the descriptor matches the shader's declared image type.
+    e.layers = t.arrayed_view ? (t.depth > 1 ? t.depth : 1) : 1;
+    e.arrayed = t.arrayed_view;
     if (!CreateDeviceImage(e.image, e.mem, t.width, t.height, format,
                            VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                               VK_IMAGE_USAGE_SAMPLED_BIT)) {
+                               VK_IMAGE_USAGE_SAMPLED_BIT,
+                           e.layers)) {
         LOG_WARN(GPU, "draw: texture image creation failed (%ux%u fmt=%d).",
                  t.width, t.height, static_cast<int>(format));
         return nullptr;
     }
-    e.view = CreateImageView2D(e.image, format, t.dst_select);
+    e.view = CreateImageView2D(e.image, format, t.dst_select, e.arrayed,
+                               e.layers);
     if (!e.view) {
         g_ds.ctx->fn.DestroyImage(g_ds.ctx->device, e.image, nullptr);
         g_ds.ctx->fn.FreeMemory(g_ds.ctx->device, e.mem, nullptr);
@@ -420,49 +446,145 @@ TextureEntry* EnsureTexture(const VkDrawTexture& t, VkFormat format) {
     return &g_ds.textures.emplace(key, e).first->second;
 }
 
-// Uploads linear guest texels into the texture (staging ring, open cmd
-// buffer).
-bool UploadTexture(TextureEntry& e, const VkDrawTexture& t, VkFormat format) {
-    const u32 bpp = Gfx10::FormatBytesPerPixel(format);
-    const u32 pitch = t.pitch ? t.pitch : t.width;
-    if (bpp == 0) return false;
-    const VkDeviceSize need = static_cast<VkDeviceSize>(pitch) * t.height * bpp;
-    if (need == 0 || need > 256ull * 1024 * 1024) return false;
-    // Tightly repack rows (guest pitch may exceed width).
-    std::vector<u8> pixels(static_cast<size_t>(t.width) * t.height * bpp);
-    const VkDeviceSize row = static_cast<VkDeviceSize>(t.width) * bpp;
-    if (pitch == t.width) {
-        if (!ReadGuest(t.guest_addr, pixels.data(), pixels.size())) return false;
-    } else {
-        for (u32 y = 0; y < t.height; ++y) {
-            if (!ReadGuest(t.guest_addr + static_cast<u64>(y) * pitch * bpp,
-                           pixels.data() + static_cast<size_t>(y) * row,
-                           static_cast<size_t>(row))) {
+// Uploads guest texels into the texture (staging ring, open cmd buffer).
+// Linear surfaces keep the row-repack fast path; tiled surfaces
+// (Gfx10::IsTiledSwizzleMode) are deswizzled first — at 4x4-block
+// granularity for BC formats, which upload in their native VkFormat.
+// Layered (2D-array) sources read every slice at the per-slice mip-chain
+// stride and upload as one 2D-array image in a single copy region
+// (SharpEmu #471).  The guest source range is write-tracked before the
+// read so a CPU rewrite landing after the copy still bumps the write
+// generation the cache skip compares against (SharpEmu #447);
+// `generation_out` receives the generation captured before the read (-1
+// when untracked) for the caller to record against the cache entry.
+bool UploadTexture(TextureEntry& e, const VkDrawTexture& t,
+                   const Gfx10::TexturePlan& plan, s64* generation_out) {
+    // Element grid: texels, or 4x4 blocks for block-compressed formats.
+    const u32 elem_w = plan.block_compressed ? (t.width + 3) / 4 : t.width;
+    const u32 elem_h = plan.block_compressed ? (t.height + 3) / 4 : t.height;
+    const u32 bpe = plan.bytes_per_element;
+    if (bpe == 0) return false;
+    const u32 layers = e.layers > 1 ? e.layers : 1;
+    const size_t slice_bytes = static_cast<size_t>(elem_w) * elem_h * bpe;
+    if (layers > 1 && slice_bytes > (256ull * 1024 * 1024) / layers) {
+        return false;
+    }
+
+    std::vector<u8> pixels(slice_bytes * layers);
+    if (t.tile_mode != 0) {
+        // Tiled: the guest allocation is whole swizzle blocks, which can
+        // far exceed the logical size — read the tiled span, then deswizzle.
+        u64 tiled_bytes = 0;
+        if (!Gfx10::IsTiledSwizzleMode(t.tile_mode) ||
+            !Gfx10::TiledSurfaceByteCount(t.tile_mode, elem_w, elem_h, bpe,
+                                          tiled_bytes) ||
+            tiled_bytes == 0 || tiled_bytes > 256ull * 1024 * 1024) {
+            LOG_WARN(GPU, "draw: unsupported texture swizzle mode %u "
+                     "(%ux%u fmt=%d); draw dropped.", t.tile_mode, t.width,
+                     t.height, static_cast<int>(plan.vk_format));
+            return false;
+        }
+        // GFX10 mip chains are stored smallest-first: locate mip 0 within
+        // the chain (byte offset, or element coords inside the tail block
+        // when the whole chain fits there).  Single-level resources keep
+        // reading from the descriptor base address.  Array slices are
+        // spaced by the whole per-slice chain span.
+        Gfx10::BaseMipPlacement mip0;
+        const bool placed = t.mip_levels > 1 &&
+            Gfx10::GetBaseMipPlacement(t.tile_mode, elem_w, elem_h, bpe,
+                                       t.mip_levels, mip0);
+        const u64 slice_stride = placed ? mip0.chain_slice_bytes : tiled_bytes;
+        const u64 mip0_offset = placed ? mip0.byte_offset : 0;
+        // Track before reading texels, then capture the generation: a CPU
+        // rewrite landing after the copy bumps it and forces a refresh.
+        Memory::TrackGuestWrites(
+            t.guest_addr, slice_stride * (layers - 1) + mip0_offset + tiled_bytes);
+        {
+            u64 generation = 0;
+            *generation_out = Memory::TryGetGuestWriteGeneration(
+                t.guest_addr, &generation)
+                    ? static_cast<s64>(generation) : -1;
+        }
+        std::vector<u8> tiled(static_cast<size_t>(tiled_bytes));
+        for (u32 layer = 0; layer < layers; ++layer) {
+            const u64 read_addr =
+                t.guest_addr + static_cast<u64>(layer) * slice_stride + mip0_offset;
+            if (!ReadGuest(read_addr, tiled.data(), tiled.size())) return false;
+            u8* dst = pixels.data() + static_cast<size_t>(layer) * slice_bytes;
+            const bool detiled = placed && mip0.in_mip_tail
+                ? Gfx10::DetileTailMip0(tiled.data(), tiled.size(),
+                                        dst, slice_bytes,
+                                        t.tile_mode, elem_w, elem_h, bpe,
+                                        mip0.tail_element_x, mip0.tail_element_y)
+                : Gfx10::DetileSurface(tiled.data(), tiled.size(), dst,
+                                       slice_bytes, t.tile_mode, elem_w, elem_h,
+                                       bpe);
+            if (!detiled) {
                 return false;
+            }
+        }
+    } else {
+        // Linear fast path: tightly repack rows (guest pitch may exceed
+        // width).  BC pitch counts texels; convert to blocks per row.
+        const u32 pitch = t.pitch ? t.pitch : t.width;
+        const u32 pitch_elems = plan.block_compressed ? (pitch + 3) / 4 : pitch;
+        const VkDeviceSize need = static_cast<VkDeviceSize>(pitch_elems) *
+                                  elem_h * bpe;
+        if (need == 0 || need > 256ull * 1024 * 1024) return false;
+        const VkDeviceSize row = static_cast<VkDeviceSize>(elem_w) * bpe;
+        // Track before reading texels, then capture the generation (above).
+        Memory::TrackGuestWrites(t.guest_addr, need * layers);
+        {
+            u64 generation = 0;
+            *generation_out = Memory::TryGetGuestWriteGeneration(
+                t.guest_addr, &generation)
+                    ? static_cast<s64>(generation) : -1;
+        }
+        for (u32 layer = 0; layer < layers; ++layer) {
+            const u64 slice_addr = t.guest_addr + need * layer;
+            u8* dst = pixels.data() + static_cast<size_t>(layer) * slice_bytes;
+            if (pitch_elems == elem_w) {
+                if (!ReadGuest(slice_addr, dst, slice_bytes)) {
+                    return false;
+                }
+            } else {
+                for (u32 y = 0; y < elem_h; ++y) {
+                    if (!ReadGuest(slice_addr +
+                                   static_cast<u64>(y) * pitch_elems * bpe,
+                                   dst + static_cast<size_t>(y) * row,
+                                   static_cast<size_t>(row))) {
+                        return false;
+                    }
+                }
             }
         }
     }
     VkDeviceSize off = 0;
     if (!StagingAlloc(static_cast<VkDeviceSize>(pixels.size()), &off)) return false;
     if (!WriteHostBuffer(g_ds.staging, off, pixels.data(), pixels.size())) return false;
-    StageIntoImage(e.image, t.width, t.height, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, off);
+    StageIntoImage(e.image, t.width, t.height, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                   off, layers);
     return true;
 }
 
 // Shared opaque-white 1x1 texture for image pcs the scalar evaluation did
 // not resolve (guest_addr == 0): the binding must still exist for the
-// descriptor layout to match the translated module.
-TextureEntry* EnsureFallbackTexture() {
-    constexpr u64 kKey = ~0ull;
-    auto it = g_ds.textures.find(kKey);
+// descriptor layout to match the translated module.  Arrayed bindings get
+// a one-layer 2D-array view so the descriptor type still matches the
+// shader's declared arrayed image (SharpEmu #471).
+TextureEntry* EnsureFallbackTexture(bool arrayed) {
+    const u64 key = arrayed ? ~0ull - 1 : ~0ull;
+    auto it = g_ds.textures.find(key);
     if (it != g_ds.textures.end()) return &it->second;
     TextureEntry e;
+    e.arrayed = arrayed;
     if (!CreateDeviceImage(e.image, e.mem, 1, 1, VK_FORMAT_R8G8B8A8_UNORM,
                            VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                                VK_IMAGE_USAGE_SAMPLED_BIT)) {
         return nullptr;
     }
-    e.view = CreateImageView2D(e.image, VK_FORMAT_R8G8B8A8_UNORM, 0xFAC);
+    e.view = CreateImageView2D(e.image, VK_FORMAT_R8G8B8A8_UNORM, 0xFAC,
+                               arrayed, 1);
     if (!e.view) {
         g_ds.ctx->fn.DestroyImage(g_ds.ctx->device, e.image, nullptr);
         g_ds.ctx->fn.FreeMemory(g_ds.ctx->device, e.mem, nullptr);
@@ -475,7 +597,7 @@ TextureEntry* EnsureFallbackTexture() {
     if (StagingAlloc(4, &off) && WriteHostBuffer(g_ds.staging, off, &white, 4)) {
         StageIntoImage(e.image, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, off);
     }
-    return &g_ds.textures.emplace(kKey, e).first->second;
+    return &g_ds.textures.emplace(key, e).first->second;
 }
 
 VkSampler EnsureSampler(const std::array<u32, 4>& w) {    u64 h = kHashSeed;
@@ -936,7 +1058,7 @@ void VkDrawFlush() {
 }
 
 bool VkDrawLookupRenderTarget(u64 guest_base, VkImage* image,
-                              u32* width, u32* height) {
+                              u32* width, u32* height, VkFormat* format) {
     std::lock_guard<std::mutex> lk(g_draw_mutex);
     // Flip boundary: submit the pending batch (no wait — the present submit
     // goes to the same queue after this, so queue order keeps the M3.2d
@@ -948,6 +1070,7 @@ bool VkDrawLookupRenderTarget(u64 guest_base, VkImage* image,
     if (image)  *image  = e.image;
     if (width)  *width  = e.width;
     if (height) *height = e.height;
+    if (format) *format = e.format;
     return true;
 }
 
@@ -992,11 +1115,39 @@ bool VkDrawExecute(const VkDrawCall& call) {
         const VkDrawTexture& t = call.textures[i];
         TextureEntry* tex = nullptr;
         if (t.guest_addr == 0) {
-            tex = EnsureFallbackTexture();
+            tex = EnsureFallbackTexture(t.arrayed_view);
         } else {
-            const VkFormat format = Gfx10::TextureFormat(t.data_format, t.number_format);
-            tex = EnsureTexture(t, format);
-            if (tex && !UploadTexture(*tex, t, format)) tex = nullptr;
+            const Gfx10::TexturePlan plan =
+                Gfx10::PlanTextureFormat(t.data_format, t.number_format);
+            if (!plan.supported) {
+                LOG_WARN(GPU, "draw: unsupported texture format %u/%u; "
+                         "fallback texture bound.", t.data_format,
+                         t.number_format);
+                tex = EnsureFallbackTexture(t.arrayed_view);
+            } else {
+                tex = EnsureTexture(t, plan.vk_format);
+                if (tex) {
+                    // Write-generation skip (SharpEmu #447): a guest CPU
+                    // rewrite of the source memory bumps the tracked
+                    // generation, which forces a fresh upload; an unchanged
+                    // generation means the cached image is still current.
+                    // Untracked sources keep the always-re-upload behavior.
+                    u64 generation = 0;
+                    const bool tracked = Memory::TryGetGuestWriteGeneration(
+                        t.guest_addr, &generation);
+                    const bool fresh = tracked && tex->write_generation >= 0 &&
+                        static_cast<u64>(tex->write_generation) == generation;
+                    if (!fresh) {
+                        s64 uploaded_generation = -1;
+                        if (!UploadTexture(*tex, t, plan,
+                                           &uploaded_generation)) {
+                            tex = nullptr;
+                        } else {
+                            tex->write_generation = uploaded_generation;
+                        }
+                    }
+                }
+            }
         }
         if (!tex) {
             return false;

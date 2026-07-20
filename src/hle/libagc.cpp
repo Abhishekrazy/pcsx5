@@ -21,6 +21,7 @@
 #include "../gpu/shader/gcn_decode.h"
 #include "../gpu/shader/gcn_eval.h"
 #include "../gpu/shader/gcn_translate.h"
+#include "../gpu/shader_cache.h"
 #include "../gpu/gfx10_state.h"
 #include "../gpu/vk_draw.h"
 #include "../gpu/gpu.h"
@@ -28,6 +29,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -485,6 +487,106 @@ std::mutex g_agc_submit_mutex;
 AgcSubmitShadow g_agc_graphics_shadow;
 std::unordered_map<u32, AgcSubmitShadow> g_agc_compute_shadows;
 
+// ---------------------------------------------------------------------------
+// Phase 5 validation: optional PM4 stream capture (PCSX5_PM4_CAPTURE=<dir>).
+//
+// When the env var is set, every submitted command buffer is dumped as
+//   <dir>/submit_NNNNN.bin  — raw PM4 dwords exactly as submitted
+//   <dir>/submit_NNNNN.json — sidecar: queue name, guest address, dword
+//                             count, and the register shadow state (cx/sh/uc
+//                             maps + index state) needed to interpret the
+//                             stream offline.
+// The getenv result is cached on first use, so with the variable unset the
+// hook costs one branch per submit.  tools/pm4_replay.cpp replays captures
+// (sidecar "memory" blobs, produced by its record-synth mode, make a capture
+// self-contained; game captures record the stream + shadow only).
+// ---------------------------------------------------------------------------
+const char* Pm4CaptureDir() {
+    static const char* const dir = []() -> const char* {
+        static char buf[512];
+        const DWORD n = GetEnvironmentVariableA("PCSX5_PM4_CAPTURE", buf,
+                                                static_cast<DWORD>(sizeof(buf)));
+        return (n != 0 && n < sizeof(buf)) ? buf : nullptr;
+    }();
+    return dir;
+}
+
+// Guarded guest->host copy; isolated from C++ object unwinding (__try rule).
+bool Pm4CaptureCopy(void* dst, const void* src, size_t n) {
+    __try {
+        std::memcpy(dst, src, n);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+void Pm4JsonShadowMap(std::ofstream& out, const char* name,
+                      const std::unordered_map<u32, u32>& map, bool last) {
+    out << "  \"" << name << "\": [";
+    bool first = true;
+    for (const auto& kv : map) {
+        if (!first) out << ", ";
+        first = false;
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "[%u, %u]", kv.first, kv.second);
+        out << buf;
+    }
+    out << "]" << (last ? "\n" : ",\n");
+}
+
+void Pm4CaptureSubmit(const char* queue_name, guest_addr_t addr, u32 dword_count,
+                      const AgcSubmitShadow& st) {
+    const char* dir = Pm4CaptureDir();
+    if (dir == nullptr) return;
+    static std::atomic<u32> g_seq{0};
+    const u32 n = g_seq.fetch_add(1, std::memory_order_relaxed);
+
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+
+    char path[1024];
+    std::snprintf(path, sizeof(path), "%s/submit_%05u.bin", dir, n);
+    {
+        std::ofstream bin(path, std::ios::binary | std::ios::trunc);
+        if (!bin) {
+            LOG_WARN(HLE, "PM4 capture: cannot open %s", path);
+            return;
+        }
+        // Guest memory is host-accessible; use a guarded copy so a torn guest
+        // buffer degrades to a truncated dump instead of an AV.
+        std::vector<u8> bytes(static_cast<size_t>(dword_count) * 4);
+        if (!Pm4CaptureCopy(bytes.data(), reinterpret_cast<const void*>(addr),
+                            bytes.size())) {
+            LOG_WARN(HLE, "PM4 capture: read fault at 0x%llx — truncated dump", addr);
+        }
+        bin.write(reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+    }
+
+    std::snprintf(path, sizeof(path), "%s/submit_%05u.json", dir, n);
+    std::ofstream js(path, std::ios::trunc);
+    if (!js) return;
+    js << "{\n";
+    js << "  \"seq\": " << n << ",\n";
+    js << "  \"queue\": \"" << queue_name << "\",\n";
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "0x%llx", static_cast<unsigned long long>(addr));
+    js << "  \"guest_addr\": \"" << buf << "\",\n";
+    js << "  \"dwords\": " << dword_count << ",\n";
+    std::snprintf(buf, sizeof(buf), "0x%llx", static_cast<unsigned long long>(st.index_addr));
+    js << "  \"index_addr\": \"" << buf << "\",\n";
+    js << "  \"index_count\": " << st.index_count << ",\n";
+    js << "  \"index_size\": " << st.index_size << ",\n";
+    js << "  \"instances\": " << st.instances << ",\n";
+    Pm4JsonShadowMap(js, "cx", st.cx, false);
+    Pm4JsonShadowMap(js, "sh", st.sh, false);
+    Pm4JsonShadowMap(js, "uc", st.uc, true);
+    js << "}\n";
+    LOG_INFO(HLE, "PM4 capture: submit %u (%s, %u dwords) -> %s", n, queue_name,
+             dword_count, dir);
+}
+
 void ApplySubmittedRegisters(AgcSubmitShadow& st, guest_addr_t packet,
                              u32 length, u32 op, u32 reg) {
     if (op == kItSetShReg || op == kItSetContextReg || op == kItSetUconfigReg) {
@@ -672,6 +774,19 @@ std::vector<u32> AgcDrawImagePcs(const GPU::Shader::GcnProgram& program) {
     return pcs;
 }
 
+// True when the image instruction at `pc` samples/gathers through an
+// arrayed image (SharpEmu Gen5ShaderTranslator.IsArrayedImageBinding,
+// #471).  The SPIR-V translator and the texture upload/view path share
+// this one rule so the declared image type and the bound view agree.
+bool AgcIsArrayedImageAtPc(const GPU::Shader::GcnProgram& program, u32 pc) {
+    for (const GPU::Shader::GcnInstruction& ins : program.instructions) {
+        if (ins.pc == pc) {
+            return GPU::Shader::GcnIsArrayedImageBinding(ins);
+        }
+    }
+    return false;
+}
+
 // One entry of the global binding-0 buffer list: an evaluated guest buffer
 // range shared by both stages, with each stage's consuming instruction pcs.
 struct AgcGlobalBuffer {
@@ -797,6 +912,15 @@ void AgcNoteFirstDraw() {
     }
 }
 
+// Shared H7 disk cache for GCN->SPIR-V translations (persists to
+// Cache/Shaders under the working dir, matching the existing Cache/Audio
+// pattern).  Used unconditionally; TryLoad treats corruption as a miss and
+// Store failures are non-fatal, so a bad cache never breaks translation.
+GPU::GcnShaderDiskCache* AgcShaderCache() {
+    static GPU::GcnShaderDiskCache cache{"Cache/Shaders"};
+    return &cache;
+}
+
 // Builds the SPIR-V modules for an es/ps pair against the global binding
 // layout (see the M3.2c block comment).  The PS is translated first so the
 // VS interface covers everything the PS consumes.
@@ -834,11 +958,13 @@ bool AgcBuildDrawProgram(
         for (const u32 pc : vs_image_pcs) {
             GcnSpirvImageBinding binding;
             binding.pc = pixel ? kForeignPc : pc;
+            binding.is_arrayed = AgcIsArrayedImageAtPc(es_program, pc);
             options.image_bindings.push_back(binding);
         }
         for (const u32 pc : ps_image_pcs) {
             GcnSpirvImageBinding binding;
             binding.pc = pixel ? pc : kForeignPc;
+            binding.is_arrayed = AgcIsArrayedImageAtPc(ps_program, pc);
             options.image_bindings.push_back(binding);
         }
         if (pixel) {
@@ -863,7 +989,8 @@ bool AgcBuildDrawProgram(
     if (ps != 0) {
         GcnTranslateOptions options =
             make_options(ps_program, GcnSpirvStage::Pixel, true);
-        if (!GcnTranslateToSpirv(ps_program, options, out.ps, error)) {
+        if (!GcnTranslateWithCache(ps_program, options, AgcShaderCache(), out.ps,
+                                   error)) {
             return false;
         }
         AgcNoteShaderTranslated();
@@ -876,7 +1003,8 @@ bool AgcBuildDrawProgram(
         options.required_vertex_output_count = (std::max)(
             options.required_vertex_output_count,
             static_cast<int>(out.ps.attribute_count));
-        if (!GcnTranslateToSpirv(es_program, options, out.vs, error)) {
+        if (!GcnTranslateWithCache(es_program, options, AgcShaderCache(), out.vs,
+                                   error)) {
             return false;
         }
         AgcNoteShaderTranslated();
@@ -1037,9 +1165,14 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
 
     // Textures in global (vertex-then-pixel) binding order; pcs the
     // evaluation did not resolve get the executor's 1x1 fallback texture.
-    auto add_textures = [&](const std::vector<u32>& pcs, const GcnEvaluation* eval) {
+    auto add_textures = [&](const std::vector<u32>& pcs, const GcnEvaluation* eval,
+                            const GPU::Shader::GcnProgram& prog) {
         for (const u32 pc : pcs) {
             GPU::VkDrawTexture tex;
+            // The arrayed-view rule follows the shader binding (not the
+            // descriptor) so even a fallback view matches the image type
+            // the module declares (SharpEmu #471).
+            tex.arrayed_view = AgcIsArrayedImageAtPc(prog, pc);
             const GcnEvalImageBinding* found = nullptr;
             if (eval) {
                 for (const auto& ib : eval->image_bindings) {
@@ -1059,6 +1192,9 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
                 tex.width         = desc.width;
                 tex.height        = desc.height;
                 tex.pitch         = desc.pitch;
+                tex.tile_mode     = desc.tile_mode;
+                tex.mip_levels    = desc.mip_levels;
+                tex.depth         = desc.depth;
                 tex.data_format   = data_format;
                 tex.number_format = number_format;
                 tex.dst_select    = desc.dst_select;
@@ -1069,8 +1205,8 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
             call.textures.push_back(tex);
         }
     };
-    add_textures(vs_image_pcs, es_eval_p);
-    add_textures(ps_image_pcs, ps_eval_p);
+    add_textures(vs_image_pcs, es_eval_p, es_program);
+    add_textures(ps_image_pcs, ps_eval_p, ps_program);
 
     call.vgt_primitive_type = uc(kVgtPrimitiveTypeUc, 4);
     call.cb_blend0_control  = cx(kCbBlend0Control, 0);
@@ -1238,6 +1374,9 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
         LOG_WARN(HLE, "AGC %s: implausible dword count %u — clamped", queue_name, dword_count);
         dword_count = 0x100000;
     }
+    // Phase 5 validation: dump the stream + shadow state when capturing
+    // (no-op unless PCSX5_PM4_CAPTURE is set).
+    Pm4CaptureSubmit(queue_name, addr, dword_count, st);
 
     u32 draws = 0, dispatches = 0, flips = 0;
     u32 offset = 0;
@@ -1312,19 +1451,24 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
             }
         }
 
-        // Compute dispatches.
+        // Compute dispatches (H6): packet plumbing is complete (sceAgcCbDispatch
+        // emission, walker parsing, CS state tracking) but no executor exists —
+        // the GCN->SPIR-V translator deliberately rejects the DS/global-memory
+        // atomics real compute shaders need.  Log clearly and drop.
         if (op == kItDispatchDirect && length >= 5) {
             ++dispatches;
             ++st.total_dispatches;
-            LOG_INFO(HLE, "AGC %s: dispatch groups=(%u,%u,%u)",
+            const u64 cs = AgcShadowShaderAddress(st.sh, kComputePgmLo, kComputePgmHi);
+            LOG_WARN(HLE, "AGC %s: dispatch groups=(%u,%u,%u) cs=0x%llx — NOT IMPLEMENTED (compute executor deferred, H6); dispatch dropped",
                      queue_name, Memory::Read<u32>(packet + 4),
-                     Memory::Read<u32>(packet + 8), Memory::Read<u32>(packet + 12));
+                     Memory::Read<u32>(packet + 8), Memory::Read<u32>(packet + 12), cs);
         }
         if (op == kItDispatchIndirect && length >= 3) {
             ++dispatches;
             ++st.total_dispatches;
-            LOG_INFO(HLE, "AGC %s: dispatch indirect offset=0x%X",
-                     queue_name, Memory::Read<u32>(packet + 4));
+            const u64 cs = AgcShadowShaderAddress(st.sh, kComputePgmLo, kComputePgmHi);
+            LOG_WARN(HLE, "AGC %s: dispatch indirect offset=0x%X cs=0x%llx — NOT IMPLEMENTED (compute executor deferred, H6); dispatch dropped",
+                     queue_name, Memory::Read<u32>(packet + 4), cs);
         }
 
         if (op == kItNop && reg == kRWaitFlipDone && length >= 3) {

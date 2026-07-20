@@ -35,6 +35,10 @@ namespace HLE {
 
 namespace {
 
+// Per-thread guest errno cell backing libc __error().  Shared with the POSIX
+// file wrappers in libkernel.cpp through HLE::GuestErrnoPtr/SetGuestErrno.
+thread_local s32 t_guest_errno = 0;
+
 constexpr u64 kHeapChunkSize  = 16ULL * 1024 * 1024;
 constexpr u64 kHeaderSize     = 16;
 constexpr u64 kHeaderMagic    = 0x5043583548454150ULL; // "PCX5HEAP"
@@ -154,8 +158,8 @@ std::vector<AtExitEntry> g_atexit_handlers;
 // Guest C++ exception support (libc++abi / Itanium C++ ABI surface).
 //
 // Approach: real two-phase DWARF unwinding over the guest's own .eh_frame
-// (located via PT_GNU_EH_FRAME / .eh_frame_hdr, handed to us by main() through
-// SetGuestEhFrameHdr).  __cxa_throw reconstructs the full register context at
+// (located via PT_GNU_EH_FRAME / .eh_frame_hdr; every loaded module registers
+// its table through SetGuestEhFrameHdr).  __cxa_throw reconstructs the full register context at
 // the HLE thunk entry (the dispatcher saves guest rbx/rbp/r12-r15 on the
 // guest stack at known offsets), walks frames with a CFI interpreter, and
 // calls the guest personality routine (from the CIE 'P' augmentation) through
@@ -166,9 +170,19 @@ std::vector<AtExitEntry> g_atexit_handlers;
 // Cleanup landing pads re-enter via _Unwind_Resume, which continues phase 2.
 // ---------------------------------------------------------------------------
 
-// .eh_frame_hdr location in guest memory (direct-pointer: guest VA == host VA).
-guest_addr_t g_eh_frame_hdr      = 0;
-u64          g_eh_frame_hdr_size = 0;
+// Registered .eh_frame_hdr tables in guest memory (direct-pointer: guest VA
+// == host VA).  Every loaded module with a PT_GNU_EH_FRAME segment registers
+// its own table (main module plus auto-loaded PRXs such as libc.prx); FDE
+// lookup tries each table in turn so unwinding can cross module boundaries.
+struct EhFrameTable {
+    guest_addr_t addr;
+    u64          size;
+};
+std::vector<EhFrameTable> g_eh_tables;
+
+// Base for textrel/datarel DW_EH_PE decoding: the .eh_frame_hdr address of
+// the table that owns the record currently being parsed (set by FindFde).
+guest_addr_t g_cur_eh_base = 0;
 
 // SEH-safe guest memory readers.  Kept as tiny POD-only functions so __try is
 // legal (no C++ objects with destructors in scope).  Return false on fault.
@@ -292,7 +306,7 @@ u64 ReadEncodedPointer(u64* p, u8 enc, bool* ok) {
         case 0x00:        break; // absptr
         case kEncPcrel:   value = field_addr + value; break;
         case kEncTextrel:
-        case kEncDatarel: value = g_eh_frame_hdr + value; break;
+        case kEncDatarel: value = g_cur_eh_base + value; break;
         default:
             LOG_ERROR(HLE, "unwind: unsupported pointer base 0x%02x", enc & 0x70);
             *ok = false;
@@ -366,11 +380,16 @@ bool ParseCie(u64 cie, CieInfo& out) {
         const u64 aug_end = p + aug_len;
         for (size_t i = 1; aug[i] != '\0'; ++i) {
             switch (aug[i]) {
-                case 'P':
+                case 'P': {
                     info.personality_enc = Rd8(p++, &ok);
+                    const u64 field = p;
                     info.personality = ReadEncodedPointer(&p, info.personality_enc, &ok);
                     info.has_personality = true;
+                    LOG_INFO(HLE, "unwind: CIE 0x%llx 'P' enc=0x%02x field=0x%llx -> personality=0x%llx (tid=%lu)",
+                             cie, info.personality_enc, field, info.personality,
+                             GetCurrentThreadId());
                     break;
+                }
                 case 'L':
                     info.lsda_enc = Rd8(p++, &ok);
                     break;
@@ -396,6 +415,10 @@ bool ParseCie(u64 cie, CieInfo& out) {
         std::lock_guard<std::mutex> lk(g_cie_mutex);
         g_cie_cache[cie] = info;
     }
+    LOG_INFO(HLE, "unwind: CIE 0x%llx parsed: aug='%s' fde_enc=0x%02x lsda_enc=0x%02x personality=0x%llx%s",
+             cie, aug, info.fde_enc, info.lsda_enc, info.personality,
+             info.has_personality ? "" : " (none)");
+    out = info;
     return true;
 }
 
@@ -421,6 +444,8 @@ bool ParseFde(u64 fde, FdeInfo& out) {
     out.fde_addr = fde;
     u64 p = fde + 8;
     out.pc_begin = ReadEncodedPointer(&p, out.cie.fde_enc, &ok);
+    LOG_INFO(HLE, "unwind: FDE 0x%llx: cie=0x%llx fde_enc=0x%02x pc_begin=0x%llx ok=%d",
+             fde, cie_addr, out.cie.fde_enc, out.pc_begin, (int)ok);
     // Range length: format bits only, no base applied.
     const u8 range_enc = out.cie.fde_enc & 0x0F;
     u64 pc_range = 0;
@@ -450,25 +475,36 @@ bool ParseFde(u64 fde, FdeInfo& out) {
     return true;
 }
 
-// Finds the FDE covering `pc` via the .eh_frame_hdr binary-search table.
-bool FindFde(u64 pc, FdeInfo& out) {
-    if (g_eh_frame_hdr == 0) return false;
+// Finds the FDE covering `pc` via one module's .eh_frame_hdr binary-search
+// table.  Sets g_cur_eh_base for any pointers decoded while parsing.
+bool FindFdeInTable(const EhFrameTable& tab, u64 pc, FdeInfo& out) {
     bool ok = true;
-    u64 p = g_eh_frame_hdr;
+    u64 p = tab.addr;
     const u8 version         = Rd8(p++, &ok);
     const u8 eh_ptr_enc      = Rd8(p++, &ok);
     const u8 fde_count_enc   = Rd8(p++, &ok);
     const u8 table_enc       = Rd8(p++, &ok);
-    if (!ok || version != 1) return false;
+    if (!ok || version != 1) {
+        LOG_INFO(HLE, "unwind: table 0x%llx rejected (ok=%d version=%u)", tab.addr, (int)ok, version);
+        return false;
+    }
     /* eh_frame_ptr (unused; FDEs come from the table) */
     (void)ReadEncodedPointer(&p, eh_ptr_enc, &ok);
     const u64 fde_count = ReadEncodedPointer(&p, fde_count_enc, &ok);
-    if (!ok || fde_count == 0 || fde_count > (1u << 24)) return false;
+    if (!ok || fde_count == 0 || fde_count > (1u << 24)) {
+        LOG_INFO(HLE, "unwind: table 0x%llx rejected (ok=%d fde_count=%llu)", tab.addr, (int)ok, fde_count);
+        return false;
+    }
     const u64 entry_sz = EncodedSize(table_enc);
-    if (entry_sz == 0 || (table_enc & 0x70) == kEncAligned) return false;
+    if (entry_sz == 0 || (table_enc & 0x70) == kEncAligned) {
+        LOG_INFO(HLE, "unwind: table 0x%llx rejected (table_enc=0x%02x)", tab.addr, table_enc);
+        return false;
+    }
     const u64 table = p;
-    if (g_eh_frame_hdr_size != 0 &&
-        table + fde_count * entry_sz * 2 > g_eh_frame_hdr + g_eh_frame_hdr_size) {
+    if (tab.size != 0 &&
+        table + fde_count * entry_sz * 2 > tab.addr + tab.size) {
+        LOG_INFO(HLE, "unwind: table 0x%llx rejected (bounds: count=%llu entry=%llu size=%llu)",
+                 tab.addr, fde_count, entry_sz, tab.size);
         return false;
     }
     // Table entries are sorted by initial_loc; binary-search the last <= pc.
@@ -480,14 +516,35 @@ bool FindFde(u64 pc, FdeInfo& out) {
         if (!ok) return false;
         if (initial_loc <= pc) lo = mid + 1; else hi = mid;
     }
-    if (lo == 0) return false;
+    if (lo == 0) {
+        LOG_INFO(HLE, "unwind: table 0x%llx: pc 0x%llx below first entry", tab.addr, pc);
+        return false;
+    }
     u64 ep = table + (lo - 1) * entry_sz * 2;
     (void)ReadEncodedPointer(&ep, table_enc, &ok);
     const u64 fde_addr = ReadEncodedPointer(&ep, table_enc, &ok);
     if (!ok || fde_addr == 0) return false;
-    if (!ParseFde(fde_addr, out)) return false;
-    if (pc < out.pc_begin || pc >= out.pc_end) return false;
+    if (!ParseFde(fde_addr, out)) {
+        LOG_INFO(HLE, "unwind: table 0x%llx: ParseFde failed at fde=0x%llx (pc=0x%llx)",
+                 tab.addr, fde_addr, pc);
+        return false;
+    }
+    if (pc < out.pc_begin || pc >= out.pc_end) {
+        LOG_INFO(HLE, "unwind: table 0x%llx: pc 0x%llx not in FDE [0x%llx, 0x%llx)",
+                 tab.addr, pc, out.pc_begin, out.pc_end);
+        return false;
+    }
     return true;
+}
+
+// Finds the FDE covering `pc` across every registered module table.
+bool FindFde(u64 pc, FdeInfo& out) {
+    for (const EhFrameTable& tab : g_eh_tables) {
+        if (tab.addr == 0) continue;
+        g_cur_eh_base = tab.addr;
+        if (FindFdeInTable(tab, pc, out)) return true;
+    }
+    return false;
 }
 
 // --- DWARF CFI interpreter ---------------------------------------------------
@@ -698,6 +755,7 @@ struct FrameEval {
     u64 pc_begin     = 0;
     u64 personality  = 0;
     bool has_personality = false;
+    bool signal_frame    = false;
     u64 next_gr[17]  = {};
 };
 
@@ -756,6 +814,7 @@ bool EvalFrame(const GuestUnwindContext& ctx, FrameEval& out) {
     out.pc_begin = fde.pc_begin;
     out.personality = fde.cie.personality;
     out.has_personality = fde.cie.has_personality;
+    out.signal_frame = fde.cie.signal_frame;
     for (int i = 0; i < 17; ++i) out.next_gr[i] = next[i];
     return true;
 }
@@ -887,6 +946,117 @@ bool InstallContext(const GuestUnwindContext& ctx, u64 ret_slot) {
     return true;
 }
 
+// --- Native LSDA personality (imported __gxx_personality_v0) -----------------
+// When the guest imports its personality routine instead of statically
+// linking libc++abi, CIE personality pointers resolve to one of our HLE
+// thunk stubs.  Calling that stub from inside the unwinder cannot do LSDA
+// type matching (the stub only knows how to say "continue"), so we evaluate
+// the gcc LSDA format natively here, mirroring __gxx_personality_v0
+// (libstdc++ eh_personality.cc): scan the call-site table for the IP, walk
+// the action records, and match catch types against the thrown type_info.
+struct LsdaResult {
+    bool has_landing_pad = false; // a call-site covers the IP and has an lp
+    u64  landing_pad     = 0;
+    u64  switch_value    = 0;     // matched catch filter (0 = cleanup only)
+    bool handler_found   = false; // a catch clause matches the thrown type
+};
+
+// Type-table entry #i (1-based) from the gcc TType table, which grows
+// backwards from the end of the class-info area.
+u64 ReadTtypeEntry(u64 ttype_table_end, u8 ttype_enc, u64 i, bool* ok) {
+    const u64 sz = EncodedSize(ttype_enc);
+    if (sz == 0) {
+        *ok = false;
+        return 0;
+    }
+    u64 p = ttype_table_end - i * sz;
+    return ReadEncodedPointer(&p, ttype_enc, ok);
+}
+
+// thrown_tinfo: std::type_info* of the exception being unwound (0 = unknown,
+// in which case only catch(...) matches).
+LsdaResult EvalLsda(u64 lsda, u64 ip, u64 region_start, bool is_signal, u64 thrown_tinfo) {
+    LsdaResult res;
+    if (!lsda) return res;
+    bool ok = true;
+    u64 p = lsda;
+    const u8 lp_enc = Rd8(p++, &ok);
+    u64 lp_base = 0;
+    if (lp_enc != kEncOmit) {
+        lp_base = ReadEncodedPointer(&p, lp_enc, &ok);
+        if (!ok) return res;
+    }
+    if (lp_base == 0) lp_base = region_start;
+    const u8 ttype_enc = Rd8(p++, &ok);
+    u64 ttype_end = 0;
+    if (ttype_enc != kEncOmit) {
+        const u64 class_info = ReadUleb(&p, &ok);
+        if (!ok) return res;
+        ttype_end = p + class_info;
+    }
+    const u8 cs_enc = Rd8(p++, &ok);
+    const u64 cs_table_len = ReadUleb(&p, &ok);
+    if (!ok) return res;
+    const u64 cs_table_end = p + cs_table_len;
+    LOG_DEBUG(HLE, "unwind: lsda hdr: lp_enc=0x%02x lp_base=0x%llx ttype_enc=0x%02x ttype_end=0x%llx cs_enc=0x%02x cs_len=%llu",
+             lp_enc, lp_base, ttype_enc, ttype_end, cs_enc, cs_table_len);
+    u64 ip_adj = ip;
+    if (!is_signal && ip_adj > 0) --ip_adj; // call-site ranges exclude the return addr
+    while (p < cs_table_end) {
+        const u64 cs_start  = ReadEncodedPointer(&p, cs_enc, &ok);
+        const u64 cs_len    = ReadEncodedPointer(&p, cs_enc, &ok);
+        const u64 cs_lp     = ReadEncodedPointer(&p, cs_enc, &ok);
+        const u64 cs_action = ReadUleb(&p, &ok);
+        if (!ok) return res;
+        LOG_DEBUG(HLE, "unwind: lsda cs: [0x%llx..0x%llx) lp=0x%llx action=%llu (ip_adj=0x%llx lp_base=0x%llx)",
+                 lp_base + cs_start, lp_base + cs_start + cs_len,
+                 cs_lp ? lp_base + cs_lp : 0, cs_action, ip_adj, lp_base);
+        if (ip_adj < lp_base + cs_start || ip_adj >= lp_base + cs_start + cs_len) continue;
+        // This call-site covers the IP.
+        if (cs_lp == 0) continue; // no landing pad in this range
+        res.has_landing_pad = true;
+        res.landing_pad = lp_base + cs_lp;
+        if (cs_action == 0) return res; // pure cleanup (switch value 0)
+        u64 ar = cs_table_end + cs_action - 1;
+        for (int guard = 0; guard < 64; ++guard) {
+            bool ok2 = true;
+            const s64 filter = ReadSleb(&ar, &ok2);
+            const s64 disp   = ReadSleb(&ar, &ok2);
+            if (!ok2) break;
+            if (filter > 0) {
+                bool ok3 = true;
+                const u64 entry = ttype_end ? ReadTtypeEntry(ttype_end, ttype_enc,
+                                                             static_cast<u64>(filter), &ok3)
+                                            : 0;
+                LOG_DEBUG(HLE, "unwind: lsda action: filter=%lld ttype=0x%llx ok=%d thrown=0x%llx",
+                         (long long)filter, entry, (int)ok3, thrown_tinfo);
+                // entry == 0 in the type table is catch(...) — matches anything.
+                if (ok3 && (entry == 0 || (thrown_tinfo != 0 && entry == thrown_tinfo))) {
+                    res.handler_found = true;
+                    res.switch_value = static_cast<u64>(filter);
+                    return res;
+                }
+                if (ok3 && entry != 0) {
+                    LOG_INFO(HLE, "unwind: lsda: catch type 0x%llx does not match thrown "
+                             "tinfo 0x%llx — clause skipped", entry, thrown_tinfo);
+                }
+            }
+            if (disp == 0) break;
+            ar += static_cast<u64>(disp); // disp is relative to just-after the disp field
+        }
+        return res; // pad exists but no catch matched
+    }
+    return res;
+}
+
+// std::type_info* of a thrown C++ exception, from the __cxa_exception header
+// (hdr = ue - 88; exceptionType at hdr + 8 — see the layout constants below).
+u64 ReadThrownTinfo(u64 ue) {
+    bool ok = true;
+    const u64 t = Rd64(ue - 88 + 8, &ok);
+    return ok ? t : 0;
+}
+
 // --- Itanium unwind state ----------------------------------------------------
 constexpr u64 kUaSearchPhase   = 1;
 constexpr u64 kUaCleanupPhase  = 2;
@@ -957,7 +1127,36 @@ void RunPhase2(u64 ue, u64 handler_cfa, GuestUnwindContext ctx, u64 ret_slot) {
         ctx.region_start = fe.pc_begin;
         const bool is_handler = (fe.cfa == handler_cfa);
         const u64 actions = kUaCleanupPhase | (is_handler ? kUaHandlerFrame : 0);
-        if (fe.has_personality) {
+        if (fe.has_personality && HLE::IsHleThunkAddress(fe.personality)) {
+            // Imported personality: evaluate the LSDA natively instead of
+            // calling our own stub back as guest code.
+            const LsdaResult lr = EvalLsda(fe.lsda, ctx.gr[16], fe.pc_begin,
+                                           fe.signal_frame, ReadThrownTinfo(ue));
+            LOG_INFO(HLE, "unwind: phase 2 native personality lsda=0x%llx -> lp=0x%llx switch=%llu%s",
+                     fe.lsda, lr.landing_pad, lr.switch_value, is_handler ? " (handler)" : "");
+            if (lr.has_landing_pad) {
+                // x86-64 eh data registers: rax (gr[0]) = exception object,
+                // rdx (gr[1]) = handler switch value.
+                ctx.gr[0]  = ue;
+                ctx.gr[1]  = lr.switch_value;
+                ctx.gr[16] = lr.landing_pad;
+                if (is_handler) {
+                    for (size_t i = 0; i < g_phase2.size(); ++i) {
+                        if (g_phase2[i].ue == ue) {
+                            g_phase2.erase(g_phase2.begin() + static_cast<long long>(i));
+                            break;
+                        }
+                    }
+                }
+                if (!InstallContext(ctx, ret_slot)) {
+                    UnwindFatal("failed to install landing context", ue);
+                }
+                return;
+            }
+            if (is_handler) {
+                UnwindFatal("handler frame has no landing pad in LSDA", ue);
+            }
+        } else if (fe.has_personality) {
             bool call_ok = false;
             const u64 rc = CallPersonality(fe.personality, actions,
                                            kCppExceptionClass, ue, &ctx, &call_ok);
@@ -994,24 +1193,47 @@ void RunPhase2(u64 ue, u64 handler_cfa, GuestUnwindContext ctx, u64 ret_slot) {
 // returns to its caller only on error); on success the guest resumes at a
 // landing pad and the HLE handler's return value is discarded.
 u64 RaiseException(u64 ue, const GuestUnwindContext& initial, u64 ret_slot) {
-    if (g_eh_frame_hdr == 0) {
+    if (g_eh_tables.empty()) {
         LOG_ERROR(HLE, "unwind: no .eh_frame_hdr registered — cannot unwind");
         return kUrcEndOfStack;
     }
     GuestUnwindContext ctx = initial;
     u64 handler_cfa = 0;
     bool found = false;
+    u64 depth1_rbp = 0, depth1_rbx = 0; // diagnostic: parser frame
     for (u64 depth = 0; depth < 4096; ++depth) {
         FrameEval fe;
-        if (!EvalFrame(ctx, fe)) break; // end of stack
+        if (!EvalFrame(ctx, fe)) {
+            LOG_INFO(HLE, "unwind: phase 1 frame walk ended at depth %llu (no FDE for rip=0x%llx)",
+                     depth, ctx.gr[16]);
+            break; // end of stack
+        }
+        if (depth == 1) { depth1_rbp = ctx.gr[6]; depth1_rbx = ctx.gr[3]; }
         ctx.cfa = fe.cfa;
         ctx.lsda = fe.lsda;
         ctx.region_start = fe.pc_begin;
-        if (fe.has_personality) {
+        LOG_INFO(HLE, "unwind: phase 1 depth %llu rip=0x%llx cfa=0x%llx fde=[0x%llx..) personality=0x%llx lsda=0x%llx",
+                 depth, ctx.gr[16], fe.cfa, fe.pc_begin,
+                 fe.has_personality ? fe.personality : 0, fe.lsda);
+        if (fe.has_personality && HLE::IsHleThunkAddress(fe.personality)) {
+            // Imported personality (HLE thunk): evaluate the LSDA natively.
+            const LsdaResult lr = EvalLsda(fe.lsda, ctx.gr[16], fe.pc_begin,
+                                           fe.signal_frame, ReadThrownTinfo(ue));
+            LOG_INFO(HLE, "unwind: phase 1 native personality lsda=0x%llx -> handler=%d lp=0x%llx switch=%llu (tid=%lu)",
+                     fe.lsda, (int)lr.handler_found, lr.landing_pad, lr.switch_value,
+                     GetCurrentThreadId());
+            if (lr.handler_found) {
+                handler_cfa = fe.cfa;
+                found = true;
+                break;
+            }
+        } else if (fe.has_personality) {
             bool call_ok = false;
             const u64 rc = CallPersonality(fe.personality, kUaSearchPhase,
                                            kCppExceptionClass, ue, &ctx, &call_ok);
             if (!call_ok) return kUrcFatalPhase1;
+            LOG_INFO(HLE, "unwind: phase 1 personality 0x%llx -> rc=%llu (tid=%lu)",
+                     fe.personality, rc, GetCurrentThreadId());
             if (rc == kUrcHandlerFound) {
                 handler_cfa = fe.cfa;
                 found = true;
@@ -1025,7 +1247,109 @@ u64 RaiseException(u64 ue, const GuestUnwindContext& initial, u64 ret_slot) {
         for (int i = 0; i < 17; ++i) ctx.gr[i] = fe.next_gr[i];
     }
     if (!found) {
+        // Diagnostic: independently scan the raw guest stack for any return
+        // address whose frame LSDA WOULD catch this exception.  If this finds
+        // a frame the CFI walk missed, the walk (not the game) is at fault.
+        {
+            const u64 var = initial.gr[3]; // throw-helper rbx = input variant
+            bool vok = true;
+            const u64 tag = Rd8(var, &vok);
+            const u64 val = Rd64(var + 8, &vok);
+            LOG_ERROR(HLE, "unwind: failing variant at 0x%llx tag=0x%llx val=0x%llx", var, tag, val);
+        }
+        const u64 tinfo = ReadThrownTinfo(ue);
+        for (u64 sp = initial.gr[7]; sp < initial.gr[7] + 0x8000; sp += 8) {
+            bool sok = true;
+            const u64 cand = Rd64(sp, &sok);
+            if (!sok || cand < 0x800000000ULL || cand >= 0x900000000ULL) continue;
+            FdeInfo fde;
+            if (!FindFde(cand, fde) || !fde.cie.has_personality || !fde.lsda) continue;
+            const LsdaResult lr = EvalLsda(fde.lsda, cand, fde.pc_begin,
+                                           fde.cie.signal_frame, tinfo);
+            if (lr.handler_found) {
+                LOG_ERROR(HLE, "unwind: stack scan found a CATCHING frame the CFI walk missed: "
+                          "ret=0x%llx (sp+0x%llx) fde=[0x%llx..) lp=0x%llx switch=%llu",
+                          cand, sp - initial.gr[7], fde.pc_begin, lr.landing_pad, lr.switch_value);
+            }
+        }
         LOG_ERROR(HLE, "unwind: no handler found for exception 0x%llx (end of stack)", ue);
+        if (depth1_rbp) {
+            bool rok = true;
+            const u64 rec = Rd64(depth1_rbp - 0xc8, &rok);
+            LOG_ERROR(HLE, "unwind: parser record ptr=0x%llx index*0x178 rbx=0x%llx", rec, depth1_rbx);
+            if (rok && rec) {
+                const u64 elem = rec + depth1_rbx * 0x178;
+                for (u64 q = 0; q < 0x60; q += 8) {
+                    bool vok = true;
+                    const u64 slot = Rd64(elem + q, &vok);
+                    LOG_ERROR(HLE, "unwind:   rec[+0x%02llx] = 0x%llx%s", q, slot, vok ? "" : " (unreadable)");
+                }
+                // Input array variant lives at [rbp-0x80] in the parser frame.
+                for (u64 q = 0; q < 0x60; q += 8) {
+                    bool vok = true;
+                    const u64 slot = Rd64(depth1_rbp - 0x80 + q, &vok);
+                    LOG_ERROR(HLE, "unwind:   arr[+0x%02llx] = 0x%llx%s", q, slot, vok ? "" : " (unreadable)");
+                }
+                bool aok = true;
+                const u64 vec = Rd64(depth1_rbp - 0x80 + 8, &aok);
+                for (u64 q = 0; q < 0x120; q += 8) {
+                    bool vok = true;
+                    const u64 slot = Rd64(depth1_rbp - 0x100 + q, &vok);
+                    LOG_ERROR(HLE, "unwind:   frame[rbp-0x100+0x%03llx] = 0x%llx%s", q, slot, vok ? "" : " (unreadable)");
+                }
+                if (aok && vec) {
+                    bool ok1 = true;
+                    const u64 begin = Rd64(vec + 8, &ok1);
+                    const u64 end   = Rd64(vec + 0x10, &ok1);
+                    if (ok1 && begin && end >= begin) {
+                        const u64 count = (end - begin) / 16;
+                        LOG_ERROR(HLE, "unwind: array vec=0x%llx count=%llu", vec, count);
+                        for (u64 e = 0; e < count && e < 20; ++e) {
+                            bool ok2 = true, ok3 = true;
+                            const u64 tag = Rd8(begin + e * 16, &ok2);
+                            const u64 val = Rd64(begin + e * 16 + 8, &ok3);
+                            LOG_ERROR(HLE, "unwind:   elem[%llu] tag=0x%llx val=0x%llx", e, tag, val);
+                            if (tag == 3 && val) {
+                                // tag-3 string: first qword points at the
+                                // string object (len-prefixed data).
+                                bool pok = true;
+                                const u64 so = Rd64(val, &pok);
+                                if (pok && so) {
+                                    bool lok = true;
+                                    const u64 len = Rd64(so, &lok);
+                                    LOG_ERROR(HLE, "unwind:     strobj=0x%llx len/flags=0x%llx", so, len);
+                                    char s[80] = {};
+                                    for (int c = 0; c < 79; ++c) {
+                                        bool cok = true;
+                                        const char ch = static_cast<char>(Rd8(so + 8 + static_cast<u64>(c), &cok));
+                                        if (!cok || ch == '\0') break;
+                                        s[c] = (ch >= 32 && ch < 127) ? ch : '?';
+                                    }
+                                    LOG_ERROR(HLE, "unwind:     = \"%s\"", s);
+                                }
+                            }
+                        }
+                    }
+                }
+                for (u64 q = 0; q < 0x178; q += 8) {
+                    bool vok = true;
+                    const u64 slot = Rd64(elem + q, &vok);
+                    if (!vok || slot < 0x10000 || slot >= (1ULL << 47)) continue;
+                    char s[96] = {};
+                    int n = 0;
+                    for (; n < 95; ++n) {
+                        bool cok = true;
+                        const char c = static_cast<char>(Rd8(slot + static_cast<u64>(n), &cok));
+                        if (!cok || c == '\0') break;
+                        if (c < 32 || c >= 127) { n = 0; break; }
+                        s[n] = c;
+                    }
+                    if (n >= 4) {
+                        LOG_ERROR(HLE, "unwind:   rec[rbx+0x%llx] -> \"%s\"", q, s);
+                    }
+                }
+            }
+        }
         return kUrcEndOfStack;
     }
     Phase2Entry entry{ue, handler_cfa};
@@ -1084,6 +1408,22 @@ u64 CxaAllocateException(u64 size) {
 void CxaFreeException(u64 user) {
     if (!user) return;
     HeapFree(user - kAllocPrefix);
+}
+
+// Dumps a guest memory range to a file (diagnostics; SEH-guarded per page).
+void DebugDumpGuestMemory(u64 base, u64 size, const char* path) {
+    FILE* f = nullptr;
+    if (fopen_s(&f, path, "wb") != 0 || !f) return;
+    for (u64 off = 0; off < size; off += 0x1000) {
+        char page[0x1000];
+        __try {
+            std::memcpy(page, reinterpret_cast<void*>(base + off), 0x1000);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            std::memset(page, 0, sizeof(page));
+        }
+        std::fwrite(page, 1, 0x1000, f);
+    }
+    std::fclose(f);
 }
 
 // --- __cxa_* / _Unwind_* HLE handlers ----------------------------------------
@@ -1219,6 +1559,55 @@ auto CxaThrowImpl = [](const GuestArgs& args) -> u64 {
     }
     ++g_uncaught_exceptions;
     LOG_DEBUG(HLE, "__cxa_throw(obj: 0x%llx, tinfo: 0x%llx, dtor: 0x%llx)", user, tinfo, dtor);
+    static bool g_dumped_text = false;
+    if (!g_dumped_text) {
+        g_dumped_text = true;
+        DebugDumpGuestMemory(0x800000000ULL, 0x600000, ".work/guest_text.bin");
+    }
+    {
+        // Diagnostic: dump the thrown type name (type_info: [vtable][name]).
+        bool tok = true;
+        const u64 name_ptr = Rd64(tinfo + 8, &tok);
+        if (tok && name_ptr) {
+            char tname[64] = {};
+            for (int i = 0; i < 63; ++i) {
+                bool cok = true;
+                const char c = static_cast<char>(Rd8(name_ptr + static_cast<u64>(i), &cok));
+                if (!cok || c == '\0') break;
+                tname[i] = (c >= 32 && c < 127) ? c : '?';
+            }
+            LOG_INFO(HLE, "__cxa_throw type: '%s' (tinfo=0x%llx)", tname, tinfo);
+        } else {
+            LOG_INFO(HLE, "__cxa_throw tinfo=0x%llx unreadable name (dtor=0x%llx)", tinfo, dtor);
+        }
+        for (int q = 0; q < 4; ++q) {
+            bool qok = true;
+            LOG_INFO(HLE, "  tinfo[+%d] = 0x%llx", q * 8, Rd64(tinfo + static_cast<u64>(q * 8), &qok));
+        }
+        for (int q = 0; q < 4; ++q) {
+            bool qok = true;
+            LOG_INFO(HLE, "  obj[+%d] = 0x%llx", q * 8, Rd64(user + static_cast<u64>(q * 8), &qok));
+        }
+        // Try to print any string pointers inside the exception object
+        // (GameMaker-style error messages travel in the thrown object).
+        for (int q = 0; q < 8; ++q) {
+            bool vok = true;
+            const u64 slot = Rd64(user + static_cast<u64>(q * 8), &vok);
+            if (!vok || slot < 0x10000 || slot >= (1ULL << 47)) continue;
+            char s[80] = {};
+            int n = 0;
+            for (; n < 79; ++n) {
+                bool cok = true;
+                const char c = static_cast<char>(Rd8(slot + static_cast<u64>(n), &cok));
+                if (!cok || c == '\0') break;
+                if (c < 32 || c >= 127) { n = 0; break; }
+                s[n] = c;
+            }
+            if (n >= 4) {
+                LOG_INFO(HLE, "  obj[+%d] -> string: \"%s\"", q * 8, s);
+            }
+        }
+    }
 
     GuestUnwindContext ctx;
     if (!args.stack_args || !ReconstructContext(args, ctx)) {
@@ -1370,8 +1759,10 @@ auto CxaTerminateLikeImpl = [](const GuestArgs& args) -> u64 {
 
 // __gxx_personality_v0 — only reachable if the guest imports the personality
 // instead of statically linking libc++abi (its own CIEs then point at our
-// thunk).  A real implementation needs LSDA type matching; until then, report
-// "no handler here" in both phases so unwinding continues sanely.
+// thunk).  When the unwinder sees such a thunk personality it evaluates the
+// frame LSDA natively (EvalLsda above) and never calls this stub; a direct
+// guest call here reports "no handler" in both phases so unwinding continues
+// sanely.
 auto GxxPersonalityImpl = [](const GuestArgs& args) -> u64 {
     const u64 actions = args.arg2;
     if ((actions & kUaSearchPhase) != 0) {
@@ -1497,7 +1888,7 @@ auto UnwindGetCFAImpl = [](const GuestArgs& args) -> u64 {
 };
 
 auto UnwindGetTextRelBaseImpl = [](const GuestArgs& /*args*/) -> u64 {
-    return g_eh_frame_hdr;
+    return g_eh_tables.empty() ? 0 : g_eh_tables.front().addr;
 };
 
 auto UnwindGetDataRelBaseImpl = [](const GuestArgs& /*args*/) -> u64 {
@@ -1591,11 +1982,20 @@ void RegisterCxxAbiSymbols() {
 
 } // namespace
 
+s32* HLE::GuestErrnoPtr() { return &t_guest_errno; }
+void HLE::SetGuestErrno(s32 value) { t_guest_errno = value; }
+
 void HLE::SetGuestEhFrameHdr(guest_addr_t addr, u64 size) {
-    g_eh_frame_hdr = addr;
-    g_eh_frame_hdr_size = size;
-    LOG_INFO(HLE, "Guest .eh_frame_hdr at 0x%llx (%llu bytes)%s", addr, size,
-             addr ? "" : " — guest C++ exception unwinding DISABLED");
+    if (addr == 0) {
+        LOG_INFO(HLE, "Guest .eh_frame_hdr registration skipped (addr=0) — module without C++ exception unwinding");
+        return;
+    }
+    for (const EhFrameTable& t : g_eh_tables) {
+        if (t.addr == addr) return; // already registered
+    }
+    g_eh_tables.push_back({addr, size});
+    LOG_INFO(HLE, "Guest .eh_frame_hdr registered at 0x%llx (%llu bytes, %zu table(s))",
+             addr, size, g_eh_tables.size());
 }
 
 void RegisterLibLibc() {
@@ -1808,8 +2208,8 @@ void RegisterLibLibc() {
                       kPunct = 0x10, kControl = 0x20, kBlank = 0x40, kHex = 0x80,
                       kAlpha = 0x100;
         static u16 table[258] = {};
-        static bool initialized = false;
-        if (!initialized) {
+        static std::once_flag table_once;
+        std::call_once(table_once, [] {
             for (int i = 0; i < 258; ++i) table[i] = 0;
             u16* t = &table[1]; // t[-1] == table[0] == 0 (EOF)
             for (int i = 0; i <= 0x1F; ++i) t[i] = kControl;
@@ -1825,8 +2225,7 @@ void RegisterLibLibc() {
             for (int i = 0x21; i <= 0x7E; ++i) {
                 if (t[i] == 0) t[i] = kPunct;
             }
-            initialized = true;
-        }
+        });
         return reinterpret_cast<u64>(&table[1]);
     };
 
@@ -1835,8 +2234,7 @@ void RegisterLibLibc() {
     // parse; a return-0 stub crashes with `mov dword [rax], 0` at a null
     // address.  A host thread_local address is fine (direct-pointer memory).
     auto ErrorImpl = [](const GuestArgs& /*args*/) -> u64 {
-        static thread_local s32 t_guest_errno = 0;
-        return reinterpret_cast<u64>(&t_guest_errno);
+        return reinterpret_cast<u64>(GuestErrnoPtr());
     };
 
     // strstr() — plain libc semantics; the auto-stub returned NULL for every
@@ -1903,6 +2301,13 @@ void RegisterLibLibc() {
         u64 bits = 0;
         static_assert(sizeof(bits) == sizeof(v));
         std::memcpy(&bits, &v, sizeof(bits));
+        {
+            char preview[24] = {};
+            const char* src = reinterpret_cast<const char*>(args.arg1);
+            for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
+            LOG_INFO(HLE, "strtod('%s') -> %g (end+%ld)", preview, v,
+                     static_cast<long>(end - reinterpret_cast<const char*>(args.arg1)));
+        }
         return bits;
     };
     auto StrtofImpl = [](const GuestArgs& args) -> u64 {

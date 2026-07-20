@@ -7,6 +7,10 @@
 //   - Malformed images are rejected cleanly: bad magic, truncated image,
 //     encrypted image (out of scope), bad superroot inode, dirent pointing at
 //     an out-of-range inode, and a file inode with an out-of-range data block.
+//   - Write support: writable mounts (refused for ronly images), round-trip
+//     write -> remount -> read, growth across block boundaries and into the
+//     single-indirect chain, CreateFile + list + extract, and negative tests
+//     for writes on read-only mounts and corrupt images.
 //
 // The PfsBuilder below mirrors the ElfBuilder approach in loader_corpus.cpp:
 // a byte vector is assembled block by block and the superblock is patched in
@@ -63,6 +67,7 @@ struct PfsBuilder {
     std::vector<u8> bytes;
     u32 next_ino = 0;
     u32 next_data_block = 0;
+    u32 inode_count_pad = 0; // extra unused (zeroed) inode-table slots
     u32 superroot_ino = 0;
     u64 format_magic = Loader::kPfsFormatMagic;
     u16 sb_mode = 0; // superblock mode bits; bit2 = encrypted
@@ -78,6 +83,14 @@ struct PfsBuilder {
     u32 AllocDataBlock() {
         bytes.resize(bytes.size() + kBlockSz, 0);
         return next_data_block++;
+    }
+
+    // Append `n` zeroed data blocks that no inode references, i.e. free
+    // space a writable mount can allocate from.
+    void AddFreeDataBlocks(u32 n) {
+        for (u32 i = 0; i < n; ++i) {
+            AllocDataBlock();
+        }
     }
 
     u64 DataBlockOffset(u32 data_block) const {
@@ -173,7 +186,7 @@ struct PfsBuilder {
         sb.blocksz = kBlockSz;
         sb.nbackup = 0;
         sb.nblock = 1;
-        sb.ndinode = next_ino;
+        sb.ndinode = next_ino + inode_count_pad;
         sb.ndblock = next_data_block;
         sb.ndinodeblock = kInodeTableBlocks;
         sb.superroot_ino = superroot_ino;
@@ -186,8 +199,11 @@ struct PfsBuilder {
 //   uroot(ino1):     ".", "..", "hello.txt" -> ino2, "subdir" -> ino3
 //   subdir(ino3):    ".", "..", "nested.bin" -> ino4
 std::vector<u8> BuildValidImage(const std::string& hello_data,
-                                const std::vector<u8>& nested_data) {
+                                const std::vector<u8>& nested_data,
+                                u32 free_data_blocks = 0,
+                                u32 spare_inodes = 0) {
     PfsBuilder b;
+    b.inode_count_pad = spare_inodes;
     const u32 ino_superroot = b.AllocInode(); // 0
     const u32 ino_uroot = b.AllocInode();     // 1
     const u32 ino_hello = b.AddFile(hello_data.data(), hello_data.size()); // 2
@@ -214,6 +230,7 @@ std::vector<u8> BuildValidImage(const std::string& hello_data,
                     2);
 
     b.superroot_ino = ino_superroot;
+    b.AddFreeDataBlocks(free_data_blocks);
     b.Finalize();
     return b.bytes;
 }
@@ -241,13 +258,17 @@ std::vector<u8> ReadWholeFile(const std::filesystem::path& path) {
 }
 
 bool MountBytes(const std::filesystem::path& path, const std::vector<u8>& bytes,
-                Loader::PfsImage& image) {
+                Loader::PfsImage& image, bool writable = false) {
     if (!WriteFile(path, bytes)) {
         std::fprintf(stderr, "[INTERNAL] failed to write temp image\n");
         return false;
     }
-    return Loader::MountPfs(path.string(), image);
+    return Loader::MountPfs(path.string(), image, writable);
 }
+
+// Offset of the ronly byte inside the superblock (after version, format, id,
+// fmode, clean).
+constexpr size_t kSbRonlyOffset = 0x1A;
 
 } // namespace
 
@@ -439,6 +460,140 @@ int main() {
                "image with corrupt block pointer still mounts");
         EXPECT(!Loader::ExtractFile(image, "hello.txt", (tmp / "z.out").string()),
                "out-of-range data block rejected");
+    }
+
+    // 10. A writable mount of an image flagged read-only (ronly) is refused.
+    {
+        auto bytes = BuildValidImage(hello_data, nested_data);
+        Loader::PfsImage image;
+        EXPECT(!MountBytes(img_path, bytes, image, true),
+               "writable mount of a read-only image fails");
+        // Read-only mounting the same image still works.
+        EXPECT(MountBytes(img_path, bytes, image), "read-only mount of ronly image works");
+        EXPECT(!image.IsWritable(), "read-only mount reports non-writable");
+    }
+
+    // 11. Round trip: writable mount -> overwrite (shrink + grow) -> remount
+    // read-only -> extract byte-exact.
+    {
+        auto bytes = BuildValidImage(hello_data, nested_data, /*free_data_blocks=*/4);
+        bytes[kSbRonlyOffset] = 0; // clear ronly so writable mount is allowed
+        EXPECT(WriteFile(img_path, bytes), "test setup: wrote writable image");
+
+        const std::vector<u8> bye = {'b', 'y', 'e', '!'};
+        std::vector<u8> big(9000); // 3 blocks, nested.bin starts with 1
+        for (size_t i = 0; i < big.size(); ++i) {
+            big[i] = static_cast<u8>((i * 17 + 3) & 0xFF);
+        }
+        {
+            Loader::PfsImage image;
+            EXPECT(Loader::MountPfs(img_path.string(), image, true),
+                   "writable mount succeeds");
+            EXPECT(image.IsWritable(), "writable mount reports writable");
+            EXPECT(Loader::WriteFile(image, "hello.txt", bye),
+                   "WriteFile overwrite+shrink");
+            EXPECT(Loader::WriteFile(image, "subdir/nested.bin", big),
+                   "WriteFile growth across block boundaries");
+        } // stream closes with the image
+
+        Loader::PfsImage image;
+        EXPECT(Loader::MountPfs(img_path.string(), image),
+               "remount read-only after writes");
+        EXPECT(Loader::ExtractFile(image, "hello.txt", (tmp / "hello.out").string()),
+               "extract shrunk hello.txt");
+        EXPECT(ReadWholeFile(tmp / "hello.out") == bye, "shrunk hello.txt bytes match");
+        EXPECT(Loader::ExtractFile(image, "subdir/nested.bin", (tmp / "nested.out").string()),
+               "extract grown nested.bin");
+        EXPECT(ReadWholeFile(tmp / "nested.out") == big, "grown nested.bin bytes match");
+    }
+
+    // 12. CreateFile + growth into the single-indirect chain + listing.
+    {
+        // 50000 bytes need 13 data slots -> db[12] + ib[0] with 1 entry,
+        // i.e. 13 data blocks + 1 indirect pointer block, plus 1 block for
+        // the initially-sized file in subdir. Base image uses 5 blocks.
+        auto bytes = BuildValidImage(hello_data, nested_data,
+                                     /*free_data_blocks=*/20, /*spare_inodes=*/4);
+        bytes[kSbRonlyOffset] = 0;
+        EXPECT(WriteFile(img_path, bytes), "test setup: wrote writable image");
+
+        std::vector<u8> save(50000);
+        for (size_t i = 0; i < save.size(); ++i) {
+            save[i] = static_cast<u8>((i * 7 + i / 251) & 0xFF);
+        }
+        {
+            Loader::PfsImage image;
+            EXPECT(Loader::MountPfs(img_path.string(), image, true),
+                   "writable mount for create test");
+            EXPECT(Loader::CreateFile(image, "savegame.dat", 0), "CreateFile in root");
+            EXPECT(Loader::WriteFile(image, "savegame.dat", save),
+                   "WriteFile grows into single-indirect blocks");
+            EXPECT(Loader::CreateFile(image, "subdir/extra.bin", 0x100),
+                   "CreateFile with initial size in subdir");
+            EXPECT(!Loader::CreateFile(image, "hello.txt", 0),
+                   "CreateFile of an existing name fails");
+
+            std::vector<Loader::PfsEntry> root_entries;
+            EXPECT(Loader::ListDirectory(image, "", root_entries),
+                   "list root after create");
+            EXPECT_EQ(root_entries.size(), size_t(3), "root gained one entry");
+            bool saw_save = false;
+            for (const auto& e : root_entries) {
+                if (e.name == "savegame.dat") {
+                    saw_save = true;
+                    EXPECT(!e.is_directory, "savegame.dat is a file");
+                    EXPECT_EQ(e.size, save.size(), "savegame.dat listed size");
+                }
+            }
+            EXPECT(saw_save, "root lists savegame.dat");
+
+            std::vector<Loader::PfsEntry> sub_entries;
+            EXPECT(Loader::ListDirectory(image, "subdir", sub_entries),
+                   "list subdir after create");
+            EXPECT_EQ(sub_entries.size(), size_t(2), "subdir gained one entry");
+        }
+
+        Loader::PfsImage image;
+        EXPECT(Loader::MountPfs(img_path.string(), image),
+               "remount after create+write");
+        EXPECT(Loader::ExtractFile(image, "savegame.dat", (tmp / "save.out").string()),
+               "extract created file");
+        EXPECT(ReadWholeFile(tmp / "save.out") == save,
+               "created file bytes match (incl. indirect blocks)");
+        EXPECT(Loader::ExtractFile(image, "subdir/extra.bin", (tmp / "extra.out").string()),
+               "extract initially-sized file");
+        EXPECT(ReadWholeFile(tmp / "extra.out") == std::vector<u8>(0x100, 0),
+               "initially-sized file is zero-filled");
+        // The pre-existing files are untouched by the writes.
+        EXPECT(Loader::ExtractFile(image, "hello.txt", (tmp / "hello2.out").string()),
+               "pre-existing file still extracts");
+        EXPECT(ReadWholeFile(tmp / "hello2.out") ==
+                   std::vector<u8>(hello_data.begin(), hello_data.end()),
+               "pre-existing file bytes unchanged");
+    }
+
+    // 13. Write operations on a read-only mount fail.
+    {
+        auto bytes = BuildValidImage(hello_data, nested_data);
+        bytes[kSbRonlyOffset] = 0; // image itself is writable; the mount is not
+        Loader::PfsImage image;
+        EXPECT(MountBytes(img_path, bytes, image), "read-only mount for negative tests");
+        const std::vector<u8> data = {'x'};
+        EXPECT(!Loader::WriteFile(image, "hello.txt", data),
+               "WriteFile on a read-only mount fails");
+        EXPECT(!Loader::CreateFile(image, "new.bin", 0),
+               "CreateFile on a read-only mount fails");
+    }
+
+    // 14. Writable mount of a corrupt image fails.
+    {
+        auto bytes = BuildValidImage(hello_data, nested_data);
+        bytes[kSbRonlyOffset] = 0;
+        const u64 bad_magic = 0xDEADBEEF;
+        std::memcpy(bytes.data() + 0x08, &bad_magic, sizeof(bad_magic));
+        Loader::PfsImage image;
+        EXPECT(!MountBytes(img_path, bytes, image, true),
+               "writable mount of a corrupt image fails");
     }
 
     std::filesystem::remove_all(tmp, ec);

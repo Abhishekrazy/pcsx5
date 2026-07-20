@@ -35,6 +35,22 @@ config, `/app0`/`/savedata0` filesystem translation. 30/30 ctest green.
   (RDNA IR + working SPIR-V) in its `shader-dumps/`.
 - SharpEmu source clone (`sharpemu_clone/`) — blueprint for everything above.
 
+## Phase 7 (system services) — complete (2026-07-20)
+
+- Savedata: real `sceSaveDataDirNameSearch` enumeration; per-title XTS
+  encryption keys in `TitleConfig` (`savedata_crypto`); encrypted savedata
+  container (`P5SD` archive + AES-XTS) decrypted on mount, re-encrypted on
+  commit/umount; per-user save dirs when multiple profiles exist.
+- PFS write support (`src/loader/pfs.*`): writable mounts, `WriteFile`,
+  `CreateFile`, free-block allocation with direct + single-indirect growth.
+- AES-128-XTS in `src/common/crypto.*` (IEEE 1619 vectors verified).
+- Trophies: unlocks persisted to `pcsx5_savedata/<title>/trophies.json`;
+  NpTrophy2 unlock callback now fired via `InvokeGuestFunction`.
+- Keystone: full 0x60-byte header parser with differentiated errors;
+  `.keystone` loaded+validated from app0 at boot.
+- Multi-user: `sceUserService*`/`sceNpGetOnlineId` read real config profiles.
+- 39/39 ctest green; fixed CI guest-smoke tests (`--report=` arg form).
+
 ## Known non-blocking issues
 
 - ~47 first-chance `VCRUNTIME140` memcpy AVs reading guest heap — caught by

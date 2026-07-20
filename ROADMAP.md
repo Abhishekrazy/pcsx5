@@ -15,7 +15,7 @@ A phased plan for building a working PS5 emulator, grounded in the current state
 | HLE modules | ✅ Broad | `src/hle/` — savedata, user-service, system-service, NP, sysmodule (retail-accurate IsLoaded), libc heap + printf engine, videoout flip model, AGC/PM4, **libSceAudioOut**, **libScePad** (retail struct + error codes); 553 NID-DB stubs auto-registered. Guest pointers probed before HLE memcpy/DMA writes (2026-07-20). |
 | CPU layer | ✅ Done | `src/cpu/cpu.cpp` — `CpuCore` owns guest thread state; `src/kernel/thread.cpp` is a shim; pthread routes through it. **Guest runs on a dedicated worker thread; main thread owns the window/message loop (2026-07-20) — no more "Not Responding".** |
 | GPU | 🟡 Rising fast | Vulkan backend + present (GDI fallback); PM4 DCB builders + submit walker with register shadow; full RDNA2→SPIR-V translator (81/81 corpus driver-valid) with per-draw runtime-SGPR model; **guest draw executor live** (`src/gpu/gfx10_state.*` + `vk_draw.*` — guest RT image model, texture upload, pipeline cache from Cx shadow, indexed draws) and **present-from-GPU-image at flip** (M3.2b/c/d done, 2026-07-20). First on-screen pixels from GPU draws confirmed (Ratalaika splash in Dreaming Sarah). Menus not yet reached — see M3.3 blockers. |
-| Audio | 🟡 Working | libSceAudioOut HLE (`src/hle/libaudioout.cpp`): Open/Close/Output/SetVolume/GetPortState, winmm waveOut backend, paced silence when `audio.backend=0`. WASAPI/XAudio2 backends TODO. ATRAC9 preview player in UI. |
+| Audio | 🟡 Working | libSceAudioOut HLE (`src/hle/libaudioout.cpp`): Open/Close/Output/SetVolume/GetPortState, three real host backends — WASAPI (`audio.backend=1`), XAudio2 2.9 (`=2`), winmm waveOut (fallback) — with graceful degradation, paced silence when `audio.backend=0`. ATRAC9 preview player in UI. |
 | Input | 🟡 Good | Retail 0x78 `ScePadData`, scePadRead/GetHandle/OpenExt, retail error codes; GLFW keyboard (full mapping incl. sticks/triggers) + XInput → pad state; XInput rumble; touchpad click; neutral motion data. DualSense HID (finger positions, motion, haptics) TODO. |
 | UI | ✅ Working | WPF .NET 9 frontend + CLI; flood-proof batched console (2026-07-20); `pcsx5.exe` with no args launches the UI. Real boot-progress screen in the emulator window (real stages: GPU device, modules, PRXs, shader count). Game window embedding in UI planned. |
 | Tests | ✅ Good base | 31/31 CTest green incl. new gfx10_state suite. |
@@ -101,35 +101,35 @@ Legend: ✅ working · 🟡 partial · 🔴 not started
 - [x] Shader recompiler: RDNA 2 ISA → SPIR-V — *(done incl. M3.2b 2026-07-20: per-draw runtime-SGPR model — `initial_scalar_buffer_index`, `ComputeConsumedScalarMask` port, per-draw scalar-state packing; one translation now serves many textures/sprite batching.)*
 - [x] Pipeline state → Vulkan pipelines; descriptor translation; samplers — *(done 2026-07-20: pipeline cache keyed by spirv digests + topology/blend/raster/format from the Cx shadow; storage-buffer + combined-sampler descriptors + scalar-state buffer; indexed draws; present blits from the GPU RT image at flip with CPU fallback — `vk_draw.cpp`, `vk_present.cpp`.)*
 - [ ] **M3.3 menus — blockers (2026-07-20):** after the 180-frame splash the guest enters a content-load phase (~450+ 64KB direct-memory allocations over 8+ min, no draws); runs die silently ~8-10 min in (suspected host stack exhaustion in the recursive VEH/TLS path or external kill). Fix path in PENDING.md.
-- [ ] Texture formats/conversion table; tiling/detiling. *(Linear tiling works for 2D so far; detiling + BC formats deferred — needed for 3D titles.)*
-- [ ] Compute queue support.
-- [ ] Shader cache (disk) + async pipeline compilation.
+- [x] Texture formats/conversion table; tiling/detiling. *(done 2026-07-20 (H5): full (data_format, number_format)→VkFormat table for every unified-decoder pair with explicit unsupported entries, native BC1-BC7 VkFormats, SharpEmu GnmTiling port — verified swizzle modes 1/4/5/8/9/24/27 incl. exact RB+ 64K_S/Z_X/R_X patterns — wired into the vk_draw upload path; linear path unchanged. Pending plumbing in other agents' files: libagc tile_mode handoff + gcn_eval BC passthrough ids 169-182 — see PENDING.md H5.)*
+- [~] Compute queue support. *(2026-07-20 (H6): packet plumbing complete — dispatch PM4 builders, walker parsing/counting, COMPUTE_PGM_LO/HI shadow tracking; zero dispatches observed in any 2D-title capture, so the executor is deferred by decision (translator rejects DS/global-memory atomics real compute needs). Dispatches now log an explicit NOT-IMPLEMENTED WARN and are dropped. Missing for full support: compute stage in gcn_translate, atomic/memory-op support, compute pipeline + descriptors + vkCmdDispatch in vk_draw/vk_compute.)*
+- [x] Shader cache (disk) + async pipeline compilation. *(Disk cache done 2026-07-20: content-keyed SPIR-V disk cache + `GcnTranslateWithCache` hook + off-thread warm-up worker — `src/gpu/shader_cache.*`. Wired 2026-07-20: libagc's draw-program builder translates through `GcnTranslateWithCache` against a shared `Cache/Shaders` disk cache — warm boots skip retranslation. Remaining: async VkPipeline creation in vk_draw.)*
 - [ ] Command batching in the draw executor (currently one submit+fence-wait per draw — correct but slow).
-- [ ] Validation strategy: capture/replay tool for PM4 streams + golden-image tests. *(Partial: `tests/shader_dump.cpp` corpus translator + driver validator (`--translate-corpus` / `--validate-spv`) — 81/81 corpus shaders emit SPIR-V accepted by the NVIDIA ICD; 54 golden shader pairs (RDNA IR + working SPIR-V) captured from the reference emulator for cross-checking; golden-image capture/replay still open.)*
+- [x] Validation strategy: capture/replay tool for PM4 streams + golden-image tests. *(Shader side: `tests/shader_dump.cpp` corpus translator + driver validator (`--translate-corpus` / `--validate-spv`) — 81/81 corpus shaders emit SPIR-V accepted by the NVIDIA ICD; 54 golden shader pairs for cross-checking. Golden-image side (2026-07-21): PM4 capture hook in the libagc submit path (`PCSX5_PM4_CAPTURE=<dir>` → `submit_NNNNN.bin` + JSON sidecar with register shadow state), `tools/pm4_replay.cpp` replays captures through the real submit walker + videoout flip path on a hidden Vulkan window, per-flip GPU readback via the new vk_present readback hook, and ctest `pm4_golden` replays a synthetic 3-frame capture (`tests/golden/pm4_synth`) and compares golden PNGs (per-pixel tolerance; PM4_GOLDEN_SKIP on GPU-less hosts, `PCSX5_GOLDEN_REQUIRED=1` to enforce).*
 
-## Phase 6 — Audio & Input
+## Phase 6 — Audio & Input (complete, 2026-07-20)
 
-- [x] libSceAudioOut HLE: output ports → host backend — *(done 2026-07-20: `src/hle/libaudioout.cpp`, winmm waveOut backend, volume scaling, mono/stereo/8ch s16/float32 conversion, paced silence when `audio.backend=0`. TODO: real WASAPI/XAudio2 backends for lower latency.)*
-- [ ] Integrate ATRAC9 decode (LibAtrac9 already vendored) as an HLE audio codec path, not just the UI preview player.
+- [x] libSceAudioOut HLE: output ports → host backend — *(done 2026-07-20: `src/hle/libaudioout.cpp`, volume scaling, mono/stereo/8ch s16/float32 conversion, paced silence when `audio.backend=0`; real host backends for `audio.backend=1` (WASAPI shared-mode, event-driven) and `=2` (XAudio2 2.9, dynamically loaded), each with WARN fallback to waveOut.)*
+- [x] Integrate ATRAC9 decode (LibAtrac9 already vendored) as an HLE audio codec path — *(done 2026-07-20: `src/hle/libatrac9.cpp` — InitHandle (RIFF/AT9 header + raw config), ReleaseHandle, Decode → PCM16 frames, GetInfoType, handle registry over LibAtrac9.)*
 - [x] libScePad completeness: retail 0x78 ScePadData, scePadRead/GetHandle/OpenExt, error codes, XInput rumble, touchpad click, neutral motion data — *(done 2026-07-20; touch finger positions + real motion still need the DualSense HID path.)*
-- [ ] DualSense haptics/adaptive triggers + motion/touch via HID output (UI already has the HID reader).
-- [ ] Tests: audio ring-buffer unit tests; pad state machine tests.
+- [x] DualSense haptics/adaptive triggers + motion/touch via HID output (UI already has the HID reader). — *(done 2026-07-20: native HID input reader + output reports in `src/gpu/dualsense_hid.h` — rumble + trigger effects (off/feedback/weapon/vibration) via USB 0x02 / BT 0x31 with seq+CRC32; `GPU::SetPadAdaptiveTrigger`; `scePadSetTriggerEffect` parses retail ScePadTriggerEffectParam. Untested on real hardware.)*
+- [x] Tests: audio ring-buffer unit tests; pad state machine tests — *(done 2026-07-20: `tests/hle_audio_pad_tests.cpp` (~60 assertions): audio port state machine incl. 8-port exhaustion and paced-silence timing; pad open/read/close validation, 0x78 struct fill, retail error codes.)*
 
-## Phase 6b — UX & Frontend (new, 2026-07-20)
+## Phase 6b — UX & Frontend (complete, 2026-07-20)
 
 - [x] Window responsiveness: guest on worker thread, main thread owns window loop.
 - [x] Flood-proof UI console (batched, capped); no-arg `pcsx5.exe` launches UI.
 - [x] Real boot-progress screen in emulator window (subsystem steps, GPU device, module/PRX loads, shader count).
-- [ ] Embed game render window inside the library window (reparent emulator HWND into the UI, SharpEmu-style) with Stop/Console overlay bar — design agreed, not yet implemented.
-- [ ] Emulator-window fullscreen toggle (F11) + aspect-correct scaling.
+- [x] Embed game render window inside the library window (HWND reparenting, aspect-fit letterbox, Stop/Console bar, crash-safe teardown) — verified end-to-end.
+- [x] Emulator-window fullscreen toggle (F11) + aspect-correct scaling (letterbox/pillarbox on Vulkan + GDI present paths).
 
 ## Phase 7 — System Services
 
-- [ ] Savedata write support with per-title encryption keys where required.
-- [ ] PFS write support (savedata images).
-- [ ] Trophy stubs → basic unlock event logging.
-- [ ] Keystone parsing/validation stubs.
-- [ ] Multi-user profile model in config.
+- [x] Savedata write support with per-title encryption keys where required.
+- [x] PFS write support (savedata images).
+- [x] Trophy stubs → basic unlock event logging.
+- [x] Keystone parsing/validation stubs.
+- [x] Multi-user profile model in config.
 
 ## Phase 8 — Performance & Compatibility Scaling
 

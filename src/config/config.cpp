@@ -467,6 +467,69 @@ void WriteLoader (JsonValue& root, const LoaderConfig&    l) {
     root.o["loader"]            = std::move(v);
 }
 
+// Decode a hex string into exactly N bytes.  Returns false on wrong length
+// or non-hex characters.
+template <size_t N>
+bool HexToBytes(const std::string& hex, std::array<std::uint8_t, N>& out) {
+    if (hex.size() != N * 2) return false;
+    auto nibble = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    for (size_t i = 0; i < N; ++i) {
+        const int hi = nibble(hex[i * 2]);
+        const int lo = nibble(hex[i * 2 + 1]);
+        if (hi < 0 || lo < 0) return false;
+        out[i] = static_cast<std::uint8_t>((hi << 4) | lo);
+    }
+    return true;
+}
+
+template <size_t N>
+std::string BytesToHex(const std::array<std::uint8_t, N>& bytes) {
+    static const char kHex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(N * 2);
+    for (std::uint8_t b : bytes) {
+        out += kHex[b >> 4];
+        out += kHex[b & 0xF];
+    }
+    return out;
+}
+
+void ReadSaveDataCrypto(const JsonValue& root, SaveDataCrypto& s) {
+    if (const JsonValue* v = Field(root, "savedata_crypto"); v && v->is_object()) {
+        bool enabled = s.enabled;
+        if (auto* p = Field(*v, "enabled")) enabled = (p->is_bool() ? p->b : enabled);
+        std::array<std::uint8_t, 16> key1 = s.xts_key1;
+        std::array<std::uint8_t, 16> key2 = s.xts_key2;
+        bool keys_ok = true;
+        if (auto* p = Field(*v, "xts_key1"))
+            keys_ok &= (!p->is_string()) ? false : HexToBytes(p->s, key1);
+        if (auto* p = Field(*v, "xts_key2"))
+            keys_ok &= (!p->is_string()) ? false : HexToBytes(p->s, key2);
+        if (enabled && !keys_ok) {
+            // Invalid key material must never arm the encrypted-savedata
+            // path; treat the whole section as disabled.
+            LOG_WARN(General, "Config: savedata_crypto has malformed hex keys; treating as disabled.");
+            enabled = false;
+        }
+        s.enabled  = enabled;
+        s.xts_key1 = key1;
+        s.xts_key2 = key2;
+    }
+}
+
+void WriteSaveDataCrypto(JsonValue& root, const SaveDataCrypto& s) {
+    JsonValue v; v.type = JsonValue::Type::Object;
+    v.o["enabled"]  = BoolV(s.enabled);
+    v.o["xts_key1"] = StrV(BytesToHex(s.xts_key1));
+    v.o["xts_key2"] = StrV(BytesToHex(s.xts_key2));
+    root.o["savedata_crypto"] = std::move(v);
+}
+
 void ReadUsers   (const JsonValue& root, UsersConfig&     u) {
     if (const JsonValue* v = Field(root, "users"); v && v->is_object()) {
         if (auto* p = Field(*v, "profiles"); p && p->is_array()) {
@@ -604,6 +667,7 @@ Config EffectiveFor(const std::string& title_id) {
         eff.audio    = t.audio;
         eff.input    = t.input;
         eff.loader   = t.loader;
+        eff.savedata_crypto = t.savedata_crypto;
         eff.schema_version = t.schema_version;
         eff.loaded_from_disk = t.loaded_from_disk;
     }
@@ -672,6 +736,13 @@ std::uint32_t ActiveUserId() {
     return p ? p->id : 0u;
 }
 
+std::optional<SaveDataCrypto> SaveDataKeysFor(const std::string& title_id) {
+    (void)Global(); // ensure the service is initialised before reading caches
+    const Config eff = EffectiveFor(title_id);
+    if (!eff.savedata_crypto.enabled) return std::nullopt;
+    return eff.savedata_crypto;
+}
+
 // ---------------------------------------------------------------------------
 // File I/O
 // ---------------------------------------------------------------------------
@@ -717,6 +788,7 @@ bool LoadFromFile(const std::string& path, Config& out, std::string* error) {
     ReadInput   (root, out.input);
     ReadUi      (root, out.ui);
     ReadLoader  (root, out.loader);
+    ReadSaveDataCrypto(root, out.savedata_crypto);
     ReadUsers   (root, out.users);
 
     out.schema_version   = version;
@@ -744,6 +816,7 @@ bool SaveToFile(const std::string& path, const Config& cfg, std::string* error) 
     WriteInput   (root, cfg.input);
     WriteUi      (root, cfg.ui);
     WriteLoader  (root, cfg.loader);
+    WriteSaveDataCrypto(root, cfg.savedata_crypto);
     WriteUsers   (root, cfg.users);
 
     std::ofstream out(path, std::ios::trunc | std::ios::binary);

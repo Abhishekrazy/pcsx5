@@ -265,6 +265,114 @@ void TestForwardCompat() {
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// 7. Savedata crypto keys survive a per-title save/load round-trip
+// ---------------------------------------------------------------------------
+void TestSaveDataCryptoRoundTrip() {
+    std::fprintf(stdout, "[TEST] Savedata crypto keys round-trip\n");
+    const std::string dir = ScratchDir("sdcrypto");
+    std::filesystem::remove_all(dir);
+    ConfigService::Initialize(dir);
+
+    const std::string title = "PPSA99999";
+    ConfigService::SaveDataCrypto keys;
+    keys.enabled = true;
+    for (size_t i = 0; i < 16; ++i) {
+        keys.xts_key1[i] = static_cast<std::uint8_t>(i);
+        keys.xts_key2[i] = static_cast<std::uint8_t>(0xF0 + i);
+    }
+    {
+        auto& t = ConfigService::MutableForTitle(title);
+        t.savedata_crypto = keys;
+        EXPECT(ConfigService::SavePerTitle(title), "save per-title with crypto keys");
+    }
+
+    // Hex strings should be visible in the on-disk file.
+    const std::string body = Slurp(dir + "/titles/" + title + ".json");
+    EXPECT(body.find("\"savedata_crypto\"") != std::string::npos, "savedata_crypto in file");
+    EXPECT(body.find("000102030405060708090a0b0c0d0e0f") != std::string::npos,
+           "xts_key1 serialised as hex");
+
+    ConfigService::Initialize(dir); // fresh load
+    auto loaded = ConfigService::SaveDataKeysFor(title);
+    EXPECT(loaded.has_value(), "SaveDataKeysFor returns keys for enabled title");
+    if (loaded) {
+        EXPECT(loaded->enabled, "keys enabled after reload");
+        EXPECT(loaded->xts_key1 == keys.xts_key1, "xts_key1 preserved");
+        EXPECT(loaded->xts_key2 == keys.xts_key2, "xts_key2 preserved");
+    }
+
+    // A title with no savedata_crypto (disabled default) yields nullopt.
+    EXPECT(!ConfigService::SaveDataKeysFor("CUSA_NOKEYS").has_value(),
+           "disabled keys -> nullopt");
+}
+
+// ---------------------------------------------------------------------------
+// 8. Malformed savedata_crypto hex keys are coerced to disabled
+// ---------------------------------------------------------------------------
+void TestSaveDataCryptoMalformed() {
+    std::fprintf(stdout, "[TEST] Malformed savedata crypto keys -> disabled\n");
+    const std::string dir = ScratchDir("sdcrypto_bad");
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir + "/titles");
+    WriteRaw(dir + "/global.json",
+             "{\n  \"schema_version\": 3\n}\n");
+    WriteRaw(dir + "/titles/BADKEYS.json",
+             "{\n"
+             "  \"schema_version\": 3,\n"
+             "  \"savedata_crypto\": {\n"
+             "    \"enabled\": true,\n"
+             "    \"xts_key1\": \"zzzz_not_hex_zzzz_not_hex_zzzz\",\n"
+             "    \"xts_key2\": \"0011\"\n"
+             "  }\n"
+             "}\n");
+
+    ConfigService::Initialize(dir);
+    auto keys = ConfigService::SaveDataKeysFor("BADKEYS");
+    EXPECT(!keys.has_value(), "malformed hex keys -> treated as disabled");
+    const ConfigService::Config* t = ConfigService::ForTitle("BADKEYS");
+    EXPECT(t != nullptr, "per-title record still loaded");
+    if (t) EXPECT(!t->savedata_crypto.enabled, "enabled flag cleared on load");
+}
+
+// ---------------------------------------------------------------------------
+// 9. Multi-profile accessors: active profile, lookup by id, active id
+// ---------------------------------------------------------------------------
+void TestMultiProfileAccessors() {
+    std::fprintf(stdout, "[TEST] Multi-profile accessors\n");
+    const std::string dir = ScratchDir("users");
+    std::filesystem::remove_all(dir);
+    ConfigService::Initialize(dir);
+
+    auto& g = ConfigService::MutableGlobal();
+    g.users.profiles.clear();
+    ConfigService::UserProfile p1;
+    p1.id = ConfigService::kFirstUserId; p1.name = "Alice"; p1.online_id = "alice_psn";
+    ConfigService::UserProfile p2;
+    p2.id = ConfigService::kFirstUserId + 1; p2.name = "Bob"; p2.online_id = "bob_psn";
+    g.users.profiles.push_back(p1);
+    g.users.profiles.push_back(p2);
+    g.users.active_user = 1;
+    EXPECT(ConfigService::SaveGlobal(), "save multi-profile global");
+
+    ConfigService::Initialize(dir); // fresh load
+
+    const auto* active = ConfigService::ActiveUserProfile();
+    EXPECT(active != nullptr, "active profile exists");
+    if (active) {
+        EXPECT_EQ(active->id, ConfigService::kFirstUserId + 1, "active profile id");
+        EXPECT_STR_EQ(active->name, std::string("Bob"), "active profile name");
+        EXPECT_STR_EQ(active->online_id, std::string("bob_psn"), "active online id");
+    }
+    EXPECT_EQ(ConfigService::ActiveUserId(), ConfigService::kFirstUserId + 1,
+              "ActiveUserId matches active profile");
+    const auto* found = ConfigService::FindUserProfile(ConfigService::kFirstUserId);
+    EXPECT(found != nullptr, "FindUserProfile finds first profile");
+    if (found) EXPECT_STR_EQ(found->name, std::string("Alice"), "found profile name");
+    EXPECT(ConfigService::FindUserProfile(0xDEADBEEF) == nullptr,
+           "FindUserProfile unknown id -> nullptr");
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
@@ -275,6 +383,9 @@ int main() {
     TestCorruptFile();
     TestPerTitleOverride();
     TestForwardCompat();
+    TestSaveDataCryptoRoundTrip();
+    TestSaveDataCryptoMalformed();
+    TestMultiProfileAccessors();
 
     std::fprintf(stdout, "Config: %d check(s), %d failure(s)\n", g_checks, g_failures);
     // Always clean up the scratch directories so a previous failing run

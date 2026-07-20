@@ -144,6 +144,22 @@ bool TryDecodeUnifiedFormat(u32 unified, u32& data_format, u32& number_format) {
         case 152: data_format = 33; number_format = 1; return true;
         case 153: data_format = 33; number_format = 4; return true;
         case 154: data_format = 33; number_format = 9; return true;
+        // BC passthrough (SharpEmu Gfx10UnifiedFormat.cs): the data format
+        // value IS the BC encoding; vk_draw's format table/detiler handle it.
+        case 169: data_format = 169; number_format = 0; return true;
+        case 170: data_format = 170; number_format = 9; return true;
+        case 171: data_format = 171; number_format = 0; return true;
+        case 172: data_format = 172; number_format = 9; return true;
+        case 173: data_format = 173; number_format = 0; return true;
+        case 174: data_format = 174; number_format = 9; return true;
+        case 175: data_format = 175; number_format = 0; return true;
+        case 176: data_format = 176; number_format = 1; return true;
+        case 177: data_format = 177; number_format = 0; return true;
+        case 178: data_format = 178; number_format = 1; return true;
+        case 179: data_format = 179; number_format = 7; return true;
+        case 180: data_format = 180; number_format = 7; return true;
+        case 181: data_format = 181; number_format = 0; return true;
+        case 182: data_format = 182; number_format = 9; return true;
         default: return false;
     }
 }

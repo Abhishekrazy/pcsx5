@@ -1,0 +1,22 @@
+{
+  "buffer_addrs": [
+    "0x100000000",
+    "0x100100000"
+  ],
+  "fb_format": 1,
+  "fb_height": 180,
+  "fb_width": 320,
+  "flips": 3,
+  "format_version": 1,
+  "memory": [
+    {
+      "addr": "0x100200000",
+      "file": "mem_00000.bin"
+    }
+  ],
+  "submits": [
+    "submit_00000",
+    "submit_00001",
+    "submit_00002"
+  ]
+}

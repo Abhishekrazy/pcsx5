@@ -160,6 +160,23 @@ void InvMixColumns(AesState s) {
 }
 
 // ---------------------------------------------------------------------------
+// AES-128-XTS (IEEE 1619)
+// ---------------------------------------------------------------------------
+
+// Multiply a 128-bit tweak by x in GF(2^128) (little-endian byte order,
+// reduction polynomial x^128 + x^7 + x^2 + x + 1, i.e. 0x87).
+void XtsMultiplyByX(u8 tweak[kAes128BlockSize]) {
+    u8 carry = 0;
+    for (size_t i = 0; i < kAes128BlockSize; ++i) {
+        const u8 next_carry = static_cast<u8>(tweak[i] >> 7);
+        tweak[i] = static_cast<u8>((tweak[i] << 1) | carry);
+        carry = next_carry;
+    }
+    if (carry != 0)
+        tweak[0] ^= 0x87;
+}
+
+// ---------------------------------------------------------------------------
 // SHA-256 (FIPS 180-4)
 // ---------------------------------------------------------------------------
 
@@ -334,6 +351,44 @@ bool Aes128CbcDecrypt(const Aes128Key& key, const u8 iv[kAes128BlockSize],
         for (size_t i = 0; i < kAes128BlockSize; ++i)
             out[off + i] = static_cast<u8>(block[i] ^ chain[i]);
         std::memcpy(chain, next_chain, kAes128BlockSize);
+    }
+    return true;
+}
+
+bool Aes128XtsEncrypt(const Aes128Key& key1, const Aes128Key& key2,
+                      const u8 data_unit[kAes128BlockSize],
+                      const u8* in, u8* out, size_t size) noexcept {
+    if (size % kAes128BlockSize != 0)
+        return false;
+    u8 tweak[kAes128BlockSize];
+    Aes128EncryptBlock(key2, data_unit, tweak);
+    for (size_t off = 0; off < size; off += kAes128BlockSize) {
+        u8 block[kAes128BlockSize];
+        for (size_t i = 0; i < kAes128BlockSize; ++i)
+            block[i] = static_cast<u8>(in[off + i] ^ tweak[i]);
+        Aes128EncryptBlock(key1, block, block);
+        for (size_t i = 0; i < kAes128BlockSize; ++i)
+            out[off + i] = static_cast<u8>(block[i] ^ tweak[i]);
+        XtsMultiplyByX(tweak);
+    }
+    return true;
+}
+
+bool Aes128XtsDecrypt(const Aes128Key& key1, const Aes128Key& key2,
+                      const u8 data_unit[kAes128BlockSize],
+                      const u8* in, u8* out, size_t size) noexcept {
+    if (size % kAes128BlockSize != 0)
+        return false;
+    u8 tweak[kAes128BlockSize];
+    Aes128EncryptBlock(key2, data_unit, tweak);
+    for (size_t off = 0; off < size; off += kAes128BlockSize) {
+        u8 block[kAes128BlockSize];
+        for (size_t i = 0; i < kAes128BlockSize; ++i)
+            block[i] = static_cast<u8>(in[off + i] ^ tweak[i]);
+        Aes128DecryptBlock(key1, block, block);
+        for (size_t i = 0; i < kAes128BlockSize; ++i)
+            out[off + i] = static_cast<u8>(block[i] ^ tweak[i]);
+        XtsMultiplyByX(tweak);
     }
     return true;
 }

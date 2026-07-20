@@ -1,5 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "hle.h"
+#include "libkernel_file.h"
 #include "guest_printf.h"
 #include "../kernel/kernel.h"
 #include "../kernel/thread.h"
@@ -21,7 +22,9 @@
 #include <io.h>
 #include <fcntl.h>
 #include <cstdio>
+#include <cerrno>
 #include <string>
+#include <sys/stat.h>
 
 namespace HLE {
 
@@ -120,6 +123,364 @@ namespace HLE {
             LOG_WARN(HLE, "SanitizeGuestProt: unknown prot bits 0x%X in 0x%X (stripped)", unknown, prot);
         }
         return prot & kRwx;
+    }
+
+    // -----------------------------------------------------------------------
+    // sceKernelMapDirectMemory / sceKernelMapDirectMemory2
+    //
+    // MapDirectMemoryCore carries the shared body (SharpEmu d7f6e3f): the "2"
+    // variant inserts a memoryType argument (rdx) ahead of v1's protection,
+    // shifting protection/flags/directMemoryStart down one register each and
+    // pushing alignment onto the stack (the 7th argument, captured by the
+    // dispatcher as GuestArgs::stack_args).  memoryType only selects cache/GPU
+    // attributes this HLE does not model per mapping, so it is accepted but
+    // does not affect placement.
+    // -----------------------------------------------------------------------
+    static u64 MapDirectMemoryCore(guest_addr_t addr_ptr, u64 length, u32 prot,
+                                   u32 flags, u64 phys_offset, u64 alignment) {
+        (void)flags;
+
+        LOG_INFO(HLE, "sceKernelMapDirectMemory(addr_ptr: 0x%llx, len: 0x%llx, prot: 0x%X, physOff: 0x%llx, align: 0x%llx)",
+                 addr_ptr, length, prot, phys_offset, alignment);
+
+        if (!addr_ptr || !length) {
+            LOG_WARN(HLE, "sceKernelMapDirectMemory: null addr_ptr or zero length");
+            return 0x800D0004;
+        }
+        if (alignment < 0x1000) alignment = 0x1000;
+
+        std::lock_guard<std::mutex> lk(g_phys_mutex);
+        if (!EnsurePhysPool()) return 0x800D0006;
+
+        // Sanitize prot: PS5 prot values legitimately include CPU/GPU flag
+        // bits (0x10/0x20) above the RWX nibble (e.g. 0x33); strip them.
+        const u32 rwx = SanitizeGuestProt(prot);
+
+        // Determine Windows protection
+        DWORD win_prot = PAGE_READWRITE;
+        bool r = (rwx & 1), w = (rwx & 2), x = (rwx & 4);
+        if (x)      win_prot = w ? PAGE_EXECUTE_READWRITE : (r ? PAGE_EXECUTE_READ : PAGE_EXECUTE_READ); // Always Exec+Read for safety
+        else if (w) win_prot = PAGE_READWRITE;
+        else if (r) win_prot = PAGE_READONLY;
+        else        win_prot = PAGE_NOACCESS;
+
+        u64 rounded = (length + 0xFFF) & ~0xFFFULL;
+        guest_addr_t hint = Memory::Read<u64>(addr_ptr);
+        void* target = nullptr;
+        bool alloc_ok = false;
+        if (hint != 0) {
+            target = reinterpret_cast<void*>(hint);
+            // If the hint lies inside an existing reservation (the phys
+            // pool or a sceKernelReserveVirtualRange region), a
+            // RESERVE|COMMIT fails with ERROR_INVALID_ADDRESS — commit in
+            // place instead.
+            Memory::MemoryInfo qinfo{};
+            const bool already_reserved =
+                (Memory::Query(hint, &qinfo) == Memory::Status::Ok) && qinfo.is_reserved;
+            if (already_reserved) {
+                if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
+                    alloc_ok = true;
+                } else {
+                    DWORD err = GetLastError();
+                    LOG_ERROR(HLE, "MapDirectMemoryCore: commit-in-place failed at 0x%llx size=0x%llx (err=%lu)",
+                              hint, rounded, err);
+                }
+            } else {
+                // Reserve and commit at the hint address
+                if (VirtualAlloc(target, rounded, MEM_RESERVE | MEM_COMMIT, win_prot)) {
+                    alloc_ok = true;
+                } else {
+                    // Try to commit only in case it's already reserved
+                    if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
+                        alloc_ok = true;
+                    } else {
+                        DWORD err = GetLastError();
+                        LOG_ERROR(HLE, "MapDirectMemoryCore: VirtualAlloc failed at 0x%llx size=0x%llx (err=%lu)",
+                                  hint, rounded, err);
+                    }
+                }
+            }
+            if (!alloc_ok) {
+                LOG_WARN(HLE, "MapDirectMemoryCore: hint 0x%llx unusable; falling back to phys pool mapping", hint);
+            }
+        }
+        if (!alloc_ok) {
+            if (phys_offset == 0) {
+                // No physical backing requested.  This is how games
+                // reserve distinct VA windows (prot=0, committed later
+                // via sceKernelMprotect) or grab anonymous committed
+                // memory.  An earlier revision fell back to
+                // pool_base+0 for every such call, aliasing ALL of the
+                // game's independent mappings onto one address; the
+                // resulting heap corruption crashed LOST EPIC's dlmalloc
+                // (chunk headers overlapping unrelated buffers).
+                guest_addr_t va = 0;
+                if (rwx == 0) {
+                    alloc_ok = (Memory::Reserve(0, rounded, &va) == Memory::Status::Ok);
+                } else {
+                    alloc_ok = (Memory::Map(0, rounded, rwx, &va) == Memory::Status::Ok);
+                }
+                target = reinterpret_cast<void*>(va);
+                if (!alloc_ok) {
+                    LOG_ERROR(HLE, "MapDirectMemoryCore: failed to allocate distinct VA (size=0x%llx, prot=0x%X)",
+                              rounded, prot);
+                }
+            } else {
+                target = reinterpret_cast<void*>(g_phys_pool_base + phys_offset);
+                if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
+                    alloc_ok = true;
+                } else {
+                    DWORD old;
+                    if (VirtualProtect(target, rounded, win_prot, &old)) {
+                        alloc_ok = true;
+                    } else {
+                        DWORD err = GetLastError();
+                        LOG_ERROR(HLE, "MapDirectMemoryCore: Phys pool commit failed at 0x%llx size=0x%llx (err=%lu)",
+                                  (u64)target, rounded, err);
+                    }
+                }
+            }
+        }
+
+        if (!alloc_ok || !target) {
+            LOG_ERROR(HLE, "MapDirectMemoryCore: Allocation failed!");
+            return 0x800D0006;
+        }
+
+        guest_addr_t mapped_va = reinterpret_cast<guest_addr_t>(target);
+        Memory::Write<u64>(addr_ptr, mapped_va);
+        LOG_INFO(HLE, "sceKernelMapDirectMemory -> va: 0x%llx", mapped_va);
+        return 0;
+    }
+
+    u64 SceKernelMapDirectMemory(const GuestArgs& args) {
+        return MapDirectMemoryCore(args.arg1, args.arg2, static_cast<u32>(args.arg3),
+                                   static_cast<u32>(args.arg4), args.arg5, args.arg6);
+    }
+
+    u64 SceKernelMapDirectMemory2(const GuestArgs& args) {
+        const u64 alignment = args.stack_args ? Memory::Read<u64>(args.stack_args) : 0;
+        return MapDirectMemoryCore(args.arg1, args.arg2, static_cast<u32>(args.arg4),
+                                   static_cast<u32>(args.arg5), args.arg6, alignment);
+    }
+
+    // -----------------------------------------------------------------------
+    // Kernel file operations (sceKernel* cores + POSIX exports)
+    //
+    // The raw sceKernel* handlers follow the Orbis convention: fd / byte
+    // count / 0 on success, SCE_KERNEL_ERROR_E* (0x80020000|errno) on
+    // failure.  The POSIX-named exports (open/close/read/write/fstat/stat)
+    // are called by guest libc code that follows the POSIX ABI — -1 with
+    // errno set through __error() — so they wrap the cores through
+    // PosixFailure.  Leaking the raw 0x8002xxxx sentinel to a libc caller
+    // makes it store the sentinel as a valid fd and later dereference it
+    // (SharpEmu bb3318a: Unity's IL2CPP file layer probing an absent
+    // il2cpp.usym crashed exactly this way).  fd-based calls map a bad handle
+    // to EBADF; path-based calls default to ENOENT.
+    // -----------------------------------------------------------------------
+    namespace {
+        constexpr s32 SCE_KERNEL_ERROR_EBADF  = static_cast<s32>(0x80020009);
+        constexpr s32 SCE_KERNEL_ERROR_EFAULT = static_cast<s32>(0x8002000E);
+        constexpr s32 SCE_KERNEL_ERROR_EINVAL = static_cast<s32>(0x80020016);
+
+        // CRT fds handed out by KernelOpenCore.  The POSIX wrappers must
+        // reject a bad/closed/sentinel fd with EBADF before it reaches the
+        // UCRT: closing an already-closed fd (exactly the SharpEmu bb3318a
+        // scenario) terminates the process via the invalid-parameter handler
+        // instead of returning EBADF.  Host stdio fds 0-2 are always
+        // considered valid (and are never actually closed — that would kill
+        // the emulator's own stdout).
+        std::mutex g_guest_fd_mutex;
+        std::unordered_set<int> g_guest_fds;
+
+        bool IsGuestFd(int fd) {
+            if (fd >= 0 && fd <= 2) return true;
+            std::lock_guard<std::mutex> lk(g_guest_fd_mutex);
+            return g_guest_fds.count(fd) != 0;
+        }
+
+        void TrackGuestFd(int fd) {
+            std::lock_guard<std::mutex> lk(g_guest_fd_mutex);
+            g_guest_fds.insert(fd);
+        }
+
+        bool UntrackGuestFd(int fd) {
+            std::lock_guard<std::mutex> lk(g_guest_fd_mutex);
+            return g_guest_fds.erase(fd) != 0;
+        }
+
+        // The host CRT errno values match the Orbis/FreeBSD numbering for
+        // every code produced below, so the Orbis error is 0x80020000 + errno
+        // (sign-extended into s64 so failure is simply result < 0).
+        s64 OrbisErrno() {
+            return static_cast<s64>(static_cast<s32>(0x80020000 + errno));
+        }
+
+        std::string ReadGuestPath(guest_addr_t path_ptr) {
+            std::string path;
+            if (path_ptr) {
+                for (u64 i = 0; i < 4096; ++i) {
+                    const u8 c = Memory::Read<u8>(path_ptr + i);
+                    if (!c) break;
+                    path += static_cast<char>(c);
+                }
+            }
+            return path;
+        }
+
+        // Orbis struct stat layout (matches src/kernel/syscalls.cpp SysStat).
+        struct OrbisStat {
+            u64 st_dev;
+            u64 st_ino;
+            u64 st_mode;
+            u64 st_nlink;
+            u64 st_uid;
+            u64 st_gid;
+            u64 st_rdev;
+            s64 st_size;
+            s64 st_blksize;
+            s64 st_blocks;
+            s64 st_atime;
+            s64 st_atimensec;
+            s64 st_mtime;
+            s64 st_mtimensec;
+            s64 st_ctime;
+            s64 st_ctimensec;
+            s64 __unused[3];
+        };
+
+        void FillOrbisStat(guest_addr_t statbuf, const struct _stat64& hs) {
+            OrbisStat st{};
+            st.st_dev     = hs.st_dev;
+            st.st_ino     = hs.st_ino;
+            // _S_IFREG (0100000) / _S_IFDIR (0040000) match the Orbis values.
+            st.st_mode    = hs.st_mode;
+            st.st_nlink   = hs.st_nlink;
+            st.st_uid     = hs.st_uid;
+            st.st_gid     = hs.st_gid;
+            st.st_rdev    = hs.st_rdev;
+            st.st_size    = hs.st_size;
+            st.st_blksize = 4096;
+            st.st_blocks  = (st.st_size + 511) / 512;
+            st.st_atime   = hs.st_atime;
+            st.st_mtime   = hs.st_mtime;
+            st.st_ctime   = hs.st_ctime;
+            Memory::WriteBuffer(statbuf, &st, sizeof(st));
+        }
+
+        s64 KernelOpenCore(guest_addr_t path_ptr, int flags, int mode) {
+            if (!path_ptr) return SCE_KERNEL_ERROR_EINVAL;
+            const std::string path = ReadGuestPath(path_ptr);
+            const int fd = _open(Kernel::TranslateGuestPath(path).c_str(), flags | _O_BINARY, mode);
+            if (fd < 0) {
+                const s64 err = OrbisErrno();
+                LOG_INFO(HLE, "sceKernelOpen('%s', flags=0x%X, mode=0x%X) -> error 0x%X",
+                         path.c_str(), flags, mode, static_cast<u32>(err));
+                return err;
+            }
+            LOG_INFO(HLE, "sceKernelOpen('%s', flags=0x%X, mode=0x%X) -> %d", path.c_str(), flags, mode, fd);
+            TrackGuestFd(fd);
+            return fd;
+        }
+
+        s64 KernelReadCore(int fd, guest_addr_t buf, u64 count) {
+            if (!buf || count == 0) return 0;
+            if (!IsGuestFd(fd)) return SCE_KERNEL_ERROR_EBADF;
+            const int n = _read(fd, reinterpret_cast<void*>(buf), static_cast<unsigned>(count));
+            if (n < 0) return OrbisErrno();
+            LOG_DEBUG(HLE, "sceKernelRead(fd=%d, buf=0x%llx, count=%llu) -> %d", fd, buf, count, n);
+            return n;
+        }
+
+        s64 KernelWriteCore(int fd, guest_addr_t buf, u64 count) {
+            if (!buf || count == 0) return 0;
+            if (!IsGuestFd(fd)) return SCE_KERNEL_ERROR_EBADF;
+            const int n = _write(fd, reinterpret_cast<const void*>(buf), static_cast<unsigned>(count));
+            if (n < 0) return OrbisErrno();
+            LOG_DEBUG(HLE, "sceKernelWrite(fd=%d, buf=0x%llx, count=%llu) -> %d", fd, buf, count, n);
+            return n;
+        }
+
+        s64 KernelCloseCore(int fd) {
+            // Never close host stdio behind the emulator's back.
+            if (fd >= 0 && fd <= 2) return 0;
+            if (!UntrackGuestFd(fd)) return SCE_KERNEL_ERROR_EBADF;
+            const int r = _close(fd);
+            if (r != 0) return OrbisErrno();
+            LOG_DEBUG(HLE, "sceKernelClose(fd=%d) -> 0", fd);
+            return 0;
+        }
+
+        s64 KernelFstatCore(int fd, guest_addr_t statbuf) {
+            if (!statbuf) return SCE_KERNEL_ERROR_EFAULT;
+            if (!IsGuestFd(fd)) return SCE_KERNEL_ERROR_EBADF;
+            struct _stat64 hs {};
+            if (_fstat64(fd, &hs) != 0) return OrbisErrno();
+            FillOrbisStat(statbuf, hs);
+            LOG_DEBUG(HLE, "sceKernelFstat(fd=%d) -> 0 (size=%lld)", fd, static_cast<s64>(hs.st_size));
+            return 0;
+        }
+
+        s64 KernelStatCore(guest_addr_t path_ptr, guest_addr_t statbuf) {
+            if (!path_ptr || !statbuf) return SCE_KERNEL_ERROR_EFAULT;
+            const std::string path = ReadGuestPath(path_ptr);
+            struct _stat64 hs {};
+            if (_stat64(Kernel::TranslateGuestPath(path).c_str(), &hs) != 0) {
+                const s64 err = OrbisErrno();
+                LOG_INFO(HLE, "sceKernelStat('%s') -> error 0x%X", path.c_str(), static_cast<u32>(err));
+                return err;
+            }
+            FillOrbisStat(statbuf, hs);
+            LOG_DEBUG(HLE, "sceKernelStat('%s') -> 0 (size=%lld)", path.c_str(), static_cast<s64>(hs.st_size));
+            return 0;
+        }
+    } // namespace
+
+    // Translates a failed raw Orbis kernel result into the libc/POSIX ABI:
+    // return -1 with errno set (via the __error() cell, SetGuestErrno).
+    static u64 PosixFailure(s64 orbis_result, int not_found_errno = ENOENT) {
+        int e;
+        switch (static_cast<u32>(orbis_result)) {
+            case 0x80020016: e = EINVAL; break; // SCE_KERNEL_ERROR_EINVAL
+            case 0x8002000E: e = EFAULT; break; // SCE_KERNEL_ERROR_EFAULT
+            case 0x8002000D: e = EACCES; break; // SCE_KERNEL_ERROR_EACCES
+            default:         e = not_found_errno; break;
+        }
+        SetGuestErrno(e);
+        return ~0ull; // -1
+    }
+
+    u64 PosixOpen(const GuestArgs& args) {
+        // Our HLE return value lands in RAX directly, so on success the fd
+        // itself is returned (SharpEmu returns 0 and lets its import bridge
+        // prefer the RAX written by the core — same net effect).
+        const s64 r = KernelOpenCore(args.arg1, static_cast<int>(args.arg2), static_cast<int>(args.arg3));
+        return r < 0 ? PosixFailure(r) : static_cast<u64>(r);
+    }
+
+    u64 PosixClose(const GuestArgs& args) {
+        const s64 r = KernelCloseCore(static_cast<int>(args.arg1));
+        return r < 0 ? PosixFailure(r, EBADF) : 0;
+    }
+
+    u64 PosixRead(const GuestArgs& args) {
+        const s64 r = KernelReadCore(static_cast<int>(args.arg1), args.arg2, args.arg3);
+        return r < 0 ? PosixFailure(r, EBADF) : static_cast<u64>(r);
+    }
+
+    u64 PosixWrite(const GuestArgs& args) {
+        const s64 r = KernelWriteCore(static_cast<int>(args.arg1), args.arg2, args.arg3);
+        return r < 0 ? PosixFailure(r, EBADF) : static_cast<u64>(r);
+    }
+
+    u64 PosixFstat(const GuestArgs& args) {
+        const s64 r = KernelFstatCore(static_cast<int>(args.arg1), args.arg2);
+        return r < 0 ? PosixFailure(r, EBADF) : 0;
+    }
+
+    u64 PosixStat(const GuestArgs& args) {
+        const s64 r = KernelStatCore(args.arg1, args.arg2);
+        return r < 0 ? PosixFailure(r) : 0;
     }
 
     // Helper to register standard stubs
@@ -559,136 +920,18 @@ namespace HLE {
             return 0;
         });
 
-        auto MapDirectMemoryImpl = [](const GuestArgs& args) -> u64 {
-            guest_addr_t addr_ptr  = args.arg1; // in/out: pointer to VA hint
-            u64 length             = args.arg2;
-            u32 prot               = static_cast<u32>(args.arg3);
-            u32 flags              = static_cast<u32>(args.arg4);
-            u64 phys_offset        = args.arg5; // offset into physical pool
-            u64 alignment          = args.arg6;
-            (void)flags;
-
-            LOG_INFO(HLE, "sceKernelMapDirectMemory(addr_ptr: 0x%llx, len: 0x%llx, prot: 0x%X, physOff: 0x%llx, align: 0x%llx)",
-                     addr_ptr, length, prot, phys_offset, alignment);
-
-            if (!addr_ptr || !length) {
-                LOG_WARN(HLE, "sceKernelMapDirectMemory: null addr_ptr or zero length");
-                return 0x800D0004;
-            }
-            if (alignment < 0x1000) alignment = 0x1000;
-
-            std::lock_guard<std::mutex> lk(g_phys_mutex);
-            if (!EnsurePhysPool()) return 0x800D0006;
-
-            // Sanitize prot: PS5 prot values legitimately include CPU/GPU flag
-            // bits (0x10/0x20) above the RWX nibble (e.g. 0x33); strip them.
-            const u32 rwx = SanitizeGuestProt(prot);
-
-            // Determine Windows protection
-            DWORD win_prot = PAGE_READWRITE;
-            bool r = (rwx & 1), w = (rwx & 2), x = (rwx & 4);
-            if (x)      win_prot = w ? PAGE_EXECUTE_READWRITE : (r ? PAGE_EXECUTE_READ : PAGE_EXECUTE_READ); // Always Exec+Read for safety
-            else if (w) win_prot = PAGE_READWRITE;
-            else if (r) win_prot = PAGE_READONLY;
-            else        win_prot = PAGE_NOACCESS;
-
-            u64 rounded = (length + 0xFFF) & ~0xFFFULL;
-            guest_addr_t hint = Memory::Read<u64>(addr_ptr);
-            void* target = nullptr;
-            bool alloc_ok = false;
-            if (hint != 0) {
-                target = reinterpret_cast<void*>(hint);
-                // If the hint lies inside an existing reservation (the phys
-                // pool or a sceKernelReserveVirtualRange region), a
-                // RESERVE|COMMIT fails with ERROR_INVALID_ADDRESS — commit in
-                // place instead.
-                Memory::MemoryInfo qinfo{};
-                const bool already_reserved =
-                    (Memory::Query(hint, &qinfo) == Memory::Status::Ok) && qinfo.is_reserved;
-                if (already_reserved) {
-                    if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
-                        alloc_ok = true;
-                    } else {
-                        DWORD err = GetLastError();
-                        LOG_ERROR(HLE, "MapDirectMemoryImpl: commit-in-place failed at 0x%llx size=0x%llx (err=%lu)",
-                                  hint, rounded, err);
-                    }
-                } else {
-                    // Reserve and commit at the hint address
-                    if (VirtualAlloc(target, rounded, MEM_RESERVE | MEM_COMMIT, win_prot)) {
-                        alloc_ok = true;
-                    } else {
-                        // Try to commit only in case it's already reserved
-                        if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
-                            alloc_ok = true;
-                        } else {
-                            DWORD err = GetLastError();
-                            LOG_ERROR(HLE, "MapDirectMemoryImpl: VirtualAlloc failed at 0x%llx size=0x%llx (err=%lu)",
-                                      hint, rounded, err);
-                        }
-                    }
-                }
-                if (!alloc_ok) {
-                    LOG_WARN(HLE, "MapDirectMemoryImpl: hint 0x%llx unusable; falling back to phys pool mapping", hint);
-                }
-            }
-            if (!alloc_ok) {
-                if (phys_offset == 0) {
-                    // No physical backing requested.  This is how games
-                    // reserve distinct VA windows (prot=0, committed later
-                    // via sceKernelMprotect) or grab anonymous committed
-                    // memory.  An earlier revision fell back to
-                    // pool_base+0 for every such call, aliasing ALL of the
-                    // game's independent mappings onto one address; the
-                    // resulting heap corruption crashed LOST EPIC's dlmalloc
-                    // (chunk headers overlapping unrelated buffers).
-                    guest_addr_t va = 0;
-                    if (rwx == 0) {
-                        alloc_ok = (Memory::Reserve(0, rounded, &va) == Memory::Status::Ok);
-                    } else {
-                        alloc_ok = (Memory::Map(0, rounded, rwx, &va) == Memory::Status::Ok);
-                    }
-                    target = reinterpret_cast<void*>(va);
-                    if (!alloc_ok) {
-                        LOG_ERROR(HLE, "MapDirectMemoryImpl: failed to allocate distinct VA (size=0x%llx, prot=0x%X)",
-                                  rounded, prot);
-                    }
-                } else {
-                    target = reinterpret_cast<void*>(g_phys_pool_base + phys_offset);
-                    if (VirtualAlloc(target, rounded, MEM_COMMIT, win_prot)) {
-                        alloc_ok = true;
-                    } else {
-                        DWORD old;
-                        if (VirtualProtect(target, rounded, win_prot, &old)) {
-                            alloc_ok = true;
-                        } else {
-                            DWORD err = GetLastError();
-                            LOG_ERROR(HLE, "MapDirectMemoryImpl: Phys pool commit failed at 0x%llx size=0x%llx (err=%lu)",
-                                      (u64)target, rounded, err);
-                        }
-                    }
-                }
-            }
-
-            if (!alloc_ok || !target) {
-                LOG_ERROR(HLE, "MapDirectMemoryImpl: Allocation failed!");
-                return 0x800D0006;
-            }
-
-            guest_addr_t mapped_va = reinterpret_cast<guest_addr_t>(target);
-            Memory::Write<u64>(addr_ptr, mapped_va);
-            LOG_INFO(HLE, "sceKernelMapDirectMemory -> va: 0x%llx", mapped_va);
-            return 0;
-        };
-
-        RegisterSymbol("libkernel", "L-Q3LEjIbgA#S#N", MapDirectMemoryImpl);
+        RegisterSymbol("libkernel", "L-Q3LEjIbgA#S#N", SceKernelMapDirectMemory);
         // NOTE: NID 7oxv3PPCumo is sceKernelReserveVirtualRange (verified via
         // the PS5 name->NID SHA1 scheme); it is registered to
         // ReserveVirtualRangeImpl below.  An earlier revision also aliased it
         // to MapDirectMemoryImpl under a bogus "#y#J" tag — removed.
         // Plain-name alias — overwrites the naive Protect-only stub above,
         // which never wrote the mapped VA back to the caller.
-        RegisterSymbol("libkernel", "sceKernelMapDirectMemory", MapDirectMemoryImpl);
+        RegisterSymbol("libkernel", "sceKernelMapDirectMemory", SceKernelMapDirectMemory);
+        // The "2" variant (extra memoryType argument, alignment on the
+        // stack) — see SceKernelMapDirectMemory2 above.
+        RegisterSymbol("libkernel", "BQQniolj9tQ", SceKernelMapDirectMemory2);
+        RegisterSymbol("libkernel", "sceKernelMapDirectMemory2", SceKernelMapDirectMemory2);
 
         // sceKernelReserveVirtualRange (7oxv3PPCumo)
         auto ReserveVirtualRangeImpl = [](const GuestArgs& args) -> u64 {
@@ -862,22 +1105,27 @@ namespace HLE {
         // (one u16 per char, indexed directly as table[c]).  Games link
         // against it via libSceLibcInternal; returning null here caused
         // the PPSA02929 boot crash (movzx byte [rax+r12*2], RAX=0).
+        // The table is built exactly once: the previous lazy check let a
+        // concurrent caller observe table_addr set before the table was
+        // filled, which returned a zeroed table and corrupted ctype
+        // conversion on worker threads (JSON parse errors, null variants).
         RegisterSymbol("libkernel", "1uJgoVq3bQU#T#T", [](const GuestArgs& args) -> u64 {
             (void)args;
             static guest_addr_t table_addr = 0;
-            if (table_addr == 0) {
+            static std::once_flag table_once;
+            std::call_once(table_once, [] {
                 if (Memory::Map(0, 0x1000,
                                 Memory::PROT_READ | Memory::PROT_WRITE,
                                 &table_addr) != Memory::Status::Ok) {
                     LOG_ERROR(HLE, "_Getptolower: failed to map tolower table");
-                    return 0;
+                    return;
                 }
                 for (u32 i = 0; i < 256; ++i) {
                     const u16 v = (i >= 'A' && i <= 'Z') ? static_cast<u16>(i + 32)
                                                          : static_cast<u16>(i);
                     Memory::Write<u16>(table_addr + i * 2, v);
                 }
-            }
+            });
             LOG_INFO(HLE, "_Getptolower() -> 0x%llx", table_addr);
             return table_addr;
         });
@@ -996,37 +1244,28 @@ namespace HLE {
 
         // =====================================================================
         // Kernel file operations (sceKernel* wrappers over POSIX fd)
+        // Implementations live at file scope (see above): the raw sceKernel*
+        // NIDs return Orbis SCE_KERNEL_ERROR_E* codes on failure, while the
+        // POSIX-named exports translate failures to the libc -1/errno ABI.
         // =====================================================================
         // sceKernelOpen (1G3lF1Gg1k8#S#N)
         RegisterSymbol("libkernel", "1G3lF1Gg1k8#S#N", [](const GuestArgs& args) -> u64 {
-            guest_addr_t path_ptr = args.arg1;
-            int flags  = static_cast<int>(args.arg2);
-            int mode   = static_cast<int>(args.arg3);
-            std::string path;
-            for (u64 i = 0; i < 4096; ++i) { u8 c = Memory::Read<u8>(path_ptr + i); if (!c) break; path += (char)c; }
-            // Map O_RDONLY=0, O_WRONLY=1, O_RDWR=2 — same on Windows with _open
-            int fd = _open(Kernel::TranslateGuestPath(path).c_str(), flags | _O_BINARY, mode);
-            LOG_INFO(HLE, "sceKernelOpen('%s', flags=0x%X, mode=0x%X) -> %d", path.c_str(), flags, mode, fd);
-            return (u64)(s64)fd;
+            return static_cast<u64>(KernelOpenCore(args.arg1, static_cast<int>(args.arg2), static_cast<int>(args.arg3)));
         });
 
         // sceKernelRead (Cg4srZ6TKbU#S#N)
         RegisterSymbol("libkernel", "Cg4srZ6TKbU#S#N", [](const GuestArgs& args) -> u64 {
-            int fd            = static_cast<int>(args.arg1);
-            guest_addr_t buf  = args.arg2;
-            u64 count         = args.arg3;
-            if (!buf || count == 0) return 0;
-            int n = _read(fd, reinterpret_cast<void*>(buf), (unsigned)count);
-            LOG_DEBUG(HLE, "sceKernelRead(fd=%d, buf=0x%llx, count=%llu) -> %d", fd, buf, count, n);
-            return (u64)(s64)n;
+            return static_cast<u64>(KernelReadCore(static_cast<int>(args.arg1), args.arg2, args.arg3));
+        });
+
+        // sceKernelWrite — plain-name alias of the POSIX write NID below.
+        RegisterSymbol("libkernel", "sceKernelWrite", [](const GuestArgs& args) -> u64 {
+            return static_cast<u64>(KernelWriteCore(static_cast<int>(args.arg1), args.arg2, args.arg3));
         });
 
         // sceKernelClose (UK2Tl2DWUns#S#N)
         RegisterSymbol("libkernel", "UK2Tl2DWUns#S#N", [](const GuestArgs& args) -> u64 {
-            int fd = static_cast<int>(args.arg1);
-            int r  = _close(fd);
-            LOG_DEBUG(HLE, "sceKernelClose(fd=%d) -> %d", fd, r);
-            return (u64)(s64)r;
+            return static_cast<u64>(KernelCloseCore(static_cast<int>(args.arg1)));
         });
 
         // sceKernelLseek (oib76F-12fk#S#N)
@@ -1039,14 +1278,34 @@ namespace HLE {
             return (u64)r;
         });
 
-        // sceKernelStat (eV9wAD2riIA#S#N) — stub: return ENOENT
+        // sceKernelStat (eV9wAD2riIA#S#N)
         RegisterSymbol("libkernel", "eV9wAD2riIA#S#N", [](const GuestArgs& args) -> u64 {
-            guest_addr_t path_ptr = args.arg1;
-            std::string path;
-            if (path_ptr) for (u64 i = 0; i < 512; ++i) { u8 c = Memory::Read<u8>(path_ptr + i); if (!c) break; path += (char)c; }
-            LOG_WARN(HLE, "sceKernelStat('%s') -> stub ENOENT", path.c_str());
-            return 0x800D0002; // ENOENT
+            return static_cast<u64>(KernelStatCore(args.arg1, args.arg2));
         });
+
+        // sceKernelFstat — plain-name alias of the POSIX fstat NID below.
+        RegisterSymbol("libkernel", "sceKernelFstat", [](const GuestArgs& args) -> u64 {
+            return static_cast<u64>(KernelFstatCore(static_cast<int>(args.arg1), args.arg2));
+        });
+
+        // POSIX-named exports (libc ABI: -1 with errno set on failure).
+        // Registered under both the friendly name and the bare NID; the
+        // resolver bridges tagged NID requests (e.g. "wuCroIGjt2g#T#T") to
+        // either form.  fstat is a libc export in the NID database.
+        RegisterSymbol("libkernel", "open", PosixOpen);
+        RegisterSymbol("libkernel", "wuCroIGjt2g", PosixOpen);
+        RegisterSymbol("libkernel", "close", PosixClose);
+        RegisterSymbol("libkernel", "bY-PO6JhzhQ", PosixClose);
+        RegisterSymbol("libkernel", "read", PosixRead);
+        RegisterSymbol("libkernel", "AqBioC2vF3I", PosixRead);
+        RegisterSymbol("libkernel", "write", PosixWrite);
+        RegisterSymbol("libkernel", "FN4gaPmuFV8", PosixWrite);
+        RegisterSymbol("libkernel", "stat", PosixStat);
+        RegisterSymbol("libkernel", "E6ao34wPw+U", PosixStat);
+        RegisterSymbol("libkernel", "fstat", PosixFstat);
+        RegisterSymbol("libkernel", "mqQMh1zPPT8", PosixFstat);
+        RegisterSymbol("libc", "fstat", PosixFstat);
+        RegisterSymbol("libc", "mqQMh1zPPT8", PosixFstat);
 
         // sceKernelMunmap (cQke9UuBQOk#S#N)
         RegisterSymbol("libkernel", "cQke9UuBQOk#S#N", [](const GuestArgs& args) -> u64 {
@@ -1151,11 +1410,16 @@ namespace HLE {
             }
             u64 stack_base = reinterpret_cast<u64>(guest_stack);
 
+            // Orbis thread-pointer layout: fs:[0] yields the tp (self-pointer
+            // stored at tp) and libc/CRT data lives at NEGATIVE offsets from
+            // tp (seen at least down to tp-0x1648).  Mirror the main thread's
+            // block (Kernel::Initialize), which leaves 0x10000 below the tp.
+            constexpr u64 kTlsHeadroom = 0x10000;
             constexpr u64 kTlsSize = 0x4000;
-            void* tls_block = VirtualAlloc(nullptr, kTlsSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            u64 tls_base = reinterpret_cast<u64>(tls_block);
+            void* tls_block = VirtualAlloc(nullptr, kTlsHeadroom + kTlsSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            u64 tls_base = reinterpret_cast<u64>(tls_block) + kTlsHeadroom;
             if (tls_block) {
-                *reinterpret_cast<u64*>(tls_block) = tls_base;
+                *reinterpret_cast<u64*>(tls_base) = tls_base;
             }
 
             u64 tid = 0;

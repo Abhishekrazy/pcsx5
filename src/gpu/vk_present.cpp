@@ -29,10 +29,44 @@ struct PresentState {
     VkDeviceMemory tex_mem = VK_NULL_HANDLE;
     u32            tex_w = 0;
     u32            tex_h = 0;
+
+    // sRGB-encode intermediate for linear-float presents (recreated when the
+    // swapchain extent changes).  See VkPresentFromImage.
+    VkImage        encode_img = VK_NULL_HANDLE;
+    VkDeviceMemory encode_mem = VK_NULL_HANDLE;
+    VkExtent2D     encode_extent = {};
+
+    // Phase 5 validation: per-frame readback hook (golden-image tests).
+    // Null hook = zero cost.  The readback buffer holds one unscaled BGRA8
+    // frame copied out of the presented source image.
+    VkPresentReadbackFn readback_fn = nullptr;
+    void*               readback_user = nullptr;
+    u64                 readback_frame = 0;
+    VkBuffer            rb_buf = VK_NULL_HANDLE;
+    VkDeviceMemory      rb_mem = VK_NULL_HANDLE;
+    VkDeviceSize        rb_size = 0;
+    PFN_vkCmdCopyImageToBuffer CmdCopyImageToBuffer = nullptr;
 };
 
 PresentState g_ps;
 std::mutex   g_present_mutex;
+
+} // namespace
+
+VkFormat VkPresentSrgbCounterpart(VkFormat format) {
+    switch (format) {
+        case VK_FORMAT_B8G8R8A8_UNORM: return VK_FORMAT_B8G8R8A8_SRGB;
+        case VK_FORMAT_R8G8B8A8_UNORM: return VK_FORMAT_R8G8B8A8_SRGB;
+        default: return VK_FORMAT_UNDEFINED;
+    }
+}
+
+bool VkPresentIsLinearFloatSource(VkFormat format) {
+    return format == VK_FORMAT_R16G16B16A16_SFLOAT ||
+           format == VK_FORMAT_R32G32B32A32_SFLOAT;
+}
+
+namespace {
 
 // Largest centered rect of aspect src_w:src_h inside the swapchain extent
 // (letterbox/pillarbox).  Returned as {x0, y0, x1, y1} blit dst offsets.
@@ -282,6 +316,84 @@ bool EnsureUploadResources(VkContext* ctx, u32 fb_w, u32 fb_h) {
     return true;
 }
 
+void DestroyPresentEncodeImage(VkContext* ctx);
+
+// PS5 float VideoOut buffers (A16B16G16R16F flips) hold linear scRGB light
+// where 1.0 is SDR white; hardware scan-out applies the display transfer.
+// vkCmdBlitImage converts numerically only, so presenting a linear-float
+// guest frame into a UNORM swapchain shows near-black for any dim scene.
+// Encode linear->sRGB by blitting through an sRGB intermediate (sRGB stores
+// encode), then raw-copying the encoded bytes into the same-class UNORM
+// swapchain image.  (SharpEmu VulkanVideoPresenter #448.)
+//
+// (Re)creates the swapchain-sized sRGB intermediate.  Returns false when the
+// swapchain format has no sRGB counterpart — the raw blit stays.
+bool TryGetPresentEncodeImage(VkContext* ctx, VkImage* out) {
+    const VkFormat encode_format = VkPresentSrgbCounterpart(g_ps.format);
+    if (encode_format == VK_FORMAT_UNDEFINED) return false;
+
+    if (g_ps.encode_img != VK_NULL_HANDLE &&
+        (g_ps.encode_extent.width != g_ps.extent.width ||
+         g_ps.encode_extent.height != g_ps.extent.height)) {
+        DestroyPresentEncodeImage(ctx);
+    }
+
+    if (g_ps.encode_img == VK_NULL_HANDLE) {
+        VkImageCreateInfo ici = {};
+        ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        ici.imageType = VK_IMAGE_TYPE_2D;
+        ici.format = encode_format;
+        ici.extent = { g_ps.extent.width, g_ps.extent.height, 1 };
+        ici.mipLevels = 1;
+        ici.arrayLayers = 1;
+        ici.samples = VK_SAMPLE_COUNT_1_BIT;
+        ici.tiling = VK_IMAGE_TILING_OPTIMAL;
+        ici.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        if (ctx->fn.CreateImage(ctx->device, &ici, nullptr, &g_ps.encode_img) != VK_SUCCESS) {
+            LOG_WARN(GPU, "Vulkan present: sRGB-encode image creation failed.");
+            return false;
+        }
+        VkMemoryRequirements req;
+        ctx->fn.GetImageMemoryRequirements(ctx->device, g_ps.encode_img, &req);
+        u32 type = 0;
+        if (!VkFindMemoryType(ctx, req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &type)) {
+            LOG_WARN(GPU, "Vulkan present: no device-local memory type for encode image.");
+            ctx->fn.DestroyImage(ctx->device, g_ps.encode_img, nullptr);
+            g_ps.encode_img = VK_NULL_HANDLE;
+            return false;
+        }
+        VkMemoryAllocateInfo mai = {};
+        mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        mai.allocationSize = req.size;
+        mai.memoryTypeIndex = type;
+        if (ctx->fn.AllocateMemory(ctx->device, &mai, nullptr, &g_ps.encode_mem) != VK_SUCCESS ||
+            ctx->fn.BindImageMemory(ctx->device, g_ps.encode_img, g_ps.encode_mem, 0) != VK_SUCCESS) {
+            LOG_WARN(GPU, "Vulkan present: encode image memory allocation failed.");
+            if (g_ps.encode_mem) ctx->fn.FreeMemory(ctx->device, g_ps.encode_mem, nullptr);
+            g_ps.encode_mem = VK_NULL_HANDLE;
+            ctx->fn.DestroyImage(ctx->device, g_ps.encode_img, nullptr);
+            g_ps.encode_img = VK_NULL_HANDLE;
+            return false;
+        }
+        g_ps.encode_extent = g_ps.extent;
+        LOG_INFO(GPU, "Vulkan present: sRGB-encode image %ux%u (format %d).",
+                 g_ps.extent.width, g_ps.extent.height, static_cast<int>(encode_format));
+    }
+
+    *out = g_ps.encode_img;
+    return true;
+}
+
+void DestroyPresentEncodeImage(VkContext* ctx) {
+    if (g_ps.encode_img) ctx->fn.DestroyImage(ctx->device, g_ps.encode_img, nullptr);
+    if (g_ps.encode_mem) ctx->fn.FreeMemory(ctx->device, g_ps.encode_mem, nullptr);
+    g_ps.encode_img = VK_NULL_HANDLE;
+    g_ps.encode_mem = VK_NULL_HANDLE;
+    g_ps.encode_extent = {};
+}
+
 // Acquires an image, records `record`, submits and presents.  Returns false on
 // failure (caller may fall back to GDI for this frame).
 template <typename F>
@@ -343,6 +455,101 @@ bool AcquireRecordPresent(VkContext* ctx, F&& record) {
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// Phase 5 validation: frame readback (golden-image tests).
+// ---------------------------------------------------------------------------
+
+void VkPresentSetReadbackHook(VkPresentReadbackFn fn, void* user) {
+    std::lock_guard<std::mutex> lk(g_present_mutex);
+    g_ps.readback_fn = fn;
+    g_ps.readback_user = user;
+    g_ps.readback_frame = 0;
+}
+
+namespace {
+
+// (Re)creates the host-visible readback buffer for w x h BGRA8.
+bool EnsureReadbackBuffer(VkContext* ctx, u32 w, u32 h) {
+    const VkDeviceSize need = static_cast<VkDeviceSize>(w) * h * 4;
+    if (g_ps.rb_buf != VK_NULL_HANDLE && g_ps.rb_size >= need) return true;
+    if (g_ps.rb_buf) ctx->fn.DestroyBuffer(ctx->device, g_ps.rb_buf, nullptr);
+    if (g_ps.rb_mem) ctx->fn.FreeMemory(ctx->device, g_ps.rb_mem, nullptr);
+    g_ps.rb_buf = VK_NULL_HANDLE;
+    g_ps.rb_mem = VK_NULL_HANDLE;
+
+    VkBufferCreateInfo bci = {};
+    bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bci.size = need;
+    bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (ctx->fn.CreateBuffer(ctx->device, &bci, nullptr, &g_ps.rb_buf) != VK_SUCCESS) {
+        LOG_WARN(GPU, "Vulkan present readback: buffer creation failed.");
+        return false;
+    }
+    VkMemoryRequirements req;
+    ctx->fn.GetBufferMemoryRequirements(ctx->device, g_ps.rb_buf, &req);
+    u32 type = 0;
+    if (!VkFindMemoryType(ctx, req.memoryTypeBits,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          &type)) {
+        LOG_WARN(GPU, "Vulkan present readback: no host-visible memory type.");
+        return false;
+    }
+    VkMemoryAllocateInfo mai = {};
+    mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    mai.allocationSize = req.size;
+    mai.memoryTypeIndex = type;
+    if (ctx->fn.AllocateMemory(ctx->device, &mai, nullptr, &g_ps.rb_mem) != VK_SUCCESS ||
+        ctx->fn.BindBufferMemory(ctx->device, g_ps.rb_buf, g_ps.rb_mem, 0) != VK_SUCCESS) {
+        LOG_WARN(GPU, "Vulkan present readback: memory allocation failed.");
+        return false;
+    }
+    g_ps.rb_size = need;
+    return true;
+}
+
+// Records a copy of `image` (must currently be in TRANSFER_SRC_OPTIMAL) into
+// the readback buffer.  Caller holds g_present_mutex and is inside the
+// present command buffer.
+void RecordReadbackCopy(VkContext* ctx, VkImage image, u32 w, u32 h) {
+    if (g_ps.CmdCopyImageToBuffer == nullptr) {
+        g_ps.CmdCopyImageToBuffer = reinterpret_cast<PFN_vkCmdCopyImageToBuffer>(
+            ctx->fn.GetDeviceProcAddr(ctx->device, "vkCmdCopyImageToBuffer"));
+        if (g_ps.CmdCopyImageToBuffer == nullptr) {
+            LOG_WARN(GPU, "Vulkan present readback: vkCmdCopyImageToBuffer unavailable.");
+            return;
+        }
+    }
+    if (!EnsureReadbackBuffer(ctx, w, h)) return;
+    VkBufferImageCopy region = {};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;   // tightly packed
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.layerCount = 1;
+    region.imageExtent = { w, h, 1 };
+    g_ps.CmdCopyImageToBuffer(g_ps.cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                              g_ps.rb_buf, 1, &region);
+}
+
+// Waits for the just-submitted present work, maps the readback buffer and
+// delivers the frame to the hook.  Caller holds g_present_mutex.
+void DeliverReadback(VkContext* ctx, u32 w, u32 h) {
+    if (g_ps.rb_buf == VK_NULL_HANDLE) return;
+    ctx->fn.WaitForFences(ctx->device, 1, &g_ps.fence, VK_TRUE, UINT64_MAX);
+    void* mapped = nullptr;
+    if (ctx->fn.MapMemory(ctx->device, g_ps.rb_mem, 0, static_cast<VkDeviceSize>(w) * h * 4,
+                          0, &mapped) != VK_SUCCESS) {
+        LOG_WARN(GPU, "Vulkan present readback: map failed.");
+        return;
+    }
+    g_ps.readback_fn(reinterpret_cast<const u8*>(mapped), w, h,
+                     g_ps.readback_frame++, g_ps.readback_user);
+    ctx->fn.UnmapMemory(ctx->device, g_ps.rb_mem);
+}
+
+} // namespace
+
 bool VkPresentInitialize(VkContext* ctx, u32 width, u32 height) {
     std::lock_guard<std::mutex> lk(g_present_mutex);
     if (!CreateSwapchain(ctx, width, height)) return false;
@@ -384,6 +591,9 @@ void VkPresentShutdown(VkContext* ctx) {
     if (g_ps.done_sem) ctx->fn.DestroySemaphore(ctx->device, g_ps.done_sem, nullptr);
     if (g_ps.fence) ctx->fn.DestroyFence(ctx->device, g_ps.fence, nullptr);
     if (g_ps.cmd_pool) ctx->fn.DestroyCommandPool(ctx->device, g_ps.cmd_pool, nullptr);
+    if (g_ps.rb_buf) ctx->fn.DestroyBuffer(ctx->device, g_ps.rb_buf, nullptr);
+    if (g_ps.rb_mem) ctx->fn.FreeMemory(ctx->device, g_ps.rb_mem, nullptr);
+    DestroyPresentEncodeImage(ctx);
     if (g_ps.swapchain) ctx->fn.DestroySwapchainKHR(ctx->device, g_ps.swapchain, nullptr);
     g_ps = PresentState{};
 }
@@ -402,7 +612,7 @@ bool VkPresentFrame(VkContext* ctx, const void* bgra_pixels, u32 fb_w, u32 fb_h)
     memcpy(mapped, bgra_pixels, static_cast<size_t>(fb_w) * fb_h * 4);
     ctx->fn.UnmapMemory(ctx->device, g_ps.staging_mem);
 
-    return AcquireRecordPresent(ctx, [&](VkImage target) {
+    const bool presented = AcquireRecordPresent(ctx, [&](VkImage target) {
         // Texture: UNDEFINED -> TRANSFER_DST, copy, -> TRANSFER_SRC.
         Barrier(ctx, g_ps.tex, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 0, VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -416,6 +626,11 @@ bool VkPresentFrame(VkContext* ctx, const void* bgra_pixels, u32 fb_w, u32 fb_h)
         Barrier(ctx, g_ps.tex, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+        // Phase 5 validation: read back the uploaded guest FB (pre-scale).
+        if (g_ps.readback_fn != nullptr) {
+            RecordReadbackCopy(ctx, g_ps.tex, fb_w, fb_h);
+        }
 
         // Swapchain image: UNDEFINED -> TRANSFER_DST, blit scaled, -> PRESENT_SRC.
         Barrier(ctx, target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -439,14 +654,28 @@ bool VkPresentFrame(VkContext* ctx, const void* bgra_pixels, u32 fb_w, u32 fb_h)
                 VK_ACCESS_TRANSFER_WRITE_BIT, 0,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
     });
+    if (presented && g_ps.readback_fn != nullptr) {
+        DeliverReadback(ctx, fb_w, fb_h);
+    }
+    return presented;
 }
 
-bool VkPresentFromImage(VkContext* ctx, VkImage src, u32 src_w, u32 src_h) {
+bool VkPresentFromImage(VkContext* ctx, VkImage src, VkFormat src_format,
+                        u32 src_w, u32 src_h) {
     if (!ctx || src == VK_NULL_HANDLE || src_w == 0 || src_h == 0) return false;
     std::lock_guard<std::mutex> lk(g_present_mutex);
     if (g_ps.swapchain == VK_NULL_HANDLE) return false;
 
-    return AcquireRecordPresent(ctx, [&](VkImage target) {
+    // Linear-float flips need a linear->sRGB encode on the way to a UNORM
+    // swapchain; sRGB (or unknown-counterpart) swapchains keep the direct
+    // blit.  (SharpEmu VulkanVideoPresenter #448.)
+    VkImage encode_img = VK_NULL_HANDLE;
+    const bool encode_for_present =
+        VkPresentIsLinearFloatSource(src_format) &&
+        VkPresentSrgbCounterpart(g_ps.format) != VK_FORMAT_UNDEFINED &&
+        TryGetPresentEncodeImage(ctx, &encode_img);
+
+    const bool presented = AcquireRecordPresent(ctx, [&](VkImage target) {
         // Source render target: COLOR_ATTACHMENT -> TRANSFER_SRC.
         Barrier(ctx, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -454,10 +683,23 @@ bool VkPresentFromImage(VkContext* ctx, VkImage src, u32 src_w, u32 src_h) {
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT);
 
+        // Phase 5 validation: read back the presented render target.
+        if (g_ps.readback_fn != nullptr) {
+            RecordReadbackCopy(ctx, src, src_w, src_h);
+        }
+
         // Swapchain image: UNDEFINED -> TRANSFER_DST, blit scaled, -> PRESENT_SRC.
         Barrier(ctx, target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 0, VK_ACCESS_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        // When encoding, the sRGB intermediate is the blit destination; the
+        // copy below lands the encoded bytes in the swapchain image.
+        const VkImage blit_dst = encode_for_present ? encode_img : target;
+        if (encode_for_present) {
+            Barrier(ctx, encode_img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        }
         VkImageBlit blit = {};
         blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.srcSubresource.layerCount = 1;
@@ -468,10 +710,29 @@ bool VkPresentFromImage(VkContext* ctx, VkImage src, u32 src_w, u32 src_h) {
         ComputeFitRect(src_w, src_h, fit);
         blit.dstOffsets[0] = { fit[0], fit[1], 0 };
         blit.dstOffsets[1] = { fit[2], fit[3], 1 };
-        ClearBlack(ctx, target);
+        ClearBlack(ctx, blit_dst);
         ctx->fn.CmdBlitImage(g_ps.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                             target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+                             blit_dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
                              VK_FILTER_LINEAR);
+
+        if (encode_for_present) {
+            Barrier(ctx, encode_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+            // Raw same-class copy keeps the sRGB-encoded bytes unchanged
+            // while landing them in the UNORM swapchain image.
+            VkImageCopy copy = {};
+            copy.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            copy.srcSubresource.layerCount = 1;
+            copy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            copy.dstSubresource.layerCount = 1;
+            copy.extent = { g_ps.extent.width, g_ps.extent.height, 1 };
+            ctx->fn.CmdCopyImage(g_ps.cmd, encode_img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                 target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        }
+
         Barrier(ctx, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                 VK_ACCESS_TRANSFER_WRITE_BIT, 0,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
@@ -484,6 +745,10 @@ bool VkPresentFromImage(VkContext* ctx, VkImage src, u32 src_w, u32 src_h) {
                 VK_PIPELINE_STAGE_TRANSFER_BIT,
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
     });
+    if (presented && g_ps.readback_fn != nullptr) {
+        DeliverReadback(ctx, src_w, src_h);
+    }
+    return presented;
 }
 
 bool VkPresentClearColor(VkContext* ctx, float r, float g, float b, float a) {
@@ -491,7 +756,7 @@ bool VkPresentClearColor(VkContext* ctx, float r, float g, float b, float a) {
     std::lock_guard<std::mutex> lk(g_present_mutex);
     if (g_ps.swapchain == VK_NULL_HANDLE) return false;
 
-    return AcquireRecordPresent(ctx, [&](VkImage target) {
+    const bool presented = AcquireRecordPresent(ctx, [&](VkImage target) {
         Barrier(ctx, target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 0, VK_ACCESS_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -510,6 +775,21 @@ bool VkPresentClearColor(VkContext* ctx, float r, float g, float b, float a) {
                 VK_ACCESS_TRANSFER_WRITE_BIT, 0,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
     });
+    if (presented && g_ps.readback_fn != nullptr) {
+        // Solid clear: synthesize the frame CPU-side at the swapchain extent
+        // (the whole image is one color by definition).
+        const u32 w = g_ps.extent.width, h = g_ps.extent.height;
+        u32 px = 0xFF000000u;
+        px |= (static_cast<u32>(r * 255.0f + 0.5f) & 0xFFu) << 16;
+        px |= (static_cast<u32>(g * 255.0f + 0.5f) & 0xFFu) << 8;
+        px |= (static_cast<u32>(b * 255.0f + 0.5f) & 0xFFu);
+        std::vector<u8> frame(static_cast<size_t>(w) * h * 4);
+        for (size_t i = 0; i + 4 <= frame.size(); i += 4) {
+            std::memcpy(frame.data() + i, &px, 4);
+        }
+        g_ps.readback_fn(frame.data(), w, h, g_ps.readback_frame++, g_ps.readback_user);
+    }
+    return presented;
 }
 
 } // namespace GPU

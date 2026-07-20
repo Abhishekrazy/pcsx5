@@ -122,6 +122,21 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
 
     CpuCore::SetCurrentThreadId(id);
 
+    // Publish this thread in the kernel thread registry BEFORE any TLS
+    // resolution: ResolveGuestThreadPointer falls back to the shared
+    // (main-thread) TLS block for unregistered threads, which made every
+    // worker thread alias the main thread's fs base and corrupted per-thread
+    // runtime caches.
+    Kernel::ThreadContext tc;
+    tc.thread_id   = id;
+    tc.name        = self->name;
+    tc.entry_point = entry;
+    tc.stack_base  = self->stack_base;
+    tc.stack_size  = self->stack_size;
+    tc.tls_base    = self->tls_base;
+    tc.argument    = argument;
+    Kernel::RegisterThread(tc);
+
     // This host thread executes guest code: bind its guest thread pointer so
     // patched TLS stubs (Kernel::TlsPatch) resolve fs-relative accesses for
     // this thread.  The value MUST match what the VEH emulation path would

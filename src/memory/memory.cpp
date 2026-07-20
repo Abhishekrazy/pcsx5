@@ -32,6 +32,50 @@ GuestFaultHandler       g_fault_handler = nullptr;
 void*                   g_fault_user    = nullptr;
 void*                   g_fault_veh     = nullptr; // AddVectoredExceptionHandle
 
+// ---------------------------------------------------------------------------
+// Guest image write tracking (see memory.h).  All fields are guarded by
+// g_regions_mutex; the VEH path takes the same lock (VirtualProtect from a
+// vectored handler is safe).
+// ---------------------------------------------------------------------------
+struct TrackedWriteRange {
+    guest_addr_t base;        // key: address TrackGuestWrites was given
+    guest_addr_t start;       // page-aligned span actually protected
+    u64          length;
+    u64          generation;
+    bool         armed;
+};
+
+std::vector<TrackedWriteRange> g_write_ranges;
+
+void ArmWriteRangeLocked(TrackedWriteRange& r) {
+    DWORD old_prot = 0;
+    r.armed = VirtualProtect(reinterpret_cast<void*>(r.start), r.length,
+                             PAGE_READONLY, &old_prot) != 0;
+}
+
+void DisarmWriteRangeLocked(TrackedWriteRange& r) {
+    if (!r.armed) return;
+    DWORD old_prot = 0;
+    VirtualProtect(reinterpret_cast<void*>(r.start), r.length,
+                   PAGE_READWRITE, &old_prot);
+    r.armed = false;
+}
+
+// First write to an armed range: restore write access and bump the
+// generation.  Later writes are free-running until the owner re-arms.
+bool HandleTrackedWriteFaultLocked(guest_addr_t fault_addr) {
+    for (auto& r : g_write_ranges) {
+        if (fault_addr < r.start || fault_addr >= r.start + r.length) {
+            continue;
+        }
+        if (!r.armed) return false;
+        DisarmWriteRangeLocked(r);
+        ++r.generation;
+        return true;
+    }
+    return false;
+}
+
 DWORD TranslateProtection(u32 protection) {
     bool r = (protection & PROT_READ)  != 0;
     bool w = (protection & PROT_WRITE) != 0;
@@ -90,6 +134,17 @@ LONG WINAPI GuestFaultVeh(struct _EXCEPTION_POINTERS* ep) {
     }
     const auto fault_addr =
         static_cast<guest_addr_t>(ep->ExceptionRecord->ExceptionInformation[1]);
+    const bool is_write = ep->ExceptionRecord->ExceptionInformation[0] == 1;
+
+    // A write to an armed write-tracked range (guest texture upload sources)
+    // is disarmed + generation-bumped here and resumed; the registered fault
+    // handler (demand commit) never sees it.
+    if (is_write) {
+        std::lock_guard<std::mutex> lock(g_regions_mutex);
+        if (HandleTrackedWriteFaultLocked(fault_addr)) {
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+    }
 
     GuestFaultHandler handler = nullptr;
     void* user = nullptr;
@@ -152,6 +207,7 @@ void Shutdown() {
     }
     std::lock_guard<std::mutex> lock(g_regions_mutex);
     g_regions.clear();
+    g_write_ranges.clear();
     g_fault_handler = nullptr;
     g_fault_user = nullptr;
 }
@@ -274,6 +330,17 @@ Status Unmap(guest_addr_t address, u64 size) {
         return Status::Win32Error;
     }
     UntrackRegion(address, ALIGN_UP(size, PAGE_SIZE));
+    // Drop write-tracked ranges the unmap made stale.
+    {
+        std::lock_guard<std::mutex> lock(g_regions_mutex);
+        const guest_addr_t end = address + ALIGN_UP(size, PAGE_SIZE);
+        g_write_ranges.erase(std::remove_if(g_write_ranges.begin(),
+            g_write_ranges.end(),
+            [&](const TrackedWriteRange& r) {
+                return r.start >= address && r.start + r.length <= end;
+            }),
+            g_write_ranges.end());
+    }
     LOG_DEBUG(Memory, "Unmapped [0x%llx-0x%llx]", address, address + size);
     return Status::Ok;
 }
@@ -448,6 +515,61 @@ bool CommitOnFault(guest_addr_t address) {
     }
     LOG_DEBUG(Memory, "CommitOnFault: committed 64 KiB at 0x%llx (fault at 0x%llx)", base, address);
     return true;
+}
+
+void TrackGuestWrites(guest_addr_t address, u64 byte_count) {
+    if (address == 0 || byte_count == 0) return;
+    const guest_addr_t start = address & ~(static_cast<guest_addr_t>(PAGE_SIZE) - 1);
+    const u64 length = ALIGN_UP(address + byte_count, PAGE_SIZE) - start;
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    for (auto& r : g_write_ranges) {
+        if (r.base != address) continue;
+        if (r.start != start || r.length != length) {
+            // Replace-range: carry the generation so a resize does not hide
+            // earlier guest CPU rewrites from cache owners.
+            const u64 generation = r.generation;
+            DisarmWriteRangeLocked(r);
+            r = TrackedWriteRange{address, start, length, generation, false};
+        }
+        ArmWriteRangeLocked(r);
+        return;
+    }
+    TrackedWriteRange fresh{address, start, length, 0, false};
+    ArmWriteRangeLocked(fresh);
+    g_write_ranges.push_back(fresh);
+}
+
+void UntrackGuestWrites(guest_addr_t address) {
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    for (auto it = g_write_ranges.begin(); it != g_write_ranges.end(); ++it) {
+        if (it->base == address) {
+            DisarmWriteRangeLocked(*it);
+            g_write_ranges.erase(it);
+            return;
+        }
+    }
+}
+
+bool TryGetGuestWriteGeneration(guest_addr_t address, u64* generation_out) {
+    if (!generation_out) return false;
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    for (const auto& r : g_write_ranges) {
+        if (r.base == address) {
+            *generation_out = r.generation;
+            return true;
+        }
+    }
+    return false;
+}
+
+void RearmGuestWrites(guest_addr_t address) {
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    for (auto& r : g_write_ranges) {
+        if (r.base == address) {
+            ArmWriteRangeLocked(r);
+            return;
+        }
+    }
 }
 
 void SetGuestFaultHandler(GuestFaultHandler handler, void* user_data) {

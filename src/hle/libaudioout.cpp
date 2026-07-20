@@ -8,7 +8,8 @@
 //   1 = WASAPI  — shared-mode, event-driven IAudioClient render (falls back
 //                 to waveOut with a WARN when the device/mix format is
 //                 unsuitable).
-//   2 = XAudio2 — TODO; currently maps to waveOut.
+//   2 = XAudio2 — XAudio2 2.9 source voice fed from Output (falls back to
+//                 WASAPI, then waveOut, with WARNs when unavailable).
 // The waveOut path mirrors SharpEmu's AudioOutExports.cs +
 // WindowsWaveOutAudio (48 kHz s16 stereo).
 
@@ -31,6 +32,7 @@
 #include <mmsystem.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <xaudio2.h>
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "ole32.lib")
 
@@ -71,6 +73,27 @@ struct WasapiState {
     std::deque<std::vector<s16>> queue;      // stereo s16 blocks, under port.mu
 };
 
+// XAudio2 2.9 state (one per open port when backend == 2).  A fixed pool of
+// stereo s16 blocks is recycled through the source voice; the voice
+// callback's OnBufferEnd returns blocks to `free_blocks` and Output blocks
+// when none are free, pacing the guest at real-time rate like the other
+// backends.  xaudio2_9.dll is loaded dynamically so the binary stays
+// loadable where the DLL is missing.
+struct Xa2Block {
+    std::vector<s16> data; // one guest buffer converted to stereo s16
+    AudioOutPort*  port = nullptr;
+};
+
+struct XAudio2State {
+    IXAudio2*              engine    = nullptr;
+    IXAudio2MasteringVoice* mastering = nullptr;
+    IXAudio2SourceVoice*   voice     = nullptr;
+    HMODULE                dll       = nullptr;
+    std::vector<Xa2Block*> blocks;           // owned pool
+    std::deque<Xa2Block*>  free_blocks;      // under port.mu
+    int                    in_flight = 0;    // under port.mu
+};
+
 struct AudioOutPort {
     int      handle         = 0;
     int      user_id        = 0;
@@ -86,6 +109,7 @@ struct AudioOutPort {
     // Host backend (null when audio is configured Off or the backend failed).
     HWAVEOUT wave_out = nullptr;
     WasapiState wasapi;
+    XAudio2State xa2;
     std::mutex mu;
     std::condition_variable cv;
     std::deque<OutBuffer*> free_buffers;
@@ -281,7 +305,8 @@ void SubmitToBackend(AudioOutPort& port, const u8* src) {
 
 // True when either host backend is live (silent pacing only when false).
 bool BackendActive(const AudioOutPort& port) {
-    return port.wave_out != nullptr || port.wasapi.client != nullptr;
+    return port.wave_out != nullptr || port.wasapi.client != nullptr ||
+           port.xa2.voice != nullptr;
 }
 
 void CloseWasapiBackend(AudioOutPort& port);
@@ -472,6 +497,144 @@ void SubmitToWasapi(AudioOutPort& port, const u8* src) {
     port.wasapi.queue.push_back(std::move(block));
 }
 
+// ---------------------------------------------------------------------------
+// XAudio2 backend: source voice fed from a recycled block pool.  Output
+// blocks when every pool block is queued; OnBufferEnd returns blocks to the
+// free list, pacing the guest at real-time rate like the other backends.
+// ---------------------------------------------------------------------------
+
+// Stateless voice callback — all routing goes through XAUDIO2_BUFFER::pContext.
+class Xa2VoiceCallback final : public IXAudio2VoiceCallback {
+public:
+    void STDMETHODCALLTYPE OnBufferEnd(void* context) override {
+        auto* block = static_cast<Xa2Block*>(context);
+        if (!block || !block->port) return;
+        AudioOutPort* port = block->port;
+        {
+            std::lock_guard<std::mutex> lock(port->mu);
+            port->xa2.free_blocks.push_back(block);
+            --port->xa2.in_flight;
+        }
+        port->cv.notify_all();
+    }
+    void STDMETHODCALLTYPE OnStreamEnd() override {}
+    void STDMETHODCALLTYPE OnVoiceProcessingPassEnd() override {}
+    void STDMETHODCALLTYPE OnVoiceProcessingPassStart(UINT32 /*bytes*/) override {}
+    void STDMETHODCALLTYPE OnBufferStart(void* /*context*/) override {}
+    void STDMETHODCALLTYPE OnLoopEnd(void* /*context*/) override {}
+    void STDMETHODCALLTYPE OnVoiceError(void* /*context*/, HRESULT /*error*/) override {}
+};
+
+Xa2VoiceCallback g_xa2_callback;
+
+void CloseXAudio2Backend(AudioOutPort& port);
+
+// Open an XAudio2 2.9 stream (stereo PCM16 at the port's sample rate).
+// xaudio2_9.dll is loaded dynamically; any failure leaves the port clean so
+// the caller can fall back to WASAPI/waveOut.
+bool OpenXAudio2Backend(AudioOutPort& port, u32 frequency) {
+    XAudio2State& xs = port.xa2;
+
+    xs.dll = ::LoadLibraryW(L"xaudio2_9.dll");
+    if (!xs.dll) {
+        LOG_WARN(HLE, "sceAudioOut: xaudio2_9.dll not found");
+        return false;
+    }
+    using XAudio2CreateFn = HRESULT(STDAPICALLTYPE*)(IXAudio2**, UINT32, XAUDIO2_PROCESSOR);
+    const auto create = reinterpret_cast<XAudio2CreateFn>(
+        reinterpret_cast<void*>(::GetProcAddress(xs.dll, "XAudio2Create")));
+    if (!create || FAILED(create(&xs.engine, 0, XAUDIO2_DEFAULT_PROCESSOR))) {
+        LOG_WARN(HLE, "sceAudioOut: XAudio2Create failed");
+        CloseXAudio2Backend(port);
+        return false;
+    }
+    if (FAILED(xs.engine->CreateMasteringVoice(&xs.mastering, 2, frequency))) {
+        LOG_WARN(HLE, "sceAudioOut: XAudio2 mastering voice failed");
+        CloseXAudio2Backend(port);
+        return false;
+    }
+
+    WAVEFORMATEX wfx{};
+    wfx.wFormatTag      = WAVE_FORMAT_PCM;
+    wfx.nChannels       = 2;
+    wfx.nSamplesPerSec  = frequency;
+    wfx.wBitsPerSample  = 16;
+    wfx.nBlockAlign     = static_cast<WORD>(2 * 2);
+    wfx.nAvgBytesPerSec = frequency * wfx.nBlockAlign;
+    if (FAILED(xs.engine->CreateSourceVoice(&xs.voice, &wfx, 0,
+                                            XAUDIO2_DEFAULT_FREQ_RATIO,
+                                            &g_xa2_callback))) {
+        LOG_WARN(HLE, "sceAudioOut: XAudio2 source voice failed");
+        CloseXAudio2Backend(port);
+        return false;
+    }
+
+    const size_t block_samples = static_cast<size_t>(port.buffer_length) * 2;
+    xs.blocks.reserve(kMaxBuffersInFlight);
+    for (int i = 0; i < kMaxBuffersInFlight; ++i) {
+        auto* block = new Xa2Block();
+        block->data.resize(block_samples);
+        block->port = &port;
+        xs.blocks.push_back(block);
+        xs.free_blocks.push_back(block);
+    }
+    xs.voice->Start(0, XAUDIO2_COMMIT_NOW);
+    return true;
+}
+
+void CloseXAudio2Backend(AudioOutPort& port) {
+    XAudio2State& xs = port.xa2;
+    if (xs.voice) {
+        // DestroyVoice waits for the audio thread to finish with the voice,
+        // so pooled blocks are safe to delete once it returns.
+        xs.voice->Stop(0, XAUDIO2_COMMIT_NOW);
+        xs.voice->DestroyVoice();
+        xs.voice = nullptr;
+    }
+    if (xs.mastering) {
+        xs.mastering->DestroyVoice();
+        xs.mastering = nullptr;
+    }
+    if (xs.engine) {
+        xs.engine->Release();
+        xs.engine = nullptr;
+    }
+    for (Xa2Block* block : xs.blocks) delete block;
+    xs.blocks.clear();
+    xs.free_blocks.clear();
+    xs.in_flight = 0;
+    if (xs.dll) {
+        ::FreeLibrary(xs.dll);
+        xs.dll = nullptr;
+    }
+}
+
+// Convert the guest buffer to stereo PCM16 and submit it to the source
+// voice.  Blocks (paced by OnBufferEnd) when every pool block is queued.
+void SubmitToXAudio2(AudioOutPort& port, const u8* src) {
+    Xa2Block* block = nullptr;
+    {
+        std::unique_lock<std::mutex> lock(port.mu);
+        port.cv.wait(lock, [&] { return !port.xa2.free_blocks.empty(); });
+        block = port.xa2.free_blocks.front();
+        port.xa2.free_blocks.pop_front();
+        ++port.xa2.in_flight;
+    }
+
+    ConvertToStereoS16(port, src, block->data.data());
+
+    XAUDIO2_BUFFER buf{};
+    buf.AudioBytes = static_cast<UINT32>(block->data.size() * sizeof(s16));
+    buf.pAudioData = reinterpret_cast<const BYTE*>(block->data.data());
+    buf.pContext   = block;
+    if (FAILED(port.xa2.voice->SubmitSourceBuffer(&buf))) {
+        std::lock_guard<std::mutex> lock(port.mu);
+        port.xa2.free_blocks.push_back(block);
+        --port.xa2.in_flight;
+        port.cv.notify_all();
+    }
+}
+
 // No host device: sleep so the *next* output() completes at real-time rate.
 void PaceSilence(AudioOutPort& port) {
     using clock = std::chrono::steady_clock;
@@ -557,14 +720,24 @@ void RegisterLibAudioOut() {
 
         const char* backend_name = "silent";
         const int backend = GetConfiguredBackend();
-        if (backend == 1) {
+        if (backend == 2) {
+            if (OpenXAudio2Backend(port, frequency)) {
+                backend_name = "XAudio2";
+            } else {
+                LOG_WARN(HLE, "sceAudioOut: XAudio2 unavailable; trying WASAPI");
+                if (OpenWasapiBackend(port, frequency)) {
+                    backend_name = "WASAPI";
+                } else if (OpenWaveBackend(port, frequency)) {
+                    backend_name = "waveOut";
+                }
+            }
+        } else if (backend == 1) {
             if (OpenWasapiBackend(port, frequency)) {
                 backend_name = "WASAPI";
             } else if (OpenWaveBackend(port, frequency)) {
                 backend_name = "waveOut";
             }
         } else if (backend != 0) {
-            // backend 2 (XAudio2) is TODO; map to waveOut for now.
             if (OpenWaveBackend(port, frequency)) {
                 backend_name = "waveOut";
             }
@@ -584,6 +757,7 @@ void RegisterLibAudioOut() {
         if (!port) return kErrorInvalidArgument;
         CloseWaveBackend(*port);
         CloseWasapiBackend(*port);
+        CloseXAudio2Backend(*port);
         g_ports_used[handle - 1] = false;
         LOG_INFO(HLE, "sceAudioOutClose(%d) -> 0", handle);
         return 0;
@@ -622,7 +796,9 @@ void RegisterLibAudioOut() {
             PaceSilence(*port);
             return 0;
         }
-        if (port->wasapi.client) {
+        if (port->xa2.voice) {
+            SubmitToXAudio2(*port, guest_buf.data());
+        } else if (port->wasapi.client) {
             SubmitToWasapi(*port, guest_buf.data());
         } else {
             SubmitToBackend(*port, guest_buf.data());

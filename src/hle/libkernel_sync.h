@@ -16,6 +16,9 @@ void RegisterLibKernelSync();
 
 // pthread mutex (keyed by the guest mutex variable; token written to *mutex)
 u64 ScePthreadMutexInit(const GuestArgs& args);
+u64 ScePthreadMutexattrInit(const GuestArgs& args);
+u64 ScePthreadMutexattrSettype(const GuestArgs& args);
+u64 ScePthreadMutexattrDestroy(const GuestArgs& args);
 u64 ScePthreadMutexLock(const GuestArgs& args);
 u64 ScePthreadMutexTrylock(const GuestArgs& args);
 u64 ScePthreadMutexUnlock(const GuestArgs& args);

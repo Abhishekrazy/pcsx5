@@ -62,8 +62,15 @@ namespace GPU {
     PadButtonState GetCurrentPadState();
 
     // Drive the primary XInput controller's rumble motors (0..255 each).
-    // No-op when no XInput controller is connected.
+    // When a DualSense is connected via the native HID path, its motors are
+    // driven instead (HID output report); no-op with no controller.
     void SetPadVibration(u8 large_motor, u8 small_motor);
+
+    // Set one DualSense adaptive-trigger effect via the HID output path.
+    // `left` selects L2 (true) or R2 (false); mode/params follow the public
+    // DualSense trigger-effect layout (0=off, 1=feedback, 2=weapon,
+    // 3=vibration).  No-op when no DualSense is connected.
+    void SetPadAdaptiveTrigger(bool left, u8 mode, const u8 params[10]);
 
     // Boot/loading screen status.  Reports a REAL boot milestone (the stage
     // currently executing) and renders it to the window: dark screen with the

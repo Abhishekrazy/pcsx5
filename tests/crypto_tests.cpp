@@ -4,6 +4,8 @@
 //   - FIPS-197 Appendix B / C.1 AES-128 single block.
 //   - NIST SP800-38A F.2.1/F.2.2 AES-128-CBC (4 blocks, encrypt + decrypt).
 //   - NIST SP800-38A F.1.1/F.1.2 AES-128-ECB (4 blocks, encrypt + decrypt).
+//   - IEEE P1619/D16 Annex B AES-128-XTS (2-block and 512-byte data units,
+//     encrypt + decrypt).
 //   - FIPS 180-4 SHA-256: empty string, "abc", 56-byte and 112-byte
 //     multi-block messages.
 //
@@ -161,6 +163,101 @@ void TestAes128Cbc() {
 }
 
 // ---------------------------------------------------------------------------
+// AES-128-XTS (IEEE 1619)
+// ---------------------------------------------------------------------------
+
+void RunXtsVector(const char* key1_hex, const char* key2_hex,
+                  const char* data_unit_hex,
+                  const u8* pt, size_t pt_size,
+                  const char* ct_hex, const char* what) {
+    const auto key1_bytes = HexToBytes(key1_hex);
+    const auto key2_bytes = HexToBytes(key2_hex);
+    const auto data_unit  = HexToBytes(data_unit_hex);
+    const auto ct         = HexToBytes(ct_hex);
+
+    auto key1 = Common::Aes128ExpandKey(key1_bytes.data());
+    auto key2 = Common::Aes128ExpandKey(key2_bytes.data());
+
+    std::vector<u8> buf(pt_size);
+    EXPECT(Common::Aes128XtsEncrypt(key1, key2, data_unit.data(),
+                                    pt, buf.data(), pt_size),
+           "XTS encrypt returned false on valid size");
+    ExpectBytesEq(buf.data(), ct.data(), ct.size(), what);
+
+    EXPECT(Common::Aes128XtsDecrypt(key1, key2, data_unit.data(),
+                                    ct.data(), buf.data(), ct.size()),
+           "XTS decrypt returned false on valid size");
+    ExpectBytesEq(buf.data(), pt, pt_size, what);
+
+    // Non-multiple-of-16 size must be rejected.
+    EXPECT(!Common::Aes128XtsEncrypt(key1, key2, data_unit.data(),
+                                     pt, buf.data(), pt_size - 1),
+           "XTS encrypt accepted non-block-multiple size");
+    EXPECT(!Common::Aes128XtsDecrypt(key1, key2, data_unit.data(),
+                                     pt, buf.data(), pt_size - 1),
+           "XTS decrypt accepted non-block-multiple size");
+}
+
+void TestAes128Xts() {
+    // IEEE P1619/D16 Annex B vectors (data-unit number stored little-endian,
+    // as required by IEEE 1619).
+
+    // Vector 1: all-zero key/PT, data unit 0, 2 blocks (tweak doubles).
+    {
+        const auto pt = HexToBytes(
+            "0000000000000000000000000000000000000000000000000000000000000000");
+        RunXtsVector(
+            "00000000000000000000000000000000",
+            "00000000000000000000000000000000",
+            "00000000000000000000000000000000",
+            pt.data(), pt.size(),
+            "917cf69ebd68b2ec9b9fe9a3eadda692cd43d2f59598ed858c02c2652fbf922e",
+            "IEEE P1619 XTS vector 1 (zeros, 2 blocks)");
+    }
+
+    // Vector 2: key1=0x11.., key2=0x22.., data unit 0x3333333333, 2 blocks.
+    {
+        const auto pt = HexToBytes(
+            "4444444444444444444444444444444444444444444444444444444444444444");
+        RunXtsVector(
+            "11111111111111111111111111111111",
+            "22222222222222222222222222222222",
+            "3333333333000000000000000000000000",
+            pt.data(), pt.size(),
+            "c454185e6a16936e39334038acef838bfb186fff7480adc4289382ecd6d394f0",
+            "IEEE P1619 XTS vector 2 (0x11/0x22 keys)");
+    }
+
+    // Vector 3: descending key1, 0x22.. key2, data unit 0x3333333333.
+    {
+        const auto pt = HexToBytes(
+            "4444444444444444444444444444444444444444444444444444444444444444");
+        RunXtsVector(
+            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0",
+            "22222222222222222222222222222222",
+            "3333333333000000000000000000000000",
+            pt.data(), pt.size(),
+            "af85336b597afc1a900b2eb21ec949d292df4c047e0b21532186a5971a227a89",
+            "IEEE P1619 XTS vector 3 (descending key1)");
+    }
+
+    // Vector 4: e/pi-digit keys, data unit 0, 512 bytes (32 blocks, many
+    // tweak doublings including carries across byte boundaries).
+    {
+        std::vector<u8> pt(512);
+        for (size_t i = 0; i < pt.size(); ++i)
+            pt[i] = static_cast<u8>(i & 0xff);
+        RunXtsVector(
+            "27182818284590452353602874713526",
+            "31415926535897932384626433832795",
+            "00000000000000000000000000000000",
+            pt.data(), pt.size(),
+            "27a7479befa1d476489f308cd4cfa6e2a96e4bbe3208ff25287dd3819616e89cc78cf7f5e543445f8333d8fa7f56000005279fa5d8b5e4ad40e736ddb4d35412328063fd2aab53e5ea1e0a9f332500a5df9487d07a5c92cc512c8866c7e860ce93fdf166a24912b422976146ae20ce846bb7dc9ba94a767aaef20c0d61ad02655ea92dc4c4e41a8952c651d33174be51a10c421110e6d81588ede82103a252d8a750e8768defffed9122810aaeb99f9172af82b604dc4b8e51bcb08235a6f4341332e4ca60482a4ba1a03b3e65008fc5da76b70bf1690db4eae29c5f1badd03c5ccf2a55d705ddcd86d449511ceb7ec30bf12b1fa35b913f9f747a8afd1b130e94bff94effd01a91735ca1726acd0b197c4e5b03393697e126826fb6bbde8ecc1e08298516e2c9ed03ff3c1b7860f6de76d4cecd94c8119855ef5297ca67e9f3e7ff72b1e99785ca0a7e7720c5b36dc6d72cac9574c8cbbc2f801e23e56fd344b07f22154beba0f08ce8891e643ed995c94d9a69c9f1b5f499027a78572aeebd74d20cc39881c213ee770b1010e4bea718846977ae119f7a023ab58cca0ad752afe656bb3c17256a9f6e9bf19fdd5a38fc82bbe872c5539edb609ef4f79c203ebb140f2e583cb2ad15b4aa5b655016a8449277dbd477ef2c8d6c017db738b18deb4a427d1923ce3ff262735779a418f20a282df920147beabe421ee5319d0568",
+            "IEEE P1619 XTS vector 4 (e/pi keys, 512 bytes)");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SHA-256
 // ---------------------------------------------------------------------------
 
@@ -244,6 +341,7 @@ int main() {
     TestAes128Block();
     TestAes128Ecb();
     TestAes128Cbc();
+    TestAes128Xts();
     TestSha256();
 
     std::fprintf(stdout, "  %d/%d checks passed\n",
