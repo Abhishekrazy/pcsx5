@@ -19,6 +19,11 @@
 #include <cstdio>
 #include <atomic>
 #include <thread>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <shellapi.h>
 
 namespace {
 
@@ -37,6 +42,9 @@ void PrintUsage() {
     std::printf("  --crash-dir=<path>           Directory for crash-report bundles (default: pcsx5_crash).\n");
     std::printf("  --config-dir=<path>          Directory holding global.json + per-title overrides.\n");
     std::printf("  --title-id=<id>              PS5 title id (CUSAxxxxx) for per-title overrides and history.\n");
+    std::printf("  --embed                      Create the render window hidden so the launcher UI can\n");
+    std::printf("                               embed it (the window handle is always printed to stdout\n");
+    std::printf("                               as PCSX5_WINDOW_HANDLE=<decimal HWND>).\n");
 }
 
 // Build a CompatSummary from the current run state.  title_id may be empty,
@@ -178,6 +186,10 @@ int main(int argc, char* argv[]) {
             config_dir = a.substr(13);
         } else if (a.rfind("--title-id=", 0) == 0) {
             title_id = a.substr(11);
+        } else if (a == "--embed") {
+            // Launcher UI embedding mode: the GPU window starts hidden; the UI
+            // reparents it into its own window using the printed HWND.
+            GPU::SetEmbeddedMode(true);
         } else if (a == "-h" || a == "--help") {
             PrintUsage();
             return 0;
@@ -196,6 +208,21 @@ int main(int argc, char* argv[]) {
     }
 
     if (target_path.empty()) {
+        // No game given (e.g. double-clicked): hand off to the launcher UI
+        // when it sits next to this executable; fall back to usage text.
+        char module_path[MAX_PATH] = {};
+        const DWORD len = GetModuleFileNameA(nullptr, module_path, MAX_PATH);
+        if (len > 0 && len < MAX_PATH) {
+            const std::filesystem::path ui_path =
+                std::filesystem::path(module_path).parent_path() / "pcsx5_ui.exe";
+            if (std::filesystem::exists(ui_path)) {
+                std::printf("No game specified; launching pcsx5_ui.exe ...\n");
+                const HINSTANCE rc = ShellExecuteA(nullptr, "open", ui_path.string().c_str(),
+                                                   nullptr, ui_path.parent_path().string().c_str(),
+                                                   SW_SHOWNORMAL);
+                return (reinterpret_cast<intptr_t>(rc) > 32) ? 0 : 1;
+            }
+        }
         PrintUsage();
         return 1;
     }
@@ -204,6 +231,7 @@ int main(int argc, char* argv[]) {
     // other initialiser (logging, diagnostics, HLE) can read its settings.
     if (config_dir.empty()) config_dir = "pcsx5_config";
     ConfigService::Initialize(config_dir);
+    GPU::SetBootStatus("Configuration loaded");
 
     // Apply the effective (global + per-title) configuration to the runtime.
     const ConfigService::Config& cfg = ConfigService::EffectiveFor(title_id);
@@ -266,6 +294,7 @@ int main(int argc, char* argv[]) {
         if (!nid_loaded) {
             LOG_INFO(General, "No NID database file found; using built-in table only.");
         }
+        GPU::SetBootStatus("NID database ready");
     }
 
     if (!title_id.empty()) {
@@ -305,6 +334,11 @@ int main(int argc, char* argv[]) {
     }
 
     // 2. Load the main ELF/SELF module
+    {
+        const std::string stage = "Loading module: " +
+            std::filesystem::path(target_path).filename().string();
+        GPU::SetBootStatus(stage.c_str());
+    }
     Loader::LoadedModule main_module;
     if (!Kernel::LoadModule(target_path, main_module)) {
         LOG_ERROR(General, "Failed to load target module: %s", target_path.c_str());
@@ -319,11 +353,20 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    // Hand the HLE guest-unwinder the main module's .eh_frame_hdr location
+    // (needed for __cxa_throw / guest C++ exception support).
+    HLE::SetGuestEhFrameHdr(main_module.eh_frame_hdr_addr, main_module.eh_frame_hdr_size);
+
     // 3. Execute the guest application on a dedicated worker thread.  The
     //    GLFW window was created on this (main) thread during subsystem init,
     //    so all GLFW event processing must stay here: the main thread runs the
     //    window/message loop at a steady cadence while the guest runs.
+    {
+        const std::string stage = "Module loaded: " + main_module.name;
+        GPU::SetBootStatus(stage.c_str());
+    }
     LOG_INFO(General, "Starting guest execution loop...");
+    GPU::SetBootStatus("Starting guest execution");
     std::atomic<bool> guest_done{false};
     bool run_success = false;
     u32 guest_exit_code = 0;

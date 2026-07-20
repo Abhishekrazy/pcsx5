@@ -467,6 +467,51 @@ void WriteLoader (JsonValue& root, const LoaderConfig&    l) {
     root.o["loader"]            = std::move(v);
 }
 
+void ReadUsers   (const JsonValue& root, UsersConfig&     u) {
+    if (const JsonValue* v = Field(root, "users"); v && v->is_object()) {
+        if (auto* p = Field(*v, "profiles"); p && p->is_array()) {
+            std::vector<UserProfile> profiles;
+            for (const JsonValue& item : p->a) {
+                if (!item.is_object()) continue;
+                UserProfile prof;
+                if (auto* f = Field(item, "id"))
+                    if (f->is_number() && f->n >= 0.0)
+                        prof.id = static_cast<std::uint32_t>(f->n);
+                if (auto* f = Field(item, "name"))
+                    if (f->is_string()) prof.name = f->s;
+                if (auto* f = Field(item, "online_id"))
+                    if (f->is_string()) prof.online_id = f->s;
+                profiles.push_back(std::move(prof));
+            }
+            if (!profiles.empty()) u.profiles = std::move(profiles);
+        }
+        if (auto* p = Field(*v, "active_user"))
+            if (p->is_number()) u.active_user = static_cast<int>(p->n);
+        // Clamp the active index into range; fall back to the first profile.
+        if (u.profiles.empty()) {
+            u.active_user = -1;
+        } else if (u.active_user < 0 ||
+                   u.active_user >= static_cast<int>(u.profiles.size())) {
+            u.active_user = 0;
+        }
+    }
+}
+
+void WriteUsers  (JsonValue& root, const UsersConfig&     u) {
+    JsonValue v; v.type = JsonValue::Type::Object;
+    JsonValue arr; arr.type = JsonValue::Type::Array;
+    for (const UserProfile& prof : u.profiles) {
+        JsonValue p; p.type = JsonValue::Type::Object;
+        p.o["id"]        = NumV(static_cast<double>(prof.id));
+        p.o["name"]      = StrV(prof.name);
+        p.o["online_id"] = StrV(prof.online_id);
+        arr.a.push_back(std::move(p));
+    }
+    v.o["profiles"]    = std::move(arr);
+    v.o["active_user"] = IntV(u.active_user);
+    root.o["users"]    = std::move(v);
+}
+
 } // namespace (json primitives + parser)
 
 // ===========================================================================
@@ -605,6 +650,29 @@ bool SavePerTitle(const std::string& title_id) {
 }
 
 // ---------------------------------------------------------------------------
+// User profile accessors (global view only)
+// ---------------------------------------------------------------------------
+const UserProfile* ActiveUserProfile() {
+    const UsersConfig& u = Global().users;
+    if (u.active_user < 0 || u.active_user >= static_cast<int>(u.profiles.size()))
+        return nullptr;
+    return &u.profiles[static_cast<size_t>(u.active_user)];
+}
+
+const UserProfile* FindUserProfile(std::uint32_t id) {
+    const UsersConfig& u = Global().users;
+    for (const UserProfile& p : u.profiles) {
+        if (p.id == id) return &p;
+    }
+    return nullptr;
+}
+
+std::uint32_t ActiveUserId() {
+    const UserProfile* p = ActiveUserProfile();
+    return p ? p->id : 0u;
+}
+
+// ---------------------------------------------------------------------------
 // File I/O
 // ---------------------------------------------------------------------------
 bool LoadFromFile(const std::string& path, Config& out, std::string* error) {
@@ -649,6 +717,7 @@ bool LoadFromFile(const std::string& path, Config& out, std::string* error) {
     ReadInput   (root, out.input);
     ReadUi      (root, out.ui);
     ReadLoader  (root, out.loader);
+    ReadUsers   (root, out.users);
 
     out.schema_version   = version;
     out.loaded_from_disk = true;
@@ -675,6 +744,7 @@ bool SaveToFile(const std::string& path, const Config& cfg, std::string* error) 
     WriteInput   (root, cfg.input);
     WriteUi      (root, cfg.ui);
     WriteLoader  (root, cfg.loader);
+    WriteUsers   (root, cfg.users);
 
     std::ofstream out(path, std::ios::trunc | std::ios::binary);
     if (!out) {
@@ -703,6 +773,8 @@ bool MigrateToCurrent(int from_version, Config& cfg, std::string* error) {
     if (from_version == 1) {
         cfg.ui.language = "en-US";
     }
+    // v2 -> v3: add UsersConfig; the default single "Player" profile
+    // (id kFirstUserId) already comes from Config::Defaults().
     cfg.schema_version = kCurrentSchemaVersion;
     return true;
 }

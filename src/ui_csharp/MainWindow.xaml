@@ -1041,11 +1041,57 @@
                         </StackPanel>
                     </Grid>
 
-                    <Border Grid.Row="1" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="8" Padding="12">
-                        <TextBox x:Name="ConsoleOutputTextBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
-                                 BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
-                                 HorizontalScrollBarVisibility="Disabled" Foreground="#FFCC66"
-                                 AcceptsReturn="True" TextWrapping="Wrap" />
+                    <Border x:Name="LogsConsoleSlot" Grid.Row="1">
+                        <Border x:Name="ConsoleBorder" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="8" Padding="12">
+                            <TextBox x:Name="ConsoleOutputTextBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
+                                     BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Disabled" Foreground="#FFCC66"
+                                     AcceptsReturn="True" TextWrapping="Wrap" />
+                        </Border>
+                    </Border>
+                </Grid>
+
+                <!-- 4. EMBEDDED GAME VIEW (game renders inside the launcher window) -->
+                <Grid x:Name="GameView" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Emulator window is reparented into this area (HwndHost) -->
+                        <Border Grid.Column="0" Background="Black">
+                            <ContentControl x:Name="EmulatorHostPresenter"/>
+                        </Border>
+
+                        <!-- Console side panel (toggled from the game bar) -->
+                        <Border x:Name="GameConsolePanel" Grid.Column="1" Width="380" Visibility="Collapsed"
+                                Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1,0,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="Console Output" FontSize="12" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="14,12,14,6"/>
+                                <Border x:Name="GameConsoleSlot" Grid.Row="1" Margin="6,0,6,6"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- Bottom game bar: title + Console toggle + Stop -->
+                    <Border Grid.Row="1" Background="#A0050508" BorderBrush="#15FFFFFF" BorderThickness="0,1,0,0" Height="52">
+                        <Grid Margin="20,0">
+                            <TextBlock x:Name="GameBarTitle" Text="Running" FontSize="14" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button x:Name="GameConsoleButton" Content="Console" Width="110" Height="32" Style="{StaticResource ModernButtonStyle}" Margin="0,0,10,0" Click="GameConsoleButton_Click"/>
+                                <Button x:Name="GameStopButton" Content="Stop" Width="110" Height="32" Style="{StaticResource ModernButtonStyle}" Click="StopButton_Click"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
 

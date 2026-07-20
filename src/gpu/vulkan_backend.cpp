@@ -2,6 +2,7 @@
 #include "vk_context.h"
 #include "vk_present.h"
 #include "vk_draw.h"
+#include "dualsense_hid.h"
 #include "../common/log.h"
 #include "../memory/memory.h"
 #include <windows.h>
@@ -12,11 +13,15 @@
 #include <GLFW/glfw3native.h>
 #include <vulkan/vulkan.h>
 #include <atomic>
+#include <algorithm>
 #include <chrono>
+#include <deque>
 #include <mutex>
+#include <string>
 #include <vector>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 
 namespace GPU {
 
@@ -36,6 +41,47 @@ namespace GPU {
     static PadButtonState g_pad_state = { 0, 127, 127, 127, 127, 0, 0, {0, 0} };
     static u32            g_keyboard_buttons = 0;
     static std::mutex     g_pad_mutex;
+
+    // --embed mode: window starts hidden; the launcher reparents it via the
+    // HWND printed to stdout (PCSX5_WINDOW_HANDLE=...).
+    static bool           g_embed_mode = false;
+
+    void SetEmbeddedMode(bool enabled) { g_embed_mode = enabled; }
+
+    // Borderless-fullscreen state (F11 toggle).  Windowed pos/size is saved
+    // on entry so leaving fullscreen restores the exact window placement.
+    static bool g_fullscreen = false;
+    static int  g_saved_x = 0, g_saved_y = 0, g_saved_w = 0, g_saved_h = 0;
+
+    static void ToggleFullscreen() {
+        if (!g_window) return;
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        if (!monitor) return;
+        if (!g_fullscreen) {
+            glfwGetWindowPos(g_window, &g_saved_x, &g_saved_y);
+            glfwGetWindowSize(g_window, &g_saved_w, &g_saved_h);
+            const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+            glfwSetWindowMonitor(g_window, monitor, 0, 0,
+                                 mode->width, mode->height, mode->refreshRate);
+            g_fullscreen = true;
+            LOG_INFO(GPU, "Fullscreen ON (%dx%d @ %dHz).", mode->width, mode->height, mode->refreshRate);
+        } else {
+            glfwSetWindowMonitor(g_window, nullptr,
+                                 g_saved_x, g_saved_y, g_saved_w, g_saved_h, 0);
+            g_fullscreen = false;
+            LOG_INFO(GPU, "Fullscreen OFF (restored %dx%d window).", g_saved_w, g_saved_h);
+        }
+        // The surface size changed: recreate the Vulkan swapchain to match,
+        // or drop to the GDI fallback if recreation fails.
+        if (g_vk && g_vk_ready) {
+            int fb_w = 0, fb_h = 0;
+            glfwGetFramebufferSize(g_window, &fb_w, &fb_h);
+            if (fb_w > 0 && fb_h > 0 &&
+                !VkPresentResize(g_vk, static_cast<u32>(fb_w), static_cast<u32>(fb_h))) {
+                g_vk_ready = false;
+            }
+        }
+    }
 
     // Dynamically loaded Windows XInput GetState/SetState
     typedef DWORD(WINAPI* PFN_XInputGetState)(DWORD dwUserIndex, XINPUT_STATE* pState);
@@ -74,6 +120,36 @@ namespace GPU {
 
     typedef HRESULT(WINAPI* PFN_DwmFlush)();
     static PFN_DwmFlush pfn_DwmFlush = nullptr;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Boot status state (SetBootStatus / first-flip handover)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // g_boot_active: the boot screen still owns the window.  Cleared on the
+    // first presented guest frame, after which SetBootStatus is a no-op.
+    static std::atomic<bool> g_boot_active{true};
+
+    struct BootStatusState {
+        std::string stage;   // milestone currently executing
+        int done  = -1;      // determinate progress (total > 0)
+        int total = -1;
+        std::deque<std::string> log; // recently completed stages
+    };
+    static constexpr size_t kBootLogMax = 6;
+
+    // Boot-screen state + the mutex guarding it (and every boot-screen GDI
+    // render, so the guest thread and the main thread cannot tear a frame).
+    // Lives in a never-destroyed function-local singleton: SetBootStatus can
+    // be reached from any thread at any time, and this avoids static
+    // destruction-order hazards at process exit.
+    struct BootState {
+        BootStatusState status;
+        std::mutex      mutex;
+    };
+    static BootState& Boot() {
+        static BootState* s = new BootState();
+        return *s;
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Boot-screen primitives (software rendering into g_dib_buffer)
@@ -186,15 +262,23 @@ namespace GPU {
     // Draw the PCSX5 boot status screen into g_dib_buffer
     // ─────────────────────────────────────────────────────────────────────────
 
+    // Uppercase-copy into a bounded buffer (the 5x7 font covers 0x20-0x5F).
+    static void BootUpper(char* dst, size_t dst_size, const std::string& src) {
+        size_t i = 0;
+        for (; i + 1 < dst_size && i < src.size(); ++i) {
+            const char c = src[i];
+            dst[i] = (c >= 'a' && c <= 'z') ? static_cast<char>(c - 'a' + 'A') : c;
+        }
+        dst[i] = '\0';
+    }
+
+    // Draw the PCSX5 boot status screen into g_dib_buffer.  Caller must hold
+    // Boot().mutex.  Shows only real milestones recorded via SetBootStatus.
     static void DrawBootScreen() {
         // Background: deep navy gradient (simulate with 3 bands)
         FillRect(0,   0, g_width, 240, 0xFF0A0A1A); // very dark navy
         FillRect(0, 240, g_width, 240, 0xFF0E0E28); // dark navy
         FillRect(0, 480, g_width, 240, 0xFF12122F); // slightly lighter
-
-        // Scanline effect: thin horizontal lines every 4 pixels
-        for (int y = 0; y < g_height; y += 4)
-            DrawHLine(0, y, g_width, 0x0AFFFFFF);
 
         // ── Top accent bar ──────────────────────────────────────────────────
         FillRect(0, 0, g_width, 4, 0xFF00D4FF); // PS5 accent cyan
@@ -202,7 +286,7 @@ namespace GPU {
         // ── PCSX5 large logo text ────────────────────────────────────────────
         DrawText(160, 80, "PCSX5",  0xFF00D4FF, 8); // cyan, 8x scale (40x56px letters)
         DrawText(810, 96, "PS5 EMULATOR", 0xFFFFFFFF, 3);
-        DrawText(810, 126, "COMPATIBILITY LAYER", 0xFF8888BB, 2);
+        DrawText(810, 126, "BOOT IN PROGRESS", 0xFF8888BB, 2);
 
         // Logo divider line
         FillRect(155, 148, 970, 3, 0xFF00D4FF);
@@ -214,47 +298,40 @@ namespace GPU {
         FillRect(155, 165,   2, 270, 0xFF2244AA); // left border
         FillRect(1123,165,  2, 270, 0xFF2244AA); // right border
 
-        // Status title
-        DrawText(170, 176, "EMULATOR STATUS", 0xFF2299FF, 2);
+        // Current stage (the milestone executing right now)
+        DrawText(170, 176, "CURRENT STAGE", 0xFF2299FF, 2);
         DrawHLine(170, 194, 350, 0xFF2244AA);
 
-        // Status items  (green ticks / orange warnings)
-        const struct { const char* label; const char* val; u32 col; } items[] = {
-            { "MEMORY MANAGER",    "ONLINE",      0xFF00FF88 },
-            { "HLE SUBSYSTEM",     "ONLINE",      0xFF00FF88 },
-            { "ELF LOADER",        "ONLINE",      0xFF00FF88 },
-            { "KERNEL VEH",        "ONLINE",      0xFF00FF88 },
-            { "GLFW WINDOW",       "ONLINE",      0xFF00FF88 },
-            { "VULKAN DRIVER",     "LOADED",      0xFF00D4FF },
-            { "GUEST FRAMEBUFFER", "WAITING",     0xFFFFAA00 },
-            { "GPU BACKEND",       "STUB MODE",   0xFFFFAA00 },
-        };
-        for (int i = 0; i < 8; ++i) {
-            int row_y = 202 + i * 26;
-            int col    = (i < 4) ? 170 : 640;
-            int row_i  = i < 4 ? i : i - 4;
-            row_y = 202 + row_i * 26;
-            DrawText(col,       row_y, items[i].label, 0xFFCCCCCC, 2);
-            DrawText(col + 330, row_y, items[i].val,   items[i].col, 2);
+        char line[96];
+        BootUpper(line, sizeof(line), Boot().status.stage.empty()
+                                          ? "STARTING UP" : Boot().status.stage);
+        DrawText(170, 206, line, 0xFFFFFFFF, 3);
+
+        // Determinate progress bar when the stage reports done/total
+        if (Boot().status.total > 0) {
+            int done = Boot().status.done;
+            if (done < 0) done = 0;
+            if (done > Boot().status.total) done = Boot().status.total;
+            const int bar_x = 170, bar_y = 246, bar_w = 940, bar_h = 18;
+            FillRect(bar_x - 1, bar_y - 1, bar_w + 2, bar_h + 2, 0xFF2244AA);
+            FillRect(bar_x, bar_y, bar_w, bar_h, 0xFF070713);
+            const int fill_w = static_cast<int>(
+                (static_cast<long long>(done) * bar_w) / Boot().status.total);
+            if (fill_w > 0) FillRect(bar_x, bar_y, fill_w, bar_h, 0xFF00D4FF);
+            char count[32];
+            std::snprintf(count, sizeof(count), "%d / %d", done, Boot().status.total);
+            DrawText(bar_x + bar_w - 150, bar_y + 26, count, 0xFF8888BB, 2);
         }
 
-        // ── Colour bar strip (reference) ─────────────────────────────────────
-        const u32 bars[] = {
-            0xFFFFFFFF, // white
-            0xFF00FFFF, // cyan
-            0xFFFF00FF, // magenta
-            0xFF0000FF, // blue
-            0xFFFFFF00, // yellow
-            0xFF00FF00, // green
-            0xFFFF0000, // red
-            0xFF101010, // near-black
-        };
-        int bar_w = g_width / 8;
-        for (int b = 0; b < 8; ++b)
-            FillRect(b * bar_w, 450, bar_w, 80, bars[b]);
-
-        // Text over the bars
-        DrawText(g_width/2 - 180, 458, "WAITING FOR GUEST FRAME", 0xFF000000, 2);
+        // Recently completed stages (real, in execution order, oldest first)
+        DrawText(170, 300, "COMPLETED", 0xFF2299FF, 2);
+        DrawHLine(170, 318, 350, 0xFF2244AA);
+        int row_y = 326;
+        for (const auto& entry : Boot().status.log) {
+            BootUpper(line, sizeof(line), entry);
+            DrawText(170, row_y, line, 0xFF00FF88, 2);
+            row_y += 18;
+        }
 
         // ── Bottom info bar ──────────────────────────────────────────────────
         FillRect(0, g_height - 36, g_width, 36, 0xFF070713);
@@ -266,6 +343,23 @@ namespace GPU {
     // ─────────────────────────────────────────────────────────────────────────
     // Present g_dib_buffer to the window via GDI StretchDIBits
     // ─────────────────────────────────────────────────────────────────────────
+
+    // Largest centered rect of aspect src_w:src_h inside dst_w x dst_h
+    // (letterbox/pillarbox).
+    static void FitRect(int src_w, int src_h, int dst_w, int dst_h,
+                        int* out_x, int* out_y, int* out_w, int* out_h) {
+        int x = 0, y = 0, w = dst_w, h = dst_h;
+        if (src_w > 0 && src_h > 0 && dst_w > 0 && dst_h > 0) {
+            if (static_cast<long long>(src_w) * dst_h > static_cast<long long>(src_h) * dst_w) {
+                h = static_cast<int>((static_cast<long long>(dst_w) * src_h) / src_w);
+                y = (dst_h - h) / 2;
+            } else if (static_cast<long long>(src_w) * dst_h < static_cast<long long>(src_h) * dst_w) {
+                w = static_cast<int>((static_cast<long long>(dst_h) * src_w) / src_h);
+                x = (dst_w - w) / 2;
+            }
+        }
+        *out_x = x; *out_y = y; *out_w = w; *out_h = h;
+    }
 
     static void PresentDIB() {
         if (!g_hwnd) return;
@@ -285,8 +379,17 @@ namespace GPU {
         bmi.bmiHeader.biBitCount    = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
 
+        // Aspect-correct: blit into the largest centered rect of the DIB's
+        // aspect ratio; black-fill the bars when the aspects differ.
+        int fx, fy, fw, fh;
+        FitRect(g_width, g_height, dst_w, dst_h, &fx, &fy, &fw, &fh);
+        if (fx != 0 || fy != 0 || fw != dst_w || fh != dst_h) {
+            HBRUSH black = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+            ::FillRect(hdc, &client_rect, black);
+        }
+
         StretchDIBits(hdc,
-            0, 0, dst_w, dst_h,
+            fx, fy, fw, fh,
             0, 0, g_width, g_height,
             g_dib_buffer.data(), &bmi,
             DIB_RGB_COLORS, SRCCOPY);
@@ -298,12 +401,27 @@ namespace GPU {
         }
     }
 
+    // Draw + present the boot screen under Boot().mutex.  No-op without a
+    // window/DIB (headless tests) or after the first guest frame took over.
+    static void RenderBootScreenNow() {
+        std::lock_guard<std::mutex> lock(Boot().mutex);
+        if (!g_hwnd || g_dib_buffer.empty()) return;
+        DrawBootScreen();
+        PresentDIB();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Keyboard callback
     // ─────────────────────────────────────────────────────────────────────────
 
     static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
         (void)window; (void)scancode; (void)mods;
+
+        // F11: borderless fullscreen toggle (not a pad binding).
+        if (key == GLFW_KEY_F11) {
+            if (action == GLFW_PRESS) ToggleFullscreen();
+            return;
+        }
 
         u32 button_flag = 0;
         switch (key) {
@@ -348,6 +466,34 @@ namespace GPU {
     // Public API
     // ─────────────────────────────────────────────────────────────────────────
 
+    void SetBootStatus(const char* stage, int done, int total) {
+        if (!g_boot_active.load(std::memory_order_acquire)) return;
+        std::lock_guard<std::mutex> lock(Boot().mutex);
+        const std::string new_stage = stage ? stage : "";
+        if (new_stage != Boot().status.stage) {
+            // Stage change: retire the previous stage into the completed log.
+            if (!Boot().status.stage.empty()) {
+                Boot().status.log.push_back(Boot().status.stage);
+                while (Boot().status.log.size() > kBootLogMax) Boot().status.log.pop_front();
+            }
+            Boot().status.stage = new_stage;
+        }
+        Boot().status.done  = done;
+        Boot().status.total = total;
+        // Render immediately (GDI on the window HDC is thread-safe per-DC);
+        // this keeps progress visible while the main thread is blocked in
+        // subsystem init or module load.  No window yet -> state is recorded
+        // and rendered once GPU::Initialize presents the first frame.
+        if (g_hwnd && !g_dib_buffer.empty()) {
+            DrawBootScreen();
+            PresentDIB();
+        }
+    }
+
+    bool IsBootScreenActive() {
+        return g_boot_active.load(std::memory_order_acquire);
+    }
+
     bool Initialize() {
         LOG_INFO(GPU, "Initializing GPU subsystem (GLFW + Vulkan Backend)...");
 
@@ -358,6 +504,11 @@ namespace GPU {
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE,  GLFW_FALSE);
+        if (g_embed_mode) {
+            // Embedded in the launcher UI: stay hidden until the UI reparents
+            // us into its window (avoids a standalone-window flash).
+            glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        }
 
         g_window = glfwCreateWindow(g_width, g_height, "pcsx5 - PlayStation 5 Emulator", nullptr, nullptr);
         if (!g_window) {
@@ -369,13 +520,23 @@ namespace GPU {
         glfwSetKeyCallback(g_window, KeyCallback);
         LOG_INFO(GPU, "GLFW Window created successfully (%dx%d).", g_width, g_height);
 
+        // Machine-parseable line for the launcher UI: it reparents this HWND
+        // into its own window to render the game embedded.
+        std::printf("PCSX5_WINDOW_HANDLE=%llu\n",
+                    static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(g_hwnd)));
+        std::fflush(stdout);
+
         // Allocate host DIB buffer (BGRA 32-bit)
         g_dib_buffer.assign(static_cast<size_t>(g_width) * g_height, 0xFF000000u);
 
         // Bring up the real Vulkan backend (dynamic vulkan-1.dll loading, no
         // SDK).  Any failure leaves g_vk null and we stay on the GDI DIB path.
+        SetBootStatus("Creating Vulkan device", -1, -1);
         g_vk = VkContextCreate(g_window);
         if (g_vk) {
+            SetBootStatus(g_vk->device_name[0] ? (std::string("Vulkan device: ") + g_vk->device_name).c_str()
+                                               : "Vulkan device created", -1, -1);
+            SetBootStatus("Creating Vulkan swapchain", -1, -1);
             g_vk_ready = VkPresentInitialize(g_vk, static_cast<u32>(g_width),
                                              static_cast<u32>(g_height));
             if (g_vk_ready) {
@@ -402,9 +563,10 @@ namespace GPU {
             }
         }
 
-        // Draw and present the boot screen immediately ("first frame")
-        DrawBootScreen();
-        PresentDIB();
+        // Draw and present the boot screen immediately ("first frame").  The
+        // stage log already holds every milestone posted before the window
+        // existed (config, NID db, subsystem init), so they show up here.
+        SetBootStatus("GPU subsystem ready", -1, -1);
         glfwPollEvents();
         LOG_INFO(GPU, "Boot screen presented successfully (first frame displayed).");
 
@@ -427,6 +589,13 @@ namespace GPU {
             g_hwnd   = nullptr;
         }
         glfwTerminate();
+        {
+            // Reset boot-screen state so a later Initialize() starts clean.
+            std::lock_guard<std::mutex> lock(Boot().mutex);
+            Boot().status = BootStatusState{};
+            Boot().status.log.clear();
+            g_boot_active.store(true, std::memory_order_release);
+        }
         if (g_xinput_dll) {
             FreeLibrary(g_xinput_dll);
             g_xinput_dll = nullptr;
@@ -474,11 +643,19 @@ namespace GPU {
         if (!g_window || !g_hwnd) return;
 
         if (framebuffer_addr == 0) {
-            // No framebuffer yet - redraw the boot screen
-            DrawBootScreen();
-            PresentDIB();
-            LOG_DEBUG(GPU, "RenderFrame: No guest framebuffer, re-presenting boot screen.");
+            // No framebuffer yet - redraw the boot screen (only while the
+            // boot screen still owns the window).
+            if (g_boot_active.load(std::memory_order_acquire)) {
+                RenderBootScreenNow();
+                LOG_DEBUG(GPU, "RenderFrame: No guest framebuffer, re-presenting boot screen.");
+            }
             return;
+        }
+
+        // First real guest frame: the boot screen hands the window over to
+        // the game; SetBootStatus becomes a no-op from here on.
+        if (g_boot_active.exchange(false, std::memory_order_acq_rel)) {
+            LOG_INFO(GPU, "First guest frame presented - boot screen complete.");
         }
 
         // Preferred path: when the vk_draw image model already has a GPU
@@ -512,13 +689,18 @@ namespace GPU {
         }
 
         // Blit guest framebuffer → host DIB buffer (BGRA)
-        // Guest FB format is dynamic (RGBA8, BGRA8, or RGB565) - scale-blit to window (g_width x g_height)
+        // Guest FB format is dynamic (RGBA8, BGRA8, or RGB565) - scale-blit
+        // aspect-correct into the window-sized DIB (letterbox/pillarbox).
+        int fit_x = 0, fit_y = 0, fit_w = g_width, fit_h = g_height;
+        FitRect(static_cast<int>(g_fb_width), static_cast<int>(g_fb_height),
+                g_width, g_height, &fit_x, &fit_y, &fit_w, &fit_h);
+        std::fill(g_dib_buffer.begin(), g_dib_buffer.end(), 0xFF000000u);
         __try {
             const u8* src = reinterpret_cast<const u8*>(framebuffer_addr);
-            for (int y = 0; y < g_height; ++y) {
-                int src_y = (y * static_cast<int>(g_fb_height)) / g_height;
-                for (int x = 0; x < g_width; ++x) {
-                    int src_x = (x * static_cast<int>(g_fb_width)) / g_width;
+            for (int y = 0; y < fit_h; ++y) {
+                int src_y = (y * static_cast<int>(g_fb_height)) / fit_h;
+                for (int x = 0; x < fit_w; ++x) {
+                    int src_x = (x * static_cast<int>(g_fb_width)) / fit_w;
                     
                     u8 r = 0, g_ch = 0, b = 0;
                     if (g_fb_format == 2) { // RGB565
@@ -541,13 +723,14 @@ namespace GPU {
                         b = pixel[2];
                     }
                     
-                    g_dib_buffer[y * g_width + x] = (0xFF << 24) | (r << 16) | (g_ch << 8) | b;
+                    g_dib_buffer[(fit_y + y) * g_width + (fit_x + x)] = (0xFF << 24) | (r << 16) | (g_ch << 8) | b;
                 }
             }
         } __except (EXCEPTION_EXECUTE_HANDLER) {
             // Guest framebuffer address turned out invalid – fallback to boot screen
             LOG_WARN(GPU, "RenderFrame: Access violation reading guest framebuffer 0x%llx, falling back to boot screen.", framebuffer_addr);
-            DrawBootScreen();
+            RenderBootScreenNow(); // locks Boot().mutex internally (no C++ objects here: SEH)
+            return;
         }
 
         PresentDIB();
@@ -578,6 +761,14 @@ namespace GPU {
         // calls this — it goes through GetCurrentPadState() instead.
         if (g_window) {
             glfwPollEvents();
+            // While the boot screen owns the window there is no frame
+            // presenter, so repaint it here: WM_PAINT/WM_SIZE (e.g. after the
+            // launcher reparents or resizes the window for embedding)
+            // otherwise leave the client area blank until the next stage
+            // change happens to redraw it.
+            if (IsBootScreenActive()) {
+                RenderBootScreenNow();
+            }
         }
     }
 
@@ -661,6 +852,35 @@ namespace GPU {
 
                 if (new_state.l2_trigger > 50) new_state.buttons |= 0x00000100; // L2
                 if (new_state.r2_trigger > 50) new_state.buttons |= 0x00000200; // R2
+            }
+        }
+
+        // DualSense native HID feed (M4).  When a DualSense is attached it
+        // supersedes XInput as the primary pad source: buttons are OR'd in
+        // (same SCE_PAD bitmask), deflected sticks win over the current
+        // values, triggers take the max, and the touch/motion fields — which
+        // XInput cannot provide — are filled from the HID reports.
+        DualSense::EnsureStarted();
+        DualSense::Sample ds;
+        if (DualSense::GetSample(ds)) {
+            auto merge_axis = [](u8 ds_axis, u8 current) -> u8 {
+                const int deflection = static_cast<int>(ds_axis) - 128;
+                return (deflection > 12 || deflection < -12) ? ds_axis : current;
+            };
+            new_state.buttons |= ds.buttons;
+            new_state.left_analog_x  = merge_axis(ds.lx, new_state.left_analog_x);
+            new_state.left_analog_y  = merge_axis(ds.ly, new_state.left_analog_y);
+            new_state.right_analog_x = merge_axis(ds.rx, new_state.right_analog_x);
+            new_state.right_analog_y = merge_axis(ds.ry, new_state.right_analog_y);
+            new_state.l2_trigger = ds.l2 > new_state.l2_trigger ? ds.l2 : new_state.l2_trigger;
+            new_state.r2_trigger = ds.r2 > new_state.r2_trigger ? ds.r2 : new_state.r2_trigger;
+            new_state.dualsense_connected = 1;
+            new_state.touch_count = ds.touch_count;
+            new_state.touch[0] = ds.touch[0];
+            new_state.touch[1] = ds.touch[1];
+            for (int i = 0; i < 3; ++i) {
+                new_state.accel[i] = ds.accel[i];
+                new_state.gyro[i] = ds.gyro[i];
             }
         }
 

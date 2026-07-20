@@ -103,11 +103,18 @@ bool SubsystemRegistry::InitializeAll(std::string* error) {
     }
 
     m_initialized.clear();
+    const int total = static_cast<int>(m_init_order.size());
+    int step = 0;
     for (auto& name : m_init_order) {
         auto it = m_subsystems.find(name);
         if (it == m_subsystems.end()) continue;
 
         LOG_INFO(General, "SubsystemRegistry: initializing '%s'...", name.c_str());
+        {
+            // Real boot milestone: report the subsystem about to initialize.
+            const std::string stage = "Init subsystem: " + name;
+            GPU::SetBootStatus(stage.c_str(), step, total);
+        }
         if (!it->second.init()) {
             LOG_ERROR(General, "SubsystemRegistry: init failed for '%s'", name.c_str());
             // Teardown everything initialized so far (reverse order).
@@ -116,6 +123,7 @@ bool SubsystemRegistry::InitializeAll(std::string* error) {
             return false;
         }
         m_initialized.push_back(name);
+        ++step;
         LOG_INFO(General, "SubsystemRegistry: '%s' initialized OK", name.c_str());
     }
 

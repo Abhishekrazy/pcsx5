@@ -56,6 +56,11 @@ namespace Kernel {
     // Register a thread
     void RegisterThread(const ThreadContext& context);
 
+    // Resolve the guest thread pointer for a guest thread id (per-thread
+    // tls_base when registered, otherwise the shared TLS block — mirrors the
+    // VEH fs-emulation lookup).
+    guest_addr_t ResolveGuestThreadPointer(u64 guest_tid);
+
     // Resolve system calls (syscall instructions)
     void HandleSyscall(u32 syscall_number, guest_addr_t context);
 }

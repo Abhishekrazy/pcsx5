@@ -18,6 +18,9 @@ namespace GPU {
 // Creates the swapchain for the current window client size.  Returns false
 // (with a log line) on failure — caller stays on the GDI fallback.
 bool VkPresentInitialize(VkContext* ctx, u32 width, u32 height);
+// Recreates the swapchain for a new window size (fullscreen toggle, resize).
+// Returns false on failure — caller drops to the GDI fallback.
+bool VkPresentResize(VkContext* ctx, u32 width, u32 height);
 void VkPresentShutdown(VkContext* ctx);
 bool VkPresentIsReady();
 

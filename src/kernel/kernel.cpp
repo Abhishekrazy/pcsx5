@@ -3,6 +3,7 @@
 #include "memory.h"
 #include "syscalls.h"
 #include "thread.h"
+#include "tls_patch.h"
 #include "../memory/memory.h"
 #include "../hle/hle.h"
 #include "../loader/module_graph.h"
@@ -11,7 +12,11 @@
 #include <windows.h>
 #include <iostream>
 #include <cstring>
+#include <csignal>
+#include <cstdlib>
+#include <chrono>
 #include <filesystem>
+#include <thread>
 #include <unordered_map>
 #include <memory>
 #include <mutex>
@@ -42,6 +47,86 @@ namespace Kernel {
     static GuestTlsContext g_guest_tls;
     static std::vector<Loader::MappedSegment> g_guest_segments;
     static Loader::ModuleResolver g_module_resolver;
+
+    // ------------------------------------------------------------------
+    // Heartbeat watchdog (H1): pins the process-alive timestamp in the log
+    // every 30 s so a silent death leaves a precise last-alive marker.
+    // ------------------------------------------------------------------
+    static std::thread g_heartbeat_thread;
+    static HANDLE g_heartbeat_stop = nullptr;
+
+    static void HeartbeatLoop() {
+        const auto start = std::chrono::steady_clock::now();
+        for (;;) {
+            if (WaitForSingleObject(g_heartbeat_stop, 30000) == WAIT_OBJECT_0) {
+                break;
+            }
+            const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - start).count();
+            LOG_INFO(Kernel, "Heartbeat: process alive, elapsed=%llds, tls_traps=%llu, tls_patches=%llu, os_thread=%lu",
+                     static_cast<long long>(elapsed), TlsPatch::TrapCount(),
+                     TlsPatch::PatchedCount(), ::GetCurrentThreadId());
+        }
+    }
+
+    static void StartHeartbeat() {
+        if (g_heartbeat_thread.joinable()) return;
+        g_heartbeat_stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!g_heartbeat_stop) {
+            LOG_WARN(Kernel, "Failed to create heartbeat stop event (err=%lu); heartbeat disabled",
+                     GetLastError());
+            return;
+        }
+        g_heartbeat_thread = std::thread(HeartbeatLoop);
+    }
+
+    static void StopHeartbeat() {
+        if (g_heartbeat_stop) {
+            SetEvent(g_heartbeat_stop);
+        }
+        if (g_heartbeat_thread.joinable()) {
+            g_heartbeat_thread.join();
+        }
+        if (g_heartbeat_stop) {
+            CloseHandle(g_heartbeat_stop);
+            g_heartbeat_stop = nullptr;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Process-death visibility (H1): every death path must leave a final
+    // log line.  These hooks cover the CRT paths that bypass the SEH
+    // unhandled-exception filter (abort/fastfail, invalid parameter,
+    // purecall).  SEH deaths are covered by HostUnhandledExceptionFilter
+    // (now chained to the diagnostics crash-bundle writer).
+    // ------------------------------------------------------------------
+    static void AbortSignalHandler(int sig) {
+        LOG_CRITICAL(Kernel, "FATAL: abort() raised (signal %d) — process is terminating", sig);
+        std::signal(sig, SIG_DFL);
+        std::raise(sig);
+    }
+
+    static void InvalidParameterHandler(const wchar_t* expression, const wchar_t* function,
+                                        const wchar_t* file, unsigned int line, uintptr_t /*reserved*/) {
+        LOG_CRITICAL(Kernel, "FATAL: CRT invalid parameter: expr='%ls' func='%ls' file='%ls' line=%u",
+                     expression ? expression : L"", function ? function : L"",
+                     file ? file : L"", line);
+    }
+
+    static void PurecallHandler() {
+        LOG_CRITICAL(Kernel, "FATAL: pure virtual function call — process is terminating");
+    }
+
+    // Reserve stack for the stack-overflow exception path: without a
+    // guarantee the OS cannot even dispatch STATUS_STACK_OVERFLOW handlers
+    // and the process dies silently (the suspected H1 death mode).
+    static void ArmStackGuarantee() {
+        ULONG guarantee = 64 * 1024;
+        if (!SetThreadStackGuarantee(&guarantee)) {
+            LOG_WARN(Kernel, "SetThreadStackGuarantee failed (err=%lu)", GetLastError());
+        }
+    }
+
 
     // ------------------------------------------------------------------
     // PRX module auto-load state
@@ -165,7 +250,12 @@ namespace Kernel {
         LOG_ERROR(Kernel, "  R12: 0x%016llx  R13: 0x%016llx", context->R12, context->R13);
         LOG_ERROR(Kernel, "  R14: 0x%016llx  R15: 0x%016llx", context->R14, context->R15);
         LOG_ERROR(Kernel, "--------------------------------------------------");
-        
+
+        // Chain to the previously installed filter (the diagnostics crash
+        // handler) so the crash-report bundle and minidump are written.
+        if (g_prev_exception_filter) {
+            return g_prev_exception_filter(exception_info);
+        }
         return EXCEPTION_EXECUTE_HANDLER;
     }
 
@@ -198,6 +288,17 @@ namespace Kernel {
         // Register Top-Level Exception Filter for host crashes
         g_prev_exception_filter = SetUnhandledExceptionFilter(HostUnhandledExceptionFilter);
 
+        // CRT death paths bypass the SEH filter — hook them so abort(),
+        // fastfail, invalid-parameter and purecall deaths leave a final
+        // log line.
+        _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+        std::signal(SIGABRT, &AbortSignalHandler);
+        _set_invalid_parameter_handler(&InvalidParameterHandler);
+        _set_purecall_handler(&PurecallHandler);
+        ArmStackGuarantee();
+
+        StartHeartbeat();
+
         // Install the demand-commit fault handler: guest faults on reserved
         // (not yet committed) pages are committed on first touch instead of
         // crashing.  Consulted by VectoredExceptionHandler before the crash
@@ -227,6 +328,14 @@ namespace Kernel {
         LOG_INFO(Kernel, "Allocated guest TLS block [0x%llx - 0x%llx], base at 0x%llx", 
                  tls_alloc, tls_alloc + tls_total_size, g_guest_tls.ThreadPointer());
 
+        // Patch-once TLS access rewriting (H2): stubs read the per-thread
+        // guest thread pointer from a host TLS slot instead of trapping
+        // through the VEH on every fs-relative access.
+        if (TlsPatch::Initialize()) {
+            TlsPatch::SetDefaultThreadPointer(g_guest_tls.ThreadPointer());
+            TlsPatch::BindCurrentThread(g_guest_tls.ThreadPointer());
+        }
+
         // Register the main thread (ID: 1)
         ThreadContext main_ctx;
         main_ctx.thread_id = 1;
@@ -241,6 +350,8 @@ namespace Kernel {
     void Shutdown() {
         LOG_INFO(Kernel, "Shutting down Kernel subsystem...");
         
+        StopHeartbeat();
+        TlsPatch::Shutdown();
         ShutdownFdTable();
         ShutdownGuestMemory();
 
@@ -435,6 +546,13 @@ namespace Kernel {
             auto record = std::make_unique<PrxModuleRecord>();
             record->graph_name = res.name;
             record->path = res.path;
+
+            {
+                // Real boot milestone: report each PRX as it is mapped.
+                const std::string stage = "Loading PRX: " + res.name;
+                GPU::SetBootStatus(stage.c_str(),
+                                   static_cast<int>(g_prx_modules.size()), -1);
+            }
 
             if (!Loader::Load(res.path.string(), record->module)) {
                 LOG_WARN(Kernel, "Failed to load resolved PRX '%s' for module '%s'; falling back to HLE",
@@ -690,6 +808,11 @@ namespace Kernel {
         // shadows the Win32 API inside this namespace.
         HLE::SetMainGuestThreadId(static_cast<unsigned long>(::GetCurrentThreadId()));
 
+        // This thread executes guest code: bind its guest thread pointer for
+        // the patched TLS stubs and reserve stack for the overflow handler.
+        TlsPatch::BindCurrentThread(g_guest_tls.ThreadPointer());
+        ArmStackGuarantee();
+
         g_guest_segments = main_module.segments;
 
         // Print first 256 bytes of the guest memory starting from base address
@@ -806,6 +929,33 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             return EXCEPTION_CONTINUE_SEARCH;
         }
 
+        // Host stack overflow: log minimally and defer to the unhandled
+        // filter chain (stack guarantee reserved in Initialize gives it room
+        // to run).  Without the guarantee the OS kills the process silently
+        // here — no VEH, no filter, no log line.
+        if (exception_record->ExceptionCode == STATUS_STACK_OVERFLOW) {
+            LOG_CRITICAL(Kernel, "FATAL: host stack overflow at RIP=0x%llx RSP=0x%llx OS thread %lu",
+                         context->Rip, context->Rsp, ::GetCurrentThreadId());
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+
+        // TLS patch-cache recovery (H2):
+        // - Fault INSIDE an emitted stub: the patched site ran on a thread
+        //   without a bound guest thread pointer; restore the original
+        //   instruction and re-execute it via the emulation path.
+        // - Fault AT a patched site: a concurrent thread fetched the bytes
+        //   mid-rewrite; retry the instruction (bounded per site).
+        if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+            u64 patch_site = 0;
+            if (TlsPatch::HandleStubFault(context->Rip, &patch_site)) {
+                context->Rip = patch_site;
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+            if (TlsPatch::ShouldRetry(context->Rip)) {
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        }
+
         LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu", 
                  exception_record->ExceptionCode, context->Rip, ::GetCurrentThreadId());
  
@@ -838,6 +988,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
 
         if (exception_record->ExceptionCode == STATUS_ACCESS_VIOLATION || exception_record->ExceptionCode == 0xC0000005) {
             LOG_INFO(Kernel, "Parsing instruction for TLS emulation at RIP=0x%llx", context->Rip);
+            TlsPatch::NoteTrap();
             u8* rip = reinterpret_cast<u8*>(context->Rip);
             u8* instr = rip;
             u8 b = 0;
@@ -850,7 +1001,9 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 instr++;
                 
                 bool is_64bit = false;
+                u8 rex = 0;
                 if (SafeRead(&b, instr, 1) && (b & 0xF0) == 0x40) {
+                    rex = b;
                     is_64bit = (b & 0x08) != 0;
                     instr++;
                 } else {
@@ -871,6 +1024,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                         
                         s32 displacement = 0;
                         bool parse_success = true;
+                        bool patchable_form = false;  // absolute fs:[disp32] — eligible for patch-once
                         
                         if (mod == 0 && rm == 4) {
                             u8 sib = 0;
@@ -880,6 +1034,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                 if (base == 5) {
                                     if (!SafeRead(&displacement, instr, 4)) parse_success = false;
                                     instr += 4;
+                                    patchable_form = true;
                                 } else {
                                     LOG_INFO(Kernel, "  SIB base is %d (expected 5)", base);
                                     parse_success = false;
@@ -890,6 +1045,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                         } else if (mod == 0 && rm == 5) {
                             if (SafeRead(&displacement, instr, 4)) {
                                 instr += 4;
+                                patchable_form = true;
                             } else {
                                 parse_success = false;
                             }
@@ -933,6 +1089,21 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                             if (tp == 0) {
                                 tp = g_guest_tls.ThreadPointer();
                             }
+
+                            // H2: once this trap has been emulated, rewrite the
+                            // site so subsequent executions run natively (no VEH).
+                            auto try_patch_site = [&](u64 site_rip, u32 imm32 = 0) {
+                                if (!patchable_form) return;
+                                if (opcode == 0xC7 && reg != 0) return; // C7 /0 only
+                                TlsPatch::AccessInfo access{};
+                                access.opcode = opcode;
+                                access.is_64bit = is_64bit;
+                                access.reg = static_cast<u8>(reg | ((rex & 0x04) ? 8 : 0));
+                                access.displacement = displacement;
+                                access.imm32 = imm32;
+                                access.instr_len = instr_len;
+                                TlsPatch::TryPatchSite(site_rip, access);
+                            };
                             
                             if (opcode == 0x8B) {
                                 const u64 access_size = is_64bit ? 8 : 4;
@@ -967,6 +1138,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     
                                     u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
+                                    try_patch_site(old_rip);
                                     LOG_INFO(Kernel, "TLS read emulated: RIP 0x%llx -> 0x%llx (len=%d), reg val = 0x%llx, OS Thread: %lu", old_rip, context->Rip, instr_len, *reg_ptr, ::GetCurrentThreadId());
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
@@ -996,6 +1168,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     
                                     u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
+                                    try_patch_site(old_rip);
                                     LOG_INFO(Kernel, "TLS write emulated: RIP 0x%llx -> 0x%llx (len=%d), val = 0x%llx", old_rip, context->Rip, instr_len, tls_value);
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
@@ -1017,6 +1190,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     
                                     u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
+                                    try_patch_site(old_rip, imm_value);
                                     LOG_INFO(Kernel, "TLS imm write emulated: RIP 0x%llx -> 0x%llx (len=%d), val = 0x%llx", old_rip, context->Rip, instr_len, tls_val);
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
@@ -1217,6 +1391,26 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         LOG_INFO(Kernel, "Registered thread '%s' (id=%llu, entry=0x%llx, stack=0x%llx, stack_size=%llu, tls=0x%llx)",
                  context.name.c_str(), context.thread_id, context.entry_point,
                  context.stack_base, context.stack_size, context.tls_base);
+    }
+
+    // Resolve the guest thread pointer for a guest thread id exactly the way
+    // the VEH's fs-emulation path does: the registered per-thread tls_base
+    // when present, otherwise the shared TLS block.  Patched TLS stubs MUST
+    // use the same value or their accesses silently diverge from the
+    // emulated path (H2 worker-thread corruption).
+    guest_addr_t ResolveGuestThreadPointer(u64 guest_tid) {
+        guest_addr_t tp = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_thread_mutex);
+            auto it = g_threads.find(guest_tid);
+            if (it != g_threads.end()) {
+                tp = it->second.tls_base;
+            }
+        }
+        if (tp == 0) {
+            tp = g_guest_tls.ThreadPointer();
+        }
+        return tp;
     }
 }
 // namespace Kernel

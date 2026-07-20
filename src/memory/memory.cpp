@@ -446,7 +446,7 @@ bool CommitOnFault(guest_addr_t address) {
                  base, GetLastError());
         return false;
     }
-    LOG_INFO(Memory, "CommitOnFault: committed 64 KiB at 0x%llx (fault at 0x%llx)", base, address);
+    LOG_DEBUG(Memory, "CommitOnFault: committed 64 KiB at 0x%llx (fault at 0x%llx)", base, address);
     return true;
 }
 

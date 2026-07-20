@@ -40,6 +40,10 @@ namespace Loader {
     constexpr u32 PT_GNU_RELRO        = 0x6474E550;
     constexpr u32 PT_GNU_PROPERTY     = 0x6474E551;
     constexpr u32 PT_GNU_STACK        = 0x6474E552;
+    // Standard GNU value (same numeric constant Sony uses for the
+    // .eh_frame_hdr segment on PS5; the PT_GNU_RELRO alias above predates
+    // this and is kept for IsPs5SegmentType compatibility).
+    constexpr u32 PT_GNU_EH_FRAME     = 0x6474E550;
 
     // True if `p_type` is a known PS5 SDK extension we should silently
     // skip during PT_LOAD / validation / dynamic-table processing.
@@ -258,6 +262,12 @@ namespace Loader {
 
         // DT_SONAME (only meaningful for ET_DYN)
         std::string soname;
+
+        // PT_GNU_EH_FRAME (0x6474E550) — guest address of the module's
+        // .eh_frame_hdr and its size in bytes (0 when the module has none).
+        // Consumed by the HLE guest C++ exception unwinder (liblibc.cpp).
+        guest_addr_t eh_frame_hdr_addr = 0;
+        u64          eh_frame_hdr_size = 0;
 
         std::vector<MappedSegment> segments;
     };

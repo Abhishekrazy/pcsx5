@@ -11,14 +11,14 @@ A phased plan for building a working PS5 emulator, grounded in the current state
 | Subsystem | State | Notes |
 |---|---|---|
 | Loader (ELF/SELF) | ✅ Solid | `src/loader/elf.cpp` — ELF64, PT_SCE segments, RELA/PLT relocs, TLS, fPKG SELF. No retail decryption. |
-| Kernel | ✅ Mature | `src/kernel/` — syscalls, threads, TLS, fd table, VEH + INT3 patching, demand-commit guest fault handler, unified guest clock; real pthread/equeue/sema/event-flag sync in `src/hle/libkernel_sync.cpp`. |
-| HLE modules | ✅ Broad | `src/hle/` — savedata, user-service, system-service, NP, sysmodule, libc heap + printf engine, videoout flip model, AGC/PM4; 553 NID-DB stubs auto-registered. |
-| CPU layer | ✅ Done | `src/cpu/cpu.cpp` — `CpuCore` owns guest thread state; `src/kernel/thread.cpp` is a shim; pthread routes through it. |
-| GPU | 🟡 Rising | Real Vulkan backend (`src/gpu/vk_context.cpp`/`vk_present.cpp` — swapchain present proven pixel-correct, GDI fallback); PM4 DCB builders + submit walker with register shadow (`src/hle/libagc.cpp`); RDNA2 decoder + metadata + SPIR-V builder (`src/gpu/shader/`); SPIR-V emission in progress. No draws rendered yet. |
-| Audio | 🟡 Preview only | ATRAC9 player (`src/ui/snd_player.cpp`); no libSceAudioOut HLE. |
-| Input | 🟡 Basic | XInput/keyboard → PadButtonState in gpu backend; WPF DualSense HID reader. |
-| UI | ✅ Working | WPF .NET 9 frontend (`src/ui_csharp/`) + CLI. |
-| Tests | ✅ Good base | 30/30 CTest targets green incl. HLE sync/videoout/AGC/printf/shader suites; freestanding guest ELF smoke tests. |
+| Kernel | ✅ Mature | `src/kernel/` — syscalls, threads, TLS, fd table, VEH + INT3 patching, demand-commit guest fault handler, unified guest clock; real pthread/equeue/sema/event-flag sync in `src/hle/libkernel_sync.cpp`. VEH hardened (2026-07-20): debug-output/thread-naming exceptions passed through, stack scans capped at thread limits. |
+| HLE modules | ✅ Broad | `src/hle/` — savedata, user-service, system-service, NP, sysmodule (retail-accurate IsLoaded), libc heap + printf engine, videoout flip model, AGC/PM4, **libSceAudioOut**, **libScePad** (retail struct + error codes); 553 NID-DB stubs auto-registered. Guest pointers probed before HLE memcpy/DMA writes (2026-07-20). |
+| CPU layer | ✅ Done | `src/cpu/cpu.cpp` — `CpuCore` owns guest thread state; `src/kernel/thread.cpp` is a shim; pthread routes through it. **Guest runs on a dedicated worker thread; main thread owns the window/message loop (2026-07-20) — no more "Not Responding".** |
+| GPU | 🟡 Rising fast | Vulkan backend + present (GDI fallback); PM4 DCB builders + submit walker with register shadow; full RDNA2→SPIR-V translator (81/81 corpus driver-valid) with per-draw runtime-SGPR model; **guest draw executor live** (`src/gpu/gfx10_state.*` + `vk_draw.*` — guest RT image model, texture upload, pipeline cache from Cx shadow, indexed draws) and **present-from-GPU-image at flip** (M3.2b/c/d done, 2026-07-20). First on-screen pixels from GPU draws confirmed (Ratalaika splash in Dreaming Sarah). Menus not yet reached — see M3.3 blockers. |
+| Audio | 🟡 Working | libSceAudioOut HLE (`src/hle/libaudioout.cpp`): Open/Close/Output/SetVolume/GetPortState, winmm waveOut backend, paced silence when `audio.backend=0`. WASAPI/XAudio2 backends TODO. ATRAC9 preview player in UI. |
+| Input | 🟡 Good | Retail 0x78 `ScePadData`, scePadRead/GetHandle/OpenExt, retail error codes; GLFW keyboard (full mapping incl. sticks/triggers) + XInput → pad state; XInput rumble; touchpad click; neutral motion data. DualSense HID (finger positions, motion, haptics) TODO. |
+| UI | ✅ Working | WPF .NET 9 frontend + CLI; flood-proof batched console (2026-07-20); `pcsx5.exe` with no args launches the UI. Real boot-progress screen in the emulator window (real stages: GPU device, modules, PRXs, shader count). Game window embedding in UI planned. |
+| Tests | ✅ Good base | 31/31 CTest green incl. new gfx10_state suite. |
 | Compat infra | 🟡 Seeded | `src/compat/` DB with 6-status taxonomy; `compat/titles/` with 6 titles (PPSA02929 + PPSA07429 at `status-boot`, both running crash-free to the rendering wall); 1860 tracker issues created. |
 
 Legend: ✅ working · 🟡 partial · 🔴 not started
@@ -92,26 +92,36 @@ Legend: ✅ working · 🟡 partial · 🔴 not started
 
 *Goal: translate GNM/PM4 to Vulkan. Expect this to be the largest single investment.*
 
-**Status (2026-07-19): in progress — M0/M1/M2 done; M3 slices 0/1/2a done (2c in flight).** Reference: SharpEmu (`sharpemu_clone/`, synced to origin/main 0f224ec) — AGC ABI, PM4 semantics, and the RDNA2→SPIR-V translator being transliterated to C++. Live state per title in `compat/titles/`; milestone ledger in `PROGRESS.md`; next steps in `PENDING.md`.
+**Status (2026-07-20): M0/M1/M2 done; M3.2b/c/d done — first real pixels on screen (Ratalaika splash, Dreaming Sarah). M3.3 (menus) blocked on content-load stall, not on GPU formats.** Reference: SharpEmu (`sharpemu_clone/`, synced to origin/main 0f224ec). Live state per title in `compat/titles/`; milestone ledger in `PROGRESS.md`; next steps in `PENDING.md`.
 
 - [x] PM4 command-buffer parser: packet dispatch loop, register writes, draw/dispatch packets — *in `src/hle/libagc.cpp` (M0): 20+ real `sceAgcDcb*` PM4 builders + submit walker (`sceAgcDriverSubmitDcb/Acb/SubmitMultiDcbs`) with Cx/Sh/Uc register shadow state; DMA fills/copies executed into guest memory; RFlip forwarded to videoout.*
 - [x] Clear + present path: render-target clear and swapchain blit — first visible output. *(`src/gpu/vk_context.cpp` + `src/gpu/vk_present.cpp` (M1): volk-style dynamic loading (no SDK), swapchain, guest-FB upload → `vkCmdBlitImage` → present; GDI DIB fallback retained. Pixel-correct presents proven via `tests/vk_present_smoke.cpp`; Vulkan-clear helper ready for the bound-RT model.)*
 - [x] `sceAgcCreateShader` shader ABI — *(M0: header validation, self-relative pointer relocation, PGM_LO/HI patching, real register-defaults tables; unblocked the boot wall.)*
-- [ ] Resource translation: guest GPU memory → Vulkan buffers/images — **in progress** *(M3 slice 1, `2e165a7`: per-draw scalar-state evaluator (`src/gpu/shader/gcn_eval.{h,cpp}` — symbolic execution of the shader scalar stream over a path stack with EXEC/SCC, supplemental fall-through discovery) resolves texture/buffer descriptors from the register shadow's user-data banks; verified in-game (sprite texture + vertex/constant buffers resolve to real guest addresses). M3 slice 2a: dynamic descriptor-driven `BufferLoadFormat*` decode in the translator (unified-format table, per-component bit layouts, unorm/snorm/uscaled/sscaled/uint/sint/float/mini-float conversion). Remaining: guest RT image model, texture upload, descriptor sets.)*
-- [x] Shader recompiler: RDNA 2 ISA → SPIR-V — *(`src/gpu/shader/`: decoder for all encoding families, AGC/metadata parser, SPIR-V module builder (M2.1); SPIR-V emission (M2.2, `c923dd6`) in `gcn_translate.{h,cpp}` + `gcn_translate_alu.cpp` — guided transliteration of `SharpEmu.ShaderCompiler.Vulkan`: PC-dispatcher control-flow model, single-lane wave semantics (VCC/EXEC as per-lane bools synced with s106/s126), SGPR/VGPR register files, SDWA source/destination modifiers, compressed exports, VInterp, image-sample/scalar-load/buffer-load paths with bounds-checked storage-buffer access. Full corpus translates: 81/81 shaders, and all 81 modules are accepted by the NVIDIA ICD via `vkCreateShaderModule` (`shader_dump --translate-corpus` / `--validate-spv`). M3 slice 0 (`be2571a`): draw-time shader discovery + translation proven in-game (VS/PS fetched from the register shadow at draw packets, translated, driver-validated). Rejected by design (absent from the corpus; fail loudly): DPP, VOP3P packed-f16, DS, global-memory, buffer store/atomic, storage image load/store, offset/compare image samples.)*
-- [ ] Pipeline state → Vulkan pipelines; descriptor translation; samplers — **in progress** *(M3 slice 2: vk_context function table extended with pipeline/descriptor/sampler/render-pass/cmd-draw entry points; per-draw runtime-SGPR model (initial-scalar buffer) in flight (slice 2b), then pipeline build from the Cx/Uc shadow (topology, blend, raster, viewport/scissor) + descriptor sets (slice 2c) and present-from-GPU-image (slice 2d).)*
-- [ ] Texture formats/conversion table; tiling/detiling.
+- [x] Resource translation: guest GPU memory → Vulkan buffers/images — *(done 2026-07-20: guest RT image model guest-address→VkImage+view+render pass+framebuffer, texture descriptor decode + upload (linear tiling assumed), per-draw host-visible buffer uploads — `src/gpu/gfx10_state.*`, `vk_draw.*`.)*
+- [x] Shader recompiler: RDNA 2 ISA → SPIR-V — *(done incl. M3.2b 2026-07-20: per-draw runtime-SGPR model — `initial_scalar_buffer_index`, `ComputeConsumedScalarMask` port, per-draw scalar-state packing; one translation now serves many textures/sprite batching.)*
+- [x] Pipeline state → Vulkan pipelines; descriptor translation; samplers — *(done 2026-07-20: pipeline cache keyed by spirv digests + topology/blend/raster/format from the Cx shadow; storage-buffer + combined-sampler descriptors + scalar-state buffer; indexed draws; present blits from the GPU RT image at flip with CPU fallback — `vk_draw.cpp`, `vk_present.cpp`.)*
+- [ ] **M3.3 menus — blockers (2026-07-20):** after the 180-frame splash the guest enters a content-load phase (~450+ 64KB direct-memory allocations over 8+ min, no draws); runs die silently ~8-10 min in (suspected host stack exhaustion in the recursive VEH/TLS path or external kill). Fix path in PENDING.md.
+- [ ] Texture formats/conversion table; tiling/detiling. *(Linear tiling works for 2D so far; detiling + BC formats deferred — needed for 3D titles.)*
 - [ ] Compute queue support.
 - [ ] Shader cache (disk) + async pipeline compilation.
+- [ ] Command batching in the draw executor (currently one submit+fence-wait per draw — correct but slow).
 - [ ] Validation strategy: capture/replay tool for PM4 streams + golden-image tests. *(Partial: `tests/shader_dump.cpp` corpus translator + driver validator (`--translate-corpus` / `--validate-spv`) — 81/81 corpus shaders emit SPIR-V accepted by the NVIDIA ICD; 54 golden shader pairs (RDNA IR + working SPIR-V) captured from the reference emulator for cross-checking; golden-image capture/replay still open.)*
 
 ## Phase 6 — Audio & Input
 
-- [ ] libSceAudioOut HLE: ring-buffer output ports → host backend (XAudio2/SDL); mixing, volume, format conversion.
+- [x] libSceAudioOut HLE: output ports → host backend — *(done 2026-07-20: `src/hle/libaudioout.cpp`, winmm waveOut backend, volume scaling, mono/stereo/8ch s16/float32 conversion, paced silence when `audio.backend=0`. TODO: real WASAPI/XAudio2 backends for lower latency.)*
 - [ ] Integrate ATRAC9 decode (LibAtrac9 already vendored) as an HLE audio codec path, not just the UI preview player.
-- [ ] libScePad completeness: touchpad, motion sensor, headset endpoints.
-- [ ] DualSense haptics/adaptive triggers via HID output (UI already has the HID reader).
+- [x] libScePad completeness: retail 0x78 ScePadData, scePadRead/GetHandle/OpenExt, error codes, XInput rumble, touchpad click, neutral motion data — *(done 2026-07-20; touch finger positions + real motion still need the DualSense HID path.)*
+- [ ] DualSense haptics/adaptive triggers + motion/touch via HID output (UI already has the HID reader).
 - [ ] Tests: audio ring-buffer unit tests; pad state machine tests.
+
+## Phase 6b — UX & Frontend (new, 2026-07-20)
+
+- [x] Window responsiveness: guest on worker thread, main thread owns window loop.
+- [x] Flood-proof UI console (batched, capped); no-arg `pcsx5.exe` launches UI.
+- [x] Real boot-progress screen in emulator window (subsystem steps, GPU device, module/PRX loads, shader count).
+- [ ] Embed game render window inside the library window (reparent emulator HWND into the UI, SharpEmu-style) with Stop/Console overlay bar — design agreed, not yet implemented.
+- [ ] Emulator-window fullscreen toggle (F11) + aspect-correct scaling.
 
 ## Phase 7 — System Services
 

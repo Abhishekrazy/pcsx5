@@ -23,8 +23,11 @@
 #include "../gpu/shader/gcn_translate.h"
 #include "../gpu/gfx10_state.h"
 #include "../gpu/vk_draw.h"
+#include "../gpu/gpu.h"
 #include <windows.h>
 #include <algorithm>
+#include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -776,6 +779,24 @@ bool AgcEvaluateDrawShader(u64 code_addr,
     return true;
 }
 
+// Boot milestone: count of GCN->SPIR-V shader translations this run.
+std::atomic<int> g_agc_shaders_translated{0};
+
+void AgcNoteShaderTranslated() {
+    const int n = ++g_agc_shaders_translated;
+    char stage[64];
+    std::snprintf(stage, sizeof(stage), "Translating shaders (%d)", n);
+    GPU::SetBootStatus(stage, n, -1);
+}
+
+// Boot milestone: the first guest draw executed through the Vulkan executor.
+void AgcNoteFirstDraw() {
+    static std::atomic<bool> noted{false};
+    if (!noted.exchange(true)) {
+        GPU::SetBootStatus("First guest draw executed");
+    }
+}
+
 // Builds the SPIR-V modules for an es/ps pair against the global binding
 // layout (see the M3.2c block comment).  The PS is translated first so the
 // VS interface covers everything the PS consumes.
@@ -845,6 +866,7 @@ bool AgcBuildDrawProgram(
         if (!GcnTranslateToSpirv(ps_program, options, out.ps, error)) {
             return false;
         }
+        AgcNoteShaderTranslated();
         dump(out.ps, "ps", ps);
     }
     if (es != 0) {
@@ -857,6 +879,7 @@ bool AgcBuildDrawProgram(
         if (!GcnTranslateToSpirv(es_program, options, out.vs, error)) {
             return false;
         }
+        AgcNoteShaderTranslated();
         dump(out.vs, "vs", es);
     }
     return true;
@@ -1080,6 +1103,7 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
     if (has_target) {
         // A real targeted draw supersedes any stale deferred composite.
         st.has_pending_targetless = false;
+        AgcNoteFirstDraw();
         GPU::VkDrawExecute(call);
         return;
     }
@@ -1136,6 +1160,7 @@ void AgcFlushPendingTargetlessDraw(AgcSubmitShadow& st, u32 handle, s32 buffer_i
     call.rt_number_type = 0;  // UNORM
     LOG_INFO(HLE, "M3: executing deferred composite -> display buffer 0x%llx %ux%u",
              addr, width, height);
+    AgcNoteFirstDraw();
     GPU::VkDrawExecute(call);
 }
 

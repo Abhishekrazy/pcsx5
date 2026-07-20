@@ -1,18 +1,118 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace Pcsx5Ui
 {
+    // Win32 interop for embedding the emulator's render window into the UI.
+    internal static class NativeMethods
+    {
+        [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+        [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hWnd);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr CreateWindowExW(int dwExStyle, string lpClassName, string lpWindowName, int dwStyle, int x, int y, int nWidth, int nHeight, IntPtr hWndParent, IntPtr hMenu, IntPtr hInstance, IntPtr lpParam);
+        [DllImport("user32.dll")] public static extern bool DestroyWindow(IntPtr hWnd);
+        [DllImport("user32.dll", SetLastError = true)] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int nWidth, int nHeight, bool bRepaint);
+        [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)] public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+        [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
+        [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern ushort RegisterClassW(ref WNDCLASS lpWndClass);
+        [DllImport("user32.dll")] public static extern IntPtr DefWindowProcW(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("gdi32.dll")] public static extern IntPtr GetStockObject(int fnObject);
+
+        public delegate IntPtr WndProcDelegate(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct WNDCLASS
+        {
+            public int style;
+            public IntPtr lpfnWndProc;
+            public int cbClsExtra;
+            public int cbWndExtra;
+            public IntPtr hInstance;
+            public IntPtr hIcon;
+            public IntPtr hCursor;
+            public IntPtr hbrBackground;
+            public string lpszMenuName;
+            public string lpszClassName;
+        }
+
+        public const int BLACK_BRUSH = 4;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT { public int Left, Top, Right, Bottom; }
+
+        public const int GWL_STYLE = -16;
+        public const int WS_CHILD = 0x40000000;
+        public const int WS_VISIBLE = 0x10000000;
+        public const int WS_CLIPCHILDREN = 0x02000000;
+        public const int WS_CLIPSIBLINGS = 0x04000000;
+        public const long WS_CAPTION = 0x00C00000;
+        public const long WS_THICKFRAME = 0x00040000;
+        public const long WS_MINIMIZEBOX = 0x00020000;
+        public const long WS_MAXIMIZEBOX = 0x00010000;
+        public const long WS_SYSMENU = 0x00080000;
+        public const int SW_SHOW = 5;
+    }
+
+    // Hosts a plain Win32 child window inside the WPF layout; the emulator's
+    // GLFW window is reparented into this container.  A dedicated window
+    // class is registered so the letterbox margins paint black.
+    public class EmulatorWindowHost : HwndHost
+    {
+        public IntPtr HostHandle { get; private set; } = IntPtr.Zero;
+
+        private static bool _classRegistered;
+        private static NativeMethods.WndProcDelegate _wndProc; // keep the delegate alive
+
+        protected override HandleRef BuildWindowCore(HandleRef hwndParent)
+        {
+            if (!_classRegistered)
+            {
+                _wndProc = HostWndProc;
+                var wc = new NativeMethods.WNDCLASS
+                {
+                    lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProc),
+                    hInstance = Marshal.GetHINSTANCE(typeof(EmulatorWindowHost).Module),
+                    lpszClassName = "Pcsx5EmuHost",
+                    hbrBackground = NativeMethods.GetStockObject(NativeMethods.BLACK_BRUSH)
+                };
+                NativeMethods.RegisterClassW(ref wc);
+                _classRegistered = true;
+            }
+
+            HostHandle = NativeMethods.CreateWindowExW(0, "Pcsx5EmuHost", "",
+                NativeMethods.WS_CHILD | NativeMethods.WS_VISIBLE | NativeMethods.WS_CLIPCHILDREN,
+                0, 0, 0, 0, hwndParent.Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            return new HandleRef(this, HostHandle);
+        }
+
+        private static IntPtr HostWndProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam)
+        {
+            return NativeMethods.DefWindowProcW(hWnd, msg, wParam, lParam);
+        }
+
+        protected override void DestroyWindowCore(HandleRef hwnd)
+        {
+            NativeMethods.DestroyWindow(hwnd.Handle);
+            HostHandle = IntPtr.Zero;
+        }
+    }
+
     public partial class MainWindow : Window
     {
         private List<GameEntry> _games = new List<GameEntry>();
@@ -31,11 +131,28 @@ namespace Pcsx5Ui
         private List<BootAnalysisResult> _analysisResults = new List<BootAnalysisResult>();
         private DiscordRpc _discordRpc = new DiscordRpc();
 
+        // Console output batching: reader threads enqueue lines, a DispatcherTimer drains
+        // them in batches so floods of stdout lines never saturate the dispatcher queue.
+        private readonly ConcurrentQueue<string> _consoleLineQueue = new ConcurrentQueue<string>();
+        private System.Windows.Threading.DispatcherTimer _consoleDrainTimer;
+        private const int MaxConsoleChars = 256 * 1024; // ~256KB cap on the console TextBox
+
+        // Embedded emulator window state (game renders inside the launcher window)
+        private const string WindowHandlePrefix = "PCSX5_WINDOW_HANDLE=";
+        private EmulatorWindowHost _emuHost = null;
+        private IntPtr _embeddedEmuHwnd = IntPtr.Zero;
+        private bool _gameConsoleVisible = false;
+
         public MainWindow()
         {
             InitializeComponent();
             InitializeAudioPlayer();
             this.Closed += MainWindow_Closed;
+
+            _consoleDrainTimer = new System.Windows.Threading.DispatcherTimer();
+            _consoleDrainTimer.Interval = TimeSpan.FromMilliseconds(150);
+            _consoleDrainTimer.Tick += (s, e) => DrainConsoleQueue();
+            _consoleDrainTimer.Start();
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)
@@ -867,19 +984,33 @@ namespace Pcsx5Ui
             // Stop title music when game launches
             Dispatcher.Invoke(() => _mediaPlayer.Stop());
 
+            // Switch from the library to the embedded game view; the emulator's
+            // window gets reparented into EmulatorHostPresenter once it prints
+            // its HWND to stdout (PCSX5_WINDOW_HANDLE=...).
+            GameBarTitle.Text = _selectedGame.Title;
+            _emuHost = new EmulatorWindowHost();
+            EmulatorHostPresenter.Content = _emuHost;
+            EmulatorHostPresenter.SizeChanged += EmulatorHostPresenter_SizeChanged;
+            LibraryView.Visibility = Visibility.Collapsed;
+            AnalyzerView.Visibility = Visibility.Collapsed;
+            ControllerView.Visibility = Visibility.Collapsed;
+            SettingsView.Visibility = Visibility.Collapsed;
+            LogsView.Visibility = Visibility.Collapsed;
+            GameView.Visibility = Visibility.Visible;
+
             Task.Run(() =>
             {
                 try
                 {
                     _emulatorProcess = new Process();
                     _emulatorProcess.StartInfo.FileName = backendPath;
-                    _emulatorProcess.StartInfo.Arguments = $"\"{_selectedGame.EbootPath}\"";
+                    _emulatorProcess.StartInfo.Arguments = $"--embed \"{_selectedGame.EbootPath}\"";
                     _emulatorProcess.StartInfo.UseShellExecute = false;
                     _emulatorProcess.StartInfo.RedirectStandardOutput = true;
                     _emulatorProcess.StartInfo.RedirectStandardError = true;
                     _emulatorProcess.StartInfo.CreateNoWindow = true;
 
-                    _emulatorProcess.OutputDataReceived += (s, ev) => { if (ev.Data != null) LogConsole(ev.Data); };
+                    _emulatorProcess.OutputDataReceived += (s, ev) => { if (ev.Data != null) { TryEmbedEmulatorWindow(ev.Data); LogConsole(ev.Data); } };
                     _emulatorProcess.ErrorDataReceived += (s, ev) => { if (ev.Data != null) LogConsole(ev.Data); };
 
                     _emulatorProcess.Start();
@@ -906,6 +1037,9 @@ namespace Pcsx5Ui
                         _emulatorProcess = null;
                         LogConsole("Emulator process terminated.");
                         FooterStatus.Text = "Ready";
+
+                        // Unhost the (possibly dead) emulator window and restore the library
+                        TeardownGameView();
 
                         // Check for crash logs
                         CheckEmulatorCrashLog();
@@ -938,6 +1072,130 @@ namespace Pcsx5Ui
                     _emulatorProcess.Kill();
                 }
                 catch { }
+            }
+        }
+
+        // ── Embedded game window hosting ────────────────────────────────────
+
+        // Called from the emulator stdout reader thread when the backend prints
+        // its window handle; marshals to the UI thread for the reparent.
+        private void TryEmbedEmulatorWindow(string line)
+        {
+            if (!line.StartsWith(WindowHandlePrefix)) return;
+            if (!long.TryParse(line.Substring(WindowHandlePrefix.Length).Trim(), out long handleValue) || handleValue == 0) return;
+            IntPtr hwnd = new IntPtr(handleValue);
+            Dispatcher.InvokeAsync(() => EmbedEmulatorWindow(hwnd));
+        }
+
+        private void EmbedEmulatorWindow(IntPtr emuHwnd)
+        {
+            if (_emuHost == null || _emuHost.HostHandle == IntPtr.Zero) return;
+            if (!NativeMethods.IsWindow(emuHwnd))
+            {
+                LogConsole("Embed failed: emulator window handle is not valid.");
+                return;
+            }
+
+            // Strip decorations and make it a child of our host window
+            long style = NativeMethods.GetWindowLongPtr(emuHwnd, NativeMethods.GWL_STYLE).ToInt64();
+            style &= ~(NativeMethods.WS_CAPTION | NativeMethods.WS_THICKFRAME |
+                       NativeMethods.WS_MINIMIZEBOX | NativeMethods.WS_MAXIMIZEBOX | NativeMethods.WS_SYSMENU);
+            style |= NativeMethods.WS_CHILD | NativeMethods.WS_CLIPSIBLINGS;
+            NativeMethods.SetWindowLongPtr(emuHwnd, NativeMethods.GWL_STYLE, new IntPtr(style));
+
+            _embeddedEmuHwnd = emuHwnd;
+            NativeMethods.SetParent(emuHwnd, _emuHost.HostHandle);
+            NativeMethods.ShowWindow(emuHwnd, NativeMethods.SW_SHOW);
+            ResizeEmbeddedWindow();
+            NativeMethods.SetFocus(emuHwnd); // keyboard input must reach the emulator window
+            LogConsole("Emulator window embedded into launcher.");
+        }
+
+        private void EmulatorHostPresenter_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            ResizeEmbeddedWindow();
+        }
+
+        // Fit the emulator window into the host area, keeping its native aspect
+        // ratio (letterboxed on the black host background).
+        private void ResizeEmbeddedWindow()
+        {
+            if (_embeddedEmuHwnd == IntPtr.Zero || _emuHost == null) return;
+            if (!NativeMethods.IsWindow(_embeddedEmuHwnd)) return;
+
+            double w = EmulatorHostPresenter.ActualWidth;
+            double h = EmulatorHostPresenter.ActualHeight;
+            if (w < 8 || h < 8) return;
+
+            // WPF units -> physical pixels
+            double scaleX = 1.0, scaleY = 1.0;
+            var src = PresentationSource.FromVisual(this);
+            if (src?.CompositionTarget != null)
+            {
+                scaleX = src.CompositionTarget.TransformToDevice.M11;
+                scaleY = src.CompositionTarget.TransformToDevice.M22;
+            }
+            int pixelW = (int)(w * scaleX);
+            int pixelH = (int)(h * scaleY);
+
+            double aspect = 16.0 / 9.0;
+            if (NativeMethods.GetClientRect(_embeddedEmuHwnd, out NativeMethods.RECT rc))
+            {
+                int cw = rc.Right - rc.Left, ch = rc.Bottom - rc.Top;
+                if (cw > 0 && ch > 0) aspect = (double)cw / ch;
+            }
+
+            int childW = pixelW, childH = (int)(pixelW / aspect);
+            if (childH > pixelH) { childH = pixelH; childW = (int)(pixelH * aspect); }
+            int x = (pixelW - childW) / 2;
+            int y = (pixelH - childH) / 2;
+            NativeMethods.MoveWindow(_embeddedEmuHwnd, x, y, childW, childH, true);
+        }
+
+        // Restore the library view; safe when the emulator HWND is already dead.
+        private void TeardownGameView()
+        {
+            if (_embeddedEmuHwnd != IntPtr.Zero)
+            {
+                if (NativeMethods.IsWindow(_embeddedEmuHwnd))
+                {
+                    NativeMethods.SetParent(_embeddedEmuHwnd, IntPtr.Zero);
+                }
+                _embeddedEmuHwnd = IntPtr.Zero;
+            }
+            if (_gameConsoleVisible) SetGameConsoleVisible(false);
+            EmulatorHostPresenter.SizeChanged -= EmulatorHostPresenter_SizeChanged;
+            EmulatorHostPresenter.Content = null;
+            _emuHost?.Dispose();
+            _emuHost = null;
+            GameView.Visibility = Visibility.Collapsed;
+            LibraryView.Visibility = Visibility.Visible;
+            UpdateTabHighlight(TabLibraryBtn);
+        }
+
+        private void GameConsoleButton_Click(object sender, RoutedEventArgs e)
+        {
+            SetGameConsoleVisible(!_gameConsoleVisible);
+        }
+
+        // Move the shared console panel between the Logs view and the game view
+        // side panel (avoids WPF HwndHost airspace issues — no overlap).
+        private void SetGameConsoleVisible(bool visible)
+        {
+            _gameConsoleVisible = visible;
+            if (visible)
+            {
+                LogsConsoleSlot.Child = null;
+                GameConsoleSlot.Child = ConsoleBorder;
+                GameConsolePanel.Visibility = Visibility.Visible;
+                GameConsoleButton.Content = "Hide Console";
+            }
+            else
+            {
+                GameConsoleSlot.Child = null;
+                LogsConsoleSlot.Child = ConsoleBorder;
+                GameConsolePanel.Visibility = Visibility.Collapsed;
+                GameConsoleButton.Content = "Console";
             }
         }
 
@@ -1039,11 +1297,36 @@ namespace Pcsx5Ui
 
         private void LogConsole(string message)
         {
-            Dispatcher.Invoke(() =>
+            // Non-blocking: just enqueue; the drain timer appends batches on the UI thread.
+            _consoleLineQueue.Enqueue(message);
+        }
+
+        private void DrainConsoleQueue()
+        {
+            if (_consoleLineQueue.IsEmpty) return;
+
+            var sb = new StringBuilder();
+            string line;
+            int drained = 0;
+            const int maxLinesPerDrain = 2000; // bounded work per tick; leftovers drain next tick
+            while (drained < maxLinesPerDrain && _consoleLineQueue.TryDequeue(out line))
             {
-                ConsoleOutputTextBox.AppendText(message + Environment.NewLine);
-                ConsoleOutputTextBox.ScrollToEnd();
-            });
+                sb.AppendLine(line);
+                drained++;
+            }
+
+            ConsoleOutputTextBox.AppendText(sb.ToString());
+
+            // Cap the TextBox size: trim from the top when exceeded (checked per batch, not per line)
+            int len = ConsoleOutputTextBox.Text.Length;
+            if (len > MaxConsoleChars)
+            {
+                string text = ConsoleOutputTextBox.Text;
+                int start = text.IndexOf('\n', len - MaxConsoleChars);
+                ConsoleOutputTextBox.Text = start >= 0 ? text.Substring(start + 1) : text.Substring(len - MaxConsoleChars);
+            }
+
+            ConsoleOutputTextBox.ScrollToEnd();
         }
 
         private void CopyConsole_Click(object sender, RoutedEventArgs e)
@@ -1061,6 +1344,8 @@ namespace Pcsx5Ui
 
         private void ClearConsole_Click(object sender, RoutedEventArgs e)
         {
+            // Drop pending queued lines too so cleared output doesn't reappear on next drain
+            while (_consoleLineQueue.TryDequeue(out _)) { }
             ConsoleOutputTextBox.Clear();
         }
 
@@ -1103,6 +1388,7 @@ namespace Pcsx5Ui
         // Tab Switching Logic
         private void TabLibrary_Click(object sender, RoutedEventArgs e)
         {
+            if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             LibraryView.Visibility = Visibility.Visible;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
@@ -1113,6 +1399,7 @@ namespace Pcsx5Ui
 
         private void TabAnalyzer_Click(object sender, RoutedEventArgs e)
         {
+            if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Visible;
             ControllerView.Visibility = Visibility.Collapsed;
@@ -1129,6 +1416,7 @@ namespace Pcsx5Ui
 
         private void TabController_Click(object sender, RoutedEventArgs e)
         {
+            if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Visible;
@@ -1139,6 +1427,7 @@ namespace Pcsx5Ui
 
         private void TabSettings_Click(object sender, RoutedEventArgs e)
         {
+            if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
@@ -1150,6 +1439,7 @@ namespace Pcsx5Ui
 
         private void TabLogs_Click(object sender, RoutedEventArgs e)
         {
+            if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;

@@ -108,6 +108,8 @@ set(KERNEL_SRC
     src/kernel/syscalls.cpp
     src/kernel/tls.h
     src/kernel/tls.cpp
+    src/kernel/tls_patch.h
+    src/kernel/tls_patch.cpp
 )
 
 # CPU core — owns the guest thread registry; required wherever KERNEL_SRC is
@@ -134,6 +136,40 @@ set(SHADER_TRANSLATE_SRC
     src/gpu/shader/gcn_eval.h
     src/gpu/shader/gcn_eval.cpp
 )
+
+# ------------------------------------------------------------------------
+# LibAtrac9 — vendored C port of Thealexbarney/LibAtrac9 (MIT).
+# Used by the SndPreviewPlayer (src/ui/snd_player.cpp) and by the
+# libSceAtrac9 HLE codec path (src/hle/libatrac9.cpp).  Defined at top
+# level (not under BUILD_TESTING) so the pcsx5 target can link it.
+# ------------------------------------------------------------------------
+add_library(atrac9 STATIC
+    third_party/LibAtrac9/src/band_extension.c
+    third_party/LibAtrac9/src/bit_allocation.c
+    third_party/LibAtrac9/src/bit_reader.c
+    third_party/LibAtrac9/src/decinit.c
+    third_party/LibAtrac9/src/decoder.c
+    third_party/LibAtrac9/src/huffCodes.c
+    third_party/LibAtrac9/src/imdct.c
+    third_party/LibAtrac9/src/libatrac9.c
+    third_party/LibAtrac9/src/quantization.c
+    third_party/LibAtrac9/src/scale_factors.c
+    third_party/LibAtrac9/src/tables.c
+    third_party/LibAtrac9/src/unpack.c
+    third_party/LibAtrac9/src/utility.c
+)
+target_include_directories(atrac9
+    PUBLIC  third_party/LibAtrac9/include
+    PRIVATE third_party/LibAtrac9/include/libatrac9
+)
+if(MSVC)
+    # The LibAtrac9 header uses __declspec(dllexport/dllimport) for
+    # a DLL build.  We compile it as a static library instead, so
+    # both the producer and the consumer must see `dllexport` for
+    # the linker to match the symbols.  See libatrac9.h:6-11.
+    target_compile_definitions(atrac9 PUBLIC COMPILING_DLL)
+    target_compile_options(atrac9 PRIVATE $<$<COMPILE_LANGUAGE:C>:/W3>)
+endif()
 
 add_executable(pcsx5
     src/main.cpp
@@ -172,6 +208,8 @@ add_executable(pcsx5
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libkeystone.cpp
+    src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
     src/common/nid.cpp
     ${KERNEL_SRC}
@@ -357,12 +395,14 @@ if(BUILD_TESTING)
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libkeystone.cpp
+    src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_import_report_tests PRIVATE src)
     target_compile_options(hle_import_report_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(hle_import_report_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    target_link_libraries(hle_import_report_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME hle_import_report COMMAND hle_import_report_tests)
 
     # ------------------------------------------------------------------------
@@ -403,13 +443,15 @@ if(BUILD_TESTING)
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libkeystone.cpp
+    src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
         src/reports/reports.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(report_tests PRIVATE src)
     target_compile_options(report_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(report_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    target_link_libraries(report_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME reports COMMAND report_tests)
 
     # ------------------------------------------------------------------------
@@ -463,13 +505,15 @@ if(BUILD_TESTING)
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libkeystone.cpp
+    src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
         src/diagnostics/diagnostics.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(diagnostics_tests PRIVATE src)
     target_compile_options(diagnostics_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(diagnostics_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    target_link_libraries(diagnostics_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME diagnostics COMMAND diagnostics_tests)
 
     # ------------------------------------------------------------------------
@@ -493,39 +537,6 @@ if(BUILD_TESTING)
     )
     target_include_directories(make_test_covers PRIVATE third_party)
     target_compile_options(make_test_covers PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W3>)
-
-    # ------------------------------------------------------------------------
-    # LibAtrac9 — vendored C port of Thealexbarney/LibAtrac9 (MIT).
-    # Used by SndPreviewPlayer to decode sce_sys/snd0.at9 to PCM16 WAV
-    # for the title-music preview.  See src/ui/snd_player.cpp.
-    # ------------------------------------------------------------------------
-    add_library(atrac9 STATIC
-        third_party/LibAtrac9/src/band_extension.c
-        third_party/LibAtrac9/src/bit_allocation.c
-        third_party/LibAtrac9/src/bit_reader.c
-        third_party/LibAtrac9/src/decinit.c
-        third_party/LibAtrac9/src/decoder.c
-        third_party/LibAtrac9/src/huffCodes.c
-        third_party/LibAtrac9/src/imdct.c
-        third_party/LibAtrac9/src/libatrac9.c
-        third_party/LibAtrac9/src/quantization.c
-        third_party/LibAtrac9/src/scale_factors.c
-        third_party/LibAtrac9/src/tables.c
-        third_party/LibAtrac9/src/unpack.c
-        third_party/LibAtrac9/src/utility.c
-    )
-    target_include_directories(atrac9
-        PUBLIC  third_party/LibAtrac9/include
-        PRIVATE third_party/LibAtrac9/include/libatrac9
-    )
-    if(MSVC)
-        # The LibAtrac9 header uses __declspec(dllexport/dllimport) for
-        # a DLL build.  We compile it as a static library instead, so
-        # both the producer and the consumer must see `dllexport` for
-        # the linker to match the symbols.  See libatrac9.h:6-11.
-        target_compile_definitions(atrac9 PUBLIC COMPILING_DLL)
-        target_compile_options(atrac9 PRIVATE $<$<COMPILE_LANGUAGE:C>:/W3>)
-    endif()
 
     if(CLANG_EXECUTABLE)
         # Copy every freestanding test source next to the build tree so the
@@ -580,10 +591,10 @@ if(BUILD_TESTING)
             "Install LLVM/clang and reconfigure to enable these tests.")
     endif()
 # Enable Lua scripting for the subsystem lifecycle init script.
-target_compile_definitions(pcsx5 PRIVATE PCSX5_HAS_LUA)
+target_compile_definitions(pcsx5 PRIVATE PCSX5_HAS_LUA PCSX5_TLS_PATCH_FULL)
 
 # Link GLFW, Vulkan Headers, and Lua dependencies
-target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers lua ws2_32 nlohmann_json::nlohmann_json)
+target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers lua ws2_32 nlohmann_json::nlohmann_json atrac9)
 target_include_directories(pcsx5 PRIVATE src)
 
 # Add Windows SDK include path for resource compiler (RC) to find windows.h
@@ -888,12 +899,14 @@ add_executable(dump_imports
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libkeystone.cpp
+    src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(syscall_validation_tests PRIVATE src)
     target_compile_options(syscall_validation_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(syscall_validation_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    target_link_libraries(syscall_validation_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME syscall_validation COMMAND syscall_validation_tests)
 
     # ------------------------------------------------------------------------
@@ -935,12 +948,14 @@ add_executable(dump_imports
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libkeystone.cpp
+    src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(kernel_sync_tests PRIVATE src)
     target_compile_options(kernel_sync_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(kernel_sync_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    target_link_libraries(kernel_sync_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME kernel_sync COMMAND kernel_sync_tests)
 
     # ------------------------------------------------------------------------
@@ -983,13 +998,65 @@ add_executable(dump_imports
     src/hle/liblibc.cpp
         src/hle/libsystem_service.cpp
         src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_phase3_tests PRIVATE src)
     target_compile_options(hle_phase3_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(hle_phase3_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    target_link_libraries(hle_phase3_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME hle_phase3 COMMAND hle_phase3_tests)
+
+    # ------------------------------------------------------------------------
+    # L1 — audio + pad HLE tests: libSceAudioOut port state machine
+    # (Init/Open/Output paced silence/SetVolume/GetPortState/Close,
+    # PORT_FULL) and libScePad handle validation + ScePadData reads
+    # (tests/hle_audio_pad_tests.cpp).
+    # ------------------------------------------------------------------------
+    add_executable(hle_audio_pad_tests
+        tests/hle_audio_pad_tests.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+    src/hle/libsysmodule.cpp
+    src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
+    src/hle/libaudioout.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(hle_audio_pad_tests PRIVATE src)
+    target_compile_options(hle_audio_pad_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(hle_audio_pad_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
+    add_test(NAME hle_audio_pad COMMAND hle_audio_pad_tests)
 
     # ------------------------------------------------------------------------
     # Phase 5 M0 — AGC HLE tests: sceAgcCreateShader shader ABI (relocation,
@@ -1031,12 +1098,14 @@ add_executable(dump_imports
     src/hle/liblibc.cpp
         src/hle/libsystem_service.cpp
         src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_agc_tests PRIVATE src)
     target_compile_options(hle_agc_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(hle_agc_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    target_link_libraries(hle_agc_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME hle_agc COMMAND hle_agc_tests)
 
     # ------------------------------------------------------------------------
@@ -1079,13 +1148,60 @@ add_executable(dump_imports
         src/hle/liblibc.cpp
         src/hle/libsystem_service.cpp
         src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(guest_printf_tests PRIVATE src)
     target_compile_options(guest_printf_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(guest_printf_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
+    target_link_libraries(guest_printf_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME guest_printf COMMAND guest_printf_tests)
+
+    # ------------------------------------------------------------------------
+    # H3 — guest C++ exception ABI tests: __cxa_allocate_exception layout,
+    # begin/end-catch bookkeeping, guard variables, _Unwind context accessors
+    # (tests/libcxxabi_tests.cpp, surface implemented in src/hle/liblibc.cpp).
+    # ------------------------------------------------------------------------
+    add_executable(libcxxabi_tests
+        tests/libcxxabi_tests.cpp
+        src/common/log.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
+        ${SHADER_TRANSLATE_SRC}
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+        src/hle/libsysmodule.cpp
+        src/hle/guest_printf.cpp
+        src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
+        src/hle/libaudioout.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(libcxxabi_tests PRIVATE src)
+    target_compile_options(libcxxabi_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(libcxxabi_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
+    add_test(NAME libcxxabi COMMAND libcxxabi_tests)
 
     # ------------------------------------------------------------------------
     # Phase 5 M2 slice 1 — shader recompiler foundation: RDNA2 (GCN Gen5)
