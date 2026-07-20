@@ -27,4 +27,11 @@ bool VkPresentFrame(VkContext* ctx, const void* bgra_pixels, u32 fb_w, u32 fb_h)
 // Clears the next swapchain image to (r,g,b,a) and presents it.
 bool VkPresentClearColor(VkContext* ctx, float r, float g, float b, float a);
 
+// M3.2d: blits a guest render-target VkImage (currently in
+// COLOR_ATTACHMENT_OPTIMAL) into the swapchain image and presents it,
+// restoring the source layout afterwards.  Draws and presents share the
+// graphics queue, so the blit is ordered after any in-flight draws without
+// extra synchronization.
+bool VkPresentFromImage(VkContext* ctx, VkImage src, u32 src_w, u32 src_h);
+
 } // namespace GPU

@@ -1,6 +1,7 @@
 #include "gpu.h"
 #include "vk_context.h"
 #include "vk_present.h"
+#include "vk_draw.h"
 #include "../common/log.h"
 #include "../memory/memory.h"
 #include <windows.h>
@@ -34,9 +35,11 @@ namespace GPU {
     static u32            g_keyboard_buttons = 0;
     static std::mutex     g_pad_mutex;
 
-    // Dynamically loaded Windows XInput GetState
+    // Dynamically loaded Windows XInput GetState/SetState
     typedef DWORD(WINAPI* PFN_XInputGetState)(DWORD dwUserIndex, XINPUT_STATE* pState);
+    typedef DWORD(WINAPI* PFN_XInputSetState)(DWORD dwUserIndex, XINPUT_VIBRATION* pVibration);
     static PFN_XInputGetState g_XInputGetState = nullptr;
+    static PFN_XInputSetState g_XInputSetState = nullptr;
     static HMODULE g_xinput_dll = nullptr;
 
     static void InitializeXInput() {
@@ -45,8 +48,10 @@ namespace GPU {
             g_xinput_dll = LoadLibraryA(dll);
             if (g_xinput_dll) {
                 g_XInputGetState = (PFN_XInputGetState)GetProcAddress(g_xinput_dll, "XInputGetState");
+                g_XInputSetState = (PFN_XInputSetState)GetProcAddress(g_xinput_dll, "XInputSetState");
                 if (g_XInputGetState) {
-                    LOG_INFO(GPU, "Successfully loaded Windows XInput API from %s", dll);
+                    LOG_INFO(GPU, "Successfully loaded Windows XInput API from %s (rumble: %s)",
+                             dll, g_XInputSetState ? "yes" : "no");
                     break;
                 }
                 FreeLibrary(g_xinput_dll);
@@ -305,9 +310,18 @@ namespace GPU {
             case GLFW_KEY_A:    case GLFW_KEY_LEFT:  button_flag = 0x00000080; break; // PAD_LEFT
             case GLFW_KEY_D:    case GLFW_KEY_RIGHT: button_flag = 0x00000020; break; // PAD_RIGHT
             case GLFW_KEY_SPACE:                     button_flag = 0x00004000; break; // PAD_CROSS
+            case GLFW_KEY_Z:                         button_flag = 0x00004000; break; // PAD_CROSS (alias)
             case GLFW_KEY_ENTER:                     button_flag = 0x00002000; break; // PAD_CIRCLE
+            case GLFW_KEY_X:                         button_flag = 0x00002000; break; // PAD_CIRCLE (alias)
             case GLFW_KEY_LEFT_SHIFT:                button_flag = 0x00008000; break; // PAD_SQUARE
+            case GLFW_KEY_V:                         button_flag = 0x00008000; break; // PAD_SQUARE (alias)
             case GLFW_KEY_C:                         button_flag = 0x00001000; break; // PAD_TRIANGLE
+            case GLFW_KEY_Q:                         button_flag = 0x00000400; break; // PAD_L1
+            case GLFW_KEY_E:                         button_flag = 0x00000800; break; // PAD_R1
+            case GLFW_KEY_R:                         button_flag = 0x00000100; break; // PAD_L2 (digital)
+            case GLFW_KEY_F:                         button_flag = 0x00000200; break; // PAD_R2 (digital)
+            case GLFW_KEY_TAB:                       button_flag = 0x00000008; break; // PAD_OPTIONS
+            case GLFW_KEY_T:                         button_flag = 0x00100000; break; // PAD_TOUCHPAD (click)
             case GLFW_KEY_ESCAPE:
                 // Signal close
                 if (g_window) glfwSetWindowShouldClose(g_window, GLFW_TRUE);
@@ -369,6 +383,11 @@ namespace GPU {
             } else {
                 LOG_WARN(GPU, "Vulkan swapchain/present init failed — GDI fallback for presents.");
             }
+            // M3.2c draw executor: independent of the swapchain path (draws
+            // render into offscreen guest images).
+            if (VkDrawInitialize(g_vk)) {
+                LOG_INFO(GPU, "Guest draw executor ready.");
+            }
         } else {
             LOG_WARN(GPU, "Vulkan device init failed — GDI fallback for presents.");
         }
@@ -394,6 +413,7 @@ namespace GPU {
     void Shutdown() {
         LOG_INFO(GPU, "Shutting down GPU subsystem...");
         if (g_vk) {
+            VkDrawShutdown();
             VkPresentShutdown(g_vk);
             VkContextDestroy(g_vk);
             g_vk = nullptr;
@@ -410,6 +430,7 @@ namespace GPU {
             FreeLibrary(g_xinput_dll);
             g_xinput_dll = nullptr;
             g_XInputGetState = nullptr;
+            g_XInputSetState = nullptr;
         }
         g_dib_buffer.clear();
     }
@@ -459,10 +480,23 @@ namespace GPU {
             return;
         }
 
-        // Preferred path: Vulkan swapchain present (GPU-side blit scaling of
-        // the full-res BGRA conversion).  Falls through to the GDI path when
-        // Vulkan is unavailable or a single present fails.
+        // Preferred path: when the vk_draw image model already has a GPU
+        // image for the flipped guest address (M3.2d), blit straight from it
+        // — the render target is the source of truth.  Otherwise upload the
+        // CPU-side BGRA conversion and present that (swapchain blit scaling).
+        // Falls through to the GDI path when Vulkan is unavailable or a
+        // single present fails.
         if (g_vk_ready) {
+            VkImage rt_image = VK_NULL_HANDLE;
+            u32 rt_w = 0, rt_h = 0;
+            if (VkDrawLookupRenderTarget(framebuffer_addr, &rt_image, &rt_w, &rt_h)) {
+                if (VkPresentFromImage(g_vk, rt_image, rt_w, rt_h)) {
+                    LOG_DEBUG(GPU, "RenderFrame: Vulkan present of GPU image for guest buffer 0x%llx.",
+                              framebuffer_addr);
+                    return;
+                }
+                LOG_WARN(GPU, "RenderFrame: GPU-image present failed — falling back to CPU upload.");
+            }
             if (ConvertFramebufferToBgra(framebuffer_addr)) {
                 if (VkPresentFrame(g_vk, g_vk_pixels.data(), g_fb_width, g_fb_height)) {
                     LOG_DEBUG(GPU, "RenderFrame: Vulkan present of guest framebuffer 0x%llx.",
@@ -561,6 +595,14 @@ namespace GPU {
                 else if (glfwGetKey(g_window, GLFW_KEY_S) == GLFW_PRESS) new_state.left_analog_y = 255;
                 if (glfwGetKey(g_window, GLFW_KEY_A) == GLFW_PRESS) new_state.left_analog_x = 0;
                 else if (glfwGetKey(g_window, GLFW_KEY_D) == GLFW_PRESS) new_state.left_analog_x = 255;
+                // Map keyboard IJKL to right stick
+                if (glfwGetKey(g_window, GLFW_KEY_I) == GLFW_PRESS) new_state.right_analog_y = 0;
+                else if (glfwGetKey(g_window, GLFW_KEY_K) == GLFW_PRESS) new_state.right_analog_y = 255;
+                if (glfwGetKey(g_window, GLFW_KEY_J) == GLFW_PRESS) new_state.right_analog_x = 0;
+                else if (glfwGetKey(g_window, GLFW_KEY_L) == GLFW_PRESS) new_state.right_analog_x = 255;
+                // Digital R/F keys drive full analog trigger levels
+                if (glfwGetKey(g_window, GLFW_KEY_R) == GLFW_PRESS) new_state.l2_trigger = 255;
+                if (glfwGetKey(g_window, GLFW_KEY_F) == GLFW_PRESS) new_state.r2_trigger = 255;
             }
         }
 
@@ -630,6 +672,15 @@ namespace GPU {
     PadButtonState GetCurrentPadState() {
         std::lock_guard<std::mutex> lock(g_pad_mutex);
         return g_pad_state;
+    }
+
+    void SetPadVibration(u8 large_motor, u8 small_motor) {
+        if (!g_XInputSetState) return;
+        XINPUT_VIBRATION vibration = {};
+        // XInput motor speeds are 0..65535; the ScePadVibrationParam is 0..255.
+        vibration.wLeftMotorSpeed  = static_cast<WORD>(large_motor) * 257;
+        vibration.wRightMotorSpeed = static_cast<WORD>(small_motor) * 257;
+        g_XInputSetState(0, &vibration);
     }
 
 } // namespace GPU

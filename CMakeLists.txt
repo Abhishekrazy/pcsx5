@@ -172,6 +172,7 @@ add_executable(pcsx5
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
     src/common/nid.cpp
     ${KERNEL_SRC}
     ${CPU_SRC}
@@ -179,6 +180,8 @@ add_executable(pcsx5
     src/gpu/vulkan_backend.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
     ${SHADER_TRANSLATE_SRC}
     src/diagnostics/diagnostics.h
     src/diagnostics/diagnostics.cpp
@@ -204,6 +207,8 @@ if(BUILD_TESTING)
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     )
     target_include_directories(vk_present_smoke PRIVATE src)
     target_compile_options(vk_present_smoke PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
@@ -331,8 +336,12 @@ if(BUILD_TESTING)
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libkernel_sync.cpp
@@ -348,6 +357,7 @@ if(BUILD_TESTING)
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_import_report_tests PRIVATE src)
@@ -372,8 +382,12 @@ if(BUILD_TESTING)
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libkernel_sync.cpp
@@ -389,6 +403,7 @@ if(BUILD_TESTING)
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
         src/reports/reports.cpp
         ${DISPATCHER_SRC}
     )
@@ -427,8 +442,12 @@ if(BUILD_TESTING)
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libkernel_sync.cpp
@@ -444,6 +463,7 @@ if(BUILD_TESTING)
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
         src/diagnostics/diagnostics.cpp
         ${DISPATCHER_SRC}
     )
@@ -847,8 +867,12 @@ add_executable(dump_imports
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libkernel_sync.cpp
@@ -864,6 +888,7 @@ add_executable(dump_imports
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(syscall_validation_tests PRIVATE src)
@@ -889,8 +914,12 @@ add_executable(dump_imports
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libkernel_sync.cpp
@@ -906,6 +935,7 @@ add_executable(dump_imports
     src/hle/liblibc.cpp
     src/hle/libsystem_service.cpp
     src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(kernel_sync_tests PRIVATE src)
@@ -932,8 +962,12 @@ add_executable(dump_imports
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libkernel_sync.cpp
@@ -949,6 +983,7 @@ add_executable(dump_imports
     src/hle/liblibc.cpp
         src/hle/libsystem_service.cpp
         src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_phase3_tests PRIVATE src)
@@ -975,8 +1010,12 @@ add_executable(dump_imports
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libkernel_sync.cpp
@@ -992,6 +1031,7 @@ add_executable(dump_imports
     src/hle/liblibc.cpp
         src/hle/libsystem_service.cpp
         src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_agc_tests PRIVATE src)
@@ -1018,8 +1058,12 @@ add_executable(dump_imports
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
         src/hle/hle.cpp
         src/hle/libkernel.cpp
         src/hle/libkernel_sync.cpp
@@ -1035,6 +1079,7 @@ add_executable(dump_imports
         src/hle/liblibc.cpp
         src/hle/libsystem_service.cpp
         src/hle/libnp.cpp
+    src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(guest_printf_tests PRIVATE src)
@@ -1061,6 +1106,21 @@ add_executable(dump_imports
     target_include_directories(shader_tests PRIVATE src)
     target_compile_options(shader_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME shader COMMAND shader_tests)
+
+    # ------------------------------------------------------------------------
+    # Phase 5 M3.2c — Gfx10 guest render-state decoders: topology, blend,
+    # raster, viewport/scissor, render-target + image-descriptor decode
+    # (tests/gfx10_state_tests.cpp).  Pure logic, no Vulkan device.
+    # ------------------------------------------------------------------------
+    add_executable(gfx10_state_tests
+        tests/gfx10_state_tests.cpp
+        src/gpu/gfx10_state.cpp
+        src/common/log.cpp
+    )
+    target_include_directories(gfx10_state_tests PRIVATE src)
+    target_compile_options(gfx10_state_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(gfx10_state_tests PRIVATE Vulkan::Headers)
+    add_test(NAME gfx10_state COMMAND gfx10_state_tests)
 
     add_executable(shader_dump
         tests/shader_dump.cpp

@@ -226,6 +226,9 @@ int main(int argc, char* argv[]) {
     crash_dir = cfg.crash.bundle_dir.empty() ? crash_dir : cfg.crash.bundle_dir;
     strict_imports = strict_imports || cfg.hle.strict_imports;
 
+    // Hand the audio output settings to libSceAudioOut (0 = Off / silent-paced).
+    HLE::SetAudioOutConfig(cfg.audio.backend, cfg.audio.volume);
+
     // Install the crash-report handler early so any later crash (including
     // during subsystem init) is captured.
     Diagnostics::InstallCrashHandler(crash_dir);

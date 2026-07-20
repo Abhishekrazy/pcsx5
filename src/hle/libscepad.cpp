@@ -1,60 +1,17 @@
 #include "hle.h"
 #include "../common/log.h"
+#include "../gpu/gpu.h"
 #include "../memory/memory.h"
 
 namespace HLE {
 
-    // Mock pad handle counter
-    static u32 g_pad_handle_counter = 0x1000;
-
     void RegisterLibScePad() {
         LOG_INFO(HLE, "Registering libScePad HLE symbols...");
 
-        // scePadOpen
-        // Signature: scePadOpen(port, slot, config*)
-        RegisterSymbol("libScePad", "scePadOpen", [](const GuestArgs& args) -> u64 {
-            u32 port = static_cast<u32>(args.arg1);
-            u32 slot = static_cast<u32>(args.arg2);
-            guest_addr_t config = args.arg3;
-            (void)config;
-
-            LOG_INFO(HLE, "scePadOpen(port: %u, slot: %u, config: 0x%llx) called", port, slot, config);
-
-            // Return a mock pad handle
-            u32 handle = g_pad_handle_counter++;
-            return static_cast<u64>(handle);
-        });
-
-        // scePadClose
-        // Signature: scePadClose(handle)
-        RegisterSymbol("libScePad", "scePadClose", [](const GuestArgs& args) -> u64 {
-            u32 handle = static_cast<u32>(args.arg1);
-            LOG_INFO(HLE, "scePadClose(handle: 0x%X) called", handle);
-            return 0; // Success
-        });
-
-        // scePadRead
-        // Signature: scePadRead(handle, port, data*, count)
-        RegisterSymbol("libScePad", "scePadRead", [](const GuestArgs& args) -> u64 {
-            u32 handle = static_cast<u32>(args.arg1);
-            u32 port = static_cast<u32>(args.arg2);
-            guest_addr_t data_ptr = args.arg3;
-            u32 count = static_cast<u32>(args.arg4);
-            (void)port;
-
-            LOG_DEBUG(HLE, "scePadRead(handle: 0x%X, port: %u, data: 0x%llx, count: %u) called", handle, port, data_ptr, count);
-
-            // Return 0 (no data read) - pad not connected
-            // In a real implementation, this would fill the ScePadData structure
-            if (data_ptr && count > 0) {
-                // Zero out the pad data structure (ScePadData is typically 64 bytes)
-                for (u32 i = 0; i < count * 64; i += 8) {
-                    Memory::Write<u64>(data_ptr + i, 0);
-                }
-            }
-
-            return 0; // Number of entries read (0 = no controller connected)
-        });
+        // NOTE: scePadInit/Open/OpenExt/Close/Read/ReadState/GetHandle are
+        // implemented in libpad.cpp (registered earlier; RegisterSymbol is
+        // last-registration-win, so re-registering them here would shadow
+        // the real implementations).  Only ancillary stubs live here.
 
         // scePadGetData
         // Signature: scePadGetData(port, data*)
@@ -75,17 +32,30 @@ namespace HLE {
             return 0; // SCE_OK or error code
         });
 
-        // scePadSetVibration
-        // Signature: scePadSetVibration(handle, large_motor, small_motor)
+        // scePadSetVibration(handle, const ScePadVibrationParam* param)
+        // ScePadVibrationParam: { uint8_t largeMotor; uint8_t smallMotor; }
+        // Routes to the primary XInput controller's rumble motors.
         RegisterSymbol("libScePad", "scePadSetVibration", [](const GuestArgs& args) -> u64 {
             u32 handle = static_cast<u32>(args.arg1);
-            u32 large_motor = static_cast<u32>(args.arg2);
-            u32 small_motor = static_cast<u32>(args.arg3);
+            guest_addr_t param_ptr = args.arg2;
 
-            LOG_DEBUG(HLE, "scePadSetVibration(handle: 0x%X, large: %u, small: %u) called", handle, large_motor, small_motor);
+            LOG_DEBUG(HLE, "scePadSetVibration(handle: 0x%X, param: 0x%llx) called", handle, param_ptr);
 
-            // Mock implementation - just log and return success
+            if (!param_ptr) {
+                return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
+            }
+            u8 large_motor = Memory::Read<u8>(param_ptr);
+            u8 small_motor = Memory::Read<u8>(param_ptr + 1);
+            GPU::SetPadVibration(large_motor, small_motor);
             return 0; // SCE_OK
+        });
+        RegisterSymbol("libkernel", "yFVnOdGxvZY#L#M", [](const GuestArgs& args) -> u64 {
+            guest_addr_t param_ptr = args.arg2;
+            if (!param_ptr) {
+                return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
+            }
+            GPU::SetPadVibration(Memory::Read<u8>(param_ptr), Memory::Read<u8>(param_ptr + 1));
+            return 0;
         });
 
         // scePadGetVibration
@@ -194,9 +164,37 @@ namespace HLE {
             return 0; // SCE_OK
         });
 
+        // Neutral motion-sensor sample shared by scePadGetSensorData and
+        // scePadGetMotionSensorData: gyro at rest (all zeros) and 1g along
+        // -Y (pad held level, DualSense right-handed convention).  Real
+        // motion data needs the DualSense HID path — out of scope.
+        auto WriteNeutralMotion = [](guest_addr_t data_ptr) {
+            const float gyro[3]  = { 0.0f, 0.0f, 0.0f };
+            const float accel[3] = { 0.0f, -1.0f, 0.0f };
+            Memory::WriteBuffer(data_ptr, gyro, sizeof(gyro));
+            Memory::WriteBuffer(data_ptr + sizeof(gyro), accel, sizeof(accel));
+        };
+
+        // scePadGetMotionSensorData(handle, ScePadMotionSensorData* data)
+        // Struct: { float angularVelocity[3]; float acceleration[3]; u64 timestamp; }
+        RegisterSymbol("libScePad", "scePadGetMotionSensorData", [WriteNeutralMotion](const GuestArgs& args) -> u64 {
+            u32 handle = static_cast<u32>(args.arg1);
+            guest_addr_t data_ptr = args.arg2;
+
+            LOG_DEBUG(HLE, "scePadGetMotionSensorData(handle: 0x%X, data: 0x%llx) called", handle, data_ptr);
+
+            if (!data_ptr) {
+                return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
+            }
+            WriteNeutralMotion(data_ptr);
+            const u64 ts = 0; // unknown sample time; neutral
+            Memory::WriteBuffer(data_ptr + 0x18, &ts, sizeof(ts));
+            return 0; // SCE_OK
+        });
+
         // scePadGetSensorData
         // Signature: scePadGetSensorData(handle, sensor_type, data*)
-        RegisterSymbol("libScePad", "scePadGetSensorData", [](const GuestArgs& args) -> u64 {
+        RegisterSymbol("libScePad", "scePadGetSensorData", [WriteNeutralMotion](const GuestArgs& args) -> u64 {
             u32 handle = static_cast<u32>(args.arg1);
             u32 sensor_type = static_cast<u32>(args.arg2);
             guest_addr_t data_ptr = args.arg3;
@@ -204,10 +202,8 @@ namespace HLE {
             LOG_DEBUG(HLE, "scePadGetSensorData(handle: 0x%X, sensor: %u, data: 0x%llx) called", handle, sensor_type, data_ptr);
 
             if (data_ptr) {
-                // Zero out sensor data (typically 16 bytes for accelerometer/gyro)
-                for (u32 i = 0; i < 16; i += 8) {
-                    Memory::Write<u64>(data_ptr + i, 0);
-                }
+                // 24 bytes: angular velocity (gyro) + linear acceleration
+                WriteNeutralMotion(data_ptr);
             }
 
             return 0; // SCE_OK

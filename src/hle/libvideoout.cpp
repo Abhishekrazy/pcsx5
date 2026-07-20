@@ -281,6 +281,22 @@ u64 VideoOutSubmitFlipFromAgc(u32 handle, s32 buffer_index, u32 flip_mode, s64 f
     return SubmitFlipImpl(args);
 }
 
+bool VideoOutGetDisplayBufferInfo(u32 handle, s32 buffer_index,
+                                  guest_addr_t* addr, u32* width, u32* height) {
+    if (!addr || !width || !height) return false;
+    auto port = FindPort(handle);
+    if (!port) return false;
+    if (buffer_index < 0 || buffer_index >= static_cast<s32>(kMaxDisplayBuffers)) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lk(g_vo_mutex);
+    if (!port->buffer_used[static_cast<size_t>(buffer_index)]) return false;
+    *addr   = port->buffers[static_cast<size_t>(buffer_index)];
+    *width  = port->width;
+    *height = port->height;
+    return *addr != 0;
+}
+
 void RegisterLibVideoOut() {
     LOG_INFO(HLE, "Registering libSceVideoOut HLE symbols (port/flip model)...");
 

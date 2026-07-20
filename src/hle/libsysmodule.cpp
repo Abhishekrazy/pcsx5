@@ -104,17 +104,19 @@ void RegisterLibSysmodule() {
             std::lock_guard<std::mutex> lk(g_sysmodule_mutex);
             loaded = g_loaded_sysmodules.count(id) != 0;
         }
-        if (!loaded) {
-            // Not in the registry.  Real hardware returns an error here, but
-            // claiming success is the safer lie: games typically gate further
-            // use of the module on this call, and our HLE surface fakes the
-            // module's exports anyway.
-            LOG_INFO(HLE, "sceSysmoduleIsLoaded(id: 0x%04X = %s): not in registry; claiming loaded",
-                     id, SysmoduleName(id).c_str());
-            return 0;
-        }
-        LOG_DEBUG(HLE, "sceSysmoduleIsLoaded(id: 0x%04X) -> 0 (loaded)", id);
-        return 0;
+        // Hardware semantics, matching SharpEmu's KernelRuntimeCompatExports:
+        // 0 when loaded, ORBIS_GEN2_ERROR_NOT_FOUND (0x80020002) otherwise.
+        // Games that get "not loaded" fall back to sceSysmoduleLoadModule,
+        // which we fake above — so accuracy is safe here.  The handler does
+        // no string building or log formatting on the hot path: HLE handlers
+        // run on the guest stack (dispatcher.asm never switches stacks), and
+        // the CRT formatting/allocating log path was the only fault-capable
+        // work under the dispatcher's SEH guard when the guest stack is
+        // nearly exhausted.  (LOG_DEBUG is suppressed by default, so no
+        // formatting runs in normal operation.)
+        LOG_DEBUG(HLE, "sceSysmoduleIsLoaded(id: 0x%04X) -> %s", id,
+                  loaded ? "0 (loaded)" : "0x80020002 (not loaded)");
+        return loaded ? 0ull : 0x80020002ull;
     };
     RegisterSymbol("libSceSysmodule", "sceSysmoduleIsLoaded", IsLoadedImpl);
     RegisterSymbol("libSceSysmodule", "fMP5NHUOaMk#T#T", IsLoadedImpl);

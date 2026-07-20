@@ -43,6 +43,7 @@ namespace HLE {
     void RegisterLibLibc();
     void RegisterLibSystemService();
     void RegisterLibNp();
+    void RegisterLibAudioOut();
 
     static std::unordered_map<std::string, HleSymbol> g_symbol_registry;
     static std::unordered_map<u64, HleSymbol>         g_id_index;       // fast O(1) dispatch
@@ -215,6 +216,7 @@ namespace HLE {
         RegisterLibLibc();
         RegisterLibSystemService();
         RegisterLibNp();
+        RegisterLibAudioOut();
 
         // Gap filler: log-and-return-0 stubs under their real names for every
         // NID-database entry no module implemented.  Must run LAST so it

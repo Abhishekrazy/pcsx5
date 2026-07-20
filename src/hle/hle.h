@@ -141,6 +141,17 @@ namespace HLE {
     // an AGC DCB.  Returns the SubmitFlip error code (0 on success).
     u64 VideoOutSubmitFlipFromAgc(u32 handle, s32 buffer_index, u32 flip_mode, s64 flip_arg);
 
+    // Display-buffer lookup for the AGC deferred-composite path (M3.3):
+    // resolves the guest address + dimensions of a registered display buffer
+    // so a targetless draw can be retargeted at it when its RFlip arrives.
+    bool VideoOutGetDisplayBufferInfo(u32 handle, s32 buffer_index,
+                                      guest_addr_t* addr, u32* width, u32* height);
+
+    // Push the configured audio output settings into libSceAudioOut
+    // (libaudioout.cpp).  Called from main() after the config service loads;
+    // backend: 0 = Off (silent, real-time paced), non-zero = waveOut.
+    void SetAudioOutConfig(int backend, float volume);
+
     // AGC submitted-DCB walker introspection (libagc.cpp; tests + M1-M3).
     // which: 0 = total draws, 1 = total dispatches, 2 = total flips (graphics queue).
     u64 AgcGetSubmittedStats(u32 which);

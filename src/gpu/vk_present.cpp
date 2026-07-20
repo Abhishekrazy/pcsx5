@@ -386,6 +386,48 @@ bool VkPresentFrame(VkContext* ctx, const void* bgra_pixels, u32 fb_w, u32 fb_h)
     });
 }
 
+bool VkPresentFromImage(VkContext* ctx, VkImage src, u32 src_w, u32 src_h) {
+    if (!ctx || src == VK_NULL_HANDLE || src_w == 0 || src_h == 0) return false;
+    std::lock_guard<std::mutex> lk(g_present_mutex);
+    if (g_ps.swapchain == VK_NULL_HANDLE) return false;
+
+    return AcquireRecordPresent(ctx, [&](VkImage target) {
+        // Source render target: COLOR_ATTACHMENT -> TRANSFER_SRC.
+        Barrier(ctx, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+        // Swapchain image: UNDEFINED -> TRANSFER_DST, blit scaled, -> PRESENT_SRC.
+        Barrier(ctx, target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkImageBlit blit = {};
+        blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.layerCount = 1;
+        blit.srcOffsets[1] = { static_cast<s32>(src_w), static_cast<s32>(src_h), 1 };
+        blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.dstSubresource.layerCount = 1;
+        blit.dstOffsets[1] = { static_cast<s32>(g_ps.extent.width),
+                               static_cast<s32>(g_ps.extent.height), 1 };
+        ctx->fn.CmdBlitImage(g_ps.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                             target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+                             VK_FILTER_LINEAR);
+        Barrier(ctx, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                VK_ACCESS_TRANSFER_WRITE_BIT, 0,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+
+        // Restore the render-target layout for the next guest draw.
+        Barrier(ctx, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_ACCESS_TRANSFER_READ_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    });
+}
+
 bool VkPresentClearColor(VkContext* ctx, float r, float g, float b, float a) {
     if (!ctx) return false;
     std::lock_guard<std::mutex> lk(g_present_mutex);

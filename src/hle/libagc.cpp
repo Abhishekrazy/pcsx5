@@ -21,6 +21,8 @@
 #include "../gpu/shader/gcn_decode.h"
 #include "../gpu/shader/gcn_eval.h"
 #include "../gpu/shader/gcn_translate.h"
+#include "../gpu/gfx10_state.h"
+#include "../gpu/vk_draw.h"
 #include <windows.h>
 #include <algorithm>
 #include <cstring>
@@ -466,6 +468,14 @@ struct AgcSubmitShadow {
     u64 total_draws = 0;
     u64 total_dispatches = 0;
     u64 total_flips = 0;
+    // M3.3 deferred composite: a targetless draw that samples textures is
+    // retained until the RFlip that names its scanout target (SharpEmu's
+    // PendingTargetlessDraw).  The SPIR-V words are owned copies so the
+    // stashed call never dangles into the program cache.
+    bool has_pending_targetless = false;
+    GPU::VkDrawCall pending_targetless;
+    std::vector<u32> pending_vs_words;
+    std::vector<u32> pending_ps_words;
 };
 
 std::mutex g_agc_submit_mutex;
@@ -524,20 +534,69 @@ u32 SubmittedDrawCount(AgcSubmitShadow& st, guest_addr_t packet, u32 length, u32
 }
 
 // ---------------------------------------------------------------------------
-// M3 slice 0: draw-time shader translation.
+// M3.2c: draw-time shader translation + guest-GPU draw executor.
 //
 // At each draw packet the register shadow knows the bound VS/PS code
-// addresses (SPI_SHADER_PGM_LO/HI_*).  We fetch the shader binaries from
-// guest memory, translate them with the M2.2 recompiler, and cache per
-// address pair — the pipeline/descriptor stage of M3 builds on this.  No
-// rendering yet; success/failure is logged once per unique pair and the
-// modules are dumped to .work/draw_spv/ for inspection.
+// addresses (SPI_SHADER_PGM_LO/HI_*).  Per draw we:
+//   1. fetch/decode both shaders (cached by code address),
+//   2. evaluate their scalar state against the current shadow (resolves the
+//      texture/buffer descriptors + initial SGPRs — this is per draw so one
+//      translation serves sprite batching),
+//   3. translate to SPIR-V with the global binding model (cached by es/ps
+//      pair + binding-layout hash): the binding-0 StorageBuffer array is the
+//      deduped evaluated buffer list followed by the PS and VS initial-scalar
+//      slots, image bindings 1..N are the vertex-then-pixel image pcs,
+//   4. hand everything to GPU::VkDrawExecute, which uploads/binds and draws
+//      into the guest render-target image.
 // ---------------------------------------------------------------------------
 constexpr u32 kSpiPsInputEna  = 0x1B3;
 constexpr u32 kSpiPsInputAddr = 0x1B4;
 
+// Context/uconfig registers consumed by the executor (slot 0 only — 2D path).
+constexpr u32 kPaScScreenScissorTl = 0x00C;
+constexpr u32 kPaScScreenScissorBr = 0x00D;
+constexpr u32 kCbTargetMask        = 0x08E;
+constexpr u32 kCbBlendRed          = 0x105; // ..CB_BLEND_ALPHA 0x108
+constexpr u32 kPaClVportXScale     = 0x10F; // XOFFSET 0x110, YSCALE 0x111, YOFFSET 0x112
+constexpr u32 kCbBlend0Control     = 0x1E0;
+constexpr u32 kPaSuScModeCntl      = 0x205;
+constexpr u32 kCbColor0Base        = 0x318;
+constexpr u32 kCbColor0BaseHi      = 0x319;
+constexpr u32 kCbColor0Info        = 0x31C;
+constexpr u32 kCbColor0Attrib2     = 0x3B0;
+constexpr u32 kVgtPrimitiveTypeUc  = 0x242; // uconfig space
+
 std::mutex g_agc_translate_mutex;
-std::unordered_map<u64, bool> g_agc_draw_translate; // es/ps pair key -> ok
+
+// Decoded guest programs, cached by code address.
+struct AgcCachedProgram {
+    bool ok = false;
+    GPU::Shader::GcnProgram program;
+};
+std::unordered_map<u64, AgcCachedProgram> g_agc_program_cache;
+
+// Translated SPIR-V for an es/ps pair + binding layout (M3.2c: consumed by
+// GPU::VkDrawExecute).  Retranslated when the evaluated buffer/image layout
+// changes under the same shader pair.
+struct AgcDrawProgram {
+    GPU::Shader::GcnSpirvShader vs, ps;
+    u64 layout_hash = 0;
+    bool built = false; // true once translation was attempted (ok = success)
+    bool ok = false;
+};
+std::unordered_map<u64, AgcDrawProgram> g_agc_draw_programs;
+
+// M3.2b: per-stage packed initial-scalar buffers (256 SGPR dwords each),
+// produced per draw by GcnPackInitialScalarState from the scalar evaluation.
+// M3.2c: consumed by AgcExecuteDraw — uploaded by the executor and bound at
+// the trailing slots of the binding-0 StorageBuffer array (PS slot, then VS).
+struct AgcDrawScalarState {
+    std::vector<u32> vertex_scalars;
+    std::vector<u32> pixel_scalars;
+    int              vertex_scalar_binding = -1;
+    int              pixel_scalar_binding  = -1;
+};
+std::unordered_map<u64, AgcDrawScalarState> g_agc_draw_scalar_state;
 
 u64 AgcShadowShaderAddress(const std::unordered_map<u32, u32>& sh,
                            u32 lo_reg, u32 hi_reg) {
@@ -548,13 +607,27 @@ u64 AgcShadowShaderAddress(const std::unordered_map<u32, u32>& sh,
            (static_cast<u64>(lo->second) << 8);
 }
 
-bool AgcTranslateDrawShader(u64 code_addr, GPU::Shader::GcnSpirvStage stage,
-                            u32 ps_input_enable, u32 ps_input_address,
-                            GPU::Shader::GcnProgram& program_out,
-                            std::string& error) {
-    using namespace GPU::Shader;
-    // Read until the pages stop (decoder halts at S_ENDPGM regardless;
-    // zero padding is tolerated).  Cap at 256KB.
+// FNV-1a combine for binding-layout hashes.
+u64 AgcHashU64(u64 h, u64 v) {
+    for (u32 i = 0; i < 8; ++i) {
+        h = (h ^ ((v >> (i * 8)) & 0xFFu)) * 0x100000001B3ull;
+    }
+    return h;
+}
+
+// Fetches and decodes a shader binary (cached by code address).  Reads until
+// the pages stop (the decoder halts at S_ENDPGM regardless; zero padding is
+// tolerated), capped at 256KB.
+bool AgcDecodeDrawShader(u64 code_addr, GPU::Shader::GcnProgram& program_out) {
+    {
+        std::lock_guard<std::mutex> lk(g_agc_translate_mutex);
+        const auto it = g_agc_program_cache.find(code_addr);
+        if (it != g_agc_program_cache.end()) {
+            if (it->second.ok) program_out = it->second.program;
+            return it->second.ok;
+        }
+    }
+
     std::vector<u32> words;
     words.reserve(4096);
     for (u64 offset = 0; offset < 256 * 1024; offset += 0x1000) {
@@ -565,36 +638,60 @@ bool AgcTranslateDrawShader(u64 code_addr, GPU::Shader::GcnSpirvStage stage,
         words.resize(base + 0x1000 / 4);
         Memory::ReadBuffer(code_addr + offset, words.data() + base, 0x1000);
     }
-    if (words.empty()) {
-        error = "code unreadable";
-        return false;
-    }
 
-    if (!GcnDecodeProgram(words.data(), words.size(), program_out, error)) {
-        return false;
+    AgcCachedProgram cached;
+    std::string error;
+    if (!words.empty()) {
+        cached.ok = GPU::Shader::GcnDecodeProgram(words.data(), words.size(),
+                                                  cached.program, error);
     }
-    GcnTranslateOptions options = GcnTranslateDefaultOptions(program_out, stage);
-    if (stage == GcnSpirvStage::Pixel) {
-        options.pixel_input_enable  = ps_input_enable;
-        options.pixel_input_address = ps_input_address;
+    if (!cached.ok) {
+        LOG_WARN(HLE, "M3: shader decode failed (0x%llx): %s", code_addr,
+                 words.empty() ? "code unreadable" : error.c_str());
     }
-    GcnSpirvShader shader;
-    if (!GcnTranslateToSpirv(program_out, options, shader, error)) {
-        return false;
+    {
+        std::lock_guard<std::mutex> lk(g_agc_translate_mutex);
+        g_agc_program_cache.emplace(code_addr, cached);
     }
+    if (cached.ok) program_out = cached.program;
+    return cached.ok;
+}
 
-    // Dump once for offline inspection (scratch dir, never committed).
-    std::error_code ec;
-    std::filesystem::create_directories(".work/draw_spv", ec);
-    char name[64];
-    std::snprintf(name, sizeof(name), ".work/draw_spv/%s-%llX.spv",
-                  stage == GcnSpirvStage::Pixel ? "ps" : "vs",
-                  static_cast<unsigned long long>(code_addr));
-    if (std::ofstream out{name, std::ios::binary | std::ios::trunc}) {
-        out.write(reinterpret_cast<const char*>(shader.words.data()),
-                  static_cast<std::streamsize>(shader.words.size() * sizeof(u32)));
+// Image-instruction pcs in program order (the translator's default image
+// binding order — GcnTranslateDefaultOptions).
+std::vector<u32> AgcDrawImagePcs(const GPU::Shader::GcnProgram& program) {
+    std::vector<u32> pcs;
+    for (const GPU::Shader::GcnInstruction& ins : program.instructions) {
+        if (std::get_if<GPU::Shader::GcnImageControl>(&ins.control)) {
+            pcs.push_back(ins.pc);
+        }
     }
-    return true;
+    return pcs;
+}
+
+// One entry of the global binding-0 buffer list: an evaluated guest buffer
+// range shared by both stages, with each stage's consuming instruction pcs.
+struct AgcGlobalBuffer {
+    u64 base = 0;
+    u64 size = 0;
+    u32 scalar_address = 0; // diagnostic: SGPR holding the base
+    std::vector<u32> vs_pcs;
+    std::vector<u32> ps_pcs;
+};
+
+// Binding layout the SPIR-V modules are translated against: the deduped
+// evaluated buffer list (both stages) + image pc counts.  Sprites batching
+// under one shader pair keeps this stable, so translations are reused.
+u64 AgcDrawLayoutHash(const std::vector<AgcGlobalBuffer>& buffers,
+                      size_t vs_image_count, size_t ps_image_count) {
+    u64 h = 0xCBF29CE484222325ull;
+    for (const auto& b : buffers) {
+        h = AgcHashU64(h, b.base);
+        h = AgcHashU64(h, b.size);
+    }
+    h = AgcHashU64(h, vs_image_count);
+    h = AgcHashU64(h, ps_image_count);
+    return h;
 }
 
 // User-data SGPR register banks (AgcExports.cs SelectExportUserDataRegister:
@@ -634,11 +731,12 @@ std::vector<u32> AgcCollectUserData(
     return user_data;
 }
 
-void AgcEvaluateDrawShader(u64 code_addr,
+bool AgcEvaluateDrawShader(u64 code_addr,
                            const GPU::Shader::GcnProgram& program,
                            const std::vector<u32>& user_data,
                            u32 user_data_base,
-                           const char* tag) {
+                           const char* tag,
+                           GPU::Shader::GcnEvaluation& evaluation_out) {
     {
         // One-shot diagnostics: the seeded user SGPRs + RSRC2 decode.
         std::string dump;
@@ -657,7 +755,7 @@ void AgcEvaluateDrawShader(u64 code_addr,
             program, code_addr, user_data, user_data_base, evaluation, error)) {
         LOG_WARN(HLE, "M3: %s scalar evaluation failed (0x%llx): %s",
                  tag, code_addr, error.c_str());
-        return;
+        return false;
     }
     for (const auto& binding : evaluation.image_bindings) {
         const u64 base =
@@ -674,57 +772,371 @@ void AgcEvaluateDrawShader(u64 code_addr,
                  binding.size_bytes, binding.instruction_pcs.size(),
                  binding.writable ? " (writable)" : "");
     }
+    evaluation_out = std::move(evaluation);
+    return true;
 }
 
-void AgcMaybeTranslateDrawShaders(AgcSubmitShadow& st) {
-    const u64 es = AgcShadowShaderAddress(st.sh, kSpiShaderPgmLoEs, kSpiShaderPgmHiEs);
-    const u64 ps = AgcShadowShaderAddress(st.sh, kSpiShaderPgmLoPs, kSpiShaderPgmHiPs);
+// Builds the SPIR-V modules for an es/ps pair against the global binding
+// layout (see the M3.2c block comment).  The PS is translated first so the
+// VS interface covers everything the PS consumes.
+bool AgcBuildDrawProgram(
+    u64 es, u64 ps,
+    const GPU::Shader::GcnProgram& es_program,
+    const GPU::Shader::GcnProgram& ps_program,
+    const std::vector<AgcGlobalBuffer>& buffers,
+    const std::vector<u32>& vs_image_pcs,
+    const std::vector<u32>& ps_image_pcs,
+    u32 ps_input_enable, u32 ps_input_address,
+    AgcDrawProgram& out, std::string& error) {
+    using namespace GPU::Shader;
+    constexpr u32 kForeignPc = 0xFFFFFFFFu; // placeholder for the other stage
+
+    // Scalar slots: PS at index buffers.size(), VS at +1 (both appended to
+    // each stage's binding list so the array length matches the layout).
+    const int ps_scalar_slot = static_cast<int>(buffers.size());
+    const int vs_scalar_slot = ps_scalar_slot + 1;
+
+    auto make_options = [&](const GcnProgram& program, GcnSpirvStage stage,
+                            bool pixel) {
+        GcnTranslateOptions options = GcnTranslateDefaultOptions(program, stage);
+        options.buffer_bindings.clear();
+        for (const auto& g : buffers) {
+            GcnSpirvBufferBinding binding;
+            binding.scalar_address = g.scalar_address;
+            binding.instruction_pcs = pixel ? g.ps_pcs : g.vs_pcs;
+            options.buffer_bindings.push_back(std::move(binding));
+        }
+        options.buffer_bindings.emplace_back(); // PS scalar slot
+        options.buffer_bindings.emplace_back(); // VS scalar slot
+        options.initial_scalar_buffer_index = pixel ? ps_scalar_slot : vs_scalar_slot;
+        options.image_bindings.clear();
+        for (const u32 pc : vs_image_pcs) {
+            GcnSpirvImageBinding binding;
+            binding.pc = pixel ? kForeignPc : pc;
+            options.image_bindings.push_back(binding);
+        }
+        for (const u32 pc : ps_image_pcs) {
+            GcnSpirvImageBinding binding;
+            binding.pc = pixel ? pc : kForeignPc;
+            options.image_bindings.push_back(binding);
+        }
+        if (pixel) {
+            options.pixel_input_enable  = ps_input_enable;
+            options.pixel_input_address = ps_input_address;
+        }
+        return options;
+    };
+
+    auto dump = [](const GcnSpirvShader& shader, const char* tag, u64 code_addr) {
+        std::error_code ec;
+        std::filesystem::create_directories(".work/draw_spv", ec);
+        char name[64];
+        std::snprintf(name, sizeof(name), ".work/draw_spv/%s-%llX.spv", tag,
+                      static_cast<unsigned long long>(code_addr));
+        if (std::ofstream file{name, std::ios::binary | std::ios::trunc}) {
+            file.write(reinterpret_cast<const char*>(shader.words.data()),
+                       static_cast<std::streamsize>(shader.words.size() * sizeof(u32)));
+        }
+    };
+
+    if (ps != 0) {
+        GcnTranslateOptions options =
+            make_options(ps_program, GcnSpirvStage::Pixel, true);
+        if (!GcnTranslateToSpirv(ps_program, options, out.ps, error)) {
+            return false;
+        }
+        dump(out.ps, "ps", ps);
+    }
+    if (es != 0) {
+        GcnTranslateOptions options =
+            make_options(es_program, GcnSpirvStage::Vertex, false);
+        // The VS must export at least as many params as the PS interpolates.
+        options.required_vertex_output_count = (std::max)(
+            options.required_vertex_output_count,
+            static_cast<int>(out.ps.attribute_count));
+        if (!GcnTranslateToSpirv(es_program, options, out.vs, error)) {
+            return false;
+        }
+        dump(out.vs, "vs", es);
+    }
+    return true;
+}
+
+// M3.2c: executes one guest draw through the Vulkan draw executor.  The
+// shadow supplies the fixed-function state; the per-draw scalar evaluation
+// supplies the descriptors.  Failures are logged once per shader pair and
+// the draw is skipped (the frame simply misses it).
+void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
+    using namespace GPU::Shader;
+    u64 es = AgcShadowShaderAddress(st.sh, kSpiShaderPgmLoEs, kSpiShaderPgmHiEs);
+    u64 ps = AgcShadowShaderAddress(st.sh, kSpiShaderPgmLoPs, kSpiShaderPgmHiPs);
+    if (es == 0 && ps == 0) return;
+    const u64 key = es * 0x9E3779B97F4A7C15ull ^ ps;
+
+    GcnProgram es_program, ps_program;
+    if (es != 0 && !AgcDecodeDrawShader(es, es_program)) es = 0;
+    if (ps != 0 && !AgcDecodeDrawShader(ps, ps_program)) ps = 0;
     if (es == 0 && ps == 0) return;
 
-    const u64 key = es * 0x9E3779B97F4A7C15ull ^ ps;
+    // Per-draw scalar evaluation (M3.2b runtime SGPR model: one translation
+    // serves many draws with different texture/buffer state).
+    GcnEvaluation es_eval, ps_eval;
+    const GcnEvaluation* es_eval_p = nullptr;
+    const GcnEvaluation* ps_eval_p = nullptr;
+    if (es != 0) {
+        const AgcUserDataBank bank = AgcSelectUserDataBank(st.sh, false);
+        if (AgcEvaluateDrawShader(es, es_program,
+                                  AgcCollectUserData(st.sh, bank), 8, "vs",
+                                  es_eval)) {
+            es_eval_p = &es_eval;
+        }
+    }
+    if (ps != 0) {
+        const AgcUserDataBank bank = AgcSelectUserDataBank(st.sh, true);
+        if (AgcEvaluateDrawShader(ps, ps_program,
+                                  AgcCollectUserData(st.sh, bank), 0, "ps",
+                                  ps_eval)) {
+            ps_eval_p = &ps_eval;
+        }
+    }
+
+    // Global buffer list (both stages, deduped by base+size).
+    std::vector<AgcGlobalBuffer> buffers;
+    auto merge_buffers = [&](const GcnEvaluation* eval, bool pixel) {
+        if (!eval) return;
+        for (const auto& b : eval->buffer_bindings) {
+            auto it = std::find_if(buffers.begin(), buffers.end(),
+                                   [&](const AgcGlobalBuffer& g) {
+                                       return g.base == b.base_address &&
+                                              g.size == b.size_bytes;
+                                   });
+            if (it == buffers.end()) {
+                AgcGlobalBuffer g;
+                g.base = b.base_address;
+                g.size = b.size_bytes;
+                g.scalar_address = b.scalar_address;
+                (pixel ? g.ps_pcs : g.vs_pcs) = b.instruction_pcs;
+                buffers.push_back(std::move(g));
+            } else {
+                auto& dst = pixel ? it->ps_pcs : it->vs_pcs;
+                dst.insert(dst.end(), b.instruction_pcs.begin(),
+                           b.instruction_pcs.end());
+            }
+        }
+    };
+    merge_buffers(es_eval_p, false);
+    merge_buffers(ps_eval_p, true);
+
+    const std::vector<u32> vs_image_pcs =
+        es != 0 ? AgcDrawImagePcs(es_program) : std::vector<u32>{};
+    const std::vector<u32> ps_image_pcs =
+        ps != 0 ? AgcDrawImagePcs(ps_program) : std::vector<u32>{};
+    const u64 layout_hash =
+        AgcDrawLayoutHash(buffers, vs_image_pcs.size(), ps_image_pcs.size());
+
+    // Translated modules (cached by pair + layout).
+    AgcDrawProgram program;
+    bool have_program = false;
     {
         std::lock_guard<std::mutex> lk(g_agc_translate_mutex);
-        if (g_agc_draw_translate.count(key)) return;
+        const auto it = g_agc_draw_programs.find(key);
+        if (it != g_agc_draw_programs.end() && it->second.built &&
+            it->second.layout_hash == layout_hash) {
+            program = it->second;
+            have_program = true;
+        }
+    }
+    if (!have_program) {
+        const auto ena_it  = st.cx.find(kSpiPsInputEna);
+        const auto addr_it = st.cx.find(kSpiPsInputAddr);
+        std::string error;
+        program.ok = AgcBuildDrawProgram(
+            es, ps, es_program, ps_program, buffers, vs_image_pcs, ps_image_pcs,
+            ena_it != st.cx.end() ? ena_it->second : 0,
+            addr_it != st.cx.end() ? addr_it->second : 0, program, error);
+        program.built = true;
+        program.layout_hash = layout_hash;
+        if (program.ok) {
+            LOG_INFO(HLE, "M3: draw shaders translated (es=0x%llx ps=0x%llx)", es, ps);
+        } else {
+            LOG_WARN(HLE, "M3: draw shader translation failed (es=0x%llx ps=0x%llx): %s",
+                     es, ps, error.c_str());
+        }
+        std::lock_guard<std::mutex> lk(g_agc_translate_mutex);
+        g_agc_draw_programs[key] = program;
+    }
+    if (!program.ok) return;
+
+    // M3.2b scalar state, packed per draw (consumed by the executor below).
+    static const std::vector<u32> kEmptyScalars;
+    AgcDrawScalarState scalar_state;
+    scalar_state.pixel_scalars = GcnPackInitialScalarState(
+        ps_eval_p ? ps_eval_p->initial_scalar_registers : kEmptyScalars);
+    scalar_state.vertex_scalars = GcnPackInitialScalarState(
+        es_eval_p ? es_eval_p->initial_scalar_registers : kEmptyScalars);
+    scalar_state.pixel_scalar_binding  = static_cast<int>(buffers.size());
+    scalar_state.vertex_scalar_binding = static_cast<int>(buffers.size()) + 1;
+    {
+        std::lock_guard<std::mutex> lk(g_agc_translate_mutex);
+        g_agc_draw_scalar_state[key] = scalar_state;
     }
 
-    const auto ena_it  = st.cx.find(kSpiPsInputEna);
-    const auto addr_it = st.cx.find(kSpiPsInputAddr);
-    const u32 ps_ena  = ena_it  != st.cx.end() ? ena_it->second  : 0;
-    const u32 ps_addr = addr_it != st.cx.end() ? addr_it->second : 0;
+    // Assemble the executor call from the register shadow.
+    auto cx = [&](u32 reg, u32 fallback) {
+        const auto it = st.cx.find(reg);
+        return it != st.cx.end() ? it->second : fallback;
+    };
+    auto uc = [&](u32 reg, u32 fallback) {
+        const auto it = st.uc.find(reg);
+        return it != st.uc.end() ? it->second : fallback;
+    };
 
-    bool ok = true;
-    std::string error;
-    GPU::Shader::GcnProgram es_program, ps_program;
-    if (es != 0 && !AgcTranslateDrawShader(es, GPU::Shader::GcnSpirvStage::Vertex,
-                                           0, 0, es_program, error)) {
-        ok = false;
+    GPU::Gfx10::RenderTargetDesc rt;
+    const bool has_target = GPU::Gfx10::DecodeRenderTarget(
+        cx(kCbColor0Base, 0), cx(kCbColor0BaseHi, 0),
+        cx(kCbColor0Info, 0), cx(kCbColor0Attrib2, 0), rt);
+
+    GPU::VkDrawCall call;
+    if (es != 0) {
+        call.vs_words = program.vs.words.data();
+        call.vs_word_count = program.vs.words.size();
     }
-    if (ok && ps != 0 && !AgcTranslateDrawShader(ps, GPU::Shader::GcnSpirvStage::Pixel,
-                                                 ps_ena, ps_addr, ps_program, error)) {
-        ok = false;
+    if (ps != 0) {
+        call.ps_words = program.ps.words.data();
+        call.ps_word_count = program.ps.words.size();
     }
-    if (ok) {
-        LOG_INFO(HLE, "M3: draw shaders translated (es=0x%llx ps=0x%llx)", es, ps);
-        // M3 slice 1: evaluate the scalar state of both stages — resolves
-        // the texture/buffer descriptors the pipeline stage will bind.
-        // SGPR seed bases: PS user data lands at s0; NGG export at s8
-        // (SharpEmu PsTextureUserDataRegister + NggUserDataScalarRegisterBase).
-        if (es != 0) {
-            const AgcUserDataBank bank = AgcSelectUserDataBank(st.sh, false);
-            AgcEvaluateDrawShader(es, es_program,
-                                  AgcCollectUserData(st.sh, bank), 8, "vs");
+    call.buffers.reserve(buffers.size());
+    for (const auto& g : buffers) {
+        call.buffers.push_back(GPU::VkDrawBuffer{ g.base, g.size });
+    }
+    call.ps_scalars = scalar_state.pixel_scalars;
+    call.vs_scalars = scalar_state.vertex_scalars;
+
+    // Textures in global (vertex-then-pixel) binding order; pcs the
+    // evaluation did not resolve get the executor's 1x1 fallback texture.
+    auto add_textures = [&](const std::vector<u32>& pcs, const GcnEvaluation* eval) {
+        for (const u32 pc : pcs) {
+            GPU::VkDrawTexture tex;
+            const GcnEvalImageBinding* found = nullptr;
+            if (eval) {
+                for (const auto& ib : eval->image_bindings) {
+                    if (ib.pc == pc) { found = &ib; break; }
+                }
+            }
+            GPU::Gfx10::ImageDesc desc;
+            if (found && GPU::Gfx10::DecodeImageDescriptor(
+                             found->resource_descriptor.data(), desc)) {
+                u32 data_format = 10, number_format = 0;
+                if (!GcnTryDecodeUnifiedFormat(desc.unified_format, data_format,
+                                               number_format)) {
+                    data_format = 10;
+                    number_format = 0;
+                }
+                tex.guest_addr    = desc.address;
+                tex.width         = desc.width;
+                tex.height        = desc.height;
+                tex.pitch         = desc.pitch;
+                tex.data_format   = data_format;
+                tex.number_format = number_format;
+                tex.dst_select    = desc.dst_select;
+                if (found->has_sampler) {
+                    tex.sampler = found->sampler_descriptor;
+                }
+            }
+            call.textures.push_back(tex);
         }
-        if (ps != 0) {
-            const AgcUserDataBank bank = AgcSelectUserDataBank(st.sh, true);
-            AgcEvaluateDrawShader(ps, ps_program,
-                                  AgcCollectUserData(st.sh, bank), 0, "ps");
-        }
+    };
+    add_textures(vs_image_pcs, es_eval_p);
+    add_textures(ps_image_pcs, ps_eval_p);
+
+    call.vgt_primitive_type = uc(kVgtPrimitiveTypeUc, 4);
+    call.cb_blend0_control  = cx(kCbBlend0Control, 0);
+    call.cb_target_mask     = cx(kCbTargetMask, 0xF);
+    call.pa_su_sc_mode_cntl = cx(kPaSuScModeCntl, 0);
+    for (u32 i = 0; i < 4; ++i) {
+        call.blend_constants[i] = cx(kCbBlendRed + i, 0);
+    }
+    call.vport_xscale  = cx(kPaClVportXScale, 0);
+    call.vport_xoffset = cx(kPaClVportXScale + 1, 0);
+    call.vport_yscale  = cx(kPaClVportXScale + 2, 0);
+    call.vport_yoffset = cx(kPaClVportXScale + 3, 0);
+    call.screen_scissor_tl = cx(kPaScScreenScissorTl, 0);
+    call.screen_scissor_br = cx(kPaScScreenScissorBr, 0);
+
+    if (has_target) {
+        call.rt_base        = rt.address;
+        call.rt_width       = rt.width;
+        call.rt_height      = rt.height;
+        call.rt_format      = rt.format;
+        call.rt_number_type = rt.number_type;
+    }
+
+    call.index_addr  = st.index_addr;
+    call.index_count = draw_count;
+    call.index_size  = st.index_size;
+    call.instances   = st.instances;
+    call.indexed     = indexed && st.index_addr != 0;
+
+    if (has_target) {
+        // A real targeted draw supersedes any stale deferred composite.
+        st.has_pending_targetless = false;
+        GPU::VkDrawExecute(call);
+        return;
+    }
+    // Targetless draws: retain the composite until the RFlip names its
+    // scanout target (SharpEmu PendingTargetlessDraw), provided it samples a
+    // texture — a targetless draw with no sampled source can never be
+    // consumed, so it is dropped.
+    if (call.textures.empty()) {
+        LOG_DEBUG(HLE, "M3: draw skipped — no CB_COLOR0 target and no textures "
+                  "(es=0x%llx ps=0x%llx)", es, ps);
+        return;
+    }
+    if (call.vs_words && call.vs_word_count) {
+        st.pending_vs_words.assign(call.vs_words, call.vs_words + call.vs_word_count);
     } else {
-        LOG_WARN(HLE, "M3: draw shader translation failed (es=0x%llx ps=0x%llx): %s",
-                 es, ps, error.c_str());
+        st.pending_vs_words.clear();
     }
-    std::lock_guard<std::mutex> lk(g_agc_translate_mutex);
-    g_agc_draw_translate[key] = ok;
+    if (call.ps_words && call.ps_word_count) {
+        st.pending_ps_words.assign(call.ps_words, call.ps_words + call.ps_word_count);
+    } else {
+        st.pending_ps_words.clear();
+    }
+    st.pending_targetless = call;
+    st.pending_targetless.vs_words = st.pending_vs_words.empty() ? nullptr
+                                                                 : st.pending_vs_words.data();
+    st.pending_targetless.ps_words = st.pending_ps_words.empty() ? nullptr
+                                                                 : st.pending_ps_words.data();
+    st.has_pending_targetless = true;
+    LOG_DEBUG(HLE, "M3: targetless draw stashed pending flip (es=0x%llx ps=0x%llx)",
+              es, ps);
+}
+
+// M3.3: retargets the stashed targetless composite at the display buffer the
+// RFlip names, then executes it (SharpEmu resolves PendingTargetlessDraw at
+// flip time against the known render target for that buffer).  Display
+// buffers are 8_8_8_8 UNORM.
+void AgcFlushPendingTargetlessDraw(AgcSubmitShadow& st, u32 handle, s32 buffer_index) {
+    if (!st.has_pending_targetless) return;
+    st.has_pending_targetless = false;
+    guest_addr_t addr = 0;
+    u32 width = 0, height = 0;
+    if (!VideoOutGetDisplayBufferInfo(handle, buffer_index, &addr, &width, &height)) {
+        LOG_DEBUG(HLE, "M3: deferred composite dropped — display buffer %d unknown",
+                  buffer_index);
+        return;
+    }
+    // Copies the vectors; the shader word pointers keep referencing
+    // st.pending_*_words, which outlive this call.
+    GPU::VkDrawCall call = st.pending_targetless;
+    call.rt_base        = addr;
+    call.rt_width       = width;
+    call.rt_height      = height;
+    call.rt_format      = 10; // 8_8_8_8
+    call.rt_number_type = 0;  // UNORM
+    LOG_INFO(HLE, "M3: executing deferred composite -> display buffer 0x%llx %ux%u",
+             addr, width, height);
+    GPU::VkDrawExecute(call);
 }
 
 // ---------------------------------------------------------------------------
@@ -762,6 +1174,11 @@ void ApplySubmittedDmaData(guest_addr_t packet, u32 length, const char* queue_na
         const u32 value = static_cast<u32>(src);
         LOG_INFO(HLE, "AGC %s: dma fill dst=0x%llx value=0x%08X bytes=%u",
                  queue_name, dst, value, byte_count);
+        if (!Memory::IsWritable(dst, byte_count)) {
+            LOG_WARN(HLE, "AGC %s: dma fill skipped — dst range not writable (dst=0x%llx bytes=%u)",
+                     queue_name, dst, byte_count);
+            return;
+        }
         u8* p = reinterpret_cast<u8*>(dst);
         __try {
             for (u32 i = 0; i + 4 <= byte_count; i += 4) {
@@ -776,6 +1193,13 @@ void ApplySubmittedDmaData(guest_addr_t packet, u32 length, const char* queue_na
     if (src == 0) return;
     LOG_INFO(HLE, "AGC %s: dma copy dst=0x%llx src=0x%llx bytes=%u",
              queue_name, dst, src, byte_count);
+    // Probe the guest ranges first: a first-chance AV here would otherwise
+    // be logged by the kernel VEH before the SEH backstop swallows it.
+    if (!Memory::IsWritable(dst, byte_count) || !Memory::IsReadable(src, byte_count)) {
+        LOG_WARN(HLE, "AGC %s: dma copy skipped — unmapped guest range (dst=0x%llx src=0x%llx bytes=%u)",
+                 queue_name, dst, src, byte_count);
+        return;
+    }
     __try {
         std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), byte_count);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -818,6 +1242,7 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
             st.cx.clear(); st.sh.clear(); st.uc.clear();
             st.index_addr = 0; st.index_count = 0; st.index_size = 0;
             st.instances = 1; st.indirect_args = 0;
+            st.has_pending_targetless = false;
         }
 
         ApplySubmittedRegisters(st, packet, length, op, reg);
@@ -849,7 +1274,7 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
             ++st.total_draws;
             LOG_INFO(HLE, "AGC %s: draw op=0x%02X count=%u instances=%u (frame draw #%u)",
                      queue_name, op, draw_count, st.instances, draws);
-            AgcMaybeTranslateDrawShaders(st);
+            AgcExecuteDraw(st, draw_count, true);
         }
         if (op == kItNop && reg == kRDrawIndexAuto && length >= 2) {
             const u32 auto_count = Memory::Read<u32>(packet + 4);
@@ -858,7 +1283,7 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
                 ++st.total_draws;
                 LOG_INFO(HLE, "AGC %s: draw auto count=%u instances=%u (frame draw #%u)",
                          queue_name, auto_count, st.instances, draws);
-                AgcMaybeTranslateDrawShaders(st);
+                AgcExecuteDraw(st, auto_count, false);
             }
         }
 
@@ -906,6 +1331,9 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
             ++st.total_flips;
             LOG_INFO(HLE, "AGC %s: flip handle=0x%X index=%d mode=%u arg=%lld",
                      queue_name, handle, buf_index, flip_mode, flip_arg);
+            // M3.3: a stashed targetless composite resolves against this
+            // flip's display buffer and must land before the present.
+            AgcFlushPendingTargetlessDraw(st, handle, buf_index);
             const u64 rc = VideoOutSubmitFlipFromAgc(handle, buf_index, flip_mode, flip_arg);
             if (rc != 0) {
                 LOG_DEBUG(HLE, "AGC %s: flip forward -> 0x%llX", queue_name, rc);

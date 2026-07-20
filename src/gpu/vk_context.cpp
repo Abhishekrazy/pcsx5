@@ -219,6 +219,7 @@ bool CreateLogicalDevice(VkContext* ctx) {
     VK_LOAD_DEVICE(ctx, DestroyDescriptorPool);
     VK_LOAD_DEVICE(ctx, AllocateDescriptorSets);
     VK_LOAD_DEVICE(ctx, FreeDescriptorSets);
+    VK_LOAD_DEVICE(ctx, ResetDescriptorPool);
     VK_LOAD_DEVICE(ctx, UpdateDescriptorSets);
     VK_LOAD_DEVICE(ctx, CreateSampler);
     VK_LOAD_DEVICE(ctx, DestroySampler);

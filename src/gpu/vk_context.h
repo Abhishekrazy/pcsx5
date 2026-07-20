@@ -90,6 +90,7 @@ struct VkFunctions {
     PFN_vkDestroyDescriptorPool         DestroyDescriptorPool = nullptr;
     PFN_vkAllocateDescriptorSets        AllocateDescriptorSets = nullptr;
     PFN_vkFreeDescriptorSets            FreeDescriptorSets = nullptr;
+    PFN_vkResetDescriptorPool           ResetDescriptorPool = nullptr;
     PFN_vkUpdateDescriptorSets          UpdateDescriptorSets = nullptr;
     PFN_vkCreateSampler                 CreateSampler = nullptr;
     PFN_vkDestroySampler                DestroySampler = nullptr;

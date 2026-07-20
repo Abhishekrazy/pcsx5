@@ -88,12 +88,16 @@ void TestSysmodule() {
               "IsLoaded(0x0006) -> 0 after load");
     EXPECT_EQ(HleDispatch(unload_id, 0x0006, 0, 0, 0, 0, 0, 0x1002, 0), (u64)0,
               "UnloadModule(0x0006) -> 0");
-    // Unknown id: registry miss, but we still claim loaded (safe lie).
-    EXPECT_EQ(HleDispatch(isloaded_id, 0x0BAD, 0, 0, 0, 0, 0, 0x1003, 0), (u64)0,
-              "IsLoaded(unknown) -> 0 (claims loaded)");
+    EXPECT_EQ(HleDispatch(isloaded_id, 0x0006, 0, 0, 0, 0, 0, 0x1003, 0), (u64)0x80020002,
+              "IsLoaded(0x0006) -> 0x80020002 after unload");
+    // Unknown id: registry miss -> NOT_FOUND, matching SharpEmu semantics.
+    EXPECT_EQ(HleDispatch(isloaded_id, 0x0BAD, 0, 0, 0, 0, 0, 0x1004, 0), (u64)0x80020002,
+              "IsLoaded(unknown) -> 0x80020002");
 
     // libkernel-scoped NID aliases now point at the real implementation.
-    EXPECT_EQ(HleDispatch(SymbolId("libkernel", "fMP5NHUOaMk#D#E"), 0x0006, 0, 0, 0, 0, 0, 0x1004, 0),
+    EXPECT_EQ(HleDispatch(load_id, 0x0006, 0, 0, 0, 0, 0, 0x1005, 0), (u64)0,
+              "LoadModule(0x0006) reload -> 0");
+    EXPECT_EQ(HleDispatch(SymbolId("libkernel", "fMP5NHUOaMk#D#E"), 0x0006, 0, 0, 0, 0, 0, 0x1006, 0),
               (u64)0, "IsLoaded via libkernel NID -> 0");
 }
 
