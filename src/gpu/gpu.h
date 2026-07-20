@@ -28,7 +28,17 @@ namespace GPU {
     // there, since it reports "close" whenever no window exists).
     bool HasWindow();
 
-    // Poll keyboard inputs and update event states
+    // Pump the GLFW event queue.  GLFW event processing is only legal on the
+    // thread that created the window (the process main thread), so this is
+    // called exclusively from the main thread's window/message loop — never
+    // from the guest worker thread.  No-op when no window exists.
+    void PumpWindowEvents();
+
+    // Poll keyboard + XInput controller inputs and refresh the pad state
+    // returned by GetCurrentPadState().  Keyboard reads (glfwGetKey) are
+    // main-thread-only in GLFW, so this is called from the main thread's
+    // window/message loop; the guest thread only ever reads the published
+    // state via GetCurrentPadState().  Does NOT process GLFW events.
     void PollEvents();
 
     // Retrieve current keyboard-mapped controller state
@@ -39,7 +49,8 @@ namespace GPU {
     void SetPadVibration(u8 large_motor, u8 small_motor);
 
     // Keep the presentation window alive and responsive until the user closes it.
-    // Used after a guest application exits cleanly or crashes.
+    // Called from the main thread after the guest thread has finished (it
+    // replaces the old guest-exit idle spin).
     void RunIdleLoop();
 }
 // namespace GPU

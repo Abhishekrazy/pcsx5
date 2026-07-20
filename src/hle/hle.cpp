@@ -2,9 +2,12 @@
 #include "../memory/memory.h"
 #include "../common/log.h"
 #include "../common/nid.h"
+#include "../gpu/gpu.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <mutex>
@@ -56,6 +59,54 @@ namespace HLE {
     static constexpr u64 THUNK_PAGE_SIZE    = 1 * 1024 * 1024; // 1MB = 32768 slots
     static std::mutex g_hle_mutex;
     static bool        g_strict_import_mode = false;  // Phase-0 test mode toggle
+
+    // Cooperative guest shutdown state (see hle.h).  Written by the main
+    // thread's window loop (RequestStop) / Kernel::Execute (thread id), read
+    // by the HLE dispatch path on guest threads.
+    static std::atomic<bool>          g_stop_requested{false};
+    static std::atomic<unsigned long> g_main_guest_thread_id{0};
+    // Armed by Kernel::Execute while the guest runs on the main guest thread;
+    // ExitGuestProcess longjmps here (SEH unwinding cannot cross guest frames).
+    static jmp_buf                    g_guest_exit_env;
+    static std::atomic<bool>          g_guest_exit_env_armed{false};
+    static u32                        g_guest_exit_code = 0;
+
+    void SetMainGuestThreadId(unsigned long thread_id) {
+        g_main_guest_thread_id.store(thread_id, std::memory_order_release);
+    }
+
+    void RequestStop() {
+        g_stop_requested.store(true, std::memory_order_release);
+    }
+
+    bool StopRequested() {
+        return g_stop_requested.load(std::memory_order_acquire);
+    }
+
+    jmp_buf& GuestExitEnv() {
+        return g_guest_exit_env;
+    }
+
+    void ArmGuestExitEnv(bool armed) {
+        g_guest_exit_env_armed.store(armed, std::memory_order_release);
+    }
+
+    u32 GuestExitCode() {
+        return g_guest_exit_code;
+    }
+
+    void ExitGuestProcess(u32 exit_code) {
+        if (::GetCurrentThreadId() == g_main_guest_thread_id.load(std::memory_order_acquire) &&
+            g_guest_exit_env_armed.load(std::memory_order_acquire)) {
+            g_guest_exit_code = exit_code;
+            longjmp(g_guest_exit_env, 1);
+            // longjmp never returns.
+            std::abort();
+        }
+        // Off the main guest thread there is no armed setjmp buffer; fall
+        // back to terminating the process (legacy behaviour).
+        std::exit(static_cast<int>(exit_code));
+    }
 
     // ---------------------------------------------------------------------
     // Import-call trace ring buffer.  Bounded (256) for crash-report use.
@@ -638,6 +689,12 @@ namespace HLE {
     }
 
     extern "C" u64 HleDispatch(u64 symbol_id, u64 rdi, u64 rsi, u64 rdx, u64 rcx, u64 r8, u64 r9, u64 guest_rip, u64 guest_rsp) {
+        // Cooperative shutdown: the main thread's window loop requests a stop
+        // when the user closes the window; terminate the guest here, on the
+        // guest thread, so Kernel::Execute regains control and the process
+        // shuts down through the normal teardown path.
+        if (StopRequested()) ExitGuestProcess(0);
+
         HleSymbol target_sym;
         bool found = false;
         {

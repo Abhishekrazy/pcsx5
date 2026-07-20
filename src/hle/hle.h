@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include <functional>
+#include <csetjmp>
 
 namespace HLE {
 
@@ -157,6 +158,27 @@ namespace HLE {
     u64 AgcGetSubmittedStats(u32 which);
     // Reads the graphics-queue register shadow (space: 0 = cx, 1 = sh, 2 = uc).
     bool AgcGetShadowRegister(u32 space, u32 reg, u32* value_out);
+
+    // Cooperative guest shutdown ------------------------------------------------
+    // The GLFW window lives on the process main thread (which runs the event
+    // loop); guest code runs on a dedicated worker thread.  Window close sets
+    // the stop flag via RequestStop(); the HLE dispatch path observes it and
+    // terminates the guest via ExitGuestProcess(), which longjmps back into
+    // Kernel::Execute (SEH unwinding cannot cross guest/asm frames, so a
+    // setjmp/longjmp pair is used instead — same thread, host stack).
+    // Called by Kernel::Execute so the exit path knows which thread carries
+    // the armed setjmp buffer.
+    void SetMainGuestThreadId(unsigned long thread_id);
+    void RequestStop();
+    bool StopRequested();
+    // setjmp buffer armed by Kernel::Execute while the guest runs.
+    jmp_buf& GuestExitEnv();
+    void ArmGuestExitEnv(bool armed);
+    u32 GuestExitCode();
+    // Terminate the guest with `exit_code`: longjmps back into
+    // Kernel::Execute on the main guest thread; from any other thread there
+    // is no armed buffer, so it falls back to std::exit() (legacy behaviour).
+    [[noreturn]] void ExitGuestProcess(u32 exit_code);
 
     // Dynamic dispatcher callback (called by assembly bridge).
     // guest_rsp is the guest stack pointer at thunk entry (points at the guest

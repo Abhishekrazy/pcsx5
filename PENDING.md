@@ -53,8 +53,38 @@ scissor is honored), storage images, detiling.
 
 ## M3.3 — first real pixels
 
-- [ ] Verify Dreaming Sarah draws land (menus on screen); fix format/
+- [~] Verify Dreaming Sarah draws land (menus on screen); fix format/
       tiling/blend mismatches against the golden SharpEmu dumps.
+      PROGRESS (2026-07-20): splash pixels on screen from GPU draws —
+      the Ratalaika logo renders correctly (right side up, correct
+      colors) via the full GCN->SPIR-V -> Vulkan -> present path.
+      Fixes that got there:
+      (a) Targetless composite draws (GameMaker presenter: CB_COLOR0_BASE=0)
+          are no longer dropped — stashed per shadow and retargeted at the
+          display buffer when the RFlip names it (port of SharpEmu
+          PendingTargetlessDraw): libagc.cpp AgcExecuteDraw /
+          AgcFlushPendingTargetlessDraw + libvideoout.cpp
+          VideoOutGetDisplayBufferInfo.
+      (b) Viewport fallback (no vport regs in the composite's shadow) now
+          emits a Y-flipped full-target viewport — the guest clip convention
+          is Y-down, the old fallback drew everything upside down
+          (gfx10_state.cpp DecodeViewportScissor).
+      (c) libkernel audio aliases (ekNvsT22rsY/QOQtbeDqsT4/b+uAV89IlxE/
+          s1--uE9mBFw #N#O) routed to the real paced libSceAudioOut handlers
+          instead of return-0 stubs (libaudioout.cpp, libkernel.cpp).
+      (d) Kernel VEH passes through 0x406D1388 (MS_VC thread-naming
+          exception raised by NVIDIA driver threads ~5 min into a run;
+          previously killed the emulator mid-load).
+      BLOCKER for menu pixels: after the 180-frame splash the guest stops
+      submitting draws and enters a long content-load phase (~450+ 64KB
+      direct-memory allocations over 8+ minutes, no draw packets, window
+      "Not Responding" under the TLS-emulation storm).  Runs then die
+      silently mid-VEH-log-line (~8-10 min in, no crash bundle; suspected
+      host-side stack exhaustion in the recursive VEH/TLS path or an
+      external kill — not a GPU format/tiling/blend issue).  Earliest
+      attempt also hit a guest C++ throw (__cxa_allocate_exception stub)
+      at ~850 allocations.  No format/tiling/blend mismatches observed in
+      what did render.
 
 ## Phase 6 (after pixels)
 
