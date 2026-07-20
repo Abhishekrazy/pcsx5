@@ -91,27 +91,40 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-The expected output is eighteen passing tests:
+The expected output is thirty-one passing tests:
 
 ```
- 1/18 loader_validation
- 2/18 loader_corpus
- 3/18 memory_validation
- 4/18 memory_query
- 5/18 elf_metadata
- 6/18 nid
- 7/18 self_header
- 8/18 tls_context
- 9/18 hle_import_report
-10/18 reports
-11/18 config
-12/18 diagnostics
-13/18 dump_imports
-14/18 dump_dt
-15/18 compat
-16/18 pcsx5_compat
-17/18 snd_player_test
-18/18 syscall_validation
+ 1/31 loader_validation
+ 2/31 loader_corpus
+ 3/31 memory_validation
+ 4/31 memory_query
+ 5/31 kernel_memory
+ 6/31 elf_metadata
+ 7/31 nid
+ 8/31 self_header
+ 9/31 tls_context
+10/31 hle_import_report
+11/31 reports
+12/31 config
+13/31 diagnostics
+14/31 dump_imports
+15/31 dump_dt
+16/31 compat
+17/31 pcsx5_compat
+18/31 snd_player_test
+19/31 crypto
+20/31 param_json
+21/31 pkg
+22/31 pfs
+23/31 nid_db
+24/31 module_graph
+25/31 syscall_validation
+26/31 kernel_sync
+27/31 hle_phase3
+28/31 hle_agc
+29/31 guest_printf
+30/31 shader
+31/31 gfx10_state
 ```
 
 `dump_imports` and `snd_player_test` depend on real game files under

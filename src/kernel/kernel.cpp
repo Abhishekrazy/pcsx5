@@ -758,6 +758,16 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         PEXCEPTION_RECORD exception_record = exception_info->ExceptionRecord;
         PCONTEXT context = exception_info->ContextRecord;
 
+        // Debug-output exceptions (raised by OutputDebugString, e.g. from the
+        // GPU driver during Vulkan init) are informational, not faults.  Pass
+        // them through silently: logging the full crash-scan path for these
+        // re-faults inside its own probes, which is the recurring
+        // first-chance memcpy AV noise seen in debugger output.
+        if (exception_record->ExceptionCode == 0x40010006 ||  // DBG_PRINTEXCEPTION_C
+            exception_record->ExceptionCode == 0x4001000A) {  // DBG_PRINTEXCEPTION_WIDE_C
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+
         LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu", 
                  exception_record->ExceptionCode, context->Rip, ::GetCurrentThreadId());
  
@@ -1060,9 +1070,17 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             // Scan the guest stack for values that look like guest return
             // addresses (guest modules live at [0x800000000, 0x900000000)).
             // Logged via LOG_ERROR (flushed per line) since crash_log.txt may
-            // not be flushed if the handler itself dies.
+            // not be flushed if the handler itself dies.  The VEH runs on the
+            // faulting thread, so cap the walk at the thread's stack limit:
+            // probing past it re-faults inside SafeRead's memcpy and raises
+            // fresh first-chance AVs while handling this one.
+            ULONG_PTR stack_low = 0, stack_high = 0;
+            GetCurrentThreadStackLimits(&stack_low, &stack_high);
+            const u64 scan_limit = static_cast<u64>(stack_high);
             LOG_ERROR(Kernel, "Guest stack scan (potential return addresses):");
-            for (u64 sp_scan = context->Rsp; sp_scan < context->Rsp + 0x2000; sp_scan += 8) {
+            for (u64 sp_scan = context->Rsp;
+                 sp_scan < context->Rsp + 0x2000 && sp_scan + sizeof(u64) <= scan_limit;
+                 sp_scan += 8) {
                 u64 val = 0;
                 if (!SafeRead(&val, reinterpret_cast<void*>(sp_scan), 8)) break;
                 if (val >= 0x800000000 && val < 0x900000000) {
@@ -1122,9 +1140,12 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 // Scan the guest stack for values that look like guest return
                 // addresses (guest modules live at [0x800000000, 0x900000000)).
                 // This reveals the guest call chain when execution ended up in
-                // host code with a guest RSP.
+                // host code with a guest RSP.  Same stack-limit cap as above:
+                // probing past the top re-faults inside SafeRead's memcpy.
                 fprintf(f, "Guest stack scan (potential return addresses):\n");
-                for (u64 sp_scan = context->Rsp; sp_scan < context->Rsp + 0x2000; sp_scan += 8) {
+                for (u64 sp_scan = context->Rsp;
+                     sp_scan < context->Rsp + 0x2000 && sp_scan + sizeof(u64) <= scan_limit;
+                     sp_scan += 8) {
                     u64 val = 0;
                     if (!SafeRead(&val, reinterpret_cast<void*>(sp_scan), 8)) break;
                     if (val >= 0x800000000 && val < 0x900000000) {

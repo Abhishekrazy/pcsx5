@@ -44,6 +44,10 @@ namespace HLE {
 
         void WriteMountPointName(guest_addr_t out_ptr, const char* name) {
             if (!out_ptr) return;
+            if (!Memory::IsWritable(out_ptr, kMountPointOutSize)) {
+                LOG_WARN(HLE, "SaveData: mountPoint out 0x%llx not writable — skipped", out_ptr);
+                return;
+            }
             u8 zero[kMountPointOutSize] = {};
             Memory::WriteBuffer(out_ptr, zero, sizeof(zero));
             Memory::WriteBuffer(out_ptr, name, std::strlen(name) + 1);
@@ -139,6 +143,10 @@ namespace HLE {
             guest_addr_t result = args.arg2;
             LOG_INFO(HLE, "sceSaveDataDirNameSearch(cond: 0x%llx, result: 0x%llx)", cond, result);
             if (result) {
+                if (!Memory::IsWritable(result, kDirSearchZeroSize)) {
+                    LOG_WARN(HLE, "sceSaveDataDirNameSearch: result 0x%llx not writable — skipped", result);
+                    return 0;
+                }
                 u8 zero[kDirSearchZeroSize] = {};
                 Memory::WriteBuffer(result, zero, sizeof(zero));
                 LOG_INFO(HLE, "sceSaveDataDirNameSearch -> 0 hits (zeroed %llu bytes)",
@@ -157,6 +165,15 @@ namespace HLE {
             guest_addr_t out_id = args.arg1;
             LOG_INFO(HLE, "sceSaveDataCreateTransactionResource(out: 0x%llx)", out_id);
             if (out_id) {
+                // Games have been seen passing garbage here (0xc0000 during
+                // the PPSA02929 boot) — probe before writing so a bad out
+                // pointer is a warning, not a first-chance AV swallowed by
+                // the dispatcher's SEH guard.
+                if (!Memory::IsWritable(out_id, sizeof(u32))) {
+                    LOG_WARN(HLE, "sceSaveDataCreateTransactionResource: out 0x%llx not writable — skipped",
+                             out_id);
+                    return 0;
+                }
                 Memory::Write<u32>(out_id, 1);
             }
             return 0;

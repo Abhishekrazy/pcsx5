@@ -21,6 +21,12 @@ SpirvTranslateContext::SpirvTranslateContext(
 bool SpirvTranslateContext::TryCompile(GcnSpirvShader& out, std::string& error) {
     error.clear();
 
+    if (options_.initial_scalar_buffer_index >=
+        static_cast<int>(options_.buffer_bindings.size())) {
+        error = "initial_scalar_buffer_index out of range (no such buffer binding)";
+        return false;
+    }
+
     DeclareModule();
     const std::vector<ShaderBlock> blocks = BuildBasicBlocks(program_);
     if (blocks.empty()) {
@@ -393,12 +399,29 @@ void SpirvTranslateContext::DeclareStageInterface() {
 // sync the wave-mask pairs, and preload stage-specific VGPRs.
 // ---------------------------------------------------------------------------
 void SpirvTranslateContext::EmitInitialState() {
-    for (u32 index = 0;
-         index < options_.initial_scalar_registers.size() && index < kScalarRegisterCount;
-         ++index) {
-        const u32 value = options_.initial_scalar_registers[index];
-        if (value != 0) {
-            StoreS(index, UInt(value));
+    if (options_.initial_scalar_buffer_index >= 0) {
+        // Initial scalar registers arrive in a per-draw storage buffer
+        // instead of being baked as constants, so animated user data
+        // (colors, texture descriptors) reuses one translation and pipeline
+        // (SharpEmu's `_initialScalarBufferIndex >= 0` path).  Only
+        // registers the program can observe need loading.
+        const GcnConsumedScalarMask consumed =
+            GcnComputeConsumedScalarMask(program_);
+        for (u32 index = 0; index < kScalarRegisterCount; ++index) {
+            if (GcnIsScalarConsumed(consumed, index)) {
+                StoreS(index, LoadBufferWord(
+                                  options_.initial_scalar_buffer_index,
+                                  UInt(index)));
+            }
+        }
+    } else {
+        for (u32 index = 0;
+             index < options_.initial_scalar_registers.size() && index < kScalarRegisterCount;
+             ++index) {
+            const u32 value = options_.initial_scalar_registers[index];
+            if (value != 0) {
+                StoreS(index, UInt(value));
+            }
         }
     }
 
@@ -1641,6 +1664,88 @@ bool GcnTranslateToSpirv(const GcnProgram&          program,
                          std::string&              error) {
     SpirvTranslateContext context(program, options);
     return context.TryCompile(out, error);
+}
+
+} // namespace GPU::Shader
+
+namespace GPU::Shader {
+
+// ---------------------------------------------------------------------------
+// Consumed-SGPR mask + per-draw scalar-state helpers (gcn_translate.h).
+// Port of SharpEmu's Gen5ShaderTranslator.ComputeConsumedScalarMask /
+// AddConsumedScalar / IsScalarConsumed and the AgcExports packing helpers.
+// ---------------------------------------------------------------------------
+namespace {
+void AddConsumedScalar(GcnConsumedScalarMask& mask, u32 reg, u32 count) {
+    for (u32 index = 0; index < count; ++index) {
+        const u32 target = reg + index;
+        if (target < 256) {
+            mask[target >> 6] |= 1ull << (target & 63);
+        }
+    }
+}
+} // namespace
+
+GcnConsumedScalarMask GcnComputeConsumedScalarMask(const GcnProgram& program) {
+    GcnConsumedScalarMask mask{};
+    AddConsumedScalar(mask, 106, 2);
+    AddConsumedScalar(mask, 124, 2);
+    AddConsumedScalar(mask, 126, 2);
+    for (const GcnInstruction& instruction : program.instructions) {
+        for (const GcnOperand& source : instruction.sources) {
+            if (source.kind == GcnOperandKind::ScalarRegister) {
+                AddConsumedScalar(mask, source.value, 2);
+            }
+        }
+
+        // Scalar memory bases can be a 4-dword buffer descriptor.
+        if ((instruction.encoding == GcnEncoding::Smem ||
+             instruction.encoding == GcnEncoding::Smrd) &&
+            !instruction.sources.empty() &&
+            instruction.sources[0].kind == GcnOperandKind::ScalarRegister) {
+            AddConsumedScalar(mask, instruction.sources[0].value, 4);
+        }
+
+        if (const auto* image = std::get_if<GcnImageControl>(&instruction.control)) {
+            AddConsumedScalar(mask, image->scalar_resource, 8);
+            AddConsumedScalar(mask, image->scalar_sampler, 4);
+        } else if (const auto* scalar =
+                       std::get_if<GcnScalarMemoryControl>(&instruction.control)) {
+            if (scalar->dynamic_offset_register.has_value()) {
+                AddConsumedScalar(mask, *scalar->dynamic_offset_register, 2);
+            }
+        } else if (const auto* global =
+                       std::get_if<GcnGlobalMemoryControl>(&instruction.control)) {
+            AddConsumedScalar(mask, global->scalar_address, 2);
+        } else if (const auto* buffer =
+                       std::get_if<GcnBufferMemoryControl>(&instruction.control)) {
+            AddConsumedScalar(mask, buffer->scalar_resource, 4);
+        }
+    }
+    return mask;
+}
+
+bool GcnIsScalarConsumed(const GcnConsumedScalarMask& mask, u32 reg) {
+    return reg < 256 && (mask[reg >> 6] & (1ull << (reg & 63))) != 0;
+}
+
+int GcnTranslateAddInitialScalarBinding(GcnTranslateOptions& options) {
+    // No instruction pcs: the shader reads this slot only in the initial
+    // state prologue via initial_scalar_buffer_index.
+    options.buffer_bindings.push_back(GcnSpirvBufferBinding{});
+    options.initial_scalar_buffer_index =
+        static_cast<int>(options.buffer_bindings.size()) - 1;
+    return options.initial_scalar_buffer_index;
+}
+
+std::vector<u32> GcnPackInitialScalarState(
+    const std::vector<u32>& initial_scalar_registers) {
+    std::vector<u32> packed(256, 0);
+    const size_t count =
+        std::min(initial_scalar_registers.size(), packed.size());
+    std::copy_n(initial_scalar_registers.begin(),
+                static_cast<std::ptrdiff_t>(count), packed.begin());
+    return packed;
 }
 
 } // namespace GPU::Shader

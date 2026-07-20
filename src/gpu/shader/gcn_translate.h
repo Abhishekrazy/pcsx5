@@ -29,6 +29,7 @@
 #include "gcn_decode.h"
 #include "metadata.h"
 
+#include <array>
 #include <vector>
 
 namespace GPU::Shader {
@@ -76,6 +77,14 @@ struct GcnTranslateOptions {
     // the vector end read as zero.
     std::vector<u32> initial_scalar_registers;
 
+    // >= 0: load consumed SGPRs from this global-buffer binding at shader
+    // start instead of baking constants (per-draw scalar state — the draw
+    // executor packs evaluation.initial_scalar_registers into it; port of
+    // SharpEmu's `_initialScalarBufferIndex >= 0` path).  The index refers
+    // to a slot in buffer_bindings; use GcnTranslateAddInitialScalarBinding
+    // to append it and GcnPackInitialScalarState to fill it per draw.
+    int initial_scalar_buffer_index = -1;
+
     std::vector<GcnSpirvImageBinding>  image_bindings;
     std::vector<GcnSpirvBufferBinding> buffer_bindings;
 
@@ -117,5 +126,28 @@ bool GcnTranslateToSpirv(const GcnProgram&         program,
 // by the M3 draw path until per-draw descriptor evaluation lands.
 GcnTranslateOptions GcnTranslateDefaultOptions(const GcnProgram& program,
                                                GcnSpirvStage     stage);
+
+// 256-bit consumed-SGPR mask (port of SharpEmu's
+// Gen5ShaderTranslator.ComputeConsumedScalarMask).  A bit is set for every
+// SGPR the program can observe: scalar sources (pairs), SMEM/SMRD bases
+// (4-dword descriptors), image resource/sampler descriptors (8/4), dynamic
+// offsets, GLOBAL/MUBUF scalar addresses, plus the always-live wave-mask
+// pairs s106:s107 (VCC), s124:s125, s126:s127 (EXEC).
+using GcnConsumedScalarMask = std::array<u64, 4>;
+GcnConsumedScalarMask GcnComputeConsumedScalarMask(const GcnProgram& program);
+bool GcnIsScalarConsumed(const GcnConsumedScalarMask& mask, u32 reg);
+
+// Appends the per-draw initial-scalar storage-buffer slot to
+// options.buffer_bindings (no instruction pcs — the shader reads it only at
+// start) and points options.initial_scalar_buffer_index at it.  Returns the
+// new binding index.
+int GcnTranslateAddInitialScalarBinding(GcnTranslateOptions& options);
+
+// Packs the per-draw scalar-state buffer contents for a shader translated
+// with initial_scalar_buffer_index >= 0: the evaluation's initial SGPR
+// dwords zero-padded to 256 (SharpEmu's PackRuntimeScalarState minus the
+// buffer-bias tail our binding model does not need yet).
+std::vector<u32> GcnPackInitialScalarState(
+    const std::vector<u32>& initial_scalar_registers);
 
 } // namespace GPU::Shader

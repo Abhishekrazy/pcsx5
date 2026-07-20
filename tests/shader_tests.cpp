@@ -783,6 +783,90 @@ void TestTranslateRejectsDpp() {    GcnProgram program;
 }
 
 // ---------------------------------------------------------------------------
+// Runtime SGPR model (Phase 5 M3.2b): consumed-scalar mask + per-draw
+// initial-scalar buffer.
+// ---------------------------------------------------------------------------
+
+// Mask bits: always-live wave-mask pairs, scalar source pairs, image
+// resource/sampler descriptor spans; untouched registers stay clear.
+void TestConsumedScalarMask() {
+    const std::vector<u32> dwords = {
+        0xBE850306,             // SMovB32 s5, s6
+        0xF0800F08, 0x00400004, // ImageSample v0, v4, s0, s8
+        0xBF810000,             // SEndpgm
+    };
+    GcnProgram program;
+    std::string error;
+    EXPECT(GcnDecodeProgram(dwords.data(), dwords.size(), program, error),
+           "mask program decodes");
+
+    const GcnConsumedScalarMask mask = GcnComputeConsumedScalarMask(program);
+    for (const u32 reg : {106u, 107u, 124u, 125u, 126u, 127u}) {
+        EXPECT(GcnIsScalarConsumed(mask, reg), "wave-mask pair always consumed");
+    }
+    // SMovB32 source s6 consumed as a pair.
+    EXPECT(GcnIsScalarConsumed(mask, 6) && GcnIsScalarConsumed(mask, 7),
+           "scalar source pair consumed");
+    // Image resource s0..s7 (8 dwords) + sampler s8..s11 (4 dwords).
+    bool descriptors = true;
+    for (u32 reg = 0; reg < 12; ++reg) {
+        descriptors = descriptors && GcnIsScalarConsumed(mask, reg);
+    }
+    EXPECT(descriptors, "image descriptors consumed");
+    EXPECT(!GcnIsScalarConsumed(mask, 40), "unread register not consumed");
+    EXPECT(!GcnIsScalarConsumed(mask, 300), "out-of-range register not consumed");
+}
+
+// initial_scalar_buffer_index >= 0 loads consumed SGPRs from a storage
+// buffer at shader start instead of baking constants.
+void TestTranslateInitialScalarBuffer() {
+    const std::vector<u32> dwords = {
+        0xBEFC0310, // SMovB32 s124, s16
+        0x10000010, // VMulF32 v0, s16, v0
+        0xBF810000, // SEndpgm
+    };
+    GcnProgram program;
+    std::string error;
+    EXPECT(GcnDecodeProgram(dwords.data(), dwords.size(), program, error),
+           "runtime-scalar program decodes");
+
+    GcnTranslateOptions options;
+    options.stage = GcnSpirvStage::Vertex;
+    const int binding = GcnTranslateAddInitialScalarBinding(options);
+    EXPECT_EQ(binding, 0, "scalar binding appended at index 0");
+    EXPECT_EQ(options.initial_scalar_buffer_index, 0, "option points at slot");
+    GcnSpirvShader runtime_shader;
+    EXPECT(GcnTranslateToSpirv(program, options, runtime_shader, error),
+           "runtime-scalar program translates");
+    EXPECT_EQ(runtime_shader.words[0], 0x07230203u, "spirv magic");
+
+    // Runtime loads produce a different module than baked constants.
+    GcnTranslateOptions baked;
+    baked.stage = GcnSpirvStage::Vertex;
+    baked.initial_scalar_registers = std::vector<u32>(17, 0);
+    baked.initial_scalar_registers[16] = 0x2A;
+    GcnSpirvShader baked_shader;
+    EXPECT(GcnTranslateToSpirv(program, baked, baked_shader, error),
+           "baked-scalar program translates");
+    EXPECT(runtime_shader.words != baked_shader.words,
+           "runtime and baked modules differ");
+
+    // An index with no matching buffer binding is rejected.
+    GcnTranslateOptions bad;
+    bad.stage = GcnSpirvStage::Vertex;
+    bad.initial_scalar_buffer_index = 3;
+    GcnSpirvShader junk;
+    EXPECT(!GcnTranslateToSpirv(program, bad, junk, error),
+           "out-of-range scalar binding rejected");
+
+    // Packing helper zero-pads the evaluation's initial SGPRs to 256 dwords.
+    const std::vector<u32> packed = GcnPackInitialScalarState({0xA5u});
+    EXPECT_EQ(packed.size(), 256u, "packed scalar state is 256 dwords");
+    EXPECT_EQ(packed[0], 0xA5u, "packed scalar state keeps values");
+    EXPECT_EQ(packed[255], 0u, "packed scalar state zero-pads");
+}
+
+// ---------------------------------------------------------------------------
 // Scalar evaluator (Phase 5 M3 slice 1).
 // ---------------------------------------------------------------------------
 
@@ -922,6 +1006,8 @@ int main() {
     TestTranslatePixel();
     TestTranslateAluFlow();
     TestTranslateRejectsDpp();
+    TestConsumedScalarMask();
+    TestTranslateInitialScalarBuffer();
     TestEvalBufferDescriptor();
     TestEvalImageBinding();
     TestEvalBranchFlow();

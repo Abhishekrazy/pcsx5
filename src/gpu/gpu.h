@@ -34,6 +34,10 @@ namespace GPU {
     // Retrieve current keyboard-mapped controller state
     PadButtonState GetCurrentPadState();
 
+    // Drive the primary XInput controller's rumble motors (0..255 each).
+    // No-op when no XInput controller is connected.
+    void SetPadVibration(u8 large_motor, u8 small_motor);
+
     // Keep the presentation window alive and responsive until the user closes it.
     // Used after a guest application exits cleanly or crashes.
     void RunIdleLoop();

@@ -739,8 +739,12 @@ namespace HLE {
             LOG_WARN(HLE, "__cxa_guard_abort(guard: 0x%llx)", guard_ptr);
             return 0;
         });
-        // memmove (+P6FRGH4LfA#T#T)
-        RegisterSymbol("libkernel", "+P6FRGH4LfA#T#T", [](const GuestArgs& args) -> u64 {
+        // memmove (+P6FRGH4LfA#T#T) / memcpy (Q3VBxCXhUHs#T#T) and their
+        // plain-name aliases share these impls.  Games occasionally call
+        // them with not-yet-mapped or bogus guest pointers; probing the
+        // range first avoids a first-chance AV that the dispatcher's SEH
+        // guard would otherwise swallow (and the kernel VEH would log).
+        auto MemmoveImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             guest_addr_t src  = args.arg2;
             u64 count         = args.arg3;
@@ -752,10 +756,16 @@ namespace HLE {
             }
             LOG_DEBUG(HLE, "libkernel::memmove(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
+                if (!Memory::IsWritable(dest, count) || !Memory::IsReadable(src, count)) {
+                    LOG_WARN(HLE, "libkernel::memmove: unmapped guest range "
+                             "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped", dest, src, count);
+                    return dest;
+                }
                 std::memmove(reinterpret_cast<void*>(dest), reinterpret_cast<const void*>(src), count);
             }
             return dest;
-        });
+        };
+        RegisterSymbol("libkernel", "+P6FRGH4LfA#T#T", MemmoveImpl);
 
         // realloc (0E5HFqWCBSA#T#T)
         RegisterSymbol("libkernel", "0E5HFqWCBSA#T#T", [](const GuestArgs& args) -> u64 {
@@ -771,23 +781,29 @@ namespace HLE {
             return mem;
         });
 
-        RegisterSymbol("libkernel", "Q3VBxCXhUHs#T#T", [](const GuestArgs& args) -> u64 {
+        auto MemcpyImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             guest_addr_t src  = args.arg2;
             u64 count         = args.arg3;
-            
+
             constexpr u64 MAX_COPY = 256ULL * 1024 * 1024;
             if (count > MAX_COPY) {
                 LOG_WARN(HLE, "libkernel::memcpy: count 0x%llx too large, clamping", count);
                 count = 0;
             }
-            
+
             LOG_DEBUG(HLE, "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
+                if (!Memory::IsWritable(dest, count) || !Memory::IsReadable(src, count)) {
+                    LOG_WARN(HLE, "libkernel::memcpy: unmapped guest range "
+                             "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped", dest, src, count);
+                    return dest;
+                }
                 std::memmove(reinterpret_cast<void*>(dest), reinterpret_cast<const void*>(src), count);
             }
             return dest;
-        });
+        };
+        RegisterSymbol("libkernel", "Q3VBxCXhUHs#T#T", MemcpyImpl);
 
         // malloc (gQX+4GDQjpM#T#T)
         RegisterSymbol("libkernel", "gQX+4GDQjpM#T#T", [](const GuestArgs& args) -> u64 {
@@ -1180,30 +1196,24 @@ namespace HLE {
         });
 
         // memcpy — plain-name alias of Q3VBxCXhUHs#T#T
-        RegisterSymbol("libkernel", "memcpy#T#T", [](const GuestArgs& args) -> u64 {
-            guest_addr_t dst = args.arg1, src = args.arg2;
-            u64 n = args.arg3;
-            if (dst && src && n > 0 && n < 0x10000000ULL)
-                std::memmove(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), n);
-            return dst;
-        });
+        RegisterSymbol("libkernel", "memcpy#T#T", MemcpyImpl);
 
         // memmove — plain-name alias of +P6FRGH4LfA#T#T
-        RegisterSymbol("libkernel", "memmove#T#T", [](const GuestArgs& args) -> u64 {
-            guest_addr_t dst = args.arg1, src = args.arg2;
-            u64 n = args.arg3;
-            if (dst && src && n > 0 && n < 0x10000000ULL)
-                std::memmove(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), n);
-            return dst;
-        });
+        RegisterSymbol("libkernel", "memmove#T#T", MemmoveImpl);
 
         // memset — plain-name alias of 8zTFvBIAIN8#T#T
         RegisterSymbol("libkernel", "memset#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1;
             u32 ch = static_cast<u32>(args.arg2);
             u64 n = args.arg3;
-            if (dst && n > 0 && n < 0x10000000ULL)
+            if (dst && n > 0 && n < 0x10000000ULL) {
+                if (!Memory::IsWritable(dst, n)) {
+                    LOG_WARN(HLE, "libkernel::memset: unmapped guest range "
+                             "(dest: 0x%llx, count: %llu) — skipped", dst, n);
+                    return dst;
+                }
                 std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n);
+            }
             return dst;
         });
 
