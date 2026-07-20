@@ -309,6 +309,12 @@ namespace HLE {
         return g_strict_import_mode;
     }
 
+    bool IsHleThunkAddress(u64 addr) {
+        return g_thunk_page_base != 0 &&
+               addr >= g_thunk_page_base &&
+               addr < g_thunk_page_base + g_thunk_page_offset;
+    }
+
     static std::string ResolveFriendlyName(const std::string& raw);
 
     static void RecordStats(const HleSymbol& sym, const GuestArgs& args, guest_addr_t guest_rip) {

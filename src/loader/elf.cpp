@@ -222,6 +222,13 @@ namespace Loader {
             base_address = reserved_base - load_base;
             out_module.base_address = base_address;
             out_module.entry_point = base_address + ehdr.e_entry;
+            if (eh_frame_vaddr != 0) {
+                // The .eh_frame_hdr address computed above used the pre-
+                // relocation hint; re-anchor it to the relocated base.
+                out_module.eh_frame_hdr_addr = base_address + eh_frame_vaddr;
+                LOG_INFO(Loader, ".eh_frame_hdr re-anchored to relocated base: guest 0x%llx",
+                         static_cast<unsigned long long>(out_module.eh_frame_hdr_addr));
+            }
         }
 
         // Map segments

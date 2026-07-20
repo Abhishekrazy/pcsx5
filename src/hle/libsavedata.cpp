@@ -1,10 +1,16 @@
 #include "hle.h"
+#include "../common/crypto.h"
 #include "../common/log.h"
+#include "../config/config.h"
 #include "../memory/memory.h"
+#include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace HLE {
 
@@ -15,6 +21,23 @@ namespace HLE {
     // runs:  <cwd>/pcsx5_savedata/<title-id>/
     // The title id comes from --title-id (see main.cpp); "PPSA02929" is the
     // fallback when the emulator is launched without one.
+    //
+    // Per-user layout: when the config carries more than one user profile the
+    // effective savedata dir gains a per-user level (<dir>/<user-id>/).  With
+    // zero or one profile the legacy flat dir is kept so existing saves are
+    // migration-safe.  Trophies (libnp.cpp) deliberately stay on the flat
+    // per-title dir.
+    //
+    // Encrypted savedata images: when the per-title config enables
+    // savedata_crypto (ConfigService::SaveDataKeysFor), the savedata area is
+    // stored as a single AES-128-XTS encrypted image file <dir>/sdimg.dat
+    // instead of plain files.  The image is a simple archive (see
+    // kSdimgMagic) encrypted whole; the XTS data-unit number is the 16-byte
+    // little-endian index of each 16-byte block (data_unit[i] = block index,
+    // i.e. byte offset / 16).  On mount the image is decrypted and extracted
+    // to the effective dir; on umount/commit the dir is re-archived and
+    // re-encrypted.  The plain (decrypted) host dir is the only form guest
+    // file I/O ever sees.
     // -------------------------------------------------------------------------
     namespace {
         std::string g_savedata_title_id = "PPSA02929";
@@ -22,10 +45,27 @@ namespace HLE {
         // sceSaveDataMountPoint: char data[16] on PS4/PS5 — the mount name.
         // We zero 32 bytes (generous) before writing so padding reads as 0.
         constexpr u64 kMountPointOutSize = 32;
-        // sceSaveDataDirNameSearch result buffers are game-sized; we only
-        // promise the leading hitCount field (u32 at offset 0) plus a zeroed
-        // scratch region so partial structs never expose garbage.
-        constexpr u64 kDirSearchZeroSize = 0x40;
+
+        // SceSaveDataDirNameSearchResult layout we write (mirrors the PS4/PS5
+        // ABI): u32 hitCount at offset 0, followed by an array of
+        // SceSaveDataDirName (char data[32]) entries at offset 4.  The cond
+        // struct is game-built and its maxCount field offset is not part of
+        // any stable public doc, so we accept an optional guest-provided cap
+        // read as a u32 at cond+0x20 (0 = no cap) and additionally clamp to a
+        // hard limit so a corrupt cond can never drive unbounded writes.
+        constexpr u64  kDirNameSize          = 32;
+        constexpr u64  kDirSearchResultBase  = 4;   // hitCount u32
+        constexpr u64  kDirSearchCondMaxOff  = 0x20;
+        constexpr u32  kDirSearchHardMax     = 64;
+
+        // Encrypted savedata image container (sdimg.dat), pre-encryption:
+        //   u32 magic 'P5SD', u32 version(1), u32 file_count, u32 reserved
+        //   then per file: u32 rel_path_len, char rel_path[rel_path_len],
+        //                  u64 data_size, u8 data[data_size]
+        // The archive is zero-padded to a 16-byte multiple before XTS.
+        constexpr u32 kSdimgMagic   = 0x50445335; // "P5SD" little-endian
+        constexpr u32 kSdimgVersion = 1;
+        constexpr const char* kSdimgFileName = "sdimg.dat";
 
         std::string EnsureSaveDataDir() {
             std::error_code ec;
@@ -40,6 +80,181 @@ namespace HLE {
                          root.string().c_str(), ec.message().c_str());
             }
             return root.string();
+        }
+
+        // ------------------------------------------------------------------
+        // XTS helpers: data-unit number = 16-byte little-endian block index
+        // (block i covers image bytes [i*16, i*16+16)).  Empty input is a
+        // no-op success.
+        // ------------------------------------------------------------------
+        bool XtsCryptWhole(const ConfigService::SaveDataCrypto& keys,
+                           const std::vector<u8>& in, std::vector<u8>& out,
+                           bool encrypt) {
+            if (in.empty()) { out.clear(); return true; }
+            if (in.size() % Common::kAes128BlockSize != 0) return false;
+            const Common::Aes128Key k1 = Common::Aes128ExpandKey(keys.xts_key1.data());
+            const Common::Aes128Key k2 = Common::Aes128ExpandKey(keys.xts_key2.data());
+            out.resize(in.size());
+            const size_t blocks = in.size() / Common::kAes128BlockSize;
+            for (size_t i = 0; i < blocks; ++i) {
+                u8 data_unit[16] = {};
+                std::memcpy(data_unit, &i, sizeof(i)); // LE block index
+                const u8* src = in.data() + i * 16;
+                u8* dst = out.data() + i * 16;
+                const bool ok = encrypt
+                    ? Common::Aes128XtsEncrypt(k1, k2, data_unit, src, dst, 16)
+                    : Common::Aes128XtsDecrypt(k1, k2, data_unit, src, dst, 16);
+                if (!ok) return false;
+            }
+            return true;
+        }
+
+        // Little-endian POD append/read for the archive format.
+        template <typename T>
+        void ArchiveWrite(std::vector<u8>& buf, const T& v) {
+            const u8* p = reinterpret_cast<const u8*>(&v);
+            buf.insert(buf.end(), p, p + sizeof(T));
+        }
+        template <typename T>
+        bool ArchiveRead(const std::vector<u8>& buf, size_t& pos, T& out) {
+            if (pos + sizeof(T) > buf.size()) return false;
+            std::memcpy(&out, buf.data() + pos, sizeof(T));
+            pos += sizeof(T);
+            return true;
+        }
+
+        // Pack every regular file under `dir` (relative paths, '/'-separated)
+        // into the archive format, zero-padded to a 16-byte multiple.
+        bool BuildArchiveFromDir(const std::string& dir, std::vector<u8>& out) {
+            std::error_code ec;
+            std::vector<std::pair<std::string, std::filesystem::path>> files;
+            const std::filesystem::path root(dir);
+            for (const auto& e : std::filesystem::recursive_directory_iterator(root, ec)) {
+                if (!e.is_regular_file()) continue;
+                if (e.path().filename() == kSdimgFileName) continue; // never pack the image itself
+                files.emplace_back(e.path().lexically_relative(root).generic_string(), e.path());
+            }
+            if (ec) {
+                LOG_WARN(HLE, "SAVEDATA_CRYPTO: failed to enumerate '%s': %s",
+                         dir.c_str(), ec.message().c_str());
+                return false;
+            }
+            out.clear();
+            ArchiveWrite(out, kSdimgMagic);
+            ArchiveWrite(out, kSdimgVersion);
+            ArchiveWrite(out, static_cast<u32>(files.size()));
+            ArchiveWrite(out, static_cast<u32>(0));
+            for (const auto& [rel, path] : files) {
+                std::ifstream f(path, std::ios::binary);
+                if (!f) {
+                    LOG_WARN(HLE, "SAVEDATA_CRYPTO: cannot read '%s'", path.string().c_str());
+                    return false;
+                }
+                std::vector<u8> data((std::istreambuf_iterator<char>(f)),
+                                     std::istreambuf_iterator<char>());
+                ArchiveWrite(out, static_cast<u32>(rel.size()));
+                out.insert(out.end(), rel.begin(), rel.end());
+                ArchiveWrite(out, static_cast<u64>(data.size()));
+                out.insert(out.end(), data.begin(), data.end());
+            }
+            out.resize((out.size() + 15) & ~size_t(15), 0); // XTS block align
+            return true;
+        }
+
+        // Inverse of BuildArchiveFromDir: wipes non-image content of `dir`
+        // and extracts the archive into it.
+        bool ExtractArchiveToDir(const std::vector<u8>& arc, const std::string& dir) {
+            size_t pos = 0;
+            u32 magic = 0, version = 0, count = 0, reserved = 0;
+            if (!ArchiveRead(arc, pos, magic) || !ArchiveRead(arc, pos, version) ||
+                !ArchiveRead(arc, pos, count) || !ArchiveRead(arc, pos, reserved) ||
+                magic != kSdimgMagic || version != kSdimgVersion) {
+                LOG_WARN(HLE, "SAVEDATA_CRYPTO: sdimg.dat archive header invalid (bad keys?)");
+                return false;
+            }
+            std::error_code ec;
+            const std::filesystem::path root(dir);
+            for (const auto& e : std::filesystem::directory_iterator(root, ec)) {
+                if (e.path().filename() == kSdimgFileName) continue;
+                std::filesystem::remove_all(e.path(), ec);
+            }
+            for (u32 i = 0; i < count; ++i) {
+                u32 name_len = 0;
+                u64 data_size = 0;
+                if (!ArchiveRead(arc, pos, name_len) ||
+                    name_len == 0 || pos + name_len > arc.size()) return false;
+                const std::string rel(reinterpret_cast<const char*>(arc.data() + pos), name_len);
+                pos += name_len;
+                if (!ArchiveRead(arc, pos, data_size) ||
+                    data_size > arc.size() || pos + data_size > arc.size()) return false;
+                // Reject path escapes before touching the host fs.
+                if (rel.find("..") != std::string::npos ||
+                    rel.find(':') != std::string::npos || rel[0] == '/' || rel[0] == '\\') {
+                    LOG_WARN(HLE, "SAVEDATA_CRYPTO: refusing unsafe archive path '%s'", rel.c_str());
+                    return false;
+                }
+                const std::filesystem::path out_path = root / rel;
+                std::filesystem::create_directories(out_path.parent_path(), ec);
+                std::ofstream f(out_path, std::ios::binary | std::ios::trunc);
+                if (!f) return false;
+                f.write(reinterpret_cast<const char*>(arc.data() + pos),
+                        static_cast<std::streamsize>(data_size));
+                pos += static_cast<size_t>(data_size);
+            }
+            return true;
+        }
+
+        std::string SdimgPath(const std::string& dir) {
+            return (std::filesystem::path(dir) / kSdimgFileName).string();
+        }
+
+        // Mount-time: if an encrypted image exists and keys are configured,
+        // decrypt + extract it to the effective dir.
+        void SdimgDecryptOnMount(const std::string& dir) {
+            const auto keys = ConfigService::SaveDataKeysFor(g_savedata_title_id);
+            if (!keys) return;
+            const std::string img = SdimgPath(dir);
+            std::error_code ec;
+            if (!std::filesystem::exists(img, ec)) {
+                LOG_INFO(HLE, "SAVEDATA_CRYPTO: keys enabled, no image yet at %s — "
+                              "plain dir will be materialised on commit", img.c_str());
+                return;
+            }
+            std::ifstream f(img, std::ios::binary);
+            std::vector<u8> cipher((std::istreambuf_iterator<char>(f)),
+                                   std::istreambuf_iterator<char>());
+            std::vector<u8> plain;
+            if (!XtsCryptWhole(*keys, cipher, plain, /*encrypt=*/false) ||
+                !ExtractArchiveToDir(plain, dir)) {
+                LOG_WARN(HLE, "SAVEDATA_CRYPTO: mount decrypt failed for %s — leaving dir as-is",
+                         img.c_str());
+                return;
+            }
+            LOG_INFO(HLE, "SAVEDATA_CRYPTO: decrypted %zu-byte image into %s",
+                     cipher.size(), dir.c_str());
+        }
+
+        // Commit-time: re-archive the effective dir and write the encrypted
+        // image.  No-op when keys are not configured.
+        void SdimgEncryptOnCommit(const std::string& dir) {
+            const auto keys = ConfigService::SaveDataKeysFor(g_savedata_title_id);
+            if (!keys) return;
+            std::vector<u8> plain, cipher;
+            if (!BuildArchiveFromDir(dir, plain) ||
+                !XtsCryptWhole(*keys, plain, cipher, /*encrypt=*/true)) {
+                LOG_WARN(HLE, "SAVEDATA_CRYPTO: commit encrypt failed for %s", dir.c_str());
+                return;
+            }
+            const std::string img = SdimgPath(dir);
+            std::ofstream f(img, std::ios::binary | std::ios::trunc);
+            if (!f) {
+                LOG_WARN(HLE, "SAVEDATA_CRYPTO: cannot write image %s", img.c_str());
+                return;
+            }
+            f.write(reinterpret_cast<const char*>(cipher.data()),
+                    static_cast<std::streamsize>(cipher.size()));
+            LOG_INFO(HLE, "SAVEDATA_CRYPTO: wrote %zu-byte encrypted image %s",
+                     cipher.size(), img.c_str());
         }
 
         void WriteMountPointName(guest_addr_t out_ptr, const char* name) {
@@ -75,6 +290,25 @@ namespace HLE {
         return EnsureSaveDataDir();
     }
 
+    std::string GetEffectiveSaveDataDir() {
+        const std::string flat = EnsureSaveDataDir();
+        // Multi-profile configs split saves per user; the legacy single-user
+        // layout keeps the flat dir untouched (migration-safe).
+        const auto& profiles = ConfigService::Global().users.profiles;
+        if (profiles.size() <= 1) return flat;
+        const u32 uid = ConfigService::ActiveUserId();
+        std::error_code ec;
+        std::filesystem::path per_user =
+            std::filesystem::path(flat) / std::to_string(uid);
+        std::filesystem::create_directories(per_user, ec);
+        if (ec) {
+            LOG_WARN(HLE, "SaveData: failed to create per-user dir '%s': %s — using flat dir",
+                     per_user.string().c_str(), ec.message().c_str());
+            return flat;
+        }
+        return per_user.string();
+    }
+
     void RegisterLibSaveData() {
         LOG_INFO(HLE, "Registering libSceSaveData / common-dialog HLE symbols...");
 
@@ -99,7 +333,8 @@ namespace HLE {
         auto Mount3 = [](const GuestArgs& args) -> u64 {
             guest_addr_t mount_out = args.arg1;
             LOG_INFO(HLE, "sceSaveDataMount3(mountPoint out: 0x%llx)", mount_out);
-            const std::string dir = EnsureSaveDataDir();
+            const std::string dir = GetEffectiveSaveDataDir();
+            SdimgDecryptOnMount(dir);
             WriteMountPointName(mount_out, "/savedata0");
             LOG_INFO(HLE, "sceSaveDataMount3 -> '/savedata0' (host: %s, out zeroed %llu bytes)",
                      dir.c_str(), (unsigned long long)kMountPointOutSize);
@@ -111,6 +346,7 @@ namespace HLE {
         // sceSaveDataUmount2(const SceSaveDataMountPoint* mountPoint)
         auto Umount2 = [](const GuestArgs& args) -> u64 {
             LOG_INFO(HLE, "sceSaveDataUmount2(mountPoint: 0x%llx)", args.arg1);
+            SdimgEncryptOnCommit(GetEffectiveSaveDataDir());
             return 0;
         };
         RegisterSaveDataSymbol("libSceSaveData", "sceSaveDataUmount2",
@@ -128,6 +364,7 @@ namespace HLE {
         // sceSaveDataCommit(...) — data is already on the host fs; success.
         auto Commit = [](const GuestArgs& args) -> u64 {
             LOG_INFO(HLE, "sceSaveDataCommit(a1: 0x%llx)", args.arg1);
+            SdimgEncryptOnCommit(GetEffectiveSaveDataDir());
             return 0;
         };
         RegisterSaveDataSymbol("libSceSaveData", "sceSaveDataCommit",
@@ -135,23 +372,53 @@ namespace HLE {
 
         // -----------------------------------------------------------------
         // sceSaveDataDirNameSearch(cond*, result*)
-        // Report an empty result set: hitCount (u32 at result+0) = 0, leading
-        // bytes zeroed.  The game treats "no saves found" as a fresh profile.
+        // Enumerates the effective savedata dir; each host subdirectory is a
+        // save dir.  Result layout: u32 hitCount at +0, then hitCount
+        // SceSaveDataDirName (char[32]) entries at +4.  Entry count is capped
+        // by the guest-provided maxCount (u32 at cond+0x20, 0 = no cap) and
+        // by kDirSearchHardMax as a safety rail.
         // -----------------------------------------------------------------
         auto DirNameSearch = [](const GuestArgs& args) -> u64 {
             guest_addr_t cond   = args.arg1;
             guest_addr_t result = args.arg2;
             LOG_INFO(HLE, "sceSaveDataDirNameSearch(cond: 0x%llx, result: 0x%llx)", cond, result);
-            if (result) {
-                if (!Memory::IsWritable(result, kDirSearchZeroSize)) {
-                    LOG_WARN(HLE, "sceSaveDataDirNameSearch: result 0x%llx not writable — skipped", result);
-                    return 0;
-                }
-                u8 zero[kDirSearchZeroSize] = {};
-                Memory::WriteBuffer(result, zero, sizeof(zero));
-                LOG_INFO(HLE, "sceSaveDataDirNameSearch -> 0 hits (zeroed %llu bytes)",
-                         (unsigned long long)kDirSearchZeroSize);
+            if (!result) return 0;
+
+            // Guest-provided cap (best-effort; an unreadable cond means none).
+            u32 max_count = kDirSearchHardMax;
+            if (cond && Memory::IsReadable(cond + kDirSearchCondMaxOff, sizeof(u32))) {
+                const u32 guest_max = Memory::Read<u32>(cond + kDirSearchCondMaxOff);
+                if (guest_max > 0 && guest_max < max_count) max_count = guest_max;
             }
+
+            std::vector<std::string> names;
+            std::error_code ec;
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(GetEffectiveSaveDataDir(), ec)) {
+                if (entry.is_directory(ec)) names.push_back(entry.path().filename().string());
+            }
+            if (ec) {
+                LOG_WARN(HLE, "sceSaveDataDirNameSearch: enumerate failed: %s",
+                         ec.message().c_str());
+            }
+            std::sort(names.begin(), names.end());
+            if (names.size() > max_count) names.resize(max_count);
+
+            const u64 need = kDirSearchResultBase + kDirNameSize * names.size();
+            if (!Memory::IsWritable(result, need)) {
+                LOG_WARN(HLE, "sceSaveDataDirNameSearch: result 0x%llx not writable "
+                         "(%llu bytes needed) — skipped", result, (unsigned long long)need);
+                return 0;
+            }
+            Memory::Write<u32>(result, static_cast<u32>(names.size()));
+            for (size_t i = 0; i < names.size(); ++i) {
+                const guest_addr_t slot = result + kDirSearchResultBase + kDirNameSize * i;
+                u8 buf[kDirNameSize] = {};
+                const size_t copy = std::min(names[i].size(), static_cast<size_t>(kDirNameSize - 1));
+                std::memcpy(buf, names[i].data(), copy);
+                Memory::WriteBuffer(slot, buf, sizeof(buf));
+            }
+            LOG_INFO(HLE, "sceSaveDataDirNameSearch -> %u hit(s)", (unsigned)names.size());
             return 0;
         };
         RegisterSaveDataSymbol("libSceSaveData", "sceSaveDataDirNameSearch",

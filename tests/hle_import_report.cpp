@@ -9,6 +9,7 @@
 #include "memory/memory.h"
 #include "common/log.h"
 #include "common/nid.h"
+#include "config/config.h"
 
 #include <nlohmann/json.hpp>
 
@@ -341,14 +342,17 @@ void TestSaveDataMountFillsOutParams() {
     EXPECT(!dir.empty(), "save-data dir reported");
     EXPECT(std::filesystem::exists(dir), "host save-data dir created on disk");
 
-    // GetLoginUserIdList: one user, {1, -1, -1, -1}.
+    // GetLoginUserIdList: one user (the active config profile; id falls back
+    // to 1 when no profile is configured), remaining slots -1.
     u64 list_id = ReadSymbolIdFromThunk(HLE::Resolve("libkernel", "fPhymKNvK-A#U#U"));
     std::memset(reinterpret_cast<void*>(buf), 0, 0x100);
     u64 count = HleDispatch(list_id, buf, 0, 0, 0, 0, 0, 0x2001, 0);
     EXPECT_EQ(count, (u64)1, "one logged-in user");
     const s32* ids = reinterpret_cast<const s32*>(buf);
-    EXPECT(ids[0] == 1 && ids[1] == -1 && ids[2] == -1 && ids[3] == -1,
-           "login user id list = {1, -1, -1, -1}");
+    const u32 active = ConfigService::ActiveUserId();
+    const s32 expected_id = static_cast<s32>(active ? active : 1);
+    EXPECT(ids[0] == expected_id && ids[1] == -1 && ids[2] == -1 && ids[3] == -1,
+           "login user id list = {active, -1, -1, -1}");
 
     // Dialog status reports FINISHED (3) so polling loops exit.
     u64 status_id = ReadSymbolIdFromThunk(HLE::Resolve("libkernel", "ERKzksauAJA#H#I"));

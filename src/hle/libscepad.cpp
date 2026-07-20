@@ -107,17 +107,40 @@ namespace HLE {
             return 0; // SCE_OK
         });
 
-        // scePadSetTriggerEffect
-        // Signature: scePadSetTriggerEffect(handle, left_trigger, right_trigger)
+        // scePadSetTriggerEffect(handle, ScePadTriggerEffectParam* param)
+        // ScePadTriggerEffectParam (retail layout):
+        //   0x00 u8 triggerMask (bit0 = L2, bit1 = R2)
+        //   0x01 u8 padding[7]
+        //   0x08 command[0] (L2): u8 mode, u8 paramData[10]
+        //   0x13 command[1] (R2): u8 mode, u8 paramData[10]
+        // Modes: 0=off, 1=feedback, 2=weapon, 3=vibration — identical to the
+        // DualSense HID trigger-effect mode bytes for these four.
         RegisterSymbol("libScePad", "scePadSetTriggerEffect", [](const GuestArgs& args) -> u64 {
             u32 handle = static_cast<u32>(args.arg1);
-            guest_addr_t left_ptr = args.arg2;
-            guest_addr_t right_ptr = args.arg3;
-            (void)left_ptr;
-            (void)right_ptr;
+            guest_addr_t param_ptr = args.arg2;
 
-            LOG_DEBUG(HLE, "scePadSetTriggerEffect(handle: 0x%X) called", handle);
+            LOG_DEBUG(HLE, "scePadSetTriggerEffect(handle: 0x%X, param: 0x%llx) called", handle, param_ptr);
 
+            if (handle != 0 && handle != 1) { // primary pad handles (see libpad.cpp)
+                return 0x80920003; // SCE_PAD_ERROR_INVALID_HANDLE
+            }
+            if (!param_ptr) {
+                return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
+            }
+
+            const u8 mask = Memory::Read<u8>(param_ptr);
+            for (u32 side = 0; side < 2; ++side) { // 0 = L2/left, 1 = R2/right
+                if (!(mask & (1u << side))) {
+                    continue;
+                }
+                const guest_addr_t cmd = param_ptr + 0x08 + side * 0x0B;
+                const u8 mode = Memory::Read<u8>(cmd);
+                u8 params[10];
+                for (u32 i = 0; i < 10; ++i) {
+                    params[i] = Memory::Read<u8>(cmd + 1 + i);
+                }
+                GPU::SetPadAdaptiveTrigger(side == 0, mode, params);
+            }
             return 0; // SCE_OK
         });
 

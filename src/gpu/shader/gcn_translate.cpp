@@ -3,9 +3,12 @@
 // half).  See gcn_translate.h for the translation-model overview.
 #include "gcn_translate_internal.h"
 #include "gcn_eval.h"
+#include "../shader_cache.h"
 
 #include <algorithm>
 #include <functional>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace GPU::Shader {
 
@@ -273,9 +276,13 @@ void SpirvTranslateContext::DeclareImages() {
             module_.AddCapability(SpirvCapability::StorageImageWriteWithoutFormat);
         }
 
+        // Arrayed sample/gather bindings declare a 2D-array image so the
+        // layer index resolves to a real slice (SharpEmu #471); the bound
+        // view must agree, which is the backend's half of the same rule.
+        const bool arrayed = binding.is_arrayed && !binding.is_storage;
         const u32 image_type = module_.TypeImage(
             component_type, SpirvImageDim::Dim2D,
-            /*depth=*/false, /*arrayed=*/false, /*multisampled=*/false,
+            /*depth=*/false, /*arrayed=*/arrayed, /*multisampled=*/false,
             /*sampled=*/binding.is_storage ? 2u : 1u,
             SpirvImageFormat::Unknown);
         const u32 object_type = binding.is_storage
@@ -290,7 +297,8 @@ void SpirvTranslateContext::DeclareImages() {
         module_.AddDecoration(variable, SpirvDecoration::Binding, {index + 1});
         image_resources_.push_back(ImageResource{
             variable, image_type, object_type, component_type,
-            module_.TypeVector(component_type, 4), kind, binding.is_storage});
+            module_.TypeVector(component_type, 4), kind, binding.is_storage,
+            arrayed});
         interfaces_.push_back(variable);
     }
 }
@@ -1191,6 +1199,17 @@ u32 SpirvTranslateContext::BuildFloatCoordinates(
         SpirvOp::CompositeConstruct, vec2_type_, {x, y});
 }
 
+// Arrayed sample/gather coordinates: (u, v, slice) — the third address
+// component picks the array layer (SharpEmu BuildFloatArrayCoordinates).
+u32 SpirvTranslateContext::BuildFloatArrayCoordinates(
+    const GcnImageControl& image, int start) {
+    const u32 x = LoadImageFloatAddress(image, start);
+    const u32 y = LoadImageFloatAddress(image, start + 1);
+    const u32 slice = LoadImageFloatAddress(image, start + 2);
+    return module_.AddInstruction(
+        SpirvOp::CompositeConstruct, vec3_type_, {x, y, slice});
+}
+
 bool SpirvTranslateContext::TryEmitImage(
     const GcnInstruction& instruction,
     const GcnImageControl& image,
@@ -1219,6 +1238,14 @@ bool SpirvTranslateContext::TryEmitImage(
         if (resource.is_storage) {
             size = module_.AddInstruction(
                 SpirvOp::ImageQuerySize, ivec2_type, {query_image});
+        } else if (resource.arrayed) {
+            // Arrayed images answer the query with an ivec3 (w, h, layers);
+            // the guest expects the 2D size here.
+            const u32 ivec3_type = module_.TypeVector(int_type_, 3);
+            const u32 size3 = module_.AddInstruction(
+                SpirvOp::ImageQuerySizeLod, ivec3_type, {query_image, UInt(0)});
+            size = module_.AddInstruction(
+                SpirvOp::VectorShuffle, ivec2_type, {size3, size3, 0u, 1u});
         } else {
             size = module_.AddInstruction(
                 SpirvOp::ImageQuerySizeLod, ivec2_type, {query_image, UInt(0)});
@@ -1290,12 +1317,15 @@ bool SpirvTranslateContext::TryEmitImage(
         if (has_gradients) {
             address_cursor += 4;
         }
-        const u32 coordinates = BuildFloatCoordinates(image, address_cursor);
+        const u32 coordinates = resource.arrayed
+            ? BuildFloatArrayCoordinates(image, address_cursor)
+            : BuildFloatCoordinates(image, address_cursor);
         const bool explicit_lod = has_gradients || has_zero_lod || has_lod;
         const u32 lod = has_zero_lod
             ? Float(0)
             : has_lod
-                ? LoadImageFloatAddress(image, address_cursor + 2)
+                ? LoadImageFloatAddress(image,
+                                        address_cursor + (resource.arrayed ? 3 : 2))
                 : lod_or_bias;
 
         const u32 image_operands =
@@ -1668,6 +1698,90 @@ bool GcnTranslateToSpirv(const GcnProgram&          program,
 
 } // namespace GPU::Shader
 
+// ---------------------------------------------------------------------------
+// H7 disk-cache hook (gcn_translate.h).  Lives next to the translator so the
+// cache key input (flattened program words) stays in sync with the decoder's
+// instruction model.
+// ---------------------------------------------------------------------------
+namespace GPU::Shader {
+namespace {
+
+// Counts the stage-interface attributes of a cached module: variables of
+// the interface storage class (Output for vertex, Input for pixel) that
+// carry a Location decoration — the same set attribute_count reports from a
+// live translation (vertex_outputs_ / pixel_inputs_).
+u32 CachedAttributeCount(const std::vector<u32>& words, GcnSpirvStage stage) {
+    constexpr u32 kOpDecorate  = 71;
+    constexpr u32 kOpVariable  = 59;
+    constexpr u32 kDecLocation = 30;
+    // SPIR-V StorageClass: Input = 1, Output = 3.
+    const u32 wanted_class = stage == GcnSpirvStage::Vertex ? 3u /*Output*/
+                                                            : 1u /*Input*/;
+
+    std::unordered_map<u32, u32> variable_classes; // result id -> storage class
+    std::unordered_set<u32>      located;          // ids with Location
+    size_t cursor = 5; // header
+    while (cursor < words.size()) {
+        const u32 word  = words[cursor];
+        const u32 op    = word & 0xFFFF;
+        const u32 count = word >> 16;
+        if (count == 0 || cursor + count > words.size()) {
+            return 0; // malformed stream: refuse to derive metadata
+        }
+        if (op == kOpVariable && count >= 4) {
+            variable_classes.emplace(words[cursor + 2], words[cursor + 3]);
+        } else if (op == kOpDecorate && count >= 4 &&
+                   words[cursor + 2] == kDecLocation) {
+            located.insert(words[cursor + 1]);
+        }
+        cursor += count;
+    }
+    u32 attributes = 0;
+    for (const u32 id : located) {
+        const auto it = variable_classes.find(id);
+        if (it != variable_classes.end() && it->second == wanted_class) {
+            ++attributes;
+        }
+    }
+    return attributes;
+}
+
+} // namespace
+
+std::vector<u32> GcnProgramFlattenWords(const GcnProgram& program) {
+    std::vector<u32> words;
+    for (const GcnInstruction& ins : program.instructions) {
+        words.insert(words.end(), ins.words.begin(), ins.words.end());
+    }
+    return words;
+}
+
+bool GcnTranslateWithCache(const GcnProgram&          program,
+                           const GcnTranslateOptions& options,
+                           GPU::GcnShaderDiskCache*   cache,
+                           GcnSpirvShader&            out,
+                           std::string&               error) {
+    if (cache == nullptr) {
+        return GcnTranslateToSpirv(program, options, out, error);
+    }
+    const std::vector<u32> words = GcnProgramFlattenWords(program);
+    const GPU::GcnShaderCacheKey key =
+        GPU::GcnShaderCacheComputeKey(words.data(), words.size(), options);
+    if (cache->TryLoad(key, out.words)) {
+        out.attribute_count = CachedAttributeCount(out.words, options.stage);
+        return true;
+    }
+    if (!GcnTranslateToSpirv(program, options, out, error)) {
+        return false;
+    }
+    // A failed store is not fatal: the translation is still valid, the next
+    // run just pays the translation cost again.
+    cache->Store(key, out.words);
+    return true;
+}
+
+} // namespace GPU::Shader
+
 namespace GPU::Shader {
 
 // ---------------------------------------------------------------------------
@@ -1727,6 +1841,13 @@ GcnConsumedScalarMask GcnComputeConsumedScalarMask(const GcnProgram& program) {
 
 bool GcnIsScalarConsumed(const GcnConsumedScalarMask& mask, u32 reg) {
     return reg < 256 && (mask[reg >> 6] & (1ull << (reg & 63))) != 0;
+}
+
+bool GcnIsArrayedImageBinding(const GcnInstruction& instruction) {
+    const auto* control = std::get_if<GcnImageControl>(&instruction.control);
+    return control != nullptr && control->is_array &&
+        (instruction.opcode.rfind("ImageSample", 0) == 0 ||
+         instruction.opcode.rfind("ImageGather4", 0) == 0);
 }
 
 int GcnTranslateAddInitialScalarBinding(GcnTranslateOptions& options) {
@@ -1792,6 +1913,7 @@ GcnTranslateOptions GcnTranslateDefaultOptions(const GcnProgram& program,
         if (std::get_if<GcnImageControl>(&ins.control)) {
             GcnSpirvImageBinding binding;
             binding.pc = ins.pc;
+            binding.is_arrayed = GcnIsArrayedImageBinding(ins);
             options.image_bindings.push_back(binding);
         }
     }

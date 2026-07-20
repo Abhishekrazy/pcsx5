@@ -24,6 +24,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <cstring>
 
 #if defined(_MSC_VER)
 #pragma comment(lib, "setupapi.lib")
@@ -57,6 +58,28 @@ namespace DualSense {
         static Sample     g_sample;
         static std::once_flag g_start_once;
 
+        // Last raw input report, kept for diagnostics (dualsense_test hex dump).
+        static std::mutex g_raw_mutex;
+        static u8    g_last_raw[256] = {};
+        static DWORD g_last_raw_len = 0;
+
+        // ── Output report state (Phase 6: haptics + adaptive triggers) ──────
+        // The live device handle is owned by the reader thread; senders only
+        // use it under g_out_mutex, and the reader clears it under the same
+        // mutex BEFORE CloseHandle, so a WriteFile never races a close.
+        struct TriggerEffect {
+            u8 mode = 0x00;              // 0=off, 1=feedback, 2=weapon, 3=vibration
+            u8 params[10] = {};
+        };
+        static std::mutex g_out_mutex;
+        static HANDLE     g_out_handle = nullptr;   // nullptr when not connected
+        static bool       g_out_writable = false;   // false when opened read-only
+        static bool       g_out_bluetooth = false;  // transport, known after 1st input report
+        static bool       g_out_transport_known = false;
+        static u8         g_motor_large = 0, g_motor_small = 0;
+        static TriggerEffect g_trigger[2];          // [0] = left (L2), [1] = right (R2)
+        static u8         g_out_seq = 0;            // BT output sequence tag
+
         static void Publish(const Sample& s) {
             std::lock_guard<std::mutex> lock(g_mutex);
             g_sample = s;
@@ -64,7 +87,10 @@ namespace DualSense {
 
         // Open the first present DualSense HID interface, or nullptr when none
         // is attached.  Mirrors WindowsDualSenseReader.OpenDualSense().
-        static HANDLE OpenDualSense() {
+        // `writable` reports whether GENERIC_WRITE was granted (the read-only
+        // fallback can still feed input but cannot take output reports).
+        static HANDLE OpenDualSense(bool* writable) {
+            *writable = false;
             GUID hid_guid;
             HidD_GetHidGuid(&hid_guid);
             HDEVINFO devs = SetupDiGetClassDevsW(&hid_guid, nullptr, nullptr,
@@ -113,12 +139,14 @@ namespace DualSense {
                 HANDLE handle = CreateFileW(path, GENERIC_READ | GENERIC_WRITE,
                                             FILE_SHARE_READ | FILE_SHARE_WRITE,
                                             nullptr, OPEN_EXISTING, 0, nullptr);
-                if (handle == INVALID_HANDLE_VALUE) {
+                bool rw = handle != INVALID_HANDLE_VALUE;
+                if (!rw) {
                     handle = CreateFileW(path, GENERIC_READ,
                                          FILE_SHARE_READ | FILE_SHARE_WRITE,
                                          nullptr, OPEN_EXISTING, 0, nullptr);
                 }
                 if (handle != INVALID_HANDLE_VALUE) {
+                    *writable = rw;
                     result = handle;
                     break;
                 }
@@ -144,16 +172,17 @@ namespace DualSense {
 
         // Parse one input report.  Layout (o = 1 for USB report id 0x01,
         // o = 2 for Bluetooth report id 0x31), matching the C# parser for the
-        // button/stick/trigger block and the standard DualSense layout for
-        // the motion/touch blocks:
+        // button/stick/trigger block and the Linux hid-playstation
+        // dualsense_input_report layout for the motion/touch blocks:
         //   o+0..3  LX LY RX RY
         //   o+4     L2 analog, o+5 R2 analog
         //   o+6     report sequence tag
-        //   o+7..9  button bytes 0..2
-        //   o+10..13 report timestamp (u32)
-        //   o+14..19 gyro pitch/yaw/roll (s16 LE)
-        //   o+20..25 accel x/y/z (s16 LE)
-        //   o+31..34 touch point 0, o+35..38 touch point 1
+        //   o+7..10 button bytes 0..3
+        //   o+11..14 reserved / timestamp
+        //   o+15..20 gyro pitch/yaw/roll (s16 LE)
+        //   o+21..26 accel x/y/z (s16 LE)
+        //   o+27..30 sensor timestamp, o+31 reserved
+        //   o+32..35 touch point 0, o+36..39 touch point 1
         static bool ParseReport(const u8* r, DWORD len, Sample& s) {
             size_t o;
             if (r[0] == 0x01) {
@@ -163,7 +192,7 @@ namespace DualSense {
             } else {
                 return false;
             }
-            if (len < o + 39 || len < 11) {
+            if (len < o + 40 || len < 11) {
                 return false;
             }
 
@@ -209,24 +238,101 @@ namespace DualSense {
             // Gyro full scale is +/-2000 dps; accel is ~8192 LSB/g.
             static constexpr float kDpsToRad = 3.14159265358979f / 180.0f;
             for (int i = 0; i < 3; ++i) {
-                const int g_raw = ReadS16LE(r + o + 14 + i * 2);
-                const int a_raw = ReadS16LE(r + o + 20 + i * 2);
+                const int g_raw = ReadS16LE(r + o + 15 + i * 2);
+                const int a_raw = ReadS16LE(r + o + 21 + i * 2);
                 s.gyro[i] = static_cast<float>(g_raw) * (2000.0f / 32768.0f) * kDpsToRad;
                 s.accel[i] = static_cast<float>(a_raw) / 8192.0f;
             }
 
-            DecodeTouchPoint(r + o + 31, s.touch[0]);
-            DecodeTouchPoint(r + o + 35, s.touch[1]);
+            DecodeTouchPoint(r + o + 32, s.touch[0]);
+            DecodeTouchPoint(r + o + 36, s.touch[1]);
             s.touch_count = static_cast<u8>((s.touch[0].active ? 1 : 0) +
                                             (s.touch[1].active ? 1 : 0));
             s.connected = true;
             return true;
         }
 
+        // ── Output reports (Phase 6: rumble + adaptive triggers) ────────────
+        // Publicly documented DualSense output layout (same as the C#
+        // launcher's BuildOutputReportLocked, extended with the trigger
+        // effect blocks):
+        //   common payload (47 bytes):
+        //     [0]    enable flags 0: 0x01 right motor, 0x02 left motor
+        //     [1]    enable flags 1: 0x40 right trigger effect, 0x80 left
+        //     [2]    right (small) motor, [3] left (large) motor
+        //     [10]   right trigger mode, [11..20] right trigger params
+        //     [21]   left trigger mode,  [22..31] left trigger params
+        //   USB: 48-byte report { 0x02, common[47] }.
+        //   Bluetooth: 78-byte report { 0x31, seq<<4, 0x10, common[47],
+        //   crc32le } where crc32 is seeded with 0xA2 over bytes 0..73.
+        static u32 Crc32Update(u32 crc, u8 value) {
+            crc ^= value;
+            for (int bit = 0; bit < 8; ++bit) {
+                crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+            }
+            return crc;
+        }
+
+        static u32 DualSenseCrc32(const u8* data, size_t len) {
+            u32 crc = Crc32Update(0xFFFFFFFFu, 0xA2);
+            for (size_t i = 0; i < len; ++i) {
+                crc = Crc32Update(crc, data[i]);
+            }
+            return ~crc;
+        }
+
+        // Caller must hold g_out_mutex.
+        static void SendOutputLocked() {
+            if (g_out_handle == nullptr || !g_out_writable || !g_out_transport_known) {
+                return;
+            }
+
+            u8 common[47] = {};
+            common[0] = 0x03;              // enable both rumble motors
+            common[1] = 0x40 | 0x80;       // enable right + left trigger effects
+            common[2] = g_motor_small;
+            common[3] = g_motor_large;
+            common[10] = g_trigger[1].mode;  // right
+            std::memcpy(common + 11, g_trigger[1].params, 10);
+            common[21] = g_trigger[0].mode;  // left
+            std::memcpy(common + 22, g_trigger[0].params, 10);
+
+            DWORD written = 0;
+            if (!g_out_bluetooth) {
+                u8 report[48];
+                report[0] = 0x02;
+                std::memcpy(report + 1, common, sizeof(common));
+                if (WriteFile(g_out_handle, report, sizeof(report), &written, nullptr)) {
+                    return;
+                }
+            } else {
+                u8 report[78];
+                report[0] = 0x31;
+                report[1] = static_cast<u8>((g_out_seq & 0x0F) << 4);
+                g_out_seq = static_cast<u8>((g_out_seq + 1) & 0x0F);
+                report[2] = 0x10;
+                std::memcpy(report + 3, common, sizeof(common));
+                const u32 crc = DualSenseCrc32(report, 74);
+                report[74] = static_cast<u8>(crc);
+                report[75] = static_cast<u8>(crc >> 8);
+                report[76] = static_cast<u8>(crc >> 16);
+                report[77] = static_cast<u8>(crc >> 24);
+                if (WriteFile(g_out_handle, report, sizeof(report), &written, nullptr)) {
+                    return;
+                }
+            }
+            // Write failed (device unplugged mid-send): stop using the handle;
+            // the reader's blocking ReadFile fails too and re-enumerates.
+            LOG_WARN(GPU, "DualSense output report write failed; dropping output until reconnect.");
+            g_out_handle = nullptr;
+            g_out_transport_known = false;
+        }
+
         static void ReadLoop() {
             bool announced = false;
             for (;;) {
-                HANDLE handle = OpenDualSense();
+                bool writable = false;
+                HANDLE handle = OpenDualSense(&writable);
                 if (handle == nullptr) {
                     Sample neutral;
                     Publish(neutral);
@@ -237,8 +343,16 @@ namespace DualSense {
                     Sleep(1000);
                     continue;
                 }
+                {
+                    std::lock_guard<std::mutex> lock(g_out_mutex);
+                    g_out_handle = handle;
+                    g_out_writable = writable;
+                    g_out_transport_known = false; // set on the first input report
+                    g_out_bluetooth = false;
+                }
                 if (!announced) {
-                    LOG_INFO(GPU, "DualSense controller connected (HID input reports active).");
+                    LOG_INFO(GPU, "DualSense controller connected (HID input reports active, output: %s).",
+                             writable ? "rumble + adaptive triggers" : "unavailable (read-only handle)");
                     announced = true;
                 }
 
@@ -250,7 +364,30 @@ namespace DualSense {
                     }
                     Sample s;
                     if (ParseReport(buffer, bytes, s)) {
+                        {
+                            std::lock_guard<std::mutex> raw_lock(g_raw_mutex);
+                            std::memcpy(g_last_raw, buffer, bytes < sizeof(g_last_raw) ? bytes : sizeof(g_last_raw));
+                            g_last_raw_len = bytes < sizeof(g_last_raw) ? bytes : sizeof(g_last_raw);
+                        }
+                        // Report id identifies the transport (0x31 = BT),
+                        // which decides the output report framing/CRC.
+                        {
+                            std::lock_guard<std::mutex> lock(g_out_mutex);
+                            if (!g_out_transport_known) {
+                                g_out_bluetooth = buffer[0] == 0x31;
+                                g_out_transport_known = true;
+                            }
+                        }
                         Publish(s);
+                    }
+                }
+                // Clear the send handle under the mutex BEFORE closing so a
+                // concurrent SendOutputLocked can never race the close.
+                {
+                    std::lock_guard<std::mutex> lock(g_out_mutex);
+                    if (g_out_handle == handle) {
+                        g_out_handle = nullptr;
+                        g_out_transport_known = false;
                     }
                 }
                 CloseHandle(handle);
@@ -280,6 +417,78 @@ namespace DualSense {
         std::lock_guard<std::mutex> lock(detail::g_mutex);
         out = detail::g_sample;
         return out.connected;
+    }
+
+    // Copy the last raw input report for diagnostics.  Returns its length
+    // (0 when no report has been received yet).
+    inline size_t GetLastRawReport(u8* out, size_t capacity) {
+        std::lock_guard<std::mutex> lock(detail::g_raw_mutex);
+        const size_t n = detail::g_last_raw_len < capacity
+                             ? detail::g_last_raw_len
+                             : capacity;
+        std::memcpy(out, detail::g_last_raw, n);
+        return n;
+    }
+
+    // Transport query for diagnostics.  Sets `known` to false until the
+    // first input report after connect identifies the framing; returns true
+    // for Bluetooth, false for USB.
+    inline bool GetTransport(bool& known) {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        known = detail::g_out_transport_known;
+        return detail::g_out_bluetooth;
+    }
+
+    // Drive the rumble motors (0..255 each, matching ScePadVibrationParam).
+    // No-op when no DualSense is connected or the handle is read-only.
+    inline void SetRumble(u8 large_motor, u8 small_motor) {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        if (detail::g_motor_large == large_motor && detail::g_motor_small == small_motor) {
+            return;
+        }
+        detail::g_motor_large = large_motor;
+        detail::g_motor_small = small_motor;
+        detail::SendOutputLocked();
+    }
+
+    // Set one adaptive-trigger effect.  `left` selects L2 (true) or R2
+    // (false).  Modes per the public DualSense trigger documentation:
+    //   0x00 off
+    //   0x01 feedback:  params[0] = start position 0..9, params[1] = force 0..8
+    //   0x02 weapon:    params[0] = start 2..7, params[1] = end >start..8,
+    //                   params[2] = force 0..8
+    //   0x03 vibration: params[0] = position 0..9, params[1] = amplitude 0..8,
+    //                   params[2] = frequency 0..255
+    // Params are clamped defensively; unknown modes are forced to off.
+    // No-op when no DualSense is connected or the handle is read-only.
+    inline void SetTriggerEffect(bool left, u8 mode, const u8 params[10]) {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        detail::TriggerEffect& t = detail::g_trigger[left ? 0 : 1];
+        t.mode = mode <= 0x03 ? mode : static_cast<u8>(0x00);
+        for (int i = 0; i < 10; ++i) {
+            t.params[i] = params[i];
+        }
+        auto clamp = [](u8 v, u8 lo, u8 hi) -> u8 {
+            return v < lo ? lo : (v > hi ? hi : v);
+        };
+        switch (t.mode) {
+            case 0x01: // feedback
+                t.params[0] = clamp(t.params[0], 0, 9);
+                t.params[1] = clamp(t.params[1], 0, 8);
+                break;
+            case 0x02: // weapon
+                t.params[0] = clamp(t.params[0], 2, 7);
+                t.params[1] = clamp(t.params[1], static_cast<u8>(t.params[0] + 1), 8);
+                t.params[2] = clamp(t.params[2], 0, 8);
+                break;
+            case 0x03: // vibration
+                t.params[0] = clamp(t.params[0], 0, 9);
+                t.params[1] = clamp(t.params[1], 0, 8);
+                break;
+            default: // off
+                break;
+        }
+        detail::SendOutputLocked();
     }
 
 } // namespace DualSense

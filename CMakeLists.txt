@@ -117,6 +117,8 @@ set(KERNEL_SRC
 set(CPU_SRC
     src/cpu/cpu.h
     src/cpu/cpu.cpp
+    src/cpu/amd_compat.h
+    src/cpu/amd_compat.cpp
 )
 
 # Shader recompiler (Phase 5 M2) — decoder, metadata reader, SPIR-V builder
@@ -135,6 +137,9 @@ set(SHADER_TRANSLATE_SRC
     src/gpu/shader/gcn_translate_alu.cpp
     src/gpu/shader/gcn_eval.h
     src/gpu/shader/gcn_eval.cpp
+    # H7: disk cache for translated SPIR-V (owned by the shader-cache agent).
+    src/gpu/shader_cache.h
+    src/gpu/shader_cache.cpp
 )
 
 # ------------------------------------------------------------------------
@@ -252,6 +257,19 @@ if(BUILD_TESTING)
     target_compile_options(vk_present_smoke PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     target_link_libraries(vk_present_smoke PRIVATE glfw Vulkan::Headers)
 
+    # Present-path format helper unit tests (SharpEmu #448 port) — no GPU
+    # required: exercises VkPresentSrgbCounterpart / VkPresentIsLinearFloatSource.
+    add_executable(vk_present_format_tests
+        tests/vk_present_format_tests.cpp
+        src/common/log.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+    )
+    target_include_directories(vk_present_format_tests PRIVATE src)
+    target_compile_options(vk_present_format_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(vk_present_format_tests PRIVATE glfw Vulkan::Headers)
+    add_test(NAME vk_present_format COMMAND vk_present_format_tests)
+
     add_executable(loader_validation_tests
         tests/loader_validation.cpp
         src/common/log.cpp
@@ -299,6 +317,17 @@ if(BUILD_TESTING)
     target_include_directories(memory_query_tests PRIVATE src)
     target_compile_options(memory_query_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME memory_query COMMAND memory_query_tests)
+
+    # Guest image write-tracker tests (SharpEmu #447 port): write-generation
+    # invariants backing the vk_draw texture-cache refresh.
+    add_executable(memory_write_tracker_tests
+        tests/memory_write_tracker_tests.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+    )
+    target_include_directories(memory_write_tracker_tests PRIVATE src)
+    target_compile_options(memory_write_tracker_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME memory_write_tracker COMMAND memory_write_tracker_tests)
 
     # Kernel guest-memory protection mapping tests (ProtectGuestMemory).
     add_executable(kernel_memory_tests
@@ -364,6 +393,8 @@ if(BUILD_TESTING)
     add_executable(hle_import_report_tests
         tests/hle_import_report.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -412,6 +443,8 @@ if(BUILD_TESTING)
     add_executable(report_tests
         tests/report_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -474,6 +507,8 @@ if(BUILD_TESTING)
     add_executable(diagnostics_tests
         tests/diagnostics_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -566,7 +601,7 @@ if(BUILD_TESTING)
 
         # Syscall smoke test: writes "Hello Guest\n" via sys_write and exits.
         add_test(NAME guest_syscall_smoke
-            COMMAND pcsx5 --strict-imports --report $<CONFIG>/guest_syscall_report.json
+            COMMAND pcsx5 --strict-imports --report=${CMAKE_BINARY_DIR}/guest_syscall_report.json
                     ${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
         )
         set_tests_properties(guest_syscall_smoke PROPERTIES
@@ -577,7 +612,7 @@ if(BUILD_TESTING)
 
         # TLS smoke test: uses fs:0 read/write to verify the VEH trap.
         add_test(NAME guest_tls_smoke
-            COMMAND pcsx5 --strict-imports --report $<CONFIG>/guest_tls_report.json
+            COMMAND pcsx5 --strict-imports --report=${CMAKE_BINARY_DIR}/guest_tls_report.json
                     ${CMAKE_BINARY_DIR}/test_elf/tls_guest.elf
         )
         set_tests_properties(guest_tls_smoke PROPERTIES
@@ -650,6 +685,20 @@ add_executable(dump_imports
     )
     target_include_directories(nid_scan PRIVATE src)
     target_compile_options(nid_scan PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+
+    # ------------------------------------------------------------------------
+    # dualsense_test — standalone console utility that opens the DualSense
+    # through the header-only reader in src/gpu/dualsense_hid.h and shows a
+    # live view of every parsed input (buttons/sticks/triggers/touch/gyro/
+    # accel/transport) plus keyboard-driven output tests (rumble + adaptive
+    # trigger effects).  Interactive dev tool; not a ctest test.
+    # ------------------------------------------------------------------------
+    add_executable(dualsense_test
+        tools/dualsense_test.cpp
+        src/common/log.cpp
+    )
+    target_include_directories(dualsense_test PRIVATE src)
+    target_compile_options(dualsense_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
 
     # Dump the dynamic-tag table of a real PS5 game ELF to identify
     # which DT_* / PT_* tags are actually used (Sony-specific tags
@@ -835,6 +884,20 @@ add_executable(dump_imports
     add_test(NAME pfs COMMAND pfs_tests)
 
     # ------------------------------------------------------------------------
+    # Phase 7 — keystone header parser tests — synthetic keystone blobs.
+    # HLE::RegisterSymbol / Memory::ReadBuffer are no-op stubbed inside the
+    # test file, so only the parser TU itself is linked.
+    # ------------------------------------------------------------------------
+    add_executable(keystone_tests
+        tests/keystone_tests.cpp
+        src/common/log.cpp
+        src/hle/libkeystone.cpp
+    )
+    target_include_directories(keystone_tests PRIVATE src)
+    target_compile_options(keystone_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME keystone COMMAND keystone_tests)
+
+    # ------------------------------------------------------------------------
     # Phase 1 — NID database file tests — parse assets/nid_db.txt format,
     # merge over built-in table, precedence rules.
     # ------------------------------------------------------------------------
@@ -862,12 +925,27 @@ add_executable(dump_imports
     add_test(NAME module_graph COMMAND module_graph_tests)
 
     # ------------------------------------------------------------------------
+    # SSE4a bit-field emulator tests — EXTRQ/INSERTQ immediate-form semantics
+    # and the AMD-only instruction decoder used by the VEH illegal-instruction
+    # software fallback (port of SharpEmu Sse4aBitFieldEmulatorTests).
+    # ------------------------------------------------------------------------
+    add_executable(sse4a_bitfield_tests
+        tests/sse4a_bitfield_tests.cpp
+        src/cpu/amd_compat.cpp
+    )
+    target_include_directories(sse4a_bitfield_tests PRIVATE src)
+    target_compile_options(sse4a_bitfield_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME sse4a_bitfield COMMAND sse4a_bitfield_tests)
+
+    # ------------------------------------------------------------------------
     # Syscall HLE validation tests — round-trip, arguments mapping, logging,
     # and exception handling verification.
     # ------------------------------------------------------------------------
     add_executable(syscall_validation_tests
         tests/syscall_validation_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -917,6 +995,8 @@ add_executable(dump_imports
     add_executable(kernel_sync_tests
         tests/kernel_sync_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -959,6 +1039,57 @@ add_executable(dump_imports
     add_test(NAME kernel_sync COMMAND kernel_sync_tests)
 
     # ------------------------------------------------------------------------
+    # libkernel file-I/O tests: POSIX open/close/read/write/fstat/stat
+    # -1/errno convention and sceKernelMapDirectMemory2 (src/hle/libkernel.cpp,
+    # driven via src/hle/libkernel_file.h).
+    # ------------------------------------------------------------------------
+    add_executable(libkernel_file_tests
+        tests/libkernel_file_tests.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
+    src/gpu/vk_context.cpp
+    src/gpu/vk_present.cpp
+    src/gpu/gfx10_state.cpp
+    src/gpu/vk_draw.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+    src/hle/libsysmodule.cpp
+    src/hle/guest_printf.cpp
+    src/hle/liblibc.cpp
+    src/hle/libsystem_service.cpp
+    src/hle/libnp.cpp
+    src/hle/libkeystone.cpp
+    src/hle/libatrac9.cpp
+    src/hle/libaudioout.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(libkernel_file_tests PRIVATE src)
+    target_compile_options(libkernel_file_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(libkernel_file_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
+    add_test(NAME libkernel_file COMMAND libkernel_file_tests)
+
+    # ------------------------------------------------------------------------
     # Phase 3 — HLE module tests: libSceSysmodule id registry, libc guest
     # heap, libSceSystemService canned parameters, NP offline-signed-in set,
     # libSceVideoOut port/flip model with equeue notifications, and the
@@ -967,6 +1098,8 @@ add_executable(dump_imports
     add_executable(hle_phase3_tests
         tests/hle_phase3_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -1017,6 +1150,8 @@ add_executable(dump_imports
     add_executable(hle_audio_pad_tests
         tests/hle_audio_pad_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -1067,6 +1202,8 @@ add_executable(dump_imports
     add_executable(hle_agc_tests
         tests/hle_agc_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -1117,6 +1254,8 @@ add_executable(dump_imports
     add_executable(guest_printf_tests
         tests/guest_printf_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -1166,6 +1305,8 @@ add_executable(dump_imports
     add_executable(libcxxabi_tests
         tests/libcxxabi_tests.cpp
         src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
         src/common/nid.cpp
         src/memory/memory.cpp
         src/loader/elf.cpp
@@ -1247,5 +1388,59 @@ add_executable(dump_imports
     target_include_directories(shader_dump PRIVATE src)
     target_compile_options(shader_dump PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     target_link_libraries(shader_dump PRIVATE Vulkan::Headers)
+
+    # ------------------------------------------------------------------------
+    # Phase 5 validation — PM4 capture/replay tool + golden-image ctest
+    # (tools/pm4_replay.cpp).  Replays a capture (PCSX5_PM4_CAPTURE format or
+    # its own record-synth output) through the real HLE submit walker +
+    # videoout flip path on a hidden Vulkan window, reads each presented
+    # frame back via the vk_present readback hook, and compares against
+    # golden PNGs (tests/golden/pm4_synth).  The ctest exits 0 with
+    # PM4_GOLDEN_SKIP when no usable Vulkan device exists (CI without GPU);
+    # set PCSX5_GOLDEN_REQUIRED=1 to turn the skip into a failure.
+    # ------------------------------------------------------------------------
+    add_executable(pm4_replay
+        tools/pm4_replay.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+        src/hle/libsysmodule.cpp
+        src/hle/guest_printf.cpp
+        src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
+        src/hle/libaudioout.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(pm4_replay PRIVATE src)
+    target_compile_options(pm4_replay PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(pm4_replay PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
+    add_test(NAME pm4_golden
+        COMMAND pm4_replay replay ${CMAKE_SOURCE_DIR}/tests/golden/pm4_synth
+                --golden ${CMAKE_SOURCE_DIR}/tests/golden/pm4_synth)
 
 endif()

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -48,6 +49,7 @@ constexpr u32 SCE_KERNEL_ERROR_ENOMEM    = 0x8002000C;
 constexpr u32 SCE_KERNEL_ERROR_EBUSY     = 0x80020010;
 constexpr u32 SCE_KERNEL_ERROR_EINVAL    = 0x80020016;
 constexpr u32 SCE_KERNEL_ERROR_ETIMEDOUT = 0x8002003C;
+constexpr u32 SCE_KERNEL_ERROR_EDEADLK   = 0x80020023;
 
 // Token tags written into guest mutex/cond/rwlock variables (top 16 bits).
 constexpr u64 kMutexTokenTag  = 0x4D54000000000000ULL; // 'MT'
@@ -127,12 +129,131 @@ int ReadTimeout(guest_addr_t timo_ptr, u32& out_usec) {
 
 // ---------------------------------------------------------------------------
 // pthread mutex
+//
+// Ported from SharpEmu's KernelPthreadCompatExports (commits 73e8821 and
+// 90c72eb): a state-based mutex with an explicit owner, recursion count,
+// type (taken from the attr) and a FIFO waiter queue.  Unlock hands
+// ownership directly to the head waiter instead of only waking it and
+// relying on the woken thread to re-acquire: a lost/racing wake would leave
+// the mutex "free with a queued waiter", a state the fast-acquire path
+// refuses, and every later locker would then queue behind a head that never
+// advances.
 // ---------------------------------------------------------------------------
-struct GuestMutex {
-    CRITICAL_SECTION cs;
-    GuestMutex() { InitializeCriticalSection(&cs); }
-    ~GuestMutex() { DeleteCriticalSection(&cs); }
+
+// Orbis pthread mutex types (scePthreadMutexattrSettype values).
+enum class MutexType : int {
+    ErrorCheck = 1,
+    Recursive  = 2,
+    Normal     = 3,
+    AdaptiveNp = 4,
 };
+
+MutexType NormalizeMutexType(int type) {
+    switch (type) {
+    case 2:  return MutexType::Recursive;
+    case 3:  return MutexType::Normal;
+    case 4:  return MutexType::AdaptiveNp;
+    default: return MutexType::ErrorCheck; // 0/1 and unrecognised values
+    }
+}
+
+// Identity for mutex ownership.  Registered guest threads use their CpuCore
+// tid; unregistered host threads (unit tests, host-only callers) fall back to
+// the OS thread id so ownership is still per-thread.
+u64 CurrentTlsIdentity() {
+    u64 tid = Kernel::GetCurrentThreadId();
+    if (tid == 0) {
+        tid = 0x8000000000000000ULL | ::GetCurrentThreadId();
+    }
+    return tid;
+}
+
+struct GuestMutex {
+    std::mutex m;
+    std::condition_variable cv;
+    u64 owner = 0;                        // CurrentTlsIdentity() of the owner
+    int recursion = 0;
+    MutexType type = MutexType::ErrorCheck;
+    std::deque<u64> waiters;              // FIFO of blocked thread identities
+};
+
+// Takes an unowned mutex.  Caller holds m.m.
+void MutexAcquireLocked(GuestMutex& mtx, u64 tid) {
+    mtx.owner     = tid;
+    mtx.recursion = 1;
+}
+
+// Releases a fully-unwound mutex, granting it directly to the head waiter
+// when one is queued so the mutex is never observable as free-with-waiter.
+// Caller holds m.m; mtx.recursion must already be 0.
+void MutexHandoffLocked(GuestMutex& mtx) {
+    if (!mtx.waiters.empty()) {
+        mtx.owner = mtx.waiters.front();
+        mtx.waiters.pop_front();
+        mtx.recursion = 1;
+    } else {
+        mtx.owner = 0;
+    }
+    mtx.cv.notify_all();
+}
+
+u64 MutexLockImpl(GuestMutex& mtx, u64 tid, bool try_only) {
+    std::unique_lock<std::mutex> lk(mtx.m);
+    if (mtx.owner == tid) {
+        // Re-lock from the current owner, per type.  Several Gen5 runtimes
+        // layer their own owner/count bookkeeping over the kernel mutex, so
+        // RECURSIVE and NORMAL keep compatibility recursion and ADAPTIVE is
+        // idempotent (one matching unlock fully releases); only ERRORCHECK
+        // takes the strict EDEADLK path.
+        switch (mtx.type) {
+        case MutexType::Recursive:
+            ++mtx.recursion;
+            return 0;
+        case MutexType::AdaptiveNp:
+            return try_only ? SCE_KERNEL_ERROR_EBUSY : 0;
+        case MutexType::Normal:
+            if (try_only) return SCE_KERNEL_ERROR_EBUSY;
+            ++mtx.recursion;
+            return 0;
+        case MutexType::ErrorCheck:
+        default:
+            return try_only ? SCE_KERNEL_ERROR_EBUSY : SCE_KERNEL_ERROR_EDEADLK;
+        }
+    }
+    // trylock may barge past queued waiters (it can never wedge: a spinning
+    // trylock loop still observes the free mutex); the blocking lock honours
+    // FIFO so real blocked waiters are not starved by a barging locker.
+    if (mtx.owner == 0 && (try_only || mtx.waiters.empty())) {
+        MutexAcquireLocked(mtx, tid);
+        return 0;
+    }
+    if (try_only) return SCE_KERNEL_ERROR_EBUSY;
+    mtx.waiters.push_back(tid);
+    // The head waiter is granted ownership directly by MutexHandoffLocked.
+    mtx.cv.wait(lk, [&] { return mtx.owner == tid; });
+    return 0;
+}
+
+u64 MutexUnlockImpl(GuestMutex& mtx, u64 tid, bool require_owner) {
+    std::lock_guard<std::mutex> lk(mtx.m);
+    if (mtx.recursion <= 0) return SCE_KERNEL_ERROR_EINVAL;
+    if (require_owner && mtx.owner != tid) return SCE_KERNEL_ERROR_EPERM;
+    if (--mtx.recursion == 0) {
+        MutexHandoffLocked(mtx);
+    }
+    return 0;
+}
+
+// pthread mutex attributes — type keyed by the guest attr variable address.
+std::mutex g_mutexattr_lock;
+std::unordered_map<guest_addr_t, MutexType> g_mutexattr_types;
+
+MutexType LookupMutexAttrType(guest_addr_t attr) {
+    if (!attr) return MutexType::ErrorCheck;
+    std::lock_guard<std::mutex> lk(g_mutexattr_lock);
+    auto it = g_mutexattr_types.find(attr);
+    return it != g_mutexattr_types.end() ? it->second : MutexType::ErrorCheck;
+}
 
 std::mutex g_mutex_map_lock;
 std::unordered_map<u64, std::unique_ptr<GuestMutex>> g_mutexes; // token -> obj
@@ -147,6 +268,9 @@ GuestMutex* LookupOrCreateMutex(guest_addr_t var, bool create_if_missing) {
     if (!create_if_missing) return nullptr;
     const u64 new_token = kMutexTokenTag | g_next_mutex_token++;
     auto obj = std::make_unique<GuestMutex>();
+    // A guest word of 1 is the static adaptive-mutex initializer; any other
+    // unrecognised value (zero included) promotes to a default mutex.
+    if (token == 1) obj->type = MutexType::AdaptiveNp;
     GuestMutex* raw = obj.get();
     g_mutexes[new_token] = std::move(obj);
     SafeWriteU64(var, new_token);
@@ -157,8 +281,7 @@ GuestMutex* LookupOrCreateMutex(guest_addr_t var, bool create_if_missing) {
 // pthread condition variable
 // ---------------------------------------------------------------------------
 struct GuestCond {
-    CONDITION_VARIABLE cv;
-    GuestCond() { InitializeConditionVariable(&cv); }
+    std::condition_variable cv;
 };
 
 std::mutex g_cond_map_lock;
@@ -225,17 +348,6 @@ struct TlsKey {
 std::mutex g_tls_lock;
 std::unordered_map<u64, TlsKey> g_tls_keys;
 u64 g_next_tls_key = 1;
-
-// Identity for TLS storage.  Registered guest threads use their CpuCore tid;
-// unregistered host threads (unit tests, host-only callers) fall back to the
-// OS thread id so storage is still per-thread.
-u64 CurrentTlsIdentity() {
-    u64 tid = Kernel::GetCurrentThreadId();
-    if (tid == 0) {
-        tid = 0x8000000000000000ULL | ::GetCurrentThreadId();
-    }
-    return tid;
-}
 
 // ---------------------------------------------------------------------------
 // sceKernel* mutex objects (integer handles)
@@ -349,14 +461,42 @@ int DrainEqueueEvents(GuestEqueue& eq, guest_addr_t events_ptr, int capacity) {
 // pthread mutex handlers
 // ===========================================================================
 u64 ScePthreadMutexInit(const GuestArgs& args) {
-    const guest_addr_t var = args.arg1;
-    (void)args.arg2; // attr ignored — host CRITICAL_SECTION covers all types
+    const guest_addr_t var  = args.arg1;
+    const guest_addr_t attr = args.arg2;
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
+    const MutexType type = LookupMutexAttrType(attr);
     std::lock_guard<std::mutex> lk(g_mutex_map_lock);
     const u64 token = kMutexTokenTag | g_next_mutex_token++;
-    g_mutexes[token] = std::make_unique<GuestMutex>();
+    auto obj = std::make_unique<GuestMutex>();
+    obj->type = type;
+    g_mutexes[token] = std::move(obj);
     SafeWriteU64(var, token);
     LOG_DEBUG(HLE, "scePthreadMutexInit(0x%llx) -> token 0x%llx", var, token);
+    return 0;
+}
+
+u64 ScePthreadMutexattrInit(const GuestArgs& args) {
+    const guest_addr_t attr = args.arg1;
+    if (!attr) return SCE_KERNEL_ERROR_EINVAL;
+    {
+        std::lock_guard<std::mutex> lk(g_mutexattr_lock);
+        g_mutexattr_types[attr] = MutexType::ErrorCheck;
+    }
+    SafeWriteU64(attr, 0);
+    return 0;
+}
+
+u64 ScePthreadMutexattrSettype(const GuestArgs& args) {
+    const guest_addr_t attr = args.arg1;
+    if (!attr) return SCE_KERNEL_ERROR_EINVAL;
+    std::lock_guard<std::mutex> lk(g_mutexattr_lock);
+    g_mutexattr_types[attr] = NormalizeMutexType(static_cast<int>(args.arg2));
+    return 0;
+}
+
+u64 ScePthreadMutexattrDestroy(const GuestArgs& args) {
+    std::lock_guard<std::mutex> lk(g_mutexattr_lock);
+    g_mutexattr_types.erase(args.arg1);
     return 0;
 }
 
@@ -369,8 +509,7 @@ u64 ScePthreadMutexLock(const GuestArgs& args) {
         m = LookupOrCreateMutex(var, true);
     }
     if (!m) return SCE_KERNEL_ERROR_EINVAL;
-    EnterCriticalSection(&m->cs);
-    return 0;
+    return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/false);
 }
 
 u64 ScePthreadMutexTrylock(const GuestArgs& args) {
@@ -382,7 +521,7 @@ u64 ScePthreadMutexTrylock(const GuestArgs& args) {
         m = LookupOrCreateMutex(var, true);
     }
     if (!m) return SCE_KERNEL_ERROR_EINVAL;
-    return TryEnterCriticalSection(&m->cs) ? 0 : SCE_KERNEL_ERROR_EBUSY;
+    return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/true);
 }
 
 u64 ScePthreadMutexUnlock(const GuestArgs& args) {
@@ -397,8 +536,7 @@ u64 ScePthreadMutexUnlock(const GuestArgs& args) {
         LOG_WARN(HLE, "scePthreadMutexUnlock(0x%llx): unknown mutex", var);
         return SCE_KERNEL_ERROR_EINVAL;
     }
-    LeaveCriticalSection(&m->cs);
-    return 0;
+    return MutexUnlockImpl(*m, CurrentTlsIdentity(), /*require_owner=*/true);
 }
 
 u64 ScePthreadMutexDestroy(const GuestArgs& args) {
@@ -443,11 +581,37 @@ static u64 CondWaitImpl(guest_addr_t cond_var, guest_addr_t mutex_var, DWORD tim
         m = LookupOrCreateMutex(mutex_var, true);
     }
     if (!c || !m) return SCE_KERNEL_ERROR_EINVAL;
-    // Caller holds the mutex; SleepConditionVariableCS releases it while
-    // waiting and re-acquires before returning.
-    if (SleepConditionVariableCS(&c->cv, &m->cs, timeout_ms)) return 0;
-    return (GetLastError() == ERROR_TIMEOUT) ? SCE_KERNEL_ERROR_ETIMEDOUT
-                                             : SCE_KERNEL_ERROR_EINVAL;
+    const u64 tid = CurrentTlsIdentity();
+    std::unique_lock<std::mutex> lk(m->m);
+    // Games occasionally condwait on a mutex they never locked; adopt
+    // ownership so the unlock/wait/re-lock cycle stays balanced and the
+    // mutex is actually released while waiting.
+    if (m->owner == 0 && m->recursion == 0) {
+        MutexAcquireLocked(*m, tid);
+    }
+    if (m->owner != tid || m->recursion != 1) {
+        return SCE_KERNEL_ERROR_EINVAL;
+    }
+    // Caller holds the mutex: release it (handing off to any head waiter)
+    // while waiting and re-acquire before returning.
+    m->recursion = 0;
+    MutexHandoffLocked(*m);
+    bool ok;
+    if (timeout_ms == INFINITE) {
+        c->cv.wait(lk);
+        ok = true;
+    } else {
+        ok = c->cv.wait_for(lk, std::chrono::milliseconds(timeout_ms)) ==
+             std::cv_status::no_timeout;
+    }
+    // Re-acquire the mutex, honouring the FIFO waiter queue.
+    if (m->owner == 0 && m->waiters.empty()) {
+        MutexAcquireLocked(*m, tid);
+    } else if (m->owner != tid) {
+        m->waiters.push_back(tid);
+        m->cv.wait(lk, [&] { return m->owner == tid; });
+    }
+    return ok ? 0 : SCE_KERNEL_ERROR_ETIMEDOUT;
 }
 
 u64 ScePthreadCondWait(const GuestArgs& args) {
@@ -468,7 +632,7 @@ u64 ScePthreadCondSignal(const GuestArgs& args) {
         c = LookupOrCreateCond(args.arg1, true);
     }
     if (!c) return SCE_KERNEL_ERROR_EINVAL;
-    WakeConditionVariable(&c->cv);
+    c->cv.notify_one();
     return 0;
 }
 
@@ -479,7 +643,7 @@ u64 ScePthreadCondBroadcast(const GuestArgs& args) {
         c = LookupOrCreateCond(args.arg1, true);
     }
     if (!c) return SCE_KERNEL_ERROR_EINVAL;
-    WakeAllConditionVariable(&c->cv);
+    c->cv.notify_all();
     return 0;
 }
 
@@ -643,8 +807,10 @@ u64 SceKernelCreateMutex(const GuestArgs& args) {
     (void)args.arg2; // attr
     (void)args.arg3; // opt
     const u32 handle = g_next_kmutex.fetch_add(1);
+    auto obj = std::make_shared<GuestMutex>();
+    obj->type = MutexType::Recursive; // count-based lock/unlock is recursive
     std::lock_guard<std::mutex> lk(g_kmutex_lock);
-    g_kmutexes[handle] = std::make_shared<GuestMutex>();
+    g_kmutexes[handle] = std::move(obj);
     LOG_DEBUG(HLE, "sceKernelCreateMutex('%s') -> 0x%X", name.c_str(), handle);
     return handle;
 }
@@ -661,19 +827,20 @@ u64 SceKernelLockMutex(const GuestArgs& args) {
         if (it != g_kmutexes.end()) m = it->second;
     }
     if (!m) return SCE_KERNEL_ERROR_EINVAL;
+    const u64 tid = CurrentTlsIdentity();
 
     u32 usec = 0;
     const int timo = ReadTimeout(timo_ptr, usec);
     if (timo == 0) {
-        for (s32 i = 0; i < count; ++i) EnterCriticalSection(&m->cs);
+        for (s32 i = 0; i < count; ++i) MutexLockImpl(*m, tid, /*try_only=*/false);
         return 0;
     }
     const u64 start = Kernel::GuestClockMicros();
     for (s32 i = 0; i < count; ++i) {
-        while (!TryEnterCriticalSection(&m->cs)) {
+        while (MutexLockImpl(*m, tid, /*try_only=*/true) == SCE_KERNEL_ERROR_EBUSY) {
             if (timo == 1 || Kernel::GuestClockMicros() - start >= usec) {
                 // Back out any partial acquisitions.
-                for (s32 j = 0; j < i; ++j) LeaveCriticalSection(&m->cs);
+                for (s32 j = 0; j < i; ++j) MutexUnlockImpl(*m, tid, true);
                 return SCE_KERNEL_ERROR_ETIMEDOUT;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -693,7 +860,8 @@ u64 SceKernelUnlockMutex(const GuestArgs& args) {
         if (it != g_kmutexes.end()) m = it->second;
     }
     if (!m) return SCE_KERNEL_ERROR_EINVAL;
-    for (s32 i = 0; i < count; ++i) LeaveCriticalSection(&m->cs);
+    const u64 tid = CurrentTlsIdentity();
+    for (s32 i = 0; i < count; ++i) MutexUnlockImpl(*m, tid, true);
     return 0;
 }
 
@@ -1147,13 +1315,10 @@ void RegisterLibKernelSync() {
     RegisterSymbol("libkernel", "scePthreadMutexTrylock", ScePthreadMutexTrylock);
     RegisterSymbol("libkernel", "scePthreadMutexUnlock", ScePthreadMutexUnlock);
     RegisterSymbol("libkernel", "scePthreadMutexDestroy", ScePthreadMutexDestroy);
-    // mutex attr (minimal real: no state needed on the host)
-    RegisterSymbol("libkernel", "scePthreadMutexattrInit", [](const GuestArgs& a) -> u64 {
-        if (a.arg1) SafeWriteU64(a.arg1, 0);
-        return 0;
-    });
-    RegisterSymbol("libkernel", "scePthreadMutexattrDestroy", [](const GuestArgs&) -> u64 { return 0; });
-    RegisterSymbol("libkernel", "scePthreadMutexattrSettype", [](const GuestArgs&) -> u64 { return 0; });
+    // mutex attr (type recorded per guest attr address, read by MutexInit)
+    RegisterSymbol("libkernel", "scePthreadMutexattrInit", ScePthreadMutexattrInit);
+    RegisterSymbol("libkernel", "scePthreadMutexattrDestroy", ScePthreadMutexattrDestroy);
+    RegisterSymbol("libkernel", "scePthreadMutexattrSettype", ScePthreadMutexattrSettype);
     RegisterSymbol("libkernel", "scePthreadMutexattrSetprotocol", [](const GuestArgs&) -> u64 { return 0; });
 
     // pthread condition variable

@@ -135,4 +135,32 @@ void* GetGuestFaultHandlerUserData();
 // covered by any reserved region.
 bool CommitOnFault(guest_addr_t address);
 
+// ---------------------------------------------------------------------------
+// Guest image write tracking (port of SharpEmu's GuestImageWriteTracker,
+// commit 04557fd "Refresh CPU-rewritten guest textures by write generation").
+//
+// A tracked range is armed read-only; the first CPU write faults through the
+// guest VEH, which disarms the range and bumps its monotonic write
+// generation.  Cache owners (the vk_draw texture upload path) record the
+// generation they uploaded against and re-upload only when it changes, so a
+// guest CPU rewrite of texture memory (video planes, streamed atlases) can
+// never leave a stale VkImage behind.  Unlike a consumable dirty flag the
+// generation survives one owner consuming and re-arming the range, which is
+// what lets a second cache owner still observe the rewrite.
+// ---------------------------------------------------------------------------
+
+// Registers (or re-arms) write tracking for [address, address+byte_count).
+// Re-tracking with a different size replaces the range but carries its
+// generation, so resizes do not hide rewrites from cache owners.
+void TrackGuestWrites(guest_addr_t address, u64 byte_count);
+void UntrackGuestWrites(guest_addr_t address);
+
+// Returns the monotonic first-write generation for a tracked range; false
+// when the range is untracked (caller must treat content as always stale).
+bool TryGetGuestWriteGeneration(guest_addr_t address, u64* generation_out);
+
+// Re-arms write protection after the owner finished reading the guest
+// bytes, so the next CPU write faults and bumps the generation again.
+void RearmGuestWrites(guest_addr_t address);
+
 } // namespace Memory

@@ -34,7 +34,31 @@ bool VkPresentClearColor(VkContext* ctx, float r, float g, float b, float a);
 // COLOR_ATTACHMENT_OPTIMAL) into the swapchain image and presents it,
 // restoring the source layout afterwards.  Draws and presents share the
 // graphics queue, so the blit is ordered after any in-flight draws without
-// extra synchronization.
-bool VkPresentFromImage(VkContext* ctx, VkImage src, u32 src_w, u32 src_h);
+// extra synchronization.  `src_format` is the render target's VkFormat;
+// linear-float sources are sRGB-encoded on the way to a UNORM swapchain.
+bool VkPresentFromImage(VkContext* ctx, VkImage src, VkFormat src_format,
+                        u32 src_w, u32 src_h);
+
+// SharpEmu VulkanVideoPresenter.GetSrgbCounterpart / IsLinearFloatPresentSource
+// (#448).  Exposed for the present-format unit tests.
+//
+// Maps a UNORM swapchain format to the sRGB view of the same bit layout, or
+// VK_FORMAT_UNDEFINED when no counterpart exists.  Used to encode
+// linear-float guest flips on their way into a UNORM swapchain.
+VkFormat VkPresentSrgbCounterpart(VkFormat format);
+// Float VideoOut flip buffers hold linear scRGB light; presenting them
+// requires a linear->sRGB encode that a plain blit does not perform.
+bool VkPresentIsLinearFloatSource(VkFormat format);
+
+// Phase 5 validation (golden-image tests): optional per-frame readback hook.
+// When installed, every presented frame is delivered to the callback as
+// tightly packed BGRA8 at the guest (unscaled) resolution, read back from
+// the GPU source image through a host-visible buffer (VkPresentClearColor
+// synthesizes its solid frame CPU-side).  `frame_index` counts delivered
+// frames from 0.  Default null hook = zero cost.  tools/pm4_replay uses this
+// to dump one PNG per flip and compare against golden images.
+typedef void (*VkPresentReadbackFn)(const u8* bgra, u32 w, u32 h,
+                                    u64 frame_index, void* user);
+void VkPresentSetReadbackHook(VkPresentReadbackFn fn, void* user);
 
 } // namespace GPU

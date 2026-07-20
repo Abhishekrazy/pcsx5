@@ -120,11 +120,21 @@ namespace HLE {
     void SetGuestMainAddress(guest_addr_t addr);
     guest_addr_t GetGuestMainAddress();
 
-    // Tell the HLE C++ exception unwinder (liblibc.cpp) where the main
-    // module's .eh_frame_hdr lives in guest memory.  Called from main() after
-    // LoadModule with LoadedModule::eh_frame_hdr_addr; 0 disables unwinding
-    // (__cxa_throw then logs and survives instead of unwinding).
+    // Register a module's .eh_frame_hdr (guest VA + size) with the HLE C++
+    // exception unwinder (liblibc.cpp).  Called from main() for the main
+    // module and from the kernel loader for every auto-loaded PRX; each call
+    // appends one table (duplicates ignored) so unwinding can cross module
+    // boundaries.  addr==0 is a no-op; with no registered tables __cxa_throw
+    // logs and survives instead of unwinding.
     void SetGuestEhFrameHdr(guest_addr_t addr, u64 size);
+
+    // True when `addr` falls inside the allocated HLE thunk page (i.e. it is
+    // one of our import stubs, not real guest code).  Used by the C++
+    // exception unwinder to detect CIE personality pointers that the guest's
+    // dynamic linker resolved to an imported HLE __gxx_personality_v0 stub;
+    // those are evaluated natively over the frame LSDA instead of being
+    // called as guest code.
+    bool IsHleThunkAddress(u64 addr);
 
     // Store the VA of the DT_INIT function (global ctor runner) for re-invocation if needed
     void SetDtInitAddress(guest_addr_t addr);
@@ -135,6 +145,32 @@ namespace HLE {
     // <cwd>/pcsx5_savedata/<title-id>/.
     void SetSaveDataTitleId(const std::string& title_id);
     std::string GetSaveDataDir();
+
+    // Effective savedata dir for guest file I/O and dir enumeration:
+    // GetSaveDataDir() plus a per-user level when multiple user profiles are
+    // configured; the flat per-title dir otherwise (migration-safe).  Trophies
+    // deliberately stay on the flat dir.
+    std::string GetEffectiveSaveDataDir();
+
+    // Trophy unlock store introspection (libnp.cpp).  NpTrophyUnlockedCount
+    // returns the number of persisted unlocked trophies (loaded lazily from
+    // <savedata-dir>/trophies.json); NpTrophyIsUnlocked reports whether the
+    // given trophy id has been recorded.
+    size_t NpTrophyUnlockedCount();
+    bool NpTrophyIsUnlocked(s32 trophy_id);
+
+    // Per-title keystone blob (libkeystone.cpp).  main() loads and validates
+    // <app0>/.keystone at boot and stashes the raw bytes here; an empty blob
+    // means the title shipped no keystone (not an error).
+    void SetKeystoneBlob(std::vector<u8> blob);
+    const std::vector<u8>& GetKeystoneBlob();
+
+    // Guest errno cell backing libc __error() (liblibc.cpp).  HLE handlers
+    // implementing the libc/POSIX ABI (-1 with errno set on failure, e.g. the
+    // POSIX file exports in libkernel.cpp) record the errno through
+    // SetGuestErrno so guest code reading *__error() observes it.
+    s32* GuestErrnoPtr();
+    void SetGuestErrno(s32 value);
 
     // Direct-memory phys pool access for the demand-commit fault handler.
     // IsPhysPoolAddress reports whether `addr` lies inside the 2 GB direct

@@ -32,6 +32,10 @@
 #include <array>
 #include <vector>
 
+namespace GPU {
+class GcnShaderDiskCache; // src/gpu/shader_cache.h (H7)
+}
+
 namespace GPU::Shader {
 
 enum class GcnSpirvStage {
@@ -60,6 +64,9 @@ struct GcnSpirvImageBinding {
     u32 mip_level       = 0;    // ImageLoadMip only
     bool is_storage     = false;
     int component_kind  = 0;    // 0 = float, 1 = sint, 2 = uint
+    // Sample/gather through an arrayed (2D-array) image: the declared
+    // SPIR-V image type and the bound view must agree (SharpEmu #471).
+    bool is_arrayed     = false;
 };
 
 // Scalar/buffer memory binding: all listed instruction pcs read u32
@@ -119,6 +126,23 @@ bool GcnTranslateToSpirv(const GcnProgram&         program,
                          GcnSpirvShader&           out,
                          std::string&              error);
 
+// Flattens a decoded program back into its dword stream (the cache key
+// input — H7).  Concatenates each instruction's encoded words in pc order.
+std::vector<u32> GcnProgramFlattenWords(const GcnProgram& program);
+
+// Translates with the H7 disk cache (src/gpu/shader_cache.h): computes the
+// content key over (flattened program words, options), returns the cached
+// SPIR-V on hit, otherwise translates and stores.  `cache` may be null
+// (plain translation, no IO).  `out.attribute_count` is always filled from
+// a live translation; on a cache hit the module words come from disk and
+// attribute_count is re-derived by scanning the entry-point interface, so
+// callers see no behavioral difference beyond skipping translation.
+bool GcnTranslateWithCache(const GcnProgram&          program,
+                           const GcnTranslateOptions& options,
+                           GPU::GcnShaderDiskCache*   cache,
+                           GcnSpirvShader&            out,
+                           std::string&               error);
+
 // Builds a standalone binding set for a program with no runtime descriptor
 // state: pixel outputs from export targets, one sampled-2D-float image per
 // image instruction pc, global buffers grouped by scalar base register,
@@ -136,6 +160,13 @@ GcnTranslateOptions GcnTranslateDefaultOptions(const GcnProgram& program,
 using GcnConsumedScalarMask = std::array<u64, 4>;
 GcnConsumedScalarMask GcnComputeConsumedScalarMask(const GcnProgram& program);
 bool GcnIsScalarConsumed(const GcnConsumedScalarMask& mask, u32 reg);
+
+// One rule shared by the SPIR-V translator and the Vulkan backend
+// (SharpEmu Gen5ShaderTranslator.IsArrayedImageBinding, #471): a sample or
+// gather whose MIMG DIM names an array reads a real layer index, so the
+// binding declares an arrayed image and passes (u, v, slice).  Load/store
+// bindings are unchanged.
+bool GcnIsArrayedImageBinding(const GcnInstruction& instruction);
 
 // Appends the per-draw initial-scalar storage-buffer slot to
 // options.buffer_bindings (no instruction pcs — the shader reads it only at

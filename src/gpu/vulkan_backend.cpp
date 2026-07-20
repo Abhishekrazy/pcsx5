@@ -667,8 +667,9 @@ namespace GPU {
         if (g_vk_ready) {
             VkImage rt_image = VK_NULL_HANDLE;
             u32 rt_w = 0, rt_h = 0;
-            if (VkDrawLookupRenderTarget(framebuffer_addr, &rt_image, &rt_w, &rt_h)) {
-                if (VkPresentFromImage(g_vk, rt_image, rt_w, rt_h)) {
+            VkFormat rt_format = VK_FORMAT_UNDEFINED;
+            if (VkDrawLookupRenderTarget(framebuffer_addr, &rt_image, &rt_w, &rt_h, &rt_format)) {
+                if (VkPresentFromImage(g_vk, rt_image, rt_format, rt_w, rt_h)) {
                     LOG_DEBUG(GPU, "RenderFrame: Vulkan present of GPU image for guest buffer 0x%llx.",
                               framebuffer_addr);
                     return;
@@ -905,12 +906,22 @@ namespace GPU {
     }
 
     void SetPadVibration(u8 large_motor, u8 small_motor) {
+        // A live DualSense supersedes XInput for the primary pad (M4/Phase 6).
+        DualSense::Sample ds;
+        if (DualSense::GetSample(ds)) {
+            DualSense::SetRumble(large_motor, small_motor);
+            return;
+        }
         if (!g_XInputSetState) return;
         XINPUT_VIBRATION vibration = {};
         // XInput motor speeds are 0..65535; the ScePadVibrationParam is 0..255.
         vibration.wLeftMotorSpeed  = static_cast<WORD>(large_motor) * 257;
         vibration.wRightMotorSpeed = static_cast<WORD>(small_motor) * 257;
         g_XInputSetState(0, &vibration);
+    }
+
+    void SetPadAdaptiveTrigger(bool left, u8 mode, const u8 params[10]) {
+        DualSense::SetTriggerEffect(left, mode, params);
     }
 
 } // namespace GPU

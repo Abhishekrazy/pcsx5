@@ -1,0 +1,13 @@
+{
+  "cx": [],
+  "dwords": 21,
+  "guest_addr": "0x0",
+  "index_addr": "0x0",
+  "index_count": 0,
+  "index_size": 0,
+  "instances": 1,
+  "queue": "record-synth",
+  "seq": 1,
+  "sh": [],
+  "uc": []
+}

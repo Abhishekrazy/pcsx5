@@ -68,6 +68,7 @@ private:
         u32 vector_type    = 0;
         ImageComponentKind component_kind = kImageFloat;
         bool is_storage    = false;
+        bool arrayed       = false;
     };
 
     struct PixelOutput {
@@ -113,6 +114,7 @@ private:
     u32  BufferWordPointer(int binding, u32 dword_address);
     u32  LoadImageFloatAddress(const GcnImageControl& image, int component);
     u32  BuildFloatCoordinates(const GcnImageControl& image, int start);
+    u32  BuildFloatArrayCoordinates(const GcnImageControl& image, int start);
 
     // ---- guest buffer-format decode (dynamic, descriptor-driven) ----
     void DeclareBufferFormatTable();

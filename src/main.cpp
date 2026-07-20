@@ -6,6 +6,7 @@
 #include "memory/memory.h"
 #include "kernel/kernel.h"
 #include "hle/hle.h"
+#include "hle/keystone.h"
 #include "gpu/gpu.h"
 #include "diagnostics/diagnostics.h"
 #include "reports/reports.h"
@@ -331,6 +332,29 @@ int main(int argc, char* argv[]) {
             std::filesystem::path(target_path).parent_path().string();
         Kernel::ConfigureModuleResolver(game_dir, cfg.loader.firmware_modules_dir);
         Kernel::SetApp0Directory(game_dir);
+
+        // Per-title keystone ticket: load <app0>/.keystone when present.
+        // Absence is normal (not every title ships one) and not an error.
+        const std::filesystem::path keystone_path =
+            std::filesystem::path(game_dir) / ".keystone";
+        std::error_code keystone_ec;
+        if (std::filesystem::exists(keystone_path, keystone_ec)) {
+            std::ifstream ks(keystone_path, std::ios::binary);
+            std::vector<u8> blob((std::istreambuf_iterator<char>(ks)),
+                                 std::istreambuf_iterator<char>());
+            HLE::KeystoneHeader header;
+            const HLE::KeystoneError err =
+                HLE::ParseKeystoneHeader(blob.data(), blob.size(), &header);
+            if (err == HLE::KeystoneError::kOk) {
+                HLE::SetKeystoneBlob(std::move(blob));
+                LOG_INFO(General, "KEYSTONE_LOADED version=%u.%02u type=%u size=%llu",
+                         (header.version >> 24) & 0xFF, (header.version >> 16) & 0xFF,
+                         header.type, header.file_size);
+            } else {
+                LOG_WARN(General, "KEYSTONE_INVALID reason=%s path=%s",
+                         HLE::KeystoneErrorName(err), keystone_path.string().c_str());
+            }
+        }
     }
 
     // 2. Load the main ELF/SELF module

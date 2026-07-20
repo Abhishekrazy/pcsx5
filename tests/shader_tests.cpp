@@ -9,10 +9,14 @@
 #include "gpu/shader/gcn_translate.h"
 #include "gpu/shader/metadata.h"
 #include "gpu/shader/spirv_builder.h"
+#include "gpu/shader_cache.h"
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -735,9 +739,84 @@ void TestTranslatePixel() {
     EXPECT(SpirvContainsOp(shader.words, 12), "ext inst (unpack half)");
 }
 
-// Scalar + vector ALU flow through the dispatcher.
-void TestTranslateAluFlow() {
+// Returns the arrayed operand of the first OpTypeImage (25), or -1 when
+// the stream has none.
+int SpirvFirstImageArrayed(const std::vector<u32>& words) {
+    size_t cursor = 5; // header
+    while (cursor < words.size()) {
+        const u32 word = words[cursor];
+        const u16 op = static_cast<u16>(word & 0xFFFF);
+        const u32 count = word >> 16;
+        if (count == 0) {
+            return -1; // malformed stream
+        }
+        if (op == 25 && count >= 7) {
+            // operands: sampled type, dim, depth, arrayed, ...
+            return static_cast<int>(words[cursor + 5]);
+        }
+        cursor += count;
+    }
+    return -1;
+}
+
+// Arrayed image sample (SharpEmu #471): an ImageSample whose MIMG DIM
+// names an array declares an arrayed image and samples (u, v, slice).
+void TestTranslateArrayedImageSample() {
     const std::vector<u32> dwords = {
+        0xC8100000,             // VInterpP1F32 v4, v0
+        0xC8110001,             // VInterpP2F32 v4, v1
+        0xF0800F20, 0x00400004, // ImageSample v0, v4, s0, s8 (DIM = 2D array)
+        0xBF8C0070,             // SWaitcnt
+        0xF8001C0F, 0x00000100, // Exp v0, v1, v0, v0 (compressed)
+        0xBF810000,             // SEndpgm
+    };
+    GcnProgram program;
+    std::string error;
+    EXPECT(GcnDecodeProgram(dwords.data(), dwords.size(), program, error),
+           "array-sample program decodes");
+
+    u32 image_pc = 0;
+    EXPECT(FindControlPc<GcnImageControl>(program, image_pc),
+           "image instruction present");
+    const GcnInstruction* image_ins = nullptr;
+    for (const auto& ins : program.instructions) {
+        if (ins.pc == image_pc) { image_ins = &ins; break; }
+    }
+    EXPECT(image_ins != nullptr, "image instruction found");
+    if (image_ins) {
+        const auto* control = std::get_if<GcnImageControl>(&image_ins->control);
+        EXPECT(control && control->is_array, "MIMG DIM decodes as array");
+        EXPECT(GcnIsArrayedImageBinding(*image_ins),
+               "array sample is an arrayed binding");
+    }
+
+    GcnTranslateOptions options;
+    options.stage = GcnSpirvStage::Pixel;
+    options.pixel_outputs.push_back(
+        GcnPixelOutputBinding{0, 0, GcnPixelOutputKind::Float});
+    GcnSpirvImageBinding binding;
+    binding.pc = image_pc;
+    binding.is_arrayed = true;
+    options.image_bindings.push_back(binding);
+
+    GcnSpirvShader shader;
+    EXPECT(GcnTranslateToSpirv(program, options, shader, error),
+           "array-sample program translates");
+    EXPECT(SpirvContainsOp(shader.words, 87), "image sample implicit lod");
+    EXPECT_EQ(SpirvFirstImageArrayed(shader.words), 1,
+              "declared image type is arrayed");
+
+    // The same binding without the arrayed flag keeps a plain 2D image.
+    options.image_bindings[0].is_arrayed = false;
+    GcnSpirvShader plain;
+    EXPECT(GcnTranslateToSpirv(program, options, plain, error),
+           "non-arrayed variant translates");
+    EXPECT_EQ(SpirvFirstImageArrayed(plain.words), 0,
+              "non-arrayed binding keeps a 2D image");
+}
+
+// Scalar + vector ALU flow through the dispatcher.
+void TestTranslateAluFlow() {    const std::vector<u32> dwords = {
         0xBEFC0310, // SMovB32 s124, s16
         0xBEFE0A7E, // SWqmB64 s126, s126
         0x10000010, // VMulF32 v0, s16, v0
@@ -973,6 +1052,277 @@ void TestEvalBranchFlow() {
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// H7 disk cache (src/gpu/shader_cache.*): round-trip, key sensitivity,
+// corruption tolerance, concurrent access, translate-with-cache hook and
+// the warm-up worker.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::filesystem::path FreshCacheDir(const char* name) {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "pcsx5_shader_cache_tests" / name;
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    return dir;
+}
+
+GcnProgram VertexTestProgram() {
+    const std::vector<u32> dwords = {
+        0x7E1402F2,             // VMovB32 v10, src[242]
+        0xF8000941, 0x00000000, // Exp v0, v0, v0, v0
+        0xBF810000,             // SEndpgm
+    };
+    GcnProgram  program;
+    std::string error;
+    EXPECT(GcnDecodeProgram(dwords.data(), dwords.size(), program, error),
+           "cache vertex program decodes");
+    return program;
+}
+
+GcnTranslateOptions VertexTestOptions() {
+    GcnTranslateOptions options;
+    options.stage = GcnSpirvStage::Vertex;
+    options.required_vertex_output_count = 1;
+    return options;
+}
+
+GPU::GcnShaderCacheKey ProgramKey(const GcnProgram&          program,
+                                  const GcnTranslateOptions& options) {
+    const std::vector<u32> words = GcnProgramFlattenWords(program);
+    return GPU::GcnShaderCacheComputeKey(words.data(), words.size(), options);
+}
+
+// Store -> load returns the identical word stream.
+void TestCacheRoundTrip() {
+    const auto dir = FreshCacheDir("roundtrip");
+    GPU::GcnShaderDiskCache cache(dir.string());
+    const GPU::GcnShaderCacheKey key{0x1122334455667788ull, 0x99AABBCCDDEEFF00ull};
+    const std::vector<u32> words = {0x07230203, 1, 2, 3, 4, 0xDEADBEEF};
+    EXPECT(cache.Store(key, words), "cache store");
+    std::vector<u32> loaded;
+    EXPECT(cache.TryLoad(key, loaded), "cache load");
+    EXPECT(loaded == words, "cache round-trip bytes");
+    // A different key is a clean miss.
+    std::vector<u32> junk;
+    EXPECT(!cache.TryLoad(GPU::GcnShaderCacheKey{1, 2}, junk), "cache miss");
+    EXPECT(std::filesystem::exists(dir), "cache dir created");
+}
+
+// Any option that changes the emitted module must change the key.
+void TestCacheKeySensitivity() {
+    const GcnProgram program = VertexTestProgram();
+    const GcnTranslateOptions base = VertexTestOptions();
+    const GPU::GcnShaderCacheKey base_key = ProgramKey(program, base);
+
+    // Same inputs -> identical key (determinism).
+    EXPECT(ProgramKey(program, base) == base_key, "key deterministic");
+
+    GcnTranslateOptions changed = base;
+    changed.stage = GcnSpirvStage::Pixel;
+    EXPECT(!(ProgramKey(program, changed) == base_key), "key: stage");
+
+    changed = base;
+    changed.initial_scalar_buffer_index = 0;
+    changed.buffer_bindings.push_back(GcnSpirvBufferBinding{});
+    EXPECT(!(ProgramKey(program, changed) == base_key),
+           "key: initial-scalar binding");
+
+    changed = base;
+    changed.buffer_bindings.push_back(
+        GcnSpirvBufferBinding{4, std::vector<u32>{8, 12}});
+    EXPECT(!(ProgramKey(program, changed) == base_key), "key: buffer layout");
+
+    changed = base;
+    changed.image_bindings.push_back(GcnSpirvImageBinding{16, 0, false, 0});
+    EXPECT(!(ProgramKey(program, changed) == base_key), "key: image pcs");
+
+    changed = base;
+    changed.initial_scalar_registers = {0xA5};
+    EXPECT(!(ProgramKey(program, changed) == base_key), "key: baked scalars");
+
+    changed = base;
+    changed.max_dispatcher_steps = 7;
+    EXPECT(!(ProgramKey(program, changed) == base_key), "key: max steps");
+
+    // Different shader bytes -> different key.
+    GcnProgram other = program;
+    other.instructions[0].words[0] ^= 1u;
+    EXPECT(!(ProgramKey(other, base) == base_key), "key: shader bytes");
+}
+
+// Corrupt entries are misses (and removed), never crashes or bad data.
+void TestCacheCorruption() {
+    const auto dir = FreshCacheDir("corruption");
+    GPU::GcnShaderDiskCache cache(dir.string());
+    const GPU::GcnShaderCacheKey key{0x42, 0x43};
+    const std::vector<u32> words = {1, 2, 3};
+    EXPECT(cache.Store(key, words), "corruption store");
+    const std::filesystem::path entry =
+        dir / (GPU::GcnShaderCacheKeyToString(key) + ".spv");
+    EXPECT(std::filesystem::exists(entry), "entry file exists");
+
+    // Garbage payload.
+    {
+        std::ofstream out(entry, std::ios::binary | std::ios::trunc);
+        out << "not a shader";
+    }
+    std::vector<u32> loaded;
+    EXPECT(!cache.TryLoad(key, loaded), "garbage entry is a miss");
+    EXPECT(!std::filesystem::exists(entry), "garbage entry removed");
+
+    // Valid header, truncated body.
+    EXPECT(cache.Store(key, words), "re-store");
+    {
+        std::ofstream out(entry, std::ios::binary | std::ios::trunc);
+        const u32 header[3] = {0x56353550u, 1u, 3u};
+        out.write(reinterpret_cast<const char*>(header), sizeof(header));
+        out.put('\x01');
+    }
+    EXPECT(!cache.TryLoad(key, loaded), "truncated entry is a miss");
+
+    // Bad version.
+    EXPECT(cache.Store(key, words), "re-store 2");
+    {
+        std::fstream io(entry, std::ios::binary | std::ios::in | std::ios::out);
+        const u32 bad_version = 0xFFFFFFFFu;
+        io.seekp(4);
+        io.write(reinterpret_cast<const char*>(&bad_version),
+                 sizeof(bad_version));
+    }
+    EXPECT(!cache.TryLoad(key, loaded), "bad version is a miss");
+}
+
+// Threads hammering store/load on one cache must not corrupt data.
+void TestCacheConcurrent() {
+    const auto dir = FreshCacheDir("concurrent");
+    GPU::GcnShaderDiskCache cache(dir.string());
+    constexpr int kThreads = 4;
+    constexpr int kKeys    = 16;
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&cache, t] {
+            for (int i = 0; i < kKeys; ++i) {
+                GPU::GcnShaderCacheKey key{
+                    static_cast<u64>(i), static_cast<u64>(t)};
+                const std::vector<u32> words = {
+                    static_cast<u32>(i), static_cast<u32>(t), 0xCAFEu};
+                cache.Store(key, words);
+                std::vector<u32> loaded;
+                if (cache.TryLoad(key, loaded)) {
+                    EXPECT(loaded == words, "concurrent round-trip");
+                }
+            }
+        });
+    }
+    for (auto& thread : threads) {
+        thread.join();
+    }
+    // All final entries readable and intact.
+    int verified = 0;
+    for (int t = 0; t < kThreads; ++t) {
+        for (int i = 0; i < kKeys; ++i) {
+            std::vector<u32> loaded;
+            if (cache.TryLoad(GPU::GcnShaderCacheKey{
+                                  static_cast<u64>(i), static_cast<u64>(t)},
+                              loaded) &&
+                loaded.size() == 3 && loaded[2] == 0xCAFEu) {
+                ++verified;
+            }
+        }
+    }
+    EXPECT_EQ(verified, kThreads * kKeys, "all concurrent entries intact");
+}
+
+// The public hook: second call hits the disk cache with identical output.
+void TestTranslateWithCache() {
+    const auto dir = FreshCacheDir("hook");
+    GPU::GcnShaderDiskCache cache(dir.string());
+    const GcnProgram program = VertexTestProgram();
+    const GcnTranslateOptions options = VertexTestOptions();
+
+    GcnSpirvShader first;
+    std::string    error;
+    EXPECT(GcnTranslateWithCache(program, options, &cache, first, error),
+           "first translate (miss + store)");
+    EXPECT_EQ(first.words[0], 0x07230203u, "hook spirv magic");
+    EXPECT_EQ(first.attribute_count, 1u, "hook attribute count");
+
+    // Second translate with the same cache must return identical words
+    // without re-translating.  Prove the disk path is exercised by loading
+    // through a fresh cache object over the same directory.
+    GPU::GcnShaderDiskCache reopened(dir.string());
+    GcnSpirvShader second;
+    EXPECT(GcnTranslateWithCache(program, options, &reopened, second, error),
+           "second translate (hit)");
+    EXPECT(second.words == first.words, "cached words identical");
+    EXPECT_EQ(second.attribute_count, first.attribute_count,
+              "cached attribute count derived");
+
+    // Null cache = plain translation.
+    GcnSpirvShader plain;
+    EXPECT(GcnTranslateWithCache(program, options, nullptr, plain, error),
+           "null cache translates");
+    EXPECT(plain.words == first.words, "null-cache words identical");
+
+    // Translation errors still propagate (no bogus cache entry).
+    GcnProgram bad;
+    GcnInstruction ins;
+    ins.pc = 0;
+    ins.encoding = GcnEncoding::Vop1;
+    ins.opcode = "VMovB32";
+    ins.words = {0x7E0002FF};
+    ins.sources = {GcnOperand::Vector(1)};
+    ins.destinations = {GcnOperand::Vector(0)};
+    ins.control = GcnDppControl{};
+    bad.instructions = {ins};
+    GcnSpirvShader junk;
+    EXPECT(!GcnTranslateWithCache(bad, options, &cache, junk, error),
+           "hook propagates translation failure");
+}
+
+// Warm-up worker pre-populates the cache off-thread; already-warm jobs skip.
+void TestCacheWarmup() {
+    const auto dir = FreshCacheDir("warmup");
+    GPU::GcnShaderDiskCache cache(dir.string());
+
+    std::vector<GPU::GcnShaderCacheWarmupJob> jobs;
+    for (u32 i = 0; i < 3; ++i) {
+        GPU::GcnShaderCacheWarmupJob job;
+        job.program = VertexTestProgram();
+        job.options = VertexTestOptions();
+        job.options.required_vertex_output_count =
+            static_cast<int>(i + 1); // distinct keys
+        jobs.push_back(job);
+    }
+    std::future<size_t> future =
+        GPU::GcnShaderCacheWarmupAsync(&cache, jobs);
+    EXPECT_EQ(future.get(), 3u, "warmup stores all jobs");
+
+    // Every warmed job now hits TryLoad / the hook.
+    for (const auto& job : jobs) {
+        std::vector<u32> loaded;
+        EXPECT(cache.TryLoad(ProgramKey(job.program, job.options), loaded),
+               "warmed entry present");
+    }
+    // Re-running warm-up stores nothing new.
+    std::future<size_t> again = GPU::GcnShaderCacheWarmupAsync(&cache, jobs);
+    EXPECT_EQ(again.get(), 0u, "warm cache skips jobs");
+
+    // And the modules are real translations.
+    GcnSpirvShader expected;
+    std::string error;
+    EXPECT(GcnTranslateToSpirv(jobs[0].program, jobs[0].options, expected,
+                               error),
+           "warmup reference translation");
+    std::vector<u32> loaded;
+    EXPECT(cache.TryLoad(ProgramKey(jobs[0].program, jobs[0].options), loaded),
+           "warmup entry loads");
+    EXPECT(loaded == expected.words, "warmup words match translation");
+}
+
+} // namespace
+
 int main() {
     TestSop2();
     TestSop2Literal();
@@ -1004,6 +1354,7 @@ int main() {
     TestSpirvDedup();
     TestTranslateVertex();
     TestTranslatePixel();
+    TestTranslateArrayedImageSample();
     TestTranslateAluFlow();
     TestTranslateRejectsDpp();
     TestConsumedScalarMask();
@@ -1011,6 +1362,12 @@ int main() {
     TestEvalBufferDescriptor();
     TestEvalImageBinding();
     TestEvalBranchFlow();
+    TestCacheRoundTrip();
+    TestCacheKeySensitivity();
+    TestCacheCorruption();
+    TestCacheConcurrent();
+    TestTranslateWithCache();
+    TestCacheWarmup();
 
     std::fprintf(stderr, "shader_tests: %d checks, %d failures\n", g_checks,
                  g_failures);

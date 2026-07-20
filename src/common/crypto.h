@@ -54,6 +54,18 @@ bool Aes128CbcEncrypt(const Aes128Key& key, const u8 iv[kAes128BlockSize],
 bool Aes128CbcDecrypt(const Aes128Key& key, const u8 iv[kAes128BlockSize],
                       const u8* in, u8* out, size_t size) noexcept;
 
+// XTS mode (IEEE 1619) over a whole data unit.  `key1` encrypts the data,
+// `key2` encrypts the tweak.  `data_unit` is the 16-byte little-endian
+// data-unit number (e.g. a sector index); it is not modified.  `size` must
+// be a multiple of 16; returns false (and touches nothing) otherwise.
+// No ciphertext stealing: partial trailing blocks are not supported.
+bool Aes128XtsEncrypt(const Aes128Key& key1, const Aes128Key& key2,
+                      const u8 data_unit[kAes128BlockSize],
+                      const u8* in, u8* out, size_t size) noexcept;
+bool Aes128XtsDecrypt(const Aes128Key& key1, const Aes128Key& key2,
+                      const u8 data_unit[kAes128BlockSize],
+                      const u8* in, u8* out, size_t size) noexcept;
+
 // ---------------------------------------------------------------------------
 // SHA-256 (FIPS 180-4)
 // ---------------------------------------------------------------------------

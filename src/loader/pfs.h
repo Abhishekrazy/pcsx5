@@ -1,7 +1,13 @@
 #pragma once
 
-// Read-only parser for unencrypted PFS (Playable File System) images, as
-// found inside fake/unsigned PKGs (the "pfs_image.dat" inner image).
+// Parser for unencrypted PFS (Playable File System) images, as found inside
+// fake/unsigned PKGs (the "pfs_image.dat" inner image) and savedata images.
+//
+// Read support covers mounting, directory enumeration and extraction; write
+// support (writable MountPfs, WriteFile, CreateFile) covers overwriting and
+// growing files inside savedata-style images by allocating unreferenced data
+// blocks (the format has no free-space bitmap, so a used-block set is built
+// by scanning all inodes once per writable mount).
 //
 // Format reference: https://www.psdevwiki.com/ps4/PFS
 //
@@ -13,6 +19,11 @@
 //     "uroot" directory (the real root of the file system).
 //   - File extraction (whole file) and recursive ExtractAll.
 //   - Case-insensitive name lookup when the superblock mode says so.
+//   - Writable mounts: in-place writes, file growth (direct blocks, then the
+//     ib[] single-indirect chain), and creation of new files in existing
+//     directories (fresh inode + appended dirent). Writable mounts are
+//     refused for images flagged read-only (superblock ronly), encrypted, or
+//     64-bit-inode.
 //
 // Deliberately skipped (detected and rejected with a warning):
 //   - Sector-encrypted PFS (retail games): superblock mode bit 2. The XTS
@@ -118,7 +129,7 @@ struct PfsEntry {
 };
 
 // A mounted PFS image. Holds the open stream plus the parsed superblock.
-// Move-only because of the std::ifstream member.
+// Move-only because of the std::fstream member.
 class PfsImage {
 public:
     PfsImage() = default;
@@ -131,35 +142,64 @@ public:
     bool IsCaseInsensitive() const {
         return (header_.mode & kPfsSbModeCaseInsensitive) != 0;
     }
+    bool IsWritable() const { return writable_; }
 
 private:
-    friend bool MountPfs(const std::string& path, PfsImage& out_image);
+    friend bool MountPfs(const std::string& path, PfsImage& out_image, bool writable);
     friend bool ListDirectory(PfsImage& image, const std::string& guest_path,
                               std::vector<PfsEntry>& out_entries);
     friend bool ExtractFile(PfsImage& image, const std::string& guest_path,
                             const std::string& out_path);
     friend bool ExtractAll(PfsImage& image, const std::string& out_dir);
+    friend bool WriteFile(PfsImage& image, const std::string& guest_path,
+                          const std::vector<u8>& data);
+    friend bool WriteFile(PfsImage& image, const std::string& guest_path,
+                          const std::string& src_path);
+    friend bool CreateFile(PfsImage& image, const std::string& guest_path,
+                           u64 initial_size);
 
     bool ReadAt(u64 offset, void* dst, u64 size);
+    bool WriteAt(u64 offset, const void* src, u64 size);
     bool ReadInode(u32 ino, PfsInode& out_inode);
+    bool WriteInode(u32 ino, const PfsInode& inode);
     // Resolve a data block index to a file offset, bounds-checked.
     bool DataBlockOffset(s32 block, u64& out_offset) const;
+    // Resolve one data-slot index of an inode to a data block index, walking
+    // the direct and single-indirect block pointers.
+    bool InodeSlotBlock(const PfsInode& inode, u64 block_slot, s32& out_block);
     // Read `size` bytes of inode payload starting at `data_offset`, walking
     // the direct and single-indirect block pointers.
     bool ReadInodeData(const PfsInode& inode, u64 data_offset, void* dst, u64 size);
+    // Write `size` bytes of inode payload starting at `data_offset`. The range
+    // must lie within the inode's already-allocated blocks (see ExtendInode).
+    bool WriteInodeData(const PfsInode& inode, u64 data_offset, const void* src, u64 size);
     bool ListDirInode(u32 ino, std::vector<PfsEntry>& out_entries);
     // Resolve a '/'-separated path relative to uroot to an inode index.
     bool ResolvePath(const std::string& guest_path, u32& out_ino);
+    // Scan every inode once and record which data blocks are referenced
+    // (including single-indirect pointer blocks). Called on writable mounts;
+    // the format has no free-space bitmap.
+    bool BuildUsedBlockSet();
+    // Allocate (and zero) an unreferenced data block from block_used_.
+    bool AllocDataBlock(s32& out_block);
+    // Grow an inode's block map so it can hold `new_size` bytes, allocating
+    // data blocks (and indirect pointer blocks) as needed.
+    bool ExtendInode(PfsInode& inode, u64 new_size);
 
-    std::ifstream file_;
+    std::fstream file_;
     u64 file_size_ = 0;
     PfsSuperblock header_{};
     u32 uroot_ino_ = 0;
+    bool writable_ = false;
+    std::vector<bool> block_used_; // valid only on writable mounts
 };
 
 // Open and validate a PFS image. Fails (with a warning) for encrypted or
 // 64-bit-inode images, which are out of scope (see file header comment).
-bool MountPfs(const std::string& path, PfsImage& out_image);
+// With `writable` the image is opened read-write and WriteFile/CreateFile
+// become available; a writable mount is refused when the superblock marks
+// the file system read-only (ronly) or uses an out-of-scope mode.
+bool MountPfs(const std::string& path, PfsImage& out_image, bool writable = false);
 
 // List the entries of `guest_path` ("" or "/" = root, i.e. the image's uroot
 // directory). "." and ".." pseudo-entries are skipped.
@@ -172,5 +212,21 @@ bool ExtractFile(PfsImage& image, const std::string& guest_path,
 
 // Recursively extract the whole uroot tree under `out_dir`.
 bool ExtractAll(PfsImage& image, const std::string& out_dir);
+
+// Overwrite the regular file at `guest_path` with `data`, growing it by
+// allocating free data blocks when `data` is larger than the current size
+// (a smaller write shrinks the file; blocks are not freed). Requires a
+// writable mount.
+bool WriteFile(PfsImage& image, const std::string& guest_path,
+               const std::vector<u8>& data);
+
+// Same as above, but the new contents are read from a host file.
+bool WriteFile(PfsImage& image, const std::string& guest_path,
+               const std::string& src_path);
+
+// Create a new zero-filled regular file `guest_path` (parent directory must
+// already exist) with `initial_size` bytes, allocating a fresh inode and
+// appending a dirent to the parent. Requires a writable mount.
+bool CreateFile(PfsImage& image, const std::string& guest_path, u64 initial_size);
 
 } // namespace Loader
