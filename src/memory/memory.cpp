@@ -277,6 +277,9 @@ Status Commit(guest_addr_t address, u64 size, u32 protection) {
     // Already-committed region (e.g. overlapping ELF segments sharing one
     // 16KB guest page): MEM_COMMIT cannot change protection on committed
     // pages, so merge the requested rights into the existing ones instead.
+    // Region tracking is coarse (one entry per reservation), so the exact
+    // range may be committed only in part: if the merge hits uncommitted
+    // pages, fall back to committing them below.
     {
         std::lock_guard<std::mutex> lock(g_regions_mutex);
         for (auto& r : g_regions) {
@@ -285,7 +288,14 @@ Status Commit(guest_addr_t address, u64 size, u32 protection) {
                 const u32 merged = r.protection | protection;
                 const DWORD merged_win = TranslateProtection(merged);
                 DWORD old_prot = 0;
-                if (!VirtualProtect(ptr, aligned_size, merged_win, &old_prot)) {
+                if (VirtualProtect(ptr, aligned_size, merged_win, &old_prot)) {
+                    r.protection = merged;
+                    r.win32_prot = merged_win;
+                    LOG_DEBUG(Memory, "Commit merged protection at [0x%llx-0x%llx] -> prot=%u",
+                              address, address + aligned_size, merged);
+                    return Status::Ok;
+                }
+                if (GetLastError() != ERROR_INVALID_ADDRESS) {
                     const DWORD err = GetLastError();
                     LOG_ERROR(Memory, "Commit: VirtualProtect(merge) failed at 0x%llx (err=%lu)",
                               address, err);
@@ -293,9 +303,7 @@ Status Commit(guest_addr_t address, u64 size, u32 protection) {
                 }
                 r.protection = merged;
                 r.win32_prot = merged_win;
-                LOG_DEBUG(Memory, "Commit merged protection at [0x%llx-0x%llx] -> prot=%u",
-                          address, address + aligned_size, merged);
-                return Status::Ok;
+                break; // range not committed yet: commit it below
             }
         }
     }
