@@ -56,7 +56,7 @@
   "msg.resumed": "Эмулятор продолжен",
   "msg.paused": "Эмулятор приостановлен",
   "msg.touched_compat": "Запись совместимости изменена для %s",
-  "system.header": "СИСТЕМА",
+  "system.header": "Система",
   "system.cpu": "ЦП",
   "system.gpu": "ГП",
   "system.memory": "Память",

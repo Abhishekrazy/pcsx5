@@ -1079,7 +1079,16 @@ namespace Pcsx5Ui
             finally
             {
                 int exitCode = rc;
-                Dispatcher.Invoke(() =>
+                // Must be asynchronous (BeginInvoke, not Invoke): the emulator
+                // window is a child of a WPF-owned HWND, so the two threads'
+                // input queues are attached.  A synchronous Invoke makes the
+                // core thread wait on the UI thread while the UI thread may be
+                // blocked in a synchronous cross-thread window operation
+                // (SetParent/teardown/focus) that needs the core thread to
+                // pump — a mutual wait that hangs the launcher
+                // ("Not Responding").  Nothing in the teardown feeds a result
+                // back to this thread, so fire-and-forget is safe.
+                Dispatcher.BeginInvoke(() =>
                 {
                     _coreRunning = false;
                     _coreThread = null;
@@ -1372,6 +1381,50 @@ namespace Pcsx5Ui
             SetTesterStatus("Trigger effect: Vibration.");
         }
 
+        // --- SPEAKER / MIC TESTERS (USB audio endpoints) ---
+        private bool _micTestActive;
+
+        private void TesterPlayTone_Click(object sender, RoutedEventArgs e)
+        {
+            var error = DualSenseAudio.PlayTestTone();
+            SetTesterStatus(error ?? "Playing 440 Hz test tone on the DualSense speaker...");
+        }
+
+        private void TesterMicTest_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_micTestActive)
+            {
+                var error = DualSenseAudio.StartMicMeter();
+                if (error != null)
+                {
+                    SetTesterStatus(error);
+                    if (TesterMicLevelBar != null) TesterMicLevelBar.Value = 0;
+                    return;
+                }
+
+                _micTestActive = true;
+                TesterMicTestBtn.Content = "Stop Mic Test";
+                SetTesterStatus("Mic test running - speak into the controller microphone.");
+            }
+            else
+            {
+                StopMicTest();
+            }
+        }
+
+        private void StopMicTest()
+        {
+            if (!_micTestActive)
+            {
+                return;
+            }
+
+            _micTestActive = false;
+            DualSenseAudio.StopMicMeter();
+            if (TesterMicTestBtn != null) TesterMicTestBtn.Content = "Mic Test";
+            if (TesterMicLevelBar != null) TesterMicLevelBar.Value = 0;
+        }
+
         private void SetTesterStatus(string message)
         {
             if (TesterStatusText != null)
@@ -1405,6 +1458,8 @@ namespace Pcsx5Ui
                 TesterLeftStickText.Text = "Left Stick:  X=- Y=-";
                 TesterRightStickText.Text = "Right Stick: X=- Y=-";
                 TesterTouchText.Text = "Touchpad: -";
+                TesterGyroText.Text = "Gyro:  -";
+                TesterAccelText.Text = "Accel: -";
                 return;
             }
 
@@ -1421,6 +1476,8 @@ namespace Pcsx5Ui
                 }
             }
             TesterButtonsText.Text = "Buttons: " + (pressed.Count > 0 ? string.Join(", ", pressed) : "-");
+            WindowsDualSenseReader.GetRawButtonBytes(out var rb0, out var rb1, out var rb2);
+            TesterButtonsText.Text += $"  [raw {rb0:X2} {rb1:X2} {rb2:X2}]";
 
             TesterL2Bar.Value = state.LeftTrigger;
             TesterR2Bar.Value = state.RightTrigger;
@@ -1428,9 +1485,33 @@ namespace Pcsx5Ui
             TesterR2Text.Text = state.RightTrigger.ToString();
             TesterLeftStickText.Text = $"Left Stick:  X={state.LeftX} Y={state.LeftY}";
             TesterRightStickText.Text = $"Right Stick: X={state.RightX} Y={state.RightY}";
-            TesterTouchText.Text = state.Buttons.HasFlag(HostGamepadButtons.TouchPad)
-                ? "Touchpad: pressed"
-                : "Touchpad: released";
+            var touchParts = new List<string>();
+            if (state.Buttons.HasFlag(HostGamepadButtons.TouchPad))
+            {
+                touchParts.Add("clicked");
+            }
+            if (state.Touch0.Active)
+            {
+                touchParts.Add($"F1 ({state.Touch0.X},{state.Touch0.Y})");
+            }
+            if (state.Touch1.Active)
+            {
+                touchParts.Add($"F2 ({state.Touch1.X},{state.Touch1.Y})");
+            }
+            TesterTouchText.Text = "Touchpad: " + (touchParts.Count > 0 ? string.Join(", ", touchParts) : "released");
+
+            // Gyro in deg/s (raw * 2000/32768), accel in g (raw / 8192),
+            // matching the native dualsense_hid.h unit conversions.
+            const double DpsPerLsb = 2000.0 / 32768.0;
+            const double GPerLsb = 1.0 / 8192.0;
+            TesterGyroText.Text = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "Gyro:  {0,7:F1} {1,7:F1} {2,7:F1} dps",
+                state.Gyro.X * DpsPerLsb, state.Gyro.Y * DpsPerLsb, state.Gyro.Z * DpsPerLsb);
+            TesterAccelText.Text = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "Accel: {0,6:F2} {1,6:F2} {2,6:F2} g",
+                state.Accel.X * GPerLsb, state.Accel.Y * GPerLsb, state.Accel.Z * GPerLsb);
         }
 
         private string LocateSndDecode()
@@ -1886,6 +1967,7 @@ namespace Pcsx5Ui
             _controllerVizTimer?.Stop();
             ClearControllerVizOverlays();
             TesterStopAllOutputs();
+            StopMicTest();
         }
 
         private void ClearControllerVizOverlays()
@@ -1948,16 +2030,65 @@ namespace Pcsx5Ui
             PadL2Overlay.Opacity = Math.Max(state.LeftTrigger / 255.0, b.HasFlag(HostGamepadButtons.L2) ? 1 : 0);
             PadR2Overlay.Opacity = Math.Max(state.RightTrigger / 255.0, b.HasFlag(HostGamepadButtons.R2) ? 1 : 0);
 
-            // The DualSense report has a single touchpad click flag; light the whole pad.
-            double touchOpacity = b.HasFlag(HostGamepadButtons.TouchPad) ? 1 : 0;
-            PadTouchLeftOverlay.Opacity = touchOpacity;
-            PadTouchCenterOverlay.Opacity = touchOpacity;
-            PadTouchRightOverlay.Opacity = touchOpacity;
+            // Touchpad click lights the whole pad; finger contacts light the
+            // zone (left/center/right third of the 0..1919 X range) they touch.
+            bool clicked = b.HasFlag(HostGamepadButtons.TouchPad);
+            PadTouchLeftOverlay.Opacity = clicked || TouchInZone(state, 0, 640) ? 1 : 0;
+            PadTouchCenterOverlay.Opacity = clicked || TouchInZone(state, 640, 1280) ? 1 : 0;
+            PadTouchRightOverlay.Opacity = clicked || TouchInZone(state, 1280, 1920) ? 1 : 0;
 
             MoveStickDot(LeftStickDot, LeftStickCenterX, LeftStickCenterY, state.LeftX, state.LeftY);
             MoveStickDot(RightStickDot, RightStickCenterX, RightStickCenterY, state.RightX, state.RightY);
 
+            if (_micTestActive && TesterMicLevelBar != null)
+            {
+                // RMS is small in practice; boost x3 and clamp for display.
+                TesterMicLevelBar.Value = Math.Min(1.0, DualSenseAudio.CurrentLevel * 3.0) * 100.0;
+            }
+
             UpdateTesterReadouts(state);
+        }
+
+        private static bool TouchInZone(in HostGamepadState state, int minX, int maxX)
+        {
+            return (state.Touch0.Active && state.Touch0.X >= minX && state.Touch0.X < maxX) ||
+                   (state.Touch1.Active && state.Touch1.X >= minX && state.Touch1.X < maxX);
+        }
+
+        // --- MIC BUTTON -> MIC LED ---
+        // Short press toggles the mic (mute) LED on/off; holding the button for
+        // >= 500 ms switches it to pulse mode until release, then restores the
+        // toggled state. Edge detection runs in ControllerTimer_Tick.
+        private bool _micBtnDown;
+        private bool _micBtnPulsing;
+        private bool _micLedToggledOn;
+        private DateTime _micBtnDownAt;
+        private const double MicHoldPulseMs = 500.0;
+
+        private void HandleMicButtonLed(bool down)
+        {
+            if (down && !_micBtnDown)
+            {
+                _micBtnDown = true;
+                _micBtnPulsing = false;
+                _micBtnDownAt = DateTime.UtcNow;
+            }
+            else if (down && _micBtnDown && !_micBtnPulsing &&
+                     (DateTime.UtcNow - _micBtnDownAt).TotalMilliseconds >= MicHoldPulseMs)
+            {
+                _micBtnPulsing = true;
+                WindowsDualSenseReader.SetMicLed(2); // pulse while held
+            }
+            else if (!down && _micBtnDown)
+            {
+                _micBtnDown = false;
+                if (!_micBtnPulsing)
+                {
+                    _micLedToggledOn = !_micLedToggledOn; // short press toggles
+                }
+                _micBtnPulsing = false;
+                WindowsDualSenseReader.SetMicLed(_micLedToggledOn ? (byte)1 : (byte)0);
+            }
         }
 
         private void MoveStickDot(Ellipse dot, double centerX, double centerY, byte axisX, byte axisY)
@@ -1994,6 +2125,8 @@ namespace Pcsx5Ui
                 state.Gamepad.wButtons = buttons;
                 state.Gamepad.sThumbLX = lx;
                 state.Gamepad.sThumbLY = ly;
+
+                HandleMicButtonLed((dsState.Buttons & HostGamepadButtons.Mic) != 0);
             }
             else
             {

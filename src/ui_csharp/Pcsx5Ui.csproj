@@ -23,6 +23,12 @@
     <Resource Include="pcsx5_icon.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- WASAPI access for the DualSense USB Audio Class endpoints
+         (Controller Setup speaker/mic testers). -->
+    <PackageReference Include="NAudio" Version="2.3.0" />
+  </ItemGroup>
+
   <!-- Emulator core built by CMake (build/bin/pcsx5_core.dll).  Copied next
        to the app in both build and publish output so DllImport("pcsx5_core")
        resolves at runtime.  Conditional so a missing native build does not
