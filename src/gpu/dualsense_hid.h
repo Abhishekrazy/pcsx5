@@ -25,6 +25,7 @@
 #include <thread>
 #include <vector>
 #include <cstring>
+#include <atomic>
 
 #if defined(_MSC_VER)
 #pragma comment(lib, "setupapi.lib")
@@ -46,6 +47,11 @@ namespace DualSense {
         PadTouchPoint touch[2] = {};
         float accel[3] = { 0.0f, 0.0f, 0.0f }; // x/y/z, in g (approx)
         float gyro[3] = { 0.0f, 0.0f, 0.0f };  // pitch/yaw/roll, rad/s (approx)
+        u8 battery_level = 0;         // 0..100 percent
+        bool battery_charging = false;
+        bool battery_full = false;
+        bool headphone_connected = false;
+        u8 trigger_feedback[2] = { 0, 0 }; // raw effect feedback, [0]=left [1]=right
     };
 
     namespace detail {
@@ -63,6 +69,20 @@ namespace DualSense {
         static u8    g_last_raw[256] = {};
         static DWORD g_last_raw_len = 0;
 
+        // Report layout detected by ParseReport: 1 = standard DualSense,
+        // 2 = DS4-style (DualShock 4 and most DualSense clones/compatibles;
+        // such clones report with id 0x01 even over Bluetooth).
+        static std::atomic<int> g_last_layout{ 1 };
+        // Identity of the currently opened device (for diagnostics).
+        static USHORT g_dev_vid = 0, g_dev_pid = 0;
+        static wchar_t g_dev_product[128] = {};
+        // Consecutive wins for the candidate layout (hysteresis so a single
+        // ambiguous report cannot flip the offsets back and forth).
+        static int g_layout_streak = 0;
+        // Absolute offset of button byte 0 (face buttons + d-pad hat) in the
+        // last parsed report (layout-dependent).
+        static std::atomic<size_t> g_b0_pos{ 8 };
+
         // ── Output report state (Phase 6: haptics + adaptive triggers) ──────
         // The live device handle is owned by the reader thread; senders only
         // use it under g_out_mutex, and the reader clears it under the same
@@ -78,7 +98,31 @@ namespace DualSense {
         static bool       g_out_transport_known = false;
         static u8         g_motor_large = 0, g_motor_small = 0;
         static TriggerEffect g_trigger[2];          // [0] = left (L2), [1] = right (R2)
+        static u8         g_player_leds = 0;        // 5 player-indicator LED bits
+        static bool       g_player_led_fade = false;
+        static u8         g_led_brightness = 0x01;  // 0=high 1=medium 2=low
+        static bool       g_leds_disabled = false;  // kill switch for all LEDs
+        static u8         g_mic_led = 0;            // 0=off 1=on 2=pulse
+        static u8         g_lightbar[3] = { 0, 0, 0 }; // RGB
         static u8         g_out_seq = 0;            // BT output sequence tag
+        // Device's OutputReportByteLength from the HID caps: Windows HID
+        // stacks commonly require WriteFile sizes to match it (the
+        // DualSense-Windows library pads BT writes to 547 for this reason).
+        static DWORD      g_out_report_len = 0;
+
+        // OutputReportByteLength for an open handle, or 0 when unknown.
+        static DWORD QueryOutputReportLength(HANDLE handle) {
+            PHIDP_PREPARSED_DATA pp = nullptr;
+            if (!HidD_GetPreparsedData(handle, &pp)) {
+                return 0;
+            }
+            HIDP_CAPS caps{};
+            const NTSTATUS status = HidP_GetCaps(pp, &caps);
+            HidD_FreePreparsedData(pp);
+            return status == HIDP_STATUS_SUCCESS
+                       ? static_cast<DWORD>(caps.OutputReportByteLength)
+                       : 0;
+        }
 
         static void Publish(const Sample& s) {
             std::lock_guard<std::mutex> lock(g_mutex);
@@ -86,11 +130,19 @@ namespace DualSense {
         }
 
         // Open the first present DualSense HID interface, or nullptr when none
-        // is attached.  Mirrors WindowsDualSenseReader.OpenDualSense().
+        // is attached.  Mirrors WindowsDualSenseReader.OpenDualSense() plus
+        // the DualSense-Windows capability filter: a DualSense exposes
+        // multiple HID interfaces and only the ones whose
+        // InputReportByteLength is 64 (USB) or 78 (Bluetooth) carry the
+        // controller report stream — opening any other matching interface
+        // yields garbage (wrong layout, zeroed motion).  `bluetooth` reports
+        // the transport from the caps (78-byte input = BT), which is more
+        // reliable than sniffing the report id.
         // `writable` reports whether GENERIC_WRITE was granted (the read-only
         // fallback can still feed input but cannot take output reports).
-        static HANDLE OpenDualSense(bool* writable) {
+        static HANDLE OpenDualSense(bool* writable, bool* bluetooth) {
             *writable = false;
+            *bluetooth = false;
             GUID hid_guid;
             HidD_GetHidGuid(&hid_guid);
             HDEVINFO devs = SetupDiGetClassDevsW(&hid_guid, nullptr, nullptr,
@@ -127,12 +179,36 @@ namespace DualSense {
                 }
                 HIDD_ATTRIBUTES attr{};
                 attr.Size = sizeof(attr);
-                const bool match = HidD_GetAttributes(probe, &attr) &&
+                wchar_t product[128] = {};
+                const bool have_attr = HidD_GetAttributes(probe, &attr) != 0;
+                HidD_GetProductString(probe, product, sizeof(product));
+                const bool match = have_attr &&
                                    attr.VendorID == kSonyVendorId &&
                                    (attr.ProductID == kDualSenseProductId ||
                                     attr.ProductID == kDualSenseEdgeProductId);
+                // Capability filter (DualSense-Windows does the same): the
+                // real controller interface has a 64-byte (USB) or 78-byte
+                // (Bluetooth) input report; skip any other interface the
+                // device exposes.
+                bool caps_ok = false;
+                bool caps_bt = false;
+                if (match) {
+                    PHIDP_PREPARSED_DATA ppd = nullptr;
+                    if (HidD_GetPreparsedData(probe, &ppd)) {
+                        HIDP_CAPS caps{};
+                        if (HidP_GetCaps(ppd, &caps) == HIDP_STATUS_SUCCESS) {
+                            if (caps.InputReportByteLength == 64) {
+                                caps_ok = true;
+                            } else if (caps.InputReportByteLength == 78) {
+                                caps_ok = true;
+                                caps_bt = true;
+                            }
+                        }
+                        HidD_FreePreparsedData(ppd);
+                    }
+                }
                 CloseHandle(probe);
-                if (!match) {
+                if (!match || !caps_ok) {
                     continue;
                 }
 
@@ -147,7 +223,11 @@ namespace DualSense {
                 }
                 if (handle != INVALID_HANDLE_VALUE) {
                     *writable = rw;
+                    *bluetooth = caps_bt;
                     result = handle;
+                    g_dev_vid = attr.VendorID;
+                    g_dev_pid = attr.ProductID;
+                    wcsncpy_s(g_dev_product, product, _TRUNCATE);
                     break;
                 }
             }
@@ -170,23 +250,31 @@ namespace DualSense {
             t.y = static_cast<u16>((p[2] >> 4) | (p[3] << 4));
         }
 
-        // Parse one input report.  Layout (o = 1 for USB report id 0x01,
-        // o = 2 for Bluetooth report id 0x31), matching the C# parser for the
-        // button/stick/trigger block and the Linux hid-playstation
-        // dualsense_input_report layout for the motion/touch blocks:
-        //   o+0..3  LX LY RX RY
-        //   o+4     L2 analog, o+5 R2 analog
-        //   o+6     report sequence tag
-        //   o+7..10 button bytes 0..3
-        //   o+11..14 reserved / timestamp
-        //   o+15..20 gyro pitch/yaw/roll (s16 LE)
-        //   o+21..26 accel x/y/z (s16 LE)
-        //   o+27..30 sensor timestamp, o+31 reserved
-        //   o+32..35 touch point 0, o+36..39 touch point 1
+        // Parse one input report.  Two layouts are supported and detected per
+        // report by scoring three anchors — a valid d-pad hat nibble (<= 8),
+        // ~1 g of accel (gravity), and the "not touching" bit of touch
+        // finger 0:
+        //
+        //   Standard DualSense (o = 1 for USB id 0x01, o = 2 for BT id 0x31):
+        //     o+0..3   LX LY RX RY
+        //     o+4/5    L2/R2 analog
+        //     o+7..9   button bytes 0..2
+        //     o+15..20 gyro (s16 LE), o+21..26 accel
+        //     o+32/36  touch fingers 0/1
+        //   DS4-style (DualShock 4 + DualSense clones; id 0x01 even on BT):
+        //     o+0..3   LX LY RX RY (same)
+        //     o+4..6   button bytes 0..2
+        //     o+7/8    L2/R2 analog
+        //     o+12..17 gyro, o+18..23 accel
+        //     o+34/38  touch fingers 0/1
+        //
+        // Button bit meanings are identical in both layouts (DS4 Share sits
+        // on the DualSense Create bit), only the offsets differ.  Detection
+        // deliberately prefers the standard layout on a tie.
         static bool ParseReport(const u8* r, DWORD len, Sample& s) {
             size_t o;
             if (r[0] == 0x01) {
-                o = 1;  // USB
+                o = 1;  // USB (or DS4-style clone, any transport)
             } else if (r[0] == 0x31) {
                 o = 2;  // Bluetooth
             } else {
@@ -196,15 +284,65 @@ namespace DualSense {
                 return false;
             }
 
+            auto hat_ok = [r, len](size_t p) { return p < len && (r[p] & 0x0F) <= 8; };
+            // Strongest anchor: a CENTERED d-pad hat (nibble 8) at the
+            // candidate button byte.  The other layout has trigger analog at
+            // that offset, which is 0 at rest and rarely exactly 8 — this
+            // discriminates even when the accel/touch regions report zeros
+            // (common on clones without motion/touch hardware).
+            auto hat_centered = [r, len](size_t p) { return p < len && (r[p] & 0x0F) == 8; };
+            auto accel_ok = [r, len](size_t p) {
+                if (p + 6 > len) {
+                    return false;
+                }
+                float m2 = 0.0f;
+                for (int i = 0; i < 3; ++i) {
+                    const float a = static_cast<float>(ReadS16LE(r + p + i * 2)) / 8192.0f;
+                    m2 += a * a;
+                }
+                return m2 > 0.25f && m2 < 4.0f; // 0.5..2 g
+            };
+            // Missing data is not evidence against a layout.
+            auto touch_idle_ok = [r, len](size_t p) { return p >= len || (r[p] & 0x80) != 0; };
+
+            int ds5 = 0, ds4 = 0;
+            if (hat_centered(o + 7))     { ds5 += 2; }
+            else if (hat_ok(o + 7))      { ++ds5; }
+            if (hat_centered(o + 4))     { ds4 += 2; }
+            else if (hat_ok(o + 4))      { ++ds4; }
+            if (accel_ok(o + 21))     { ++ds5; }
+            if (accel_ok(o + 18))     { ++ds4; }
+            if (touch_idle_ok(o + 32)) { ++ds5; }
+            if (touch_idle_ok(o + 34)) { ++ds4; }
+            // Hysteresis: only switch layouts after 5 consecutive wins for
+            // the other side; offsets must not jitter between reports.
+            const bool ds4_winner = ds4 > ds5;
+            if (ds4_winner != (g_last_layout.load() == 2)) {
+                if (++g_layout_streak >= 5) {
+                    g_last_layout.store(ds4_winner ? 2 : 1);
+                    g_layout_streak = 0;
+                }
+            } else {
+                g_layout_streak = 0;
+            }
+            const bool ds4_layout = g_last_layout.load() == 2;
+
+            const size_t b0p    = ds4_layout ? o + 4  : o + 7;
+            const size_t l2ap   = ds4_layout ? o + 7  : o + 4;
+            const size_t gyrop  = ds4_layout ? o + 12 : o + 15;
+            const size_t accelp = ds4_layout ? o + 18 : o + 21;
+            const size_t touchp = ds4_layout ? o + 34 : o + 32;
+            g_b0_pos.store(b0p);
+
             s.lx = r[o + 0];
             s.ly = r[o + 1];
             s.rx = r[o + 2];
             s.ry = r[o + 3];
-            s.l2 = r[o + 4];
-            s.r2 = r[o + 5];
-            const u8 b0 = r[o + 7];
-            const u8 b1 = r[o + 8];
-            const u8 b2 = r[o + 9];
+            s.l2 = r[l2ap];
+            s.r2 = r[l2ap + 1];
+            const u8 b0 = r[b0p];
+            const u8 b1 = r[b0p + 1];
+            const u8 b2 = r[b0p + 2];
 
             u32 b = 0;
             if (b0 & 0x10) b |= 0x8000; // Square
@@ -238,14 +376,37 @@ namespace DualSense {
             // Gyro full scale is +/-2000 dps; accel is ~8192 LSB/g.
             static constexpr float kDpsToRad = 3.14159265358979f / 180.0f;
             for (int i = 0; i < 3; ++i) {
-                const int g_raw = ReadS16LE(r + o + 15 + i * 2);
-                const int a_raw = ReadS16LE(r + o + 21 + i * 2);
+                const int g_raw = ReadS16LE(r + gyrop + i * 2);
+                const int a_raw = ReadS16LE(r + accelp + i * 2);
                 s.gyro[i] = static_cast<float>(g_raw) * (2000.0f / 32768.0f) * kDpsToRad;
                 s.accel[i] = static_cast<float>(a_raw) / 8192.0f;
             }
 
-            DecodeTouchPoint(r + o + 32, s.touch[0]);
-            DecodeTouchPoint(r + o + 36, s.touch[1]);
+            if (touchp + 8 <= len) {
+                DecodeTouchPoint(r + touchp, s.touch[0]);
+                DecodeTouchPoint(r + touchp + 4, s.touch[1]);
+            } else {
+                s.touch[0] = PadTouchPoint{};
+                s.touch[1] = PadTouchPoint{};
+            }
+
+            // Battery / headphone / adaptive-trigger feedback (standard
+            // DualSense layout only; offsets per DualSense-Windows
+            // DS5_Input.cpp: level o+52, status o+53 bit0 headphone / bit3
+            // charging, o+54 bit5 full, trigger feedback o+41 right / o+42
+            // left).
+            if (!ds4_layout && len >= o + 55) {
+                const u8 level_nib = static_cast<u8>(r[o + 52] & 0x0F);
+                s.battery_level = static_cast<u8>(level_nib > 8 ? 100
+                                                                : level_nib * 100 / 8);
+                s.battery_charging = (r[o + 53] & 0x08) != 0;
+                s.battery_full = (r[o + 54] & 0x20) != 0;
+                s.headphone_connected = (r[o + 53] & 0x01) != 0;
+            }
+            if (!ds4_layout && len >= o + 43) {
+                s.trigger_feedback[0] = r[o + 42]; // left
+                s.trigger_feedback[1] = r[o + 41]; // right
+            }
             s.touch_count = static_cast<u8>((s.touch[0].active ? 1 : 0) +
                                             (s.touch[1].active ? 1 : 0));
             s.connected = true;
@@ -273,13 +434,19 @@ namespace DualSense {
             return crc;
         }
 
-        static u32 DualSenseCrc32(const u8* data, size_t len) {
-            u32 crc = Crc32Update(0xFFFFFFFFu, 0xA2);
+        static u32 DualSenseCrc32(const u8* data, size_t len, u8 seed) {
+            u32 crc = Crc32Update(0xFFFFFFFFu, seed);
             for (size_t i = 0; i < len; ++i) {
                 crc = Crc32Update(crc, data[i]);
             }
             return ~crc;
         }
+
+        // Output wire format: 0 = auto (by layout/transport), 1 = DualSense
+        // USB (0x02), 2 = DualSense BT (0x31+CRC 0xA2), 3 = DS4 USB (0x05),
+        // 4 = DS4 BT (0x11+CRC 0xA1).  Selectable from tools so unknown
+        // clones can be probed.
+        static int g_out_format_override = 0;
 
         // Caller must hold g_out_mutex.
         static void SendOutputLocked() {
@@ -287,39 +454,99 @@ namespace DualSense {
                 return;
             }
 
-            u8 common[47] = {};
-            common[0] = 0x03;              // enable both rumble motors
-            common[1] = 0x40 | 0x80;       // enable right + left trigger effects
-            common[2] = g_motor_small;
-            common[3] = g_motor_large;
-            common[10] = g_trigger[1].mode;  // right
-            std::memcpy(common + 11, g_trigger[1].params, 10);
-            common[21] = g_trigger[0].mode;  // left
-            std::memcpy(common + 22, g_trigger[0].params, 10);
-
             DWORD written = 0;
-            if (!g_out_bluetooth) {
-                u8 report[48];
-                report[0] = 0x02;
-                std::memcpy(report + 1, common, sizeof(common));
-                if (WriteFile(g_out_handle, report, sizeof(report), &written, nullptr)) {
-                    return;
-                }
-            } else {
-                u8 report[78];
-                report[0] = 0x31;
-                report[1] = static_cast<u8>((g_out_seq & 0x0F) << 4);
+
+            // Build into a zero-padded buffer sized to the device's
+            // OutputReportByteLength (see g_out_report_len comment); some
+            // drivers silently drop shorter writes.
+            u8 report[600] = {};
+            size_t build_len = 0;
+
+            // Wire format: explicit override wins; otherwise DS4-layout
+            // devices get the DS4 USB report, everything else the DualSense
+            // report for its transport.
+            int fmt = g_out_format_override;
+            if (fmt == 0) {
+                fmt = g_last_layout.load() == 2 ? 3 : (g_out_bluetooth ? 2 : 1);
+            }
+
+            if (fmt == 3) {
+                // DS4 USB: 32 bytes, id 0x05, motors at [4]/[5].
+                report[0] = 0x05;
+                report[1] = 0xFF;
+                report[4] = g_motor_small;
+                report[5] = g_motor_large;
+                build_len = 32;
+            } else if (fmt == 4) {
+                // DS4 Bluetooth: 78 bytes, id 0x11, motors at [6]/[7],
+                // CRC32LE seeded with 0xA1 over bytes 0..73.
+                report[0] = 0x11;
+                report[1] = static_cast<u8>(0xC0 | (g_out_seq & 0x0F));
                 g_out_seq = static_cast<u8>((g_out_seq + 1) & 0x0F);
-                report[2] = 0x10;
-                std::memcpy(report + 3, common, sizeof(common));
-                const u32 crc = DualSenseCrc32(report, 74);
+                report[2] = 0x00;
+                report[3] = 0x0F; // enable rumble + LEDs + flash
+                report[6] = g_motor_small;
+                report[7] = g_motor_large;
+                const u32 crc = DualSenseCrc32(report, 74, 0xA1);
                 report[74] = static_cast<u8>(crc);
                 report[75] = static_cast<u8>(crc >> 8);
                 report[76] = static_cast<u8>(crc >> 16);
                 report[77] = static_cast<u8>(crc >> 24);
-                if (WriteFile(g_out_handle, report, sizeof(report), &written, nullptr)) {
-                    return;
+                build_len = 78;
+            } else if (fmt == 2 || fmt == 1) {
+                u8 common[47] = {};
+                common[0] = 0x03;              // enable both rumble motors
+                common[1] = 0x40 | 0x80;       // enable right + left trigger effects
+                common[2] = g_motor_small;
+                common[3] = g_motor_large;
+                common[10] = g_trigger[1].mode;  // right
+                std::memcpy(common + 11, g_trigger[1].params, 10);
+                common[21] = g_trigger[0].mode;  // left
+                std::memcpy(common + 22, g_trigger[0].params, 10);
+                // Player indicator LEDs (offsets per SDL's DS5EffectsState_t
+                // and DualSense-Windows DS5_Output.cpp; enable flags in byte 1).
+                common[1] |= 0x10;             // enable player LEDs
+                common[38] = 0x03;
+                common[41] = g_leds_disabled ? 0x01 : 0x02;
+                common[42] = g_led_brightness;
+                common[43] = g_player_leds;
+                if (!g_player_led_fade) {
+                    common[43] |= 0x20;        // 0x20 set = instant, clear = fade
                 }
+                // Microphone LED + lightbar.
+                common[1] |= 0x01;             // enable mic LED
+                common[8] = g_mic_led;
+                common[1] |= 0x04;             // enable lightbar color
+                common[44] = g_lightbar[0];
+                common[45] = g_lightbar[1];
+                common[46] = g_lightbar[2];
+
+                if (fmt == 1) {
+                    report[0] = 0x02;
+                    std::memcpy(report + 1, common, sizeof(common));
+                    build_len = 48;
+                } else {
+                    report[0] = 0x31;
+                    report[1] = static_cast<u8>((g_out_seq & 0x0F) << 4);
+                    g_out_seq = static_cast<u8>((g_out_seq + 1) & 0x0F);
+                    report[2] = 0x10;
+                    std::memcpy(report + 3, common, sizeof(common));
+                    const u32 crc = DualSenseCrc32(report, 74, 0xA2);
+                    report[74] = static_cast<u8>(crc);
+                    report[75] = static_cast<u8>(crc >> 8);
+                    report[76] = static_cast<u8>(crc >> 16);
+                    report[77] = static_cast<u8>(crc >> 24);
+                    build_len = 78;
+                }
+            } else {
+                return; // unknown format id
+            }
+
+            const DWORD out_len = g_out_report_len > build_len
+                                      ? g_out_report_len
+                                      : static_cast<DWORD>(build_len);
+            if (WriteFile(g_out_handle, report, out_len, &written, nullptr)) {
+                return;
             }
             // Write failed (device unplugged mid-send): stop using the handle;
             // the reader's blocking ReadFile fails too and re-enumerates.
@@ -332,7 +559,8 @@ namespace DualSense {
             bool announced = false;
             for (;;) {
                 bool writable = false;
-                HANDLE handle = OpenDualSense(&writable);
+                bool bluetooth = false;
+                HANDLE handle = OpenDualSense(&writable, &bluetooth);
                 if (handle == nullptr) {
                     Sample neutral;
                     Publish(neutral);
@@ -347,8 +575,10 @@ namespace DualSense {
                     std::lock_guard<std::mutex> lock(g_out_mutex);
                     g_out_handle = handle;
                     g_out_writable = writable;
-                    g_out_transport_known = false; // set on the first input report
-                    g_out_bluetooth = false;
+                    // Transport is known at open time from the HID caps.
+                    g_out_transport_known = true;
+                    g_out_bluetooth = bluetooth;
+                    g_out_report_len = QueryOutputReportLength(handle);
                 }
                 if (!announced) {
                     LOG_INFO(GPU, "DualSense controller connected (HID input reports active, output: %s).",
@@ -388,6 +618,7 @@ namespace DualSense {
                     if (g_out_handle == handle) {
                         g_out_handle = nullptr;
                         g_out_transport_known = false;
+                        g_out_report_len = 0;
                     }
                 }
                 CloseHandle(handle);
@@ -432,11 +663,92 @@ namespace DualSense {
 
     // Transport query for diagnostics.  Sets `known` to false until the
     // first input report after connect identifies the framing; returns true
-    // for Bluetooth, false for USB.
+    // for Bluetooth, false for USB.  Note: DS4-style clones report id 0x01
+    // even over Bluetooth, so they read as "USB" here.
     inline bool GetTransport(bool& known) {
         std::lock_guard<std::mutex> lock(detail::g_out_mutex);
         known = detail::g_out_transport_known;
         return detail::g_out_bluetooth;
+    }
+
+    // Layout of the last parsed report: 1 = standard DualSense,
+    // 2 = DS4-style (DualShock 4 / DualSense clones).
+    inline int GetReportLayout() {
+        return detail::g_last_layout.load();
+    }
+
+    // Absolute offset of button byte 0 (face buttons + d-pad hat) in the
+    // last parsed raw report; +1/+2 give button bytes 1/2.
+    inline size_t GetButtonBlockPos() {
+        return detail::g_b0_pos.load();
+    }
+
+    // Device's HID OutputReportByteLength (0 when unknown/disconnected).
+    // Output writes are zero-padded up to this size.
+    inline DWORD GetOutputReportLength() {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        return detail::g_out_report_len;
+    }
+
+    // Identity of the opened device: VID/PID and the HID product string
+    // (empty when nothing is connected).
+    inline void GetDeviceInfo(u16& vid, u16& pid, wchar_t* product, size_t product_chars) {
+        vid = detail::g_dev_vid;
+        pid = detail::g_dev_pid;
+        wcsncpy_s(product, product_chars, detail::g_dev_product, _TRUNCATE);
+    }
+
+    // Override the output wire format (0=auto, 1=DS5 USB, 2=DS5 BT,
+    // 3=DS4 USB, 4=DS4 BT).  Re-sends the current output state immediately.
+    inline void SetOutputFormatOverride(int format) {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        detail::g_out_format_override = format;
+        detail::SendOutputLocked();
+    }
+
+    // Set the five player-indicator LEDs (bits 0..4 = RIGHT..LEFT physically:
+    // bit 0 is the rightmost LED on the controller, bit 4 the leftmost).
+    // `fade` asks for a fade transition.
+    inline void SetPlayerLeds(u8 bitmask, bool fade) {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        if (detail::g_player_leds == bitmask && detail::g_player_led_fade == fade) {
+            return;
+        }
+        detail::g_player_leds = static_cast<u8>(bitmask & 0x1F);
+        detail::g_player_led_fade = fade;
+        detail::SendOutputLocked();
+    }
+
+    // LED options: brightness 0=high 1=medium 2=low; `disabled` kills all
+    // LEDs on the controller (lightbar + player LEDs).
+    inline void SetLedOptions(u8 brightness, bool disabled) {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        detail::g_led_brightness = brightness > 2 ? static_cast<u8>(2) : brightness;
+        detail::g_leds_disabled = disabled;
+        detail::SendOutputLocked();
+    }
+
+    // Microphone LED: 0=off, 1=on, 2=pulse.
+    inline void SetMicLed(u8 mode) {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        if (detail::g_mic_led == mode) {
+            return;
+        }
+        detail::g_mic_led = mode > 2 ? static_cast<u8>(0) : mode;
+        detail::SendOutputLocked();
+    }
+
+    // Lightbar RGB color (full 8-bit per channel).
+    inline void SetLightBar(u8 r, u8 g, u8 b) {
+        std::lock_guard<std::mutex> lock(detail::g_out_mutex);
+        if (detail::g_lightbar[0] == r && detail::g_lightbar[1] == g &&
+            detail::g_lightbar[2] == b) {
+            return;
+        }
+        detail::g_lightbar[0] = r;
+        detail::g_lightbar[1] = g;
+        detail::g_lightbar[2] = b;
+        detail::SendOutputLocked();
     }
 
     // Drive the rumble motors (0..255 each, matching ScePadVibrationParam).
@@ -452,19 +764,23 @@ namespace DualSense {
     }
 
     // Set one adaptive-trigger effect.  `left` selects L2 (true) or R2
-    // (false).  Modes per the public DualSense trigger documentation:
-    //   0x00 off
+    // (false).  `mode` is the raw DualSense effect byte; known values:
+    //   0x00 off        0x01 rigid/feedback   0x02 pulse/section
+    //   0x05 rigid B    0x06 pulse B          0x21 rigid A / feedback
+    //   0x22 pulse A    0x23 pulse A2         0x25 rigid AB / weapon
+    //   0x26 pulse B2 / vibration             0x27 pulse AB
+    // Params are mode-specific (the DSX/Steam presets build them); for the
+    // basic modes 0x01..0x03 they are clamped defensively:
     //   0x01 feedback:  params[0] = start position 0..9, params[1] = force 0..8
     //   0x02 weapon:    params[0] = start 2..7, params[1] = end >start..8,
     //                   params[2] = force 0..8
     //   0x03 vibration: params[0] = position 0..9, params[1] = amplitude 0..8,
     //                   params[2] = frequency 0..255
-    // Params are clamped defensively; unknown modes are forced to off.
     // No-op when no DualSense is connected or the handle is read-only.
     inline void SetTriggerEffect(bool left, u8 mode, const u8 params[10]) {
         std::lock_guard<std::mutex> lock(detail::g_out_mutex);
         detail::TriggerEffect& t = detail::g_trigger[left ? 0 : 1];
-        t.mode = mode <= 0x03 ? mode : static_cast<u8>(0x00);
+        t.mode = mode;
         for (int i = 0; i < 10; ++i) {
             t.params[i] = params[i];
         }

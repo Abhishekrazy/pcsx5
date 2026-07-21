@@ -130,7 +130,8 @@ $filesToCopy = @(
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.deps.json"; Dest = Join-Path $distDir "pcsx5_ui.deps.json" },
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.runtimeconfig.json"; Dest = Join-Path $distDir "pcsx5_ui.runtimeconfig.json" },
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "config.ini"; Dest = Join-Path $distDir "config.ini" },
-    @{ Source = Join-Path $buildDir "pcsx5_snd_decode.exe"; Dest = Join-Path $distDir "pcsx5_snd_decode.exe" }
+    @{ Source = Join-Path $buildDir "pcsx5_snd_decode.exe"; Dest = Join-Path $distDir "pcsx5_snd_decode.exe" },
+    @{ Source = Join-Path $buildDir "dualsense_visual.exe"; Dest = Join-Path $distDir "dualsense_visual.exe" }
 )
 
 foreach ($item in $filesToCopy) {

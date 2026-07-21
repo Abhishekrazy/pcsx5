@@ -644,6 +644,7 @@
                                 <Grid Grid.Row="4" Margin="0,5,0,0">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                                         <Button Content="Restore Defaults" Style="{StaticResource ModernButtonStyle}" Width="110" Height="26" FontSize="10" Padding="0"/>
+                                        <Button Content="Controller Tester" Style="{StaticResource ModernButtonStyle}" Width="110" Height="26" FontSize="10" Padding="0" Margin="6,0,0,0" Click="ControllerTesterBtn_Click" ToolTip="Open the DualSense tester (dualsense_visual.exe): buttons, sticks, touch, gyro, rumble, adaptive triggers, LEDs"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Content="Save" Style="{StaticResource ModernButtonStyle}" Width="65" Height="26" FontSize="10" Padding="0" Click="SaveSettingsBtn_Click"/>
