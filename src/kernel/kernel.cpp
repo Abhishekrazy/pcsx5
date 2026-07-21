@@ -608,8 +608,22 @@ namespace Kernel {
                              record->module.name.c_str());
                 }
                 PatchSyscalls(record->module.segments);
+                // Same shared-page union merge as the main module path: PRX
+                // segments can overlap a 16KB guest page.
                 for (const auto& seg : record->module.segments) {
-                    if (Memory::Protect(seg.address, seg.size, seg.final_protection) != Memory::Status::Ok) {
+                    const u64 page_first = seg.address & ~(static_cast<u64>(PAGE_SIZE) - 1);
+                    const u64 page_last = (seg.address + seg.size + PAGE_SIZE - 1) &
+                                          ~(static_cast<u64>(PAGE_SIZE) - 1);
+                    u32 merged = 0;
+                    for (const auto& other : record->module.segments) {
+                        const u64 a = other.address & ~(static_cast<u64>(PAGE_SIZE) - 1);
+                        const u64 b = (other.address + other.size + PAGE_SIZE - 1) &
+                                      ~(static_cast<u64>(PAGE_SIZE) - 1);
+                        if (a < page_last && page_first < b) {
+                            merged |= other.final_protection;
+                        }
+                    }
+                    if (Memory::Protect(page_first, page_last - page_first, merged) != Memory::Status::Ok) {
                         LOG_WARN(Kernel, "Failed to set final protection for PRX segment at 0x%llx", seg.address);
                     }
                 }
@@ -762,9 +776,26 @@ namespace Kernel {
         // Scan and patch "syscall" instructions to trap them via VEH
         PatchSyscalls(out_module.segments);
 
-        // Apply final page protections for all segments
+        // Apply final page protections for all segments.  ELF segments can
+        // share a 16KB guest page (lld emits unaligned, page-overlapping
+        // PT_LOADs); protecting them individually downgrades the shared page
+        // to the first segment's rights (e.g. strips EXEC).  Merge the
+        // protection of every segment overlapping a page into a union and
+        // apply it once, page-aligned.
         for (const auto& seg : out_module.segments) {
-            if (Memory::Protect(seg.address, seg.size, seg.final_protection) != Memory::Status::Ok) {
+            const u64 page_first = seg.address & ~(static_cast<u64>(PAGE_SIZE) - 1);
+            const u64 page_last = (seg.address + seg.size + PAGE_SIZE - 1) &
+                                  ~(static_cast<u64>(PAGE_SIZE) - 1);
+            u32 merged = 0;
+            for (const auto& other : out_module.segments) {
+                const u64 a = other.address & ~(static_cast<u64>(PAGE_SIZE) - 1);
+                const u64 b = (other.address + other.size + PAGE_SIZE - 1) &
+                              ~(static_cast<u64>(PAGE_SIZE) - 1);
+                if (a < page_last && page_first < b) {
+                    merged |= other.final_protection;
+                }
+            }
+            if (Memory::Protect(page_first, page_last - page_first, merged) != Memory::Status::Ok) {
                 LOG_WARN(Kernel, "Failed to set final protection for segment at 0x%llx",
                          seg.address);
             }
