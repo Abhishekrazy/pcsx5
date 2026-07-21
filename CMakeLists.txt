@@ -578,6 +578,7 @@ if(BUILD_TESTING)
         # .bat file can operate on a stable working directory.  build_all.bat
         # derives source names from the ELF name (<elf>_main.cpp), so the
         # copies must be renamed accordingly.
+        file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/test_elf)
         file(COPY_FILE ${CMAKE_SOURCE_DIR}/tests/test_elf/main.cpp
              ${CMAKE_BINARY_DIR}/test_elf/test_guest_main.cpp)
         file(COPY_FILE ${CMAKE_SOURCE_DIR}/tests/test_elf/tls_main.cpp
