@@ -18,7 +18,7 @@ pushd "%~dp0"
 for %%F in (%ELFS%) do (
     if exist "%%~nF_main.cpp" (
         echo [BUILD] %%F
-        clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -Wl,--entry=_start -o "%OUTDIR%%%F" "%%~nF_main.cpp"
+        clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -fuse-ld=lld -Wl,--entry=_start -o "%OUTDIR%%%F" "%%~nF_main.cpp"
         if errorlevel 1 (
             echo [ERROR] Failed to compile %%F.
             popd
