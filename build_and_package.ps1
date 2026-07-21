@@ -95,7 +95,7 @@ $f2 = Join-Path $basePath "pcsx5_ui.exe"
 $f3 = Join-Path $basePath "pcsx5_ui.dll"
 $f4 = Join-Path $basePath "pcsx5_ui.deps.json"
 $f5 = Join-Path $basePath "pcsx5_ui.runtimeconfig.json"
-$f6 = Join-Path $basePath "config.ini"
+$f6 = Join-Path $assetsDir "config.ini"
 $f7 = Join-Path $basePath "pcsx5_ui.pdb"
 $requiredFiles = @($f1, $f2, $f3, $f4, $f5, $f6, $f7)
 
@@ -129,7 +129,7 @@ $filesToCopy = @(
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.dll"; Dest = Join-Path $distDir "pcsx5_ui.dll" },
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.deps.json"; Dest = Join-Path $distDir "pcsx5_ui.deps.json" },
     @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.runtimeconfig.json"; Dest = Join-Path $distDir "pcsx5_ui.runtimeconfig.json" },
-    @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "config.ini"; Dest = Join-Path $distDir "config.ini" },
+    @{ Source = Join-Path $assetsDir "config.ini"; Dest = Join-Path $distDir "config.ini" },
     @{ Source = Join-Path $buildDir "pcsx5_snd_decode.exe"; Dest = Join-Path $distDir "pcsx5_snd_decode.exe" },
     @{ Source = Join-Path $buildDir "dualsense_visual.exe"; Dest = Join-Path $distDir "dualsense_visual.exe" }
 )
