@@ -13,18 +13,19 @@ suffixes.  There are three channels:
 
 | Channel | Tag format | Example | GitHub Release type |
 | ------- | ---------- | ------- | ------------------- |
-| **Alpha** | `v<version>-alpha` | `v0.0.1-alpha` | Pre-release |
+| **Alpha** | `v<version>-alpha` | `v0.0.1-alpha` | Stable release |
 | **Beta**  | `v<version>-beta`  | `v0.2.0-beta`  | Pre-release |
 | **Stable** | `v<version>` | `v1.0.0` | Stable release |
 
 Notes:
 
-* Alpha and beta tags are published as **pre-releases** on GitHub —
-  they do not replace the "Latest" stable release.
+* Alpha tags are published as **full releases** on GitHub (they can be
+  marked "Latest").  Only beta and rc tags are published as
+  **pre-releases**.
 * Iterations within a channel can add a counter:
   `v0.0.1-alpha.2`, `v0.1.0-beta.3`, `v1.0.0-rc.1`.
-  Any tag containing `-alpha`, `-beta`, or `-rc` is marked as a
-  pre-release automatically.
+  Any tag containing `-beta` or `-rc` is marked as a pre-release
+  automatically.
 * Every push to `main` and every pull request still builds and tests,
   but only `v*` tags publish a GitHub Release.
 
