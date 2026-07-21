@@ -4,16 +4,36 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWpf>true</UseWpf>
-    <AssemblyName>pcsx5_ui</AssemblyName>
-    <ApplicationTitle>PCSX5 Native Windows UI</ApplicationTitle>
-<ApplicationIcon>pcsx5_icon.ico</ApplicationIcon>
-</PropertyGroup>
+    <AssemblyName>pcsx5</AssemblyName>
+    <ApplicationTitle>PCSX5 PlayStation 5 Emulator</ApplicationTitle>
+    <ApplicationIcon>pcsx5_icon.ico</ApplicationIcon>
+    <!-- Single-file self-contained publish: `dotnet build` still produces a
+         normal framework-dependent layout for dev; `dotnet publish` produces
+         the shippable single pcsx5.exe. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
 
   <ItemGroup>
     <Resource Include="ps5_controller.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>
     <Resource Include="pcsx5_icon.ico" />
+  </ItemGroup>
+
+  <!-- Emulator core built by CMake (build/bin/pcsx5_core.dll).  Copied next
+       to the app in both build and publish output so DllImport("pcsx5_core")
+       resolves at runtime.  Conditional so a missing native build does not
+       break a pure-C# compile. -->
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)/../../build/bin/pcsx5_core.dll')">
+    <!-- Build: copied loose next to the app.  Publish (single-file): bundled
+         into pcsx5.exe via IncludeNativeLibrariesForSelfExtract — DllImport
+         resolves it from the bundle at runtime. -->
+    <Content Include="$(MSBuildProjectDirectory)/../../build/bin/pcsx5_core.dll" Link="pcsx5_core.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

@@ -176,8 +176,11 @@ if(MSVC)
     target_compile_options(atrac9 PRIVATE $<$<COMPILE_LANGUAGE:C>:/W3>)
 endif()
 
-add_executable(pcsx5
-    src/main.cpp
+# Emulator core as a shared library: the WPF app hosts it in-process, and
+# pcsx5_cli.exe (thin argv shim) links against it for ctest/dev use.
+add_library(pcsx5_core SHARED
+    src/core_api.h
+    src/core_api.cpp
     src/common/types.h
     src/common/log.h
     src/common/log.cpp
@@ -235,6 +238,12 @@ add_executable(pcsx5
     src/lua/lua_init.h
     src/lua/lua_init.cpp
     ${DISPATCHER_SRC}
+)
+
+# Thin CLI shim over the core C API (dev/ctest; frees the pcsx5.exe name for
+# the WPF single-file app).
+add_executable(pcsx5_cli
+    src/main.cpp
     src/pcsx5.rc
 )
 
@@ -608,7 +617,7 @@ if(BUILD_TESTING)
 
         # Syscall smoke test: writes "Hello Guest\n" via sys_write and exits.
         add_test(NAME guest_syscall_smoke
-            COMMAND pcsx5 --strict-imports --report=${CMAKE_BINARY_DIR}/guest_syscall_report.json
+            COMMAND pcsx5_cli --strict-imports --report=${CMAKE_BINARY_DIR}/guest_syscall_report.json
                     ${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
         )
         set_tests_properties(guest_syscall_smoke PROPERTIES
@@ -619,7 +628,7 @@ if(BUILD_TESTING)
 
         # TLS smoke test: uses fs:0 read/write to verify the VEH trap.
         add_test(NAME guest_tls_smoke
-            COMMAND pcsx5 --strict-imports --report=${CMAKE_BINARY_DIR}/guest_tls_report.json
+            COMMAND pcsx5_cli --strict-imports --report=${CMAKE_BINARY_DIR}/guest_tls_report.json
                     ${CMAKE_BINARY_DIR}/test_elf/tls_guest.elf
         )
         set_tests_properties(guest_tls_smoke PROPERTIES
@@ -633,15 +642,21 @@ if(BUILD_TESTING)
             "Install LLVM/clang and reconfigure to enable these tests.")
     endif()
 # Enable Lua scripting for the subsystem lifecycle init script.
-target_compile_definitions(pcsx5 PRIVATE PCSX5_HAS_LUA PCSX5_TLS_PATCH_FULL)
+target_compile_definitions(pcsx5_core PRIVATE PCSX5_HAS_LUA PCSX5_TLS_PATCH_FULL)
 
 # Link GLFW, Vulkan Headers, and Lua dependencies
-target_link_libraries(pcsx5 PRIVATE glfw Vulkan::Headers lua ws2_32 nlohmann_json::nlohmann_json atrac9)
-target_include_directories(pcsx5 PRIVATE src)
+target_link_libraries(pcsx5_core PRIVATE glfw Vulkan::Headers lua ws2_32 nlohmann_json::nlohmann_json atrac9)
+target_include_directories(pcsx5_core PRIVATE src)
+
+target_link_libraries(pcsx5_cli PRIVATE pcsx5_core)
+target_include_directories(pcsx5_cli PRIVATE src)
 
 # Add Windows SDK include path for resource compiler (RC) to find windows.h
 if(MSVC)
-    target_include_directories(pcsx5 PRIVATE
+    target_include_directories(pcsx5_core PRIVATE
+        $<$<COMPILE_LANGUAGE:RC>:${CMAKE_RC_INCLUDE_PATH}>
+    )
+    target_include_directories(pcsx5_cli PRIVATE
         $<$<COMPILE_LANGUAGE:RC>:${CMAKE_RC_INCLUDE_PATH}>
     )
     # Windows SDK / MSVC system libraries (ws2_32, ucrt, msvcprt, ...) are
@@ -651,12 +666,14 @@ endif()
 
 # Enable high compiler warnings and warnings-as-errors to maintain code cleanliness for C++ files
 if(MSVC)
-    target_compile_options(pcsx5 PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_options(pcsx5 PRIVATE "/MAP")
+    target_compile_options(pcsx5_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_options(pcsx5_core PRIVATE "/MAP")
+    target_compile_options(pcsx5_cli PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_options(pcsx5_cli PRIVATE "/MAP")
 endif()
 
 # Set binary output directories
-set_target_properties(pcsx5 PROPERTIES
+set_target_properties(pcsx5_core pcsx5_cli PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
@@ -779,19 +796,20 @@ add_executable(dump_imports
     add_test(NAME pcsx5_compat COMMAND pcsx5_compat --root $<CONFIG>/compat_seed list)
 
     # ------------------------------------------------------------------------
-    # pcsx5_ui — the desktop UI for end users.  Dear ImGui + GLFW + OpenGL3
-    # backend.  Out-of-process: it spawns pcsx5.exe as a child and pipes
-    # stdout/stderr into the detachable console window.
-    # ------------------------------------------------------------------------
-    # pcsx5_ui — the desktop UI for end users. Compiled in C# (WPF) with native Windows 11 Mica.
-    # Out-of-process: it spawns pcsx5.exe as a child and pipes stdout/stderr.
+    # pcsx5_ui — the desktop UI for end users.  Compiled in C# (WPF) with
+    # native Windows 11 Mica.  Hosts the emulator core in-process via
+    # pcsx5_core.dll (CoreBridge P/Invoke).
     # Requires the .NET SDK; skipped with a message when dotnet is not on PATH.
     find_program(DOTNET_EXE NAMES dotnet)
     if(DOTNET_EXE)
+        # Single-file self-contained publish: build/publish/pcsx5.exe with
+        # pcsx5_core.dll copied alongside (see Pcsx5Ui.csproj).  Phase 3's
+        # packaging consumes this directory.
         add_custom_target(pcsx5_ui ALL
-            COMMAND "${DOTNET_EXE}" build "${CMAKE_SOURCE_DIR}/src/ui_csharp/Pcsx5Ui.csproj" -c Release -o "${CMAKE_BINARY_DIR}/Release/"
-            COMMENT "Building C# WPF Emulator UI (Mica, Fluent Design)"
+            COMMAND "${DOTNET_EXE}" publish "${CMAKE_SOURCE_DIR}/src/ui_csharp/Pcsx5Ui.csproj" -c Release -o "${CMAKE_BINARY_DIR}/publish/"
+            COMMENT "Publishing C# WPF Emulator UI (single-file pcsx5.exe)"
         )
+        add_dependencies(pcsx5_ui pcsx5_core)
     else()
         message(STATUS "dotnet SDK not found on PATH — skipping pcsx5_ui target")
     endif()

@@ -77,27 +77,21 @@ if (-not $SkipBuild) {
 
 # Verify build outputs exist
 $basePath = Join-Path $buildDir $BuildConfig
+$publishDir = Join-Path $buildDir "publish"
 
-# Ninja builds place pcsx5.exe under build\bin (RUNTIME_OUTPUT_DIRECTORY in
-# CMakeLists.txt), while VS-generator builds use build\<Config>.  Prefer the
-# freshest copy so -SkipBuild never packages a stale exe.
-$pcsx5Exe = Join-Path $basePath "pcsx5.exe"
-$pcsx5ExeBin = Join-Path (Join-Path $buildDir "bin") "pcsx5.exe"
-if ((Test-Path $pcsx5ExeBin) -and
-    (-not (Test-Path $pcsx5Exe) -or
-     (Get-Item $pcsx5ExeBin).LastWriteTime -gt (Get-Item $pcsx5Exe).LastWriteTime)) {
-    $pcsx5Exe = $pcsx5ExeBin
-}
+# The GUI is the single-file self-contained publish (emulator core embedded);
+# pcsx5_cli.exe is the thin native CLI (dev/ctest) and needs pcsx5_core.dll
+# next to it at runtime.
+$pcsx5Exe = Join-Path $publishDir "pcsx5.exe"
+$pcsx5CliExe = Join-Path (Join-Path $buildDir "bin") "pcsx5_cli.exe"
+$pcsx5CoreDll = Join-Path (Join-Path $buildDir "bin") "pcsx5_core.dll"
 
 # Create required files array using individual variables to avoid Join-Path array parsing issue
 $f1 = $pcsx5Exe
-$f2 = Join-Path $basePath "pcsx5_ui.exe"
-$f3 = Join-Path $basePath "pcsx5_ui.dll"
-$f4 = Join-Path $basePath "pcsx5_ui.deps.json"
-$f5 = Join-Path $basePath "pcsx5_ui.runtimeconfig.json"
-$f6 = Join-Path $assetsDir "config.ini"
-$f7 = Join-Path $basePath "pcsx5_ui.pdb"
-$requiredFiles = @($f1, $f2, $f3, $f4, $f5, $f6, $f7)
+$f2 = $pcsx5CliExe
+$f3 = $pcsx5CoreDll
+$f4 = Join-Path $assetsDir "config.ini"
+$requiredFiles = @($f1, $f2, $f3, $f4)
 
 $missingFiles = @()
 foreach ($file in $requiredFiles) {
@@ -125,13 +119,11 @@ New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 Write-Log "Copying executables and DLLs..."
 $filesToCopy = @(
     @{ Source = $pcsx5Exe; Dest = Join-Path $distDir "pcsx5.exe" },
-    @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.exe"; Dest = Join-Path $distDir "pcsx5_ui.exe" },
-    @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.dll"; Dest = Join-Path $distDir "pcsx5_ui.dll" },
-    @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.deps.json"; Dest = Join-Path $distDir "pcsx5_ui.deps.json" },
-    @{ Source = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_ui.runtimeconfig.json"; Dest = Join-Path $distDir "pcsx5_ui.runtimeconfig.json" },
+    @{ Source = $pcsx5CliExe; Dest = Join-Path $distDir "pcsx5_cli.exe" },
+    @{ Source = $pcsx5CoreDll; Dest = Join-Path $distDir "pcsx5_core.dll" },
     @{ Source = Join-Path $assetsDir "config.ini"; Dest = Join-Path $distDir "config.ini" },
     @{ Source = Join-Path $buildDir "pcsx5_snd_decode.exe"; Dest = Join-Path $distDir "pcsx5_snd_decode.exe" },
-    @{ Source = Join-Path $buildDir "dualsense_visual.exe"; Dest = Join-Path $distDir "dualsense_visual.exe" }
+    @{ Source = Join-Path $buildDir "pcsx5_boot_parser.exe"; Dest = Join-Path $distDir "pcsx5_boot_parser.exe" }
 )
 
 foreach ($item in $filesToCopy) {
@@ -193,10 +185,10 @@ Write-Log "Creating launcher scripts..."
 $launcherContent = @"
 @echo off
 REM PCSX5 Launcher
-REM Launches the PCSX5 UI which manages the emulator process
+REM Launches the PCSX5 emulator UI (single-file app; hosts the core in-process)
 
 cd /d "%~dp0"
-start "" "pcsx5_ui.exe" %*
+start "" "pcsx5.exe" %*
 "@
 Set-Content -Path (Join-Path $distDir "PCSX5.bat") -Value $launcherContent -Encoding ASCII
 Write-Log "  Created: PCSX5.bat"
@@ -209,11 +201,12 @@ This package contains the PCSX5 PlayStation 5 emulator and its UI frontend.
 
 ## Contents
 
-- `pcsx5.exe` - Main emulator core
-- `pcsx5_ui.exe` - WPF UI frontend (Windows 11 Mica/Fluent Design)
-- `pcsx5_ui.dll` - UI library
-- `pcsx5_ui.deps.json` / `pcsx5_ui.runtimeconfig.json` - .NET 9 runtime configuration
+- `pcsx5.exe` - The emulator: single-file self-contained WPF app (Windows 11
+  Mica/Fluent Design) with the emulator core hosted in-process
+- `pcsx5_cli.exe` - Command-line frontend (same flags as before; dev/test use)
+- `pcsx5_core.dll` - Emulator core shared library (required by pcsx5_cli.exe)
 - `pcsx5_snd_decode.exe` - Standalone ATRAC9/OGG to WAV sound decoder
+- `pcsx5_boot_parser.exe` - Executable boot & memory analyzer used by the UI Tools tab
 - `config.ini` - Default configuration file
 - `pcsx5_config/` - Configuration directory
 - `pcsx5_crash/` - Crash dump directory
@@ -224,18 +217,18 @@ This package contains the PCSX5 PlayStation 5 emulator and its UI frontend.
 ## Requirements
 
 - Windows 10/11 (64-bit)
-- .NET 9.0 Desktop Runtime
 - Vulkan-compatible GPU
 - Visual C++ Redistributable (latest)
 
+(No .NET runtime installation needed - pcsx5.exe is self-contained.)
+
 ## Usage
 
-Run `PCSX5.bat` or `pcsx5_ui.exe` to launch the emulator UI.
-The UI will manage the emulator process automatically.
+Run `PCSX5.bat` or `pcsx5.exe` to launch the emulator UI.
 
-For command-line usage:
+For command-line usage (same flags as before):
 ```
-pcsx5.exe --help
+pcsx5_cli.exe --help
 ```
 
 ## Sound Decoder

@@ -5,6 +5,7 @@
   "sidebar.view": "보기",
   "sidebar.help": "도움말",
   "sidebar.language": "언어",
+  "sidebar.input": "입력",
   "status.running": "실행 중",
   "status.paused": "일시 정지",
   "status.idle": "대기",

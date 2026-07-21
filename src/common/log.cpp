@@ -33,6 +33,8 @@ std::atomic<bool>     g_file_active{false};
 std::mutex            g_file_mutex;
 std::ofstream         g_file_stream;
 std::string           g_file_path;
+LogConfig::LogCallback g_log_callback = nullptr;
+void*                 g_log_callback_user = nullptr;
 LogLevel              g_min_levels[7] = {
     LogLevel::Info, // Loader
     LogLevel::Info, // Memory
@@ -221,6 +223,11 @@ LogLevel GetLevel(LogCategory category) {
     if (idx < 0 || idx >= 7) return LogLevel::Info;
     return g_min_levels[idx];
 }
+
+void SetLogCallback(LogCallback callback, void* user) {
+    g_log_callback = callback;
+    g_log_callback_user = user;
+}
 } // namespace LogConfig
 
 std::vector<LogEntry> GetRecentLogEntries(size_t max_count) {
@@ -278,5 +285,11 @@ void LogMessageRaw(LogCategory category, LogLevel level,
                           << LogLevelName(level) << "] " << e.message << "\n";
             g_file_stream.flush();
         }
+    }
+
+    // Optional callback sink (in-process host console panel)
+    if (g_log_callback) {
+        g_log_callback(static_cast<int>(level), static_cast<int>(category),
+                       e.message.c_str(), g_log_callback_user);
     }
 }

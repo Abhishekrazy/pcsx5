@@ -89,8 +89,9 @@ cmake --build build
 ### Output Locations
 
 ```
-build/bin/Debug/pcsx5.exe      # Debug build with symbols
-build/bin/Release/pcsx5.exe    # Optimized release build
+build/bin/Release/pcsx5_cli.exe   # CLI frontend (dev) + pcsx5_core.dll
+build/publish/pcsx5.exe           # Single-file self-contained GUI app
+                                  # (emulator core hosted in-process)
 ```
 
 ### Running Tests
@@ -113,10 +114,10 @@ Expected: 8+ passing tests covering ELF loading, memory management, TLS, HLE imp
 
 ```powershell
 # Launch a decrypted PS5 executable (eboot.bin or .elf)
-.\build\bin\Release\pcsx5.exe "C:\Path\To\Game\eboot.bin"
+.\build\bin\Release\pcsx5_cli.exe "C:\Path\To\Game\eboot.bin"
 
 # With custom config
-.\build\bin\Release\pcsx5.exe --config config.json "C:\Path\To\Game\eboot.bin"
+.\build\bin\Release\pcsx5_cli.exe --config config.json "C:\Path\To\Game\eboot.bin"
 ```
 
 ### Supported Formats
@@ -152,6 +153,9 @@ pcsx5/
 │   ├── diagnostics/     # Compatibility reports, logging, statistics
 │   ├── config/          # Configuration system (JSON)
 │   ├── reports/         # JSON report generation
+│   ├── core_api.{h,cpp}  # C API seam (init/load/run/stop/shutdown) shared by
+│   │                    # the WPF host and the pcsx5_cli shim
+│   ├── ui_csharp/       # WPF GUI (single-file pcsx5.exe, core in-process)
 │   └── lua/             # Lua 5.4 scripting engine for init/automation
 ├── tests/               # Unit & integration tests
 ├── compat/              # Game-specific compatibility patches

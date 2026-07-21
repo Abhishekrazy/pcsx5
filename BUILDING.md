@@ -67,12 +67,18 @@ cmake --build build --config Debug
 > Replace `Visual Studio 17 2022` with `Visual Studio 18 2026` if you are
 > on the newer toolchain.  The build is otherwise identical.
 
-The resulting executable is at:
+The resulting binaries are at:
 
 ```
-build/bin/Debug/pcsx5.exe          (Debug)
-build/bin/Release/pcsx5.exe        (Release)
+build/bin/Debug/pcsx5_cli.exe      (Debug CLI frontend + emulator core DLL)
+build/bin/Release/pcsx5_cli.exe    (Release CLI frontend)
+build/bin/<Config>/pcsx5_core.dll  (emulator core shared library)
+build/publish/pcsx5.exe            (single-file self-contained WPF app —
+                                    the emulator GUI, core hosted in-process)
 ```
+
+`pcsx5.exe` was the old native CLI name; it is now the GUI.  The native
+command-line frontend is `pcsx5_cli.exe` (same flags as before).
 
 ### Ninja (faster incremental)
 
@@ -140,7 +146,7 @@ print `Hello Guest` and `TLS OK` respectively.
 ## 5. Command-line flags
 
 ```text
-pcsx5.exe [options] <path-to-eboot-or-elf>
+pcsx5_cli.exe [options] <path-to-eboot-or-elf>
 
   --strict-imports             Fail (return non-zero) on unresolved imports.
   --report=<path>              Write a JSON compatibility summary to <path>.
@@ -155,7 +161,7 @@ pcsx5.exe [options] <path-to-eboot-or-elf>
 A typical contributor smoke run:
 
 ```powershell
-.\build\bin\Debug\pcsx5.exe `
+.\build\bin\Debug\pcsx5_cli.exe `
     --config-dir=.\pcsx5_config `
     --title-id=CUSA00001 `
     --report=.\pcsx5_config\CUSA00001.json `
@@ -180,7 +186,12 @@ pcsx5/
 │   ├── kernel/         # Process + thread context, VEH trap, ELF loader
 │   ├── loader/         # ELF64 parser + ElfBuilder (test fixture)
 │   ├── memory/         # 16KB page VirtualAlloc-backed memory manager
-│   └── reports/        # CompatSummary, jsonl history, regression verdicts
+│   ├── reports/        # CompatSummary, jsonl history, regression verdicts
+│   ├── core_api.{h,cpp} # C API seam (pcsx5_init/load/run/stop/shutdown);
+│   │                   # backs both the WPF host and the CLI shim
+│   ├── main.cpp        # pcsx5_cli: thin argv -> C API shim
+│   └── ui_csharp/      # WPF app (pcsx5.exe): hosts the core in-process
+│   │                   # via CoreBridge P/Invoke against pcsx5_core.dll
 ├── tests/              # CTest targets (one .cpp per test executable)
 │   └── test_elf/       # Freestanding guest ELFs (built by clang)
 ├── tools/              # Python helpers (NID extraction, SCE parsing)
@@ -256,8 +267,8 @@ Tests that depend on the HLE ABI bridge must also include
 An `extern "C"` function is being declared inside another function.
 Move the declaration to file scope.
 
-### `error C1104: fatal error LNK1104: cannot open 'pcsx5.exe'`
-Another `pcsx5.exe` is still running.  Stop the previous build's process
+### `error C1104: fatal error LNK1104: cannot open 'pcsx5_core.dll'`
+Another emulator instance (GUI or `pcsx5_cli.exe`) is still running.  Stop it
 and retry.
 
 ### `error MSB6006: "cmd.exe" exited with code 1` during the linker step
@@ -297,9 +308,13 @@ The installer wizard shows:
 2. the **license / terms page** (the repo `LICENSE`),
 3. the standard **installation path** picker (default
    `%ProgramFiles%\PCSX5`),
-4. a **games folder page** whose value is written to
-   `[Paths] GameFolders` in `config.ini`,
-5. a **"Launch PCSX5"** checkbox on the finish page.
+4. a **"Launch PCSX5"** checkbox on the finish page.
+
+The games folder is no longer asked for during installation — it used to
+have its own wizard page, but that page was removed.  The installer now
+writes an empty `[Paths] GameFolders` value to `config.ini`, and the UI
+detects it on first launch and shows its own **first-run setup dialog**
+where the user picks (or skips) the games folder.
 
 To build it locally, install Inno Setup 6 and run:
 

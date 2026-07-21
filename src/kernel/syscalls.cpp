@@ -223,6 +223,11 @@ s64 HandleSyscall(u32 syscall_number, CONTEXT* context) {
 
 s64 SysExit(s32 status, CONTEXT*) {
     LOG_INFO(Kernel, "sys_exit(status=%d)", status);
+    if (Kernel::IsInProcMode()) {
+        // In-proc hosting: never kill the host process — unwind the guest
+        // back into Kernel::Execute via the longjmp exit path instead.
+        HLE::ExitGuestProcess(static_cast<u32>(status));
+    }
     if (status != 0x999999) {
         ExitProcess(static_cast<UINT>(status));
     }

@@ -28,6 +28,7 @@ namespace Pcsx5Ui
         R3 = 1 << 13,
         Options = 1 << 14,
         TouchPad = 1 << 15,
+        Back = 1 << 16, // DualSense "Create" button
     }
 
     public readonly struct HostGamepadState
@@ -62,6 +63,24 @@ namespace Pcsx5Ui
         }
     }
 
+    public enum DualSenseTriggerSide
+    {
+        Left,
+        Right,
+        Both,
+    }
+
+    // Adaptive trigger effect modes, per the DualSense-Windows (ds5w.h) trigger
+    // effect types. Params are packed into the 10-byte effect block of the
+    // output report (first 6 bytes used, rest padded with zeros).
+    public enum DualSenseTriggerMode
+    {
+        Off = 0x00,        // NoResitance in ds5w.h
+        Feedback = 0x01,   // ContinuousResitance: startPosition + force
+        Weapon = 0x02,     // SectionResitance: startPosition + endPosition
+        Vibration = 0x26,  // EffectEx: startPosition, keepEffect, begin/middle/end force, frequency
+    }
+
     internal static class WindowsDualSenseReader
     {
         private const ushort SonyVendorId = 0x054C;
@@ -84,6 +103,18 @@ namespace Pcsx5Ui
         private static byte _lightbarGreen;
         private static byte _lightbarBlue = 64; // PS-style blue default
         private static byte _playerLeds = 0x04; // center LED = player 1
+
+        // Adaptive trigger effect blocks: 7 bytes each (type + 6 params), packed
+        // into the 10-byte trigger effect zones of the output report.
+        private static readonly byte[] _leftTriggerEffect = new byte[7];
+        private static readonly byte[] _rightTriggerEffect = new byte[7];
+
+        // True while the controller is connected over Bluetooth (output uses the
+        // 0x31 report + CRC32 instead of the plain USB 0x02 report).
+        internal static bool IsBluetooth
+        {
+            get { lock (Gate) { return _outputReady && _bluetooth; } }
+        }
 
         internal static void EnsureStarted()
         {
@@ -160,6 +191,78 @@ namespace Pcsx5Ui
 
         internal static void ResetLightbar() => SetLightbar(0, 0, 64);
 
+        // Player indicator LEDs bitmask (5 LEDs under the touchpad). Common
+        // patterns: player 1 = 0x04, 2 = 0x0A, 3 = 0x15, 4 = 0x1B, 5 = 0x1F.
+        internal static void SetPlayerLeds(byte bitmask)
+        {
+            lock (Gate)
+            {
+                if (_playerLeds == bitmask)
+                {
+                    return;
+                }
+
+                _playerLeds = bitmask;
+                SendOutputLocked();
+            }
+        }
+
+        // Sets an adaptive trigger effect. Parameter meaning depends on the mode
+        // (see ds5w.h TriggerEffect union):
+        //   Off:       all params ignored
+        //   Feedback:  param1 = start position, param2 = force
+        //   Weapon:    param1 = start position, param2 = end position (>= start)
+        //   Vibration: param1 = start position, param2 = frequency,
+        //              force = vibration strength (begin/middle/end forces)
+        internal static void SetAdaptiveTrigger(
+            DualSenseTriggerSide side,
+            DualSenseTriggerMode mode,
+            byte param1 = 0,
+            byte param2 = 0,
+            byte force = 0xFF)
+        {
+            var effect = new byte[7];
+            effect[0] = (byte)mode;
+            switch (mode)
+            {
+                case DualSenseTriggerMode.Feedback: // Continuous resistance
+                    effect[1] = param1; // startPosition
+                    effect[2] = param2; // force
+                    break;
+                case DualSenseTriggerMode.Weapon: // Section resistance
+                    effect[1] = param1; // startPosition
+                    effect[2] = param2; // endPosition
+                    break;
+                case DualSenseTriggerMode.Vibration: // EffectEx
+                    effect[1] = param1;   // startPosition
+                    effect[2] = 0x00;     // keepEffect = false
+                    effect[3] = force;    // beginForce
+                    effect[4] = force;    // middleForce
+                    effect[5] = force;    // endForce
+                    effect[6] = param2;   // frequency
+                    break;
+                default: // Off
+                    break;
+            }
+
+            lock (Gate)
+            {
+                if (side == DualSenseTriggerSide.Left || side == DualSenseTriggerSide.Both)
+                {
+                    Array.Copy(effect, _leftTriggerEffect, effect.Length);
+                }
+                if (side == DualSenseTriggerSide.Right || side == DualSenseTriggerSide.Both)
+                {
+                    Array.Copy(effect, _rightTriggerEffect, effect.Length);
+                }
+                SendOutputLocked();
+            }
+        }
+
+        // Clears any adaptive trigger effect on the given side(s).
+        internal static void ResetTrigger(DualSenseTriggerSide side) =>
+            SetAdaptiveTrigger(side, DualSenseTriggerMode.Off);
+
         private static void OnDeviceIdentified(string path, bool bluetooth)
         {
             lock (Gate)
@@ -224,10 +327,26 @@ namespace Pcsx5Ui
         private static byte[] BuildOutputReportLocked()
         {
             Span<byte> common = stackalloc byte[47];
-            common[0] = 0x03;
-            common[1] = 0x04 | 0x10;
+            common[0] = 0x03;             // flags0: enable both rumble motors
+            common[0] |= 0x04 | 0x08;     // flags0: enable right + left trigger effects
+            common[1] = 0x04 | 0x10;      // flags1: lightbar setup + player indicator
             common[2] = _motorRight;
             common[3] = _motorLeft;
+
+            // Right trigger effect block: common[10] = type, common[11..16] = params
+            common[10] = _rightTriggerEffect[0];
+            for (var i = 1; i < 7; i++)
+            {
+                common[10 + i] = _rightTriggerEffect[i];
+            }
+
+            // Left trigger effect block: common[21] = type, common[22..27] = params
+            common[21] = _leftTriggerEffect[0];
+            for (var i = 1; i < 7; i++)
+            {
+                common[21 + i] = _leftTriggerEffect[i];
+            }
+
             if (_lightbarSetupPending)
             {
                 common[38] |= 0x02;
@@ -443,6 +562,7 @@ namespace Pcsx5Ui
             buttons |= (buttons1 & 0x02) != 0 ? HostGamepadButtons.R1 : 0;
             buttons |= (buttons1 & 0x04) != 0 ? HostGamepadButtons.L2 : 0;
             buttons |= (buttons1 & 0x08) != 0 ? HostGamepadButtons.R2 : 0;
+            buttons |= (buttons1 & 0x10) != 0 ? HostGamepadButtons.Back : 0;
             buttons |= (buttons1 & 0x20) != 0 ? HostGamepadButtons.Options : 0;
             buttons |= (buttons1 & 0x40) != 0 ? HostGamepadButtons.L3 : 0;
             buttons |= (buttons1 & 0x80) != 0 ? HostGamepadButtons.R3 : 0;

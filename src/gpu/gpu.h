@@ -92,6 +92,13 @@ namespace GPU {
     // PCSX5_WINDOW_HANDLE=<decimal HWND> right after creation.
     void SetEmbeddedMode(bool enabled);
 
+    // In-process hosts (core DLL): receive the presentation window's HWND via
+    // callback instead of the stdout PCSX5_WINDOW_HANDLE line.  When a
+    // callback is registered the stdout print is suppressed.  The callback
+    // fires from the GLFW window-creation path (subsystem init thread).
+    using WindowCreatedCallback = void (*)(unsigned long long hwnd, void* user);
+    void SetWindowCreatedCallback(WindowCreatedCallback callback, void* user);
+
     // Keep the presentation window alive and responsive until the user closes it.
     // Called from the main thread after the guest thread has finished (it
     // replaces the old guest-exit idle spin).
