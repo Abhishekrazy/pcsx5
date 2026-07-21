@@ -5,6 +5,7 @@
   "sidebar.view": "表示",
   "sidebar.help": "ヘルプ",
   "sidebar.language": "言語",
+  "sidebar.input": "入力",
   "status.running": "実行中",
   "status.paused": "一時停止",
   "status.idle": "アイドル",

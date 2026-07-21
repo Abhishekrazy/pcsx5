@@ -5,6 +5,7 @@
   "sidebar.view": "Вид",
   "sidebar.help": "Справка",
   "sidebar.language": "Язык",
+  "sidebar.input": "Ввод",
   "status.running": "Выполняется",
   "status.paused": "Приостановлено",
   "status.idle": "Ожидание",

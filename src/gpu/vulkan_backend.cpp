@@ -48,6 +48,16 @@ namespace GPU {
 
     void SetEmbeddedMode(bool enabled) { g_embed_mode = enabled; }
 
+    // In-process window-handle callback (see gpu.h).  When set, the HWND is
+    // delivered through the callback and the stdout line is suppressed.
+    static WindowCreatedCallback g_window_created_cb = nullptr;
+    static void*                 g_window_created_cb_user = nullptr;
+
+    void SetWindowCreatedCallback(WindowCreatedCallback callback, void* user) {
+        g_window_created_cb = callback;
+        g_window_created_cb_user = user;
+    }
+
     // Borderless-fullscreen state (F11 toggle).  Windowed pos/size is saved
     // on entry so leaving fullscreen restores the exact window placement.
     static bool g_fullscreen = false;
@@ -521,10 +531,17 @@ namespace GPU {
         LOG_INFO(GPU, "GLFW Window created successfully (%dx%d).", g_width, g_height);
 
         // Machine-parseable line for the launcher UI: it reparents this HWND
-        // into its own window to render the game embedded.
-        std::printf("PCSX5_WINDOW_HANDLE=%llu\n",
-                    static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(g_hwnd)));
-        std::fflush(stdout);
+        // into its own window to render the game embedded.  In-process hosts
+        // receive the handle through the registered callback instead.
+        if (g_window_created_cb) {
+            g_window_created_cb(static_cast<unsigned long long>(
+                                    reinterpret_cast<uintptr_t>(g_hwnd)),
+                                g_window_created_cb_user);
+        } else {
+            std::printf("PCSX5_WINDOW_HANDLE=%llu\n",
+                        static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(g_hwnd)));
+            std::fflush(stdout);
+        }
 
         // Allocate host DIB buffer (BGRA 32-bit)
         g_dib_buffer.assign(static_cast<size_t>(g_width) * g_height, 0xFF000000u);

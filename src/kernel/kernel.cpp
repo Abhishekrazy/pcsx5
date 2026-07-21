@@ -43,6 +43,15 @@ namespace Kernel {
     static std::unordered_map<u64, ThreadContext> g_threads;
     static std::mutex g_thread_mutex;
     static u64 g_process_id = GetCurrentProcessId();
+    static bool g_in_proc = false;
+
+    void SetInProcMode(bool enabled) {
+        g_in_proc = enabled;
+    }
+
+    bool IsInProcMode() {
+        return g_in_proc;
+    }
     static PVOID g_veh_handler = nullptr;
     static LPTOP_LEVEL_EXCEPTION_FILTER g_prev_exception_filter = nullptr;
     static GuestTlsContext g_guest_tls;
@@ -290,16 +299,20 @@ namespace Kernel {
             return false;
         }
 
-        // Register Top-Level Exception Filter for host crashes
-        g_prev_exception_filter = SetUnhandledExceptionFilter(HostUnhandledExceptionFilter);
+        // Register Top-Level Exception Filter for host crashes.  Skipped in
+        // in-proc mode: the host process (WPF app) owns its own unhandled-
+        // exception policy, and CRT death hooks would hijack its runtime too.
+        if (!g_in_proc) {
+            g_prev_exception_filter = SetUnhandledExceptionFilter(HostUnhandledExceptionFilter);
 
-        // CRT death paths bypass the SEH filter — hook them so abort(),
-        // fastfail, invalid-parameter and purecall deaths leave a final
-        // log line.
-        _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
-        std::signal(SIGABRT, &AbortSignalHandler);
-        _set_invalid_parameter_handler(&InvalidParameterHandler);
-        _set_purecall_handler(&PurecallHandler);
+            // CRT death paths bypass the SEH filter — hook them so abort(),
+            // fastfail, invalid-parameter and purecall deaths leave a final
+            // log line.
+            _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+            std::signal(SIGABRT, &AbortSignalHandler);
+            _set_invalid_parameter_handler(&InvalidParameterHandler);
+            _set_purecall_handler(&PurecallHandler);
+        }
         ArmStackGuarantee();
 
         StartHeartbeat();
@@ -1080,6 +1093,24 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             }
             if (TlsPatch::ShouldRetry(context->Rip)) {
                 return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        }
+
+        // In-proc mode (core hosted inside the WPF app): the CLR and the WPF
+        // runtime raise first-chance exceptions of their own (managed
+        // exceptions, host AVs).  Only exceptions raised while executing
+        // tracked guest code are ours to inspect; everything else passes
+        // straight through to the host's handlers, cheaply.
+        if (g_in_proc) {
+            const DWORD code = exception_record->ExceptionCode;
+            if (code != EXCEPTION_ACCESS_VIOLATION &&
+                code != EXCEPTION_BREAKPOINT &&
+                code != STATUS_ILLEGAL_INSTRUCTION) {
+                return EXCEPTION_CONTINUE_SEARCH;
+            }
+            Memory::MemoryInfo rip_info{};
+            if (Memory::Query(context->Rip, &rip_info) != Memory::Status::Ok) {
+                return EXCEPTION_CONTINUE_SEARCH; // RIP is host code (CLR/WPF/driver)
             }
         }
 

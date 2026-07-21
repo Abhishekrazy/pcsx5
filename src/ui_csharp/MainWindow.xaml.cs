@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -13,6 +14,8 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Shape = System.Windows.Shapes.Shape;
+using Ellipse = System.Windows.Shapes.Ellipse;
 
 namespace Pcsx5Ui
 {
@@ -32,6 +35,7 @@ namespace Pcsx5Ui
         [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern ushort RegisterClassW(ref WNDCLASS lpWndClass);
         [DllImport("user32.dll")] public static extern IntPtr DefWindowProcW(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetModuleHandleW(string lpModuleName);
         [DllImport("gdi32.dll")] public static extern IntPtr GetStockObject(int fnObject);
 
         public delegate IntPtr WndProcDelegate(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -87,7 +91,10 @@ namespace Pcsx5Ui
                 var wc = new NativeMethods.WNDCLASS
                 {
                     lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProc),
-                    hInstance = Marshal.GetHINSTANCE(typeof(EmulatorWindowHost).Module),
+                    // GetModuleHandle(null) = the exe's HINSTANCE; safe in the
+                    // single-file publish (Marshal.GetHINSTANCE returns -1
+                    // for assemblies embedded in the bundle).
+                    hInstance = NativeMethods.GetModuleHandleW(null),
                     lpszClassName = "Pcsx5EmuHost",
                     hbrBackground = NativeMethods.GetStockObject(NativeMethods.BLACK_BRUSH)
                 };
@@ -117,7 +124,6 @@ namespace Pcsx5Ui
     {
         private List<GameEntry> _games = new List<GameEntry>();
         private GameEntry _selectedGame = null;
-        private Process _emulatorProcess = null;
         private string _gamesDir = "Games";
         private string _coversDir = "Covers";
         private string _compatDir = "compat_seed";
@@ -131,6 +137,15 @@ namespace Pcsx5Ui
         private List<BootAnalysisResult> _analysisResults = new List<BootAnalysisResult>();
         private DiscordRpc _discordRpc = new DiscordRpc();
 
+        // In-process emulator core (pcsx5_core.dll via CoreBridge).  A single
+        // dedicated thread owns the whole session (GLFW window + message loop
+        // must stay on one thread); the WPF thread only talks to it through
+        // the log/window callbacks and pcsx5_stop().
+        private Thread _coreThread = null;
+        private volatile bool _coreRunning = false;
+        private readonly CoreBridge.LogCallback _coreLogCallback;
+        private readonly CoreBridge.WindowCallback _coreWindowCallback;
+
         // Console output batching: reader threads enqueue lines, a DispatcherTimer drains
         // them in batches so floods of stdout lines never saturate the dispatcher queue.
         private readonly ConcurrentQueue<string> _consoleLineQueue = new ConcurrentQueue<string>();
@@ -138,7 +153,6 @@ namespace Pcsx5Ui
         private const int MaxConsoleChars = 256 * 1024; // ~256KB cap on the console TextBox
 
         // Embedded emulator window state (game renders inside the launcher window)
-        private const string WindowHandlePrefix = "PCSX5_WINDOW_HANDLE=";
         private EmulatorWindowHost _emuHost = null;
         private IntPtr _embeddedEmuHwnd = IntPtr.Zero;
         private bool _gameConsoleVisible = false;
@@ -149,6 +163,11 @@ namespace Pcsx5Ui
             InitializeAudioPlayer();
             this.Closed += MainWindow_Closed;
 
+            // Keep the callback delegates referenced for the process lifetime
+            // so native code never calls into collected delegates.
+            _coreLogCallback = OnCoreLog;
+            _coreWindowCallback = OnCoreWindow;
+
             _consoleDrainTimer = new System.Windows.Threading.DispatcherTimer();
             _consoleDrainTimer.Interval = TimeSpan.FromMilliseconds(150);
             _consoleDrainTimer.Tick += (s, e) => DrainConsoleQueue();
@@ -157,6 +176,11 @@ namespace Pcsx5Ui
 
         private void MainWindow_Closed(object sender, EventArgs e)
         {
+            if (_coreRunning)
+            {
+                try { CoreBridge.pcsx5_stop(); } catch { }
+            }
+            StopControllerVizPolling();
             _discordRpc.Stop();
         }
 
@@ -178,6 +202,7 @@ namespace Pcsx5Ui
                 ResolveDirectories();
                 ParseCommandLineArgs();
                 LoadConfig();
+                ApplyUiScale();
                 LoadGames();
                 InitializeControllerPolling();
 
@@ -187,6 +212,9 @@ namespace Pcsx5Ui
 
                 // Set default tab to Library
                 TabLibrary_Click(this, null);
+
+                // Ask for the games folder on first launch
+                MaybeShowFirstRunSetup();
             }
             catch (Exception ex)
             {
@@ -282,6 +310,7 @@ namespace Pcsx5Ui
 
                     _config.ui.language = ini.GetValue("Ui", "Language", "en-US");
                     _config.ui.title_music_enabled = bool.Parse(ini.GetValue("Ui", "TitleMusicEnabled", "true"));
+                    _config.ui.scale = double.Parse(ini.GetValue("Ui", "UiScale", "1.0"), System.Globalization.CultureInfo.InvariantCulture);
                 }
                 else
                 {
@@ -362,6 +391,7 @@ namespace Pcsx5Ui
                 // Ui
                 ini.SetValue("Ui", "Language", _config.ui.language);
                 ini.SetValue("Ui", "TitleMusicEnabled", _config.ui.title_music_enabled.ToString().ToLower());
+                ini.SetValue("Ui", "UiScale", _config.ui.scale.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
                 ini.Save(_iniPath);
                 LogConsole("Configuration saved to " + _iniPath);
@@ -965,29 +995,24 @@ namespace Pcsx5Ui
         private void LaunchButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedGame == null) return;
+            if (_coreRunning) return; // single game at a time (core globals are one-shot)
 
-            string backendPath = LocateBackend();
-            if (backendPath == null || !File.Exists(backendPath))
-            {
-                LogConsole("Error: Could not locate pcsx5.exe backend.");
-                MessageBox.Show("Could not locate pcsx5.exe backend binary.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
+            var game = _selectedGame;
 
             LaunchButton.IsEnabled = false;
             StopButton.Visibility = Visibility.Visible;
             ConsoleOutputTextBox.Clear();
 
-            LogConsole($"Launching: {backendPath} \"{_selectedGame.EbootPath}\"");
-            FooterStatus.Text = $"Running: {_selectedGame.Title}";
+            LogConsole($"Launching in-process: \"{game.EbootPath}\"");
+            FooterStatus.Text = $"Running: {game.Title}";
 
             // Stop title music when game launches
             Dispatcher.Invoke(() => _mediaPlayer.Stop());
 
             // Switch from the library to the embedded game view; the emulator's
-            // window gets reparented into EmulatorHostPresenter once it prints
-            // its HWND to stdout (PCSX5_WINDOW_HANDLE=...).
-            GameBarTitle.Text = _selectedGame.Title;
+            // window gets reparented into EmulatorHostPresenter once the core
+            // reports its HWND through the window callback.
+            GameBarTitle.Text = game.Title;
             _emuHost = new EmulatorWindowHost();
             EmulatorHostPresenter.Content = _emuHost;
             EmulatorHostPresenter.SizeChanged += EmulatorHostPresenter_SizeChanged;
@@ -998,94 +1023,122 @@ namespace Pcsx5Ui
             LogsView.Visibility = Visibility.Collapsed;
             GameView.Visibility = Visibility.Visible;
 
-            Task.Run(() =>
+            string appDir = AppDomain.CurrentDomain.BaseDirectory;
+            var options = new CoreBridge.Pcsx5Options
             {
-                try
+                ConfigDir = Path.Combine(appDir, "pcsx5_config"),
+                CrashDir = Path.Combine(appDir, "pcsx5_crash"),
+                TitleId = game.TitleId,
+                Embed = 1,
+                InProc = 1,
+            };
+
+            // The core owns its GLFW window on this thread for the whole run;
+            // UI updates flow back through the log/window callbacks only.
+            _coreRunning = true;
+            _coreThread = new Thread(() => CoreRunThread(options, game));
+            _coreThread.IsBackground = true;
+            _coreThread.Name = "pcsx5-core";
+            _coreThread.Start();
+        }
+
+        // Runs entirely on the dedicated core thread: init -> load -> run
+        // (blocking) -> shutdown, then posts UI teardown back to the WPF thread.
+        private void CoreRunThread(CoreBridge.Pcsx5Options options, GameEntry game)
+        {
+            int rc = -1;
+            try
+            {
+                rc = CoreBridge.pcsx5_init(ref options, _coreLogCallback, IntPtr.Zero);
+                if (rc != 0)
                 {
-                    _emulatorProcess = new Process();
-                    _emulatorProcess.StartInfo.FileName = backendPath;
-                    _emulatorProcess.StartInfo.Arguments = $"--embed \"{_selectedGame.EbootPath}\"";
-                    _emulatorProcess.StartInfo.UseShellExecute = false;
-                    _emulatorProcess.StartInfo.RedirectStandardOutput = true;
-                    _emulatorProcess.StartInfo.RedirectStandardError = true;
-                    _emulatorProcess.StartInfo.CreateNoWindow = true;
-
-                    _emulatorProcess.OutputDataReceived += (s, ev) => { if (ev.Data != null) { TryEmbedEmulatorWindow(ev.Data); LogConsole(ev.Data); } };
-                    _emulatorProcess.ErrorDataReceived += (s, ev) => { if (ev.Data != null) LogConsole(ev.Data); };
-
-                    _emulatorProcess.Start();
-                    _emulatorProcess.BeginOutputReadLine();
-                    _emulatorProcess.BeginErrorReadLine();
-
-                    if (_discordRpc != null && _selectedGame != null)
+                    LogConsole($"Error: pcsx5_init failed (code {rc}).");
+                }
+                else
+                {
+                    rc = CoreBridge.pcsx5_load(game.EbootPath);
+                    if (rc != 0)
                     {
-                        _discordRpc.UpdatePresence($"Playing {_selectedGame.Title}", "In-Game");
+                        LogConsole($"Error: pcsx5_load failed (code {rc}).");
                     }
-
-                    _emulatorProcess.WaitForExit();
-                }
-                catch (Exception ex)
-                {
-                    LogConsole("Launch Error: " + ex.Message);
-                }
-                finally
-                {
-                    Dispatcher.Invoke(() =>
+                    else
                     {
-                        LaunchButton.IsEnabled = true;
-                        StopButton.Visibility = Visibility.Collapsed;
-                        _emulatorProcess = null;
-                        LogConsole("Emulator process terminated.");
-                        FooterStatus.Text = "Ready";
-
-                        // Unhost the (possibly dead) emulator window and restore the library
-                        TeardownGameView();
-
-                        // Check for crash logs
-                        CheckEmulatorCrashLog();
-
-                        // Restore Discord status
                         if (_discordRpc != null)
                         {
-                            if (_selectedGame != null)
-                                _discordRpc.UpdatePresence($"Browsing {_selectedGame.Title}", $"ID: {_selectedGame.TitleId}");
-                            else
-                                _discordRpc.UpdatePresence("Idle", "Main Menu");
+                            _discordRpc.UpdatePresence($"Playing {game.Title}", "In-Game");
                         }
-
-                        // Restart title music when game exits
-                        if (_selectedGame != null)
-                        {
-                            TriggerTitleMusic(_selectedGame);
-                        }
-                    });
+                        rc = CoreBridge.pcsx5_run(_coreWindowCallback, IntPtr.Zero);
+                    }
+                    CoreBridge.pcsx5_shutdown();
                 }
-            });
+            }
+            catch (Exception ex)
+            {
+                LogConsole("Launch Error: " + ex.Message);
+            }
+            finally
+            {
+                int exitCode = rc;
+                Dispatcher.Invoke(() =>
+                {
+                    _coreRunning = false;
+                    _coreThread = null;
+                    LaunchButton.IsEnabled = true;
+                    StopButton.Visibility = Visibility.Collapsed;
+                    LogConsole($"Emulator core terminated (exit code {exitCode}).");
+                    FooterStatus.Text = "Ready";
+
+                    // Unhost the emulator window and restore the library
+                    TeardownGameView();
+
+                    // Restore Discord status
+                    if (_discordRpc != null)
+                    {
+                        if (_selectedGame != null)
+                            _discordRpc.UpdatePresence($"Browsing {_selectedGame.Title}", $"ID: {_selectedGame.TitleId}");
+                        else
+                            _discordRpc.UpdatePresence("Idle", "Main Menu");
+                    }
+
+                    // Restart title music when game exits
+                    if (_selectedGame != null)
+                    {
+                        TriggerTitleMusic(_selectedGame);
+                    }
+                });
+            }
+        }
+
+        // Core log callback (fires on any core thread): format like the CLI's
+        // [Category][Level] prefix and enqueue for the console panel.
+        private void OnCoreLog(int level, int category, IntPtr msg, IntPtr user)
+        {
+            string text = Marshal.PtrToStringAnsi(msg) ?? "";
+            LogConsole($"[{CoreBridge.CategoryName(category)}][{CoreBridge.LevelName(level)}] {text}");
+        }
+
+        // Core window callback: the presentation HWND, reparented into the
+        // embedded game view on the UI thread.
+        private void OnCoreWindow(ulong hwnd, IntPtr user)
+        {
+            IntPtr handle = new IntPtr((long)hwnd);
+            Dispatcher.InvokeAsync(() => EmbedEmulatorWindow(handle));
         }
 
         private void StopButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_emulatorProcess != null && !_emulatorProcess.HasExited)
+            if (_coreRunning)
             {
                 try
                 {
-                    _emulatorProcess.Kill();
+                    CoreBridge.pcsx5_stop();
+                    LogConsole("Stop requested; waiting for the guest to unwind...");
                 }
                 catch { }
             }
         }
 
         // ── Embedded game window hosting ────────────────────────────────────
-
-        // Called from the emulator stdout reader thread when the backend prints
-        // its window handle; marshals to the UI thread for the reparent.
-        private void TryEmbedEmulatorWindow(string line)
-        {
-            if (!line.StartsWith(WindowHandlePrefix)) return;
-            if (!long.TryParse(line.Substring(WindowHandlePrefix.Length).Trim(), out long handleValue) || handleValue == 0) return;
-            IntPtr hwnd = new IntPtr(handleValue);
-            Dispatcher.InvokeAsync(() => EmbedEmulatorWindow(hwnd));
-        }
 
         private void EmbedEmulatorWindow(IntPtr emuHwnd)
         {
@@ -1199,74 +1252,185 @@ namespace Pcsx5Ui
             }
         }
 
-        private string LocateBackend()
-        {
-            string uiDir = AppDomain.CurrentDomain.BaseDirectory;
-            string[] locations = {
-                Path.Combine(uiDir, "pcsx5.exe"),
-                Path.Combine(uiDir, "bin", "Release", "pcsx5.exe"),
-                Path.Combine(uiDir, "bin", "Debug", "pcsx5.exe"),
-                Path.Combine(uiDir, "..", "bin", "Release", "pcsx5.exe"),
-                Path.Combine(uiDir, "..", "bin", "Debug", "pcsx5.exe"),
-                Path.Combine(uiDir, "..", "bin", "pcsx5.exe"),
-                Path.Combine(uiDir, "..", "Release", "pcsx5.exe"),
-                Path.Combine(uiDir, "..", "Debug", "pcsx5.exe"),
-                Path.Combine(uiDir, "..", "pcsx5.exe"),
-                Path.Combine(uiDir, "build", "bin", "Release", "pcsx5.exe"),
-                Path.Combine(uiDir, "build", "bin", "Debug", "pcsx5.exe"),
-                Path.Combine(uiDir, "build", "Release", "pcsx5.exe"),
-                Path.Combine(uiDir, "build", "Debug", "pcsx5.exe")
-            };
-
-            foreach (var loc in locations)
-            {
-                if (File.Exists(loc)) return Path.GetFullPath(loc);
-            }
-
-            return null;
-        }
-
-        private string LocateDualSenseTester()
-        {
-            string uiDir = AppDomain.CurrentDomain.BaseDirectory;
-            string[] locations = {
-                Path.Combine(uiDir, "dualsense_visual.exe"),
-                Path.Combine(uiDir, "build", "dualsense_visual.exe"),
-                Path.Combine(uiDir, "..", "build", "dualsense_visual.exe")
-            };
-
-            foreach (var loc in locations)
-            {
-                if (File.Exists(loc)) return Path.GetFullPath(loc);
-            }
-
-            return null;
-        }
-
-        // Launch the standalone DualSense tester (dualsense_visual.exe).
+        // Toggle the in-app DualSense input tester panel (replaces the old
+        // external dualsense_visual.exe launcher).
         private void ControllerTesterBtn_Click(object sender, RoutedEventArgs e)
         {
-            string testerPath = LocateDualSenseTester();
-            if (testerPath == null)
+            bool show = ControllerTesterPanel.Visibility != Visibility.Visible;
+            ControllerTesterPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            ControllerTesterBtn.Content = show ? "Hide Tester" : "Input Tester";
+            if (show)
             {
-                LogConsole("Error: Could not locate dualsense_visual.exe.");
-                MessageBox.Show("Could not locate dualsense_visual.exe (the controller tester).",
-                                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                StartControllerVizPolling(); // make sure the 60 Hz poll is running
+                UpdateTesterStatusText();
+            }
+            else
+            {
+                TesterStopAllOutputs();
+            }
+        }
+
+        // --- INPUT TESTER OUTPUT ACTIONS ---
+        private int _playerLedIndex = 0;
+        private System.Windows.Threading.DispatcherTimer _rumbleStopTimer;
+
+        private void UpdateTesterStatusText()
+        {
+            if (TesterStatusText == null) return;
+            if (!WindowsDualSenseReader.TryGetState(out var state) || !state.Connected)
+            {
+                TesterStatusText.Text = "No DualSense connected. Output tests will have no effect.";
+            }
+            else if (WindowsDualSenseReader.IsBluetooth)
+            {
+                TesterStatusText.Text = "Connected via Bluetooth — rumble, lightbar and trigger effects are sent with the BT output report.";
+            }
+            else
+            {
+                TesterStatusText.Text = "Connected via USB.";
+            }
+        }
+
+        private void PulseRumble(byte largeMotor, byte smallMotor)
+        {
+            WindowsDualSenseReader.SetRumble(largeMotor, smallMotor);
+            if (_rumbleStopTimer == null)
+            {
+                _rumbleStopTimer = new System.Windows.Threading.DispatcherTimer();
+                _rumbleStopTimer.Interval = TimeSpan.FromMilliseconds(1200);
+                _rumbleStopTimer.Tick += (s, ev) =>
+                {
+                    _rumbleStopTimer.Stop();
+                    WindowsDualSenseReader.SetRumble(0, 0);
+                };
+            }
+            _rumbleStopTimer.Stop();
+            _rumbleStopTimer.Start();
+        }
+
+        private void TesterRumbleLow_Click(object sender, RoutedEventArgs e) => PulseRumble(255, 0);
+
+        private void TesterRumbleHigh_Click(object sender, RoutedEventArgs e) => PulseRumble(0, 255);
+
+        private void TesterRumbleStop_Click(object sender, RoutedEventArgs e)
+        {
+            _rumbleStopTimer?.Stop();
+            WindowsDualSenseReader.SetRumble(0, 0);
+        }
+
+        private void TesterLightbarApply_Click(object sender, RoutedEventArgs e)
+        {
+            WindowsDualSenseReader.SetLightbar(
+                (byte)CtrlColorRSlider.Value,
+                (byte)CtrlColorGSlider.Value,
+                (byte)CtrlColorBSlider.Value);
+        }
+
+        private void TesterLightbarReset_Click(object sender, RoutedEventArgs e)
+        {
+            WindowsDualSenseReader.ResetLightbar();
+        }
+
+        private void TesterPlayerLed_Click(object sender, RoutedEventArgs e)
+        {
+            byte[] patterns = { 0x04, 0x0A, 0x15, 0x1B, 0x1F }; // players 1-5
+            _playerLedIndex = (_playerLedIndex + 1) % patterns.Length;
+            WindowsDualSenseReader.SetPlayerLeds(patterns[_playerLedIndex]);
+            if (TesterStatusText != null)
+            {
+                TesterStatusText.Text = $"Player LED pattern {_playerLedIndex + 1} of {patterns.Length}";
+            }
+        }
+
+        private void TesterTriggerOff_Click(object sender, RoutedEventArgs e)
+        {
+            WindowsDualSenseReader.ResetTrigger(DualSenseTriggerSide.Both);
+            SetTesterStatus("Adaptive triggers released (Off).");
+        }
+
+        private void TesterTriggerFeedback_Click(object sender, RoutedEventArgs e)
+        {
+            // Continuous resistance from 25% travel with strong force
+            WindowsDualSenseReader.SetAdaptiveTrigger(
+                DualSenseTriggerSide.Both, DualSenseTriggerMode.Feedback, param1: 64, param2: 200);
+            SetTesterStatus("Trigger effect: Feedback (continuous resistance).");
+        }
+
+        private void TesterTriggerWeapon_Click(object sender, RoutedEventArgs e)
+        {
+            // Section resistance ("weapon trigger click") between 25% and 75% travel
+            WindowsDualSenseReader.SetAdaptiveTrigger(
+                DualSenseTriggerSide.Both, DualSenseTriggerMode.Weapon, param1: 64, param2: 192);
+            SetTesterStatus("Trigger effect: Weapon (section resistance).");
+        }
+
+        private void TesterTriggerVibration_Click(object sender, RoutedEventArgs e)
+        {
+            // Vibration effect starting at 20% travel, 40 Hz
+            WindowsDualSenseReader.SetAdaptiveTrigger(
+                DualSenseTriggerSide.Both, DualSenseTriggerMode.Vibration, param1: 51, param2: 40, force: 255);
+            SetTesterStatus("Trigger effect: Vibration.");
+        }
+
+        private void SetTesterStatus(string message)
+        {
+            if (TesterStatusText != null)
+            {
+                TesterStatusText.Text = message + (WindowsDualSenseReader.IsBluetooth ? " (Bluetooth)" : "");
+            }
+            LogConsole("Tester: " + message);
+        }
+
+        // Restore neutral output state when the tester is closed or the tab is left.
+        private void TesterStopAllOutputs()
+        {
+            _rumbleStopTimer?.Stop();
+            WindowsDualSenseReader.SetRumble(0, 0);
+            WindowsDualSenseReader.ResetTrigger(DualSenseTriggerSide.Both);
+            WindowsDualSenseReader.ResetLightbar();
+        }
+
+        private void UpdateTesterReadouts(in HostGamepadState state)
+        {
+            if (TesterConnectionText == null) return; // panel not initialized yet
+
+            if (!state.Connected)
+            {
+                TesterConnectionText.Text = "No controller connected";
+                TesterButtonsText.Text = "Buttons: -";
+                TesterL2Bar.Value = 0;
+                TesterR2Bar.Value = 0;
+                TesterL2Text.Text = "0";
+                TesterR2Text.Text = "0";
+                TesterLeftStickText.Text = "Left Stick:  X=- Y=-";
+                TesterRightStickText.Text = "Right Stick: X=- Y=-";
+                TesterTouchText.Text = "Touchpad: -";
                 return;
             }
-            try
+
+            TesterConnectionText.Text = WindowsDualSenseReader.IsBluetooth
+                ? "DualSense connected (Bluetooth)"
+                : "DualSense connected (USB)";
+
+            var pressed = new List<string>();
+            foreach (HostGamepadButtons flag in Enum.GetValues(typeof(HostGamepadButtons)))
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                if (flag != HostGamepadButtons.None && state.Buttons.HasFlag(flag))
                 {
-                    FileName = testerPath,
-                    UseShellExecute = true
-                });
-                LogConsole("Controller tester launched.");
+                    pressed.Add(flag.ToString());
+                }
             }
-            catch (Exception ex)
-            {
-                LogConsole("Failed to launch controller tester: " + ex.Message);
-            }
+            TesterButtonsText.Text = "Buttons: " + (pressed.Count > 0 ? string.Join(", ", pressed) : "-");
+
+            TesterL2Bar.Value = state.LeftTrigger;
+            TesterR2Bar.Value = state.RightTrigger;
+            TesterL2Text.Text = state.LeftTrigger.ToString();
+            TesterR2Text.Text = state.RightTrigger.ToString();
+            TesterLeftStickText.Text = $"Left Stick:  X={state.LeftX} Y={state.LeftY}";
+            TesterRightStickText.Text = $"Right Stick: X={state.RightX} Y={state.RightY}";
+            TesterTouchText.Text = state.Buttons.HasFlag(HostGamepadButtons.TouchPad)
+                ? "Touchpad: pressed"
+                : "Touchpad: released";
         }
 
         private string LocateSndDecode()
@@ -1432,6 +1596,7 @@ namespace Pcsx5Ui
         private void TabLibrary_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            StopControllerVizPolling();
             LibraryView.Visibility = Visibility.Visible;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
@@ -1443,6 +1608,7 @@ namespace Pcsx5Ui
         private void TabAnalyzer_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            StopControllerVizPolling();
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Visible;
             ControllerView.Visibility = Visibility.Collapsed;
@@ -1466,11 +1632,14 @@ namespace Pcsx5Ui
             SettingsView.Visibility = Visibility.Collapsed;
             LogsView.Visibility = Visibility.Collapsed;
             UpdateTabHighlight(TabControllerBtn);
+
+            StartControllerVizPolling();
         }
 
         private void TabSettings_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            StopControllerVizPolling();
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
@@ -1483,6 +1652,7 @@ namespace Pcsx5Ui
         private void TabLogs_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            StopControllerVizPolling();
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
@@ -1570,6 +1740,108 @@ namespace Pcsx5Ui
             }
         }
 
+        // --- FIRST-RUN SETUP (games folder picker) ---
+        private string _firstRunSelectedFolder = null;
+
+        private bool NeedsFirstRunSetup()
+        {
+            // First run = no configured game folder that actually exists on disk.
+            if (_gameFolders.Count == 0) return true;
+            foreach (var folder in _gameFolders)
+            {
+                if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder)) return false;
+            }
+            return true;
+        }
+
+        private void MaybeShowFirstRunSetup()
+        {
+            if (NeedsFirstRunSetup())
+            {
+                _firstRunSelectedFolder = null;
+                FirstRunFolderText.Text = "No folder selected";
+                FirstRunContinueBtn.IsEnabled = false;
+                FirstRunOverlay.Visibility = Visibility.Visible;
+            }
+        }
+
+        private void FirstRunBrowse_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog();
+            dialog.Title = "Select PS5 Games Folder";
+            if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.FolderName))
+            {
+                _firstRunSelectedFolder = dialog.FolderName;
+                FirstRunFolderText.Text = _firstRunSelectedFolder;
+                FirstRunContinueBtn.IsEnabled = true;
+            }
+        }
+
+        private void FirstRunContinue_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_firstRunSelectedFolder)) return;
+
+            // Replace stale/non-existent defaults with the folder the user picked.
+            _gameFolders.Clear();
+            _gameFolders.Add(_firstRunSelectedFolder);
+            FirstRunOverlay.Visibility = Visibility.Collapsed;
+            RefreshGameFoldersList();
+            SaveConfig();
+            LoadGames();
+            LogConsole("Games folder set to " + _firstRunSelectedFolder);
+        }
+
+        private void FirstRunSkip_Click(object sender, RoutedEventArgs e)
+        {
+            FirstRunOverlay.Visibility = Visibility.Collapsed;
+            LogConsole("First-run setup skipped. You can add game folders later in System Settings.");
+        }
+
+        // --- UI SCALE ---
+        private bool _suppressUiScaleEvent = false;
+
+        private void ApplyUiScale()
+        {
+            double scale = _config.ui.scale;
+            if (scale < 0.5 || scale > 3.0) scale = 1.0;
+            MainLayoutRoot.LayoutTransform = new ScaleTransform(scale, scale);
+        }
+
+        private void UiScaleCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressUiScaleEvent) return;
+            if (UiScaleCombo.SelectedItem is ComboBoxItem item &&
+                double.TryParse(item.Tag?.ToString(), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double scale))
+            {
+                _config.ui.scale = scale;
+                ApplyUiScale();
+            }
+        }
+
+        private void SelectUiScaleComboItem()
+        {
+            _suppressUiScaleEvent = true;
+            try
+            {
+                foreach (ComboBoxItem item in UiScaleCombo.Items)
+                {
+                    if (double.TryParse(item.Tag?.ToString(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double tag) &&
+                        Math.Abs(tag - _config.ui.scale) < 0.001)
+                    {
+                        UiScaleCombo.SelectedItem = item;
+                        return;
+                    }
+                }
+                UiScaleCombo.SelectedIndex = 1; // 100%
+            }
+            finally
+            {
+                _suppressUiScaleEvent = false;
+            }
+        }
+
         // --- GAMEPAD NAV & PS BUTTON POLLING ---
         private System.Windows.Threading.DispatcherTimer _controllerTimer;
         private XInputState _prevInputState = new XInputState();
@@ -1583,6 +1855,119 @@ namespace Pcsx5Ui
             _controllerTimer.Tick += ControllerTimer_Tick;
             _controllerTimer.Start();
         }
+
+        // --- CONTROLLER SETUP LIVE INPUT VISUALIZATION ---
+        // Polls the DualSense state at ~60 Hz while the Controller Setup tab is
+        // visible and lights up the vector overlays on top of ps5_controller.png.
+        private System.Windows.Threading.DispatcherTimer _controllerVizTimer;
+
+        // Stick dot travel range (px in the 1017x1017 design space) around each well center
+        private const double StickDotRange = 24.0;
+        private const double LeftStickCenterX = 402.0;
+        private const double LeftStickCenterY = 498.0;
+        private const double RightStickCenterX = 641.0;
+        private const double RightStickCenterY = 498.0;
+        private const double StickDotSize = 36.0;
+
+        private void StartControllerVizPolling()
+        {
+            WindowsDualSenseReader.EnsureStarted();
+            if (_controllerVizTimer == null)
+            {
+                _controllerVizTimer = new System.Windows.Threading.DispatcherTimer();
+                _controllerVizTimer.Interval = TimeSpan.FromMilliseconds(16); // ~60 Hz
+                _controllerVizTimer.Tick += ControllerVizTimer_Tick;
+            }
+            _controllerVizTimer.Start();
+        }
+
+        private void StopControllerVizPolling()
+        {
+            _controllerVizTimer?.Stop();
+            ClearControllerVizOverlays();
+            TesterStopAllOutputs();
+        }
+
+        private void ClearControllerVizOverlays()
+        {
+            foreach (var overlay in GetPadOverlays())
+            {
+                overlay.Opacity = 0;
+            }
+            PadTouchLeftOverlay.Opacity = 0;
+            PadTouchCenterOverlay.Opacity = 0;
+            PadTouchRightOverlay.Opacity = 0;
+            MoveStickDot(LeftStickDot, LeftStickCenterX, LeftStickCenterY, 128, 128);
+            MoveStickDot(RightStickDot, RightStickCenterX, RightStickCenterY, 128, 128);
+        }
+
+        private System.Collections.Generic.IEnumerable<Shape> GetPadOverlays()
+        {
+            yield return PadL1Overlay;
+            yield return PadR1Overlay;
+            yield return PadL3Overlay;
+            yield return PadR3Overlay;
+            yield return PadUpOverlay;
+            yield return PadDownOverlay;
+            yield return PadLeftOverlay;
+            yield return PadRightOverlay;
+            yield return PadCrossOverlay;
+            yield return PadCircleOverlay;
+            yield return PadSquareOverlay;
+            yield return PadTriangleOverlay;
+            yield return PadOptionsOverlay;
+            yield return PadBackOverlay;
+        }
+
+        private void ControllerVizTimer_Tick(object sender, EventArgs e)
+        {
+            if (!WindowsDualSenseReader.TryGetState(out var state) || !state.Connected)
+            {
+                ClearControllerVizOverlays();
+                UpdateTesterReadouts(default);
+                return;
+            }
+
+            var b = state.Buttons;
+            PadUpOverlay.Opacity = b.HasFlag(HostGamepadButtons.Up) ? 1 : 0;
+            PadDownOverlay.Opacity = b.HasFlag(HostGamepadButtons.Down) ? 1 : 0;
+            PadLeftOverlay.Opacity = b.HasFlag(HostGamepadButtons.Left) ? 1 : 0;
+            PadRightOverlay.Opacity = b.HasFlag(HostGamepadButtons.Right) ? 1 : 0;
+            PadCrossOverlay.Opacity = b.HasFlag(HostGamepadButtons.Cross) ? 1 : 0;
+            PadCircleOverlay.Opacity = b.HasFlag(HostGamepadButtons.Circle) ? 1 : 0;
+            PadSquareOverlay.Opacity = b.HasFlag(HostGamepadButtons.Square) ? 1 : 0;
+            PadTriangleOverlay.Opacity = b.HasFlag(HostGamepadButtons.Triangle) ? 1 : 0;
+            PadL1Overlay.Opacity = b.HasFlag(HostGamepadButtons.L1) ? 1 : 0;
+            PadR1Overlay.Opacity = b.HasFlag(HostGamepadButtons.R1) ? 1 : 0;
+            PadL3Overlay.Opacity = b.HasFlag(HostGamepadButtons.L3) ? 1 : 0;
+            PadR3Overlay.Opacity = b.HasFlag(HostGamepadButtons.R3) ? 1 : 0;
+            PadOptionsOverlay.Opacity = b.HasFlag(HostGamepadButtons.Options) ? 1 : 0;
+            PadBackOverlay.Opacity = b.HasFlag(HostGamepadButtons.Back) ? 1 : 0;
+
+            // Triggers light up proportionally to their analog value
+            PadL2Overlay.Opacity = Math.Max(state.LeftTrigger / 255.0, b.HasFlag(HostGamepadButtons.L2) ? 1 : 0);
+            PadR2Overlay.Opacity = Math.Max(state.RightTrigger / 255.0, b.HasFlag(HostGamepadButtons.R2) ? 1 : 0);
+
+            // The DualSense report has a single touchpad click flag; light the whole pad.
+            double touchOpacity = b.HasFlag(HostGamepadButtons.TouchPad) ? 1 : 0;
+            PadTouchLeftOverlay.Opacity = touchOpacity;
+            PadTouchCenterOverlay.Opacity = touchOpacity;
+            PadTouchRightOverlay.Opacity = touchOpacity;
+
+            MoveStickDot(LeftStickDot, LeftStickCenterX, LeftStickCenterY, state.LeftX, state.LeftY);
+            MoveStickDot(RightStickDot, RightStickCenterX, RightStickCenterY, state.RightX, state.RightY);
+
+            UpdateTesterReadouts(state);
+        }
+
+        private void MoveStickDot(Ellipse dot, double centerX, double centerY, byte axisX, byte axisY)
+        {
+            double offsetX = ((axisX - 128) / 128.0) * StickDotRange;
+            double offsetY = ((axisY - 128) / 128.0) * StickDotRange;
+            Canvas.SetLeft(dot, centerX - StickDotSize / 2 + offsetX);
+            Canvas.SetTop(dot, centerY - StickDotSize / 2 + offsetY);
+        }
+
 
         private void ControllerTimer_Tick(object sender, EventArgs e)
         {
@@ -1661,13 +2046,13 @@ namespace Pcsx5Ui
             // PS Button Action (Home Button)
             if (psPressed)
             {
-                // If game is running, close/stop the emulator
-                if (_emulatorProcess != null && !_emulatorProcess.HasExited)
+                // If game is running, ask the in-proc core to stop the guest
+                if (_coreRunning)
                 {
                     try
                     {
-                        _emulatorProcess.Kill();
-                        LogConsole("PS Button: Stopped emulator process.");
+                        CoreBridge.pcsx5_stop();
+                        LogConsole("PS Button: Stop requested for running game.");
                     }
                     catch { }
                 }
@@ -1690,7 +2075,7 @@ namespace Pcsx5Ui
             }
 
             // If game is running, do not navigate UI (controller input is passed to the game backend)
-            if (_emulatorProcess != null && !_emulatorProcess.HasExited)
+            if (_coreRunning)
             {
                 _prevInputState = state;
                 return;
@@ -1846,7 +2231,7 @@ namespace Pcsx5Ui
                 // Main navigation tabs
                 TabLibraryBtn.Content = I18n.Tr("view.library");
                 TabAnalyzerBtn.Content = I18n.Tr("sidebar.tools");
-                TabControllerBtn.Content = I18n.Tr("sidebar.language");
+                TabControllerBtn.Content = I18n.Tr("sidebar.input");
                 TabSettingsBtn.Content = I18n.Tr("system.header");
                 TabLogsBtn.Content = I18n.Tr("sidebar.console");
 
@@ -1861,6 +2246,10 @@ namespace Pcsx5Ui
                 // Logs header
                 if (LogsHeaderTextBlock != null)
                     LogsHeaderTextBlock.Text = I18n.Tr("console.title");
+
+                // Language / localization settings section keeps the sidebar.language label
+                if (UiLocalizationHeaderTextBlock != null)
+                    UiLocalizationHeaderTextBlock.Text = I18n.Tr("sidebar.language").ToUpperInvariant();
 
                 // Launch/Stop buttons
                 if (LaunchButton != null)
@@ -1879,77 +2268,6 @@ namespace Pcsx5Ui
             catch (Exception ex)
             {
                 LogConsole("UI translation error: " + ex.Message);
-            }
-        }
-
-        private void CheckEmulatorCrashLog()
-        {
-            string crashLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_log.txt");
-            if (File.Exists(crashLogPath))
-            {
-                try
-                {
-                    string content = File.ReadAllText(crashLogPath);
-                    if (content.Contains("GUEST APPLICATION CRASHED!") || content.Contains("VEH Unhandled Exception"))
-                    {
-                        // Parse exception code and address
-                        string excCode = "0xC0000005 (Access Violation)";
-                        if (content.Contains("Exception Code: "))
-                        {
-                            int idx = content.IndexOf("Exception Code: ");
-                            int end = content.IndexOf("\n", idx);
-                            if (end != -1)
-                            {
-                                excCode = content.Substring(idx + "Exception Code: ".Length, end - idx - "Exception Code: ".Length).Trim();
-                            }
-                        }
-
-                        string ripVal = "Unknown";
-                        if (content.Contains("Crash Address (RIP): "))
-                        {
-                            int idx = content.IndexOf("Crash Address (RIP): ");
-                            int end = content.IndexOf("\n", idx);
-                            if (end != -1)
-                            {
-                                ripVal = content.Substring(idx + "Crash Address (RIP): ".Length, end - idx - "Crash Address (RIP): ".Length).Trim();
-                            }
-                        }
-                        else if (content.Contains("RIP: "))
-                        {
-                            int idx = content.IndexOf("RIP: ");
-                            int end = content.IndexOf(",", idx);
-                            if (end != -1)
-                            {
-                                ripVal = content.Substring(idx + "RIP: ".Length, end - idx - "RIP: ".Length).Trim();
-                            }
-                        }
-
-                        // Determine analysis advice
-                        string analysis = "An unhandled exception occurred in the guest application. This could be due to memory misalignment, stack overflow, or an unsupported instruction.";
-                        if (ripVal.Contains("0x800000080") || ripVal.Contains("0x80") || ripVal.EndsWith("80"))
-                        {
-                            analysis = "CRITICAL ANALYSIS: The guest application crashed at address 0x800000080 (Offset: 0x80). This strongly indicates the eboot.bin binary contains encrypted segments or is executing garbage header structures. You must run the Boot Analyzer to attempt decryption using pre-shared keys or key databases.";
-                        }
-                        else if (content.Contains("ucrtbase.dll"))
-                        {
-                            analysis = "CRITICAL ANALYSIS: The guest application crashed inside the Host C-Runtime Library (ucrtbase.dll). This usually indicates a null-pointer exception, memory corruption, or bad thread initialization on the host calling convention bridge.";
-                        }
-
-                        // Display Dialog
-                        Dispatcher.Invoke(() =>
-                        {
-                            CrashExcCodeText.Text = excCode;
-                            CrashRipText.Text = ripVal;
-                            CrashAnalysisText.Text = analysis;
-                            CrashRawText.Text = content;
-                            CrashDialogOverlay.Visibility = Visibility.Visible;
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogConsole("Failed to read crash log: " + ex.Message);
-                }
             }
         }
 
@@ -2027,6 +2345,9 @@ namespace Pcsx5Ui
                         break;
                     }
                 }
+
+                // UI Scale
+                SelectUiScaleComboItem();
 
                 // Graphics
                 GpuRendererCombo.SelectedIndex = Math.Clamp(_config.graphics.renderer, 0, 1);
@@ -2421,6 +2742,7 @@ namespace Pcsx5Ui
         {
             public string language { get; set; } = "en-US";
             public bool title_music_enabled { get; set; } = true;
+            public double scale { get; set; } = 1.0;
         }
     }
 

@@ -22,6 +22,16 @@ namespace Kernel {
     bool Initialize();
     void Shutdown();
 
+    // In-process mode (core hosted inside the WPF app): process-wide host
+    // hooks (top-level SEH filter, CRT death handlers) are left to the host
+    // process, and the VEH only inspects exceptions raised while executing
+    // tracked guest code so CLR first-chance exceptions pass through cheaply.
+    // Must be called before Initialize().
+    void SetInProcMode(bool enabled);
+
+    // True when the core is hosted inside another process (see SetInProcMode).
+    bool IsInProcMode();
+
     // Configure PRX module resolution.  `game_dir` is the directory of the
     // main module (its `sce_module/` sub-directory is searched first);
     // `firmware_modules_dir` (may be empty) holds user-supplied firmware

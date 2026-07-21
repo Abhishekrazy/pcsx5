@@ -5,6 +5,7 @@
   "sidebar.view": "Ver",
   "sidebar.help": "Ayuda",
   "sidebar.language": "Idioma",
+  "sidebar.input": "Entrada",
   "status.running": "Ejecutándose",
   "status.paused": "Pausado",
   "status.idle": "Inactivo",

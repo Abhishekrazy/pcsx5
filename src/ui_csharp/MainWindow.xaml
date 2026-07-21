@@ -23,6 +23,20 @@
         <SolidColorBrush x:Key="AccentGlowBrush" Color="#3F0099FF"/>
         <SolidColorBrush x:Key="GlassBackgroundBrush" Color="#CC0A0D14"/>
         <SolidColorBrush x:Key="CardBackgroundBrush" Color="#3F000000"/>
+
+        <!-- Controller input overlay styles: hidden until the matching button is pressed -->
+        <Style x:Key="PadOverlayStyle" TargetType="Shape">
+            <Setter Property="Fill" Value="#550099FF"/>
+            <Setter Property="Stroke" Value="#0099FF"/>
+            <Setter Property="StrokeThickness" Value="2"/>
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style x:Key="PadOverlayRingStyle" TargetType="Shape">
+            <Setter Property="Fill" Value="Transparent"/>
+            <Setter Property="Stroke" Value="#0099FF"/>
+            <Setter Property="StrokeThickness" Value="3"/>
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
         
         <!-- Navigation tab button style -->
         <Style x:Key="NavTabButtonStyle" TargetType="Button">
@@ -131,7 +145,7 @@
         </Grid>
 
         <!-- Main Window Layout -->
-        <Grid Margin="0">
+        <Grid x:Name="MainLayoutRoot" Margin="0">
             <Grid.RowDefinitions>
                 <!-- Title Bar & Navigation -->
                 <RowDefinition Height="65"/>
@@ -514,6 +528,7 @@
                                     <RowDefinition Height="Auto"/> <!-- Bottom buttons (L3, Options, R3, etc.) -->
                                     <RowDefinition Height="Auto"/> <!-- Color adjustment -->
                                     <RowDefinition Height="Auto"/> <!-- Action Buttons -->
+                                    <RowDefinition Height="Auto"/> <!-- Live Input Tester panel -->
                                 </Grid.RowDefinitions>
 
                                 <!-- Config Selection Card -->
@@ -545,9 +560,49 @@
                                     </Grid>
                                 </Border>
 
-                                <!-- Controller Image -->
-                                <Grid Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
-                                    <Image Source="ps5_controller.png" Stretch="Uniform" Height="220" Opacity="0.85"/>
+                                <!-- Controller Image with live input overlays (1017x1017 design space, scaled by the Viewbox) -->
+                                <Grid Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" MinHeight="260">
+                                    <Viewbox Stretch="Uniform">
+                                        <Grid Width="1017" Height="1017">
+                                            <Image Source="ps5_controller.png" Stretch="Uniform" Opacity="0.85"/>
+                                            <Canvas x:Name="ControllerOverlayCanvas" Width="1017" Height="1017" IsHitTestVisible="False">
+                                                <!-- Triggers / bumpers -->
+                                                <Rectangle x:Name="PadL2Overlay" Canvas.Left="168" Canvas.Top="200" Width="110" Height="30" RadiusX="14" RadiusY="14" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Rectangle x:Name="PadR2Overlay" Canvas.Left="739" Canvas.Top="200" Width="110" Height="30" RadiusX="14" RadiusY="14" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Rectangle x:Name="PadL1Overlay" Canvas.Left="173" Canvas.Top="238" Width="100" Height="26" RadiusX="12" RadiusY="12" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Rectangle x:Name="PadR1Overlay" Canvas.Left="744" Canvas.Top="238" Width="100" Height="26" RadiusX="12" RadiusY="12" Style="{StaticResource PadOverlayStyle}"/>
+
+                                                <!-- Touchpad zones -->
+                                                <Rectangle x:Name="PadTouchLeftOverlay" Canvas.Left="402" Canvas.Top="268" Width="76" Height="150" RadiusX="10" RadiusY="10" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Rectangle x:Name="PadTouchCenterOverlay" Canvas.Left="482" Canvas.Top="268" Width="80" Height="150" RadiusX="10" RadiusY="10" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Rectangle x:Name="PadTouchRightOverlay" Canvas.Left="566" Canvas.Top="268" Width="76" Height="150" RadiusX="10" RadiusY="10" Style="{StaticResource PadOverlayStyle}"/>
+
+                                                <!-- Create (Back) / Options -->
+                                                <Ellipse x:Name="PadBackOverlay" Canvas.Left="362" Canvas.Top="329" Width="26" Height="26" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Ellipse x:Name="PadOptionsOverlay" Canvas.Left="653" Canvas.Top="329" Width="26" Height="26" Style="{StaticResource PadOverlayStyle}"/>
+
+                                                <!-- D-Pad -->
+                                                <Ellipse x:Name="PadUpOverlay" Canvas.Left="204" Canvas.Top="292" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Ellipse x:Name="PadLeftOverlay" Canvas.Left="160" Canvas.Top="348" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Ellipse x:Name="PadRightOverlay" Canvas.Left="246" Canvas.Top="348" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Ellipse x:Name="PadDownOverlay" Canvas.Left="204" Canvas.Top="404" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
+
+                                                <!-- Face buttons -->
+                                                <Ellipse x:Name="PadTriangleOverlay" Canvas.Left="785" Canvas.Top="292" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Ellipse x:Name="PadSquareOverlay" Canvas.Left="729" Canvas.Top="348" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Ellipse x:Name="PadCircleOverlay" Canvas.Left="841" Canvas.Top="348" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
+                                                <Ellipse x:Name="PadCrossOverlay" Canvas.Left="785" Canvas.Top="404" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
+
+                                                <!-- Stick wells + moving stick dots + L3/R3 rings -->
+                                                <Ellipse Canvas.Left="360" Canvas.Top="456" Width="84" Height="84" Fill="#100099FF" Stroke="#300099FF" StrokeThickness="1"/>
+                                                <Ellipse Canvas.Left="599" Canvas.Top="456" Width="84" Height="84" Fill="#100099FF" Stroke="#300099FF" StrokeThickness="1"/>
+                                                <Ellipse x:Name="PadL3Overlay" Canvas.Left="360" Canvas.Top="456" Width="84" Height="84" Style="{StaticResource PadOverlayRingStyle}"/>
+                                                <Ellipse x:Name="PadR3Overlay" Canvas.Left="599" Canvas.Top="456" Width="84" Height="84" Style="{StaticResource PadOverlayRingStyle}"/>
+                                                <Ellipse x:Name="LeftStickDot" Canvas.Left="384" Canvas.Top="480" Width="36" Height="36" Fill="#990099FF" Stroke="#CCFFFFFF" StrokeThickness="1.5"/>
+                                                <Ellipse x:Name="RightStickDot" Canvas.Left="623" Canvas.Top="480" Width="36" Height="36" Fill="#990099FF" Stroke="#CCFFFFFF" StrokeThickness="1.5"/>
+                                            </Canvas>
+                                        </Grid>
+                                    </Viewbox>
                                 </Grid>
 
                                 <!-- Bottom buttons (L3, Options, R3, Touchpad) -->
@@ -644,7 +699,7 @@
                                 <Grid Grid.Row="4" Margin="0,5,0,0">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                                         <Button Content="Restore Defaults" Style="{StaticResource ModernButtonStyle}" Width="110" Height="26" FontSize="10" Padding="0"/>
-                                        <Button Content="Controller Tester" Style="{StaticResource ModernButtonStyle}" Width="110" Height="26" FontSize="10" Padding="0" Margin="6,0,0,0" Click="ControllerTesterBtn_Click" ToolTip="Open the DualSense tester (dualsense_visual.exe): buttons, sticks, touch, gyro, rumble, adaptive triggers, LEDs"/>
+                                        <Button x:Name="ControllerTesterBtn" Content="Input Tester" Style="{StaticResource ModernButtonStyle}" Width="110" Height="26" FontSize="10" Padding="0" Margin="6,0,0,0" Click="ControllerTesterBtn_Click" ToolTip="Toggle the in-app DualSense input/output tester panel"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Content="Save" Style="{StaticResource ModernButtonStyle}" Width="65" Height="26" FontSize="10" Padding="0" Click="SaveSettingsBtn_Click"/>
@@ -652,6 +707,76 @@
                                         <Button Content="Apply" Style="{StaticResource ModernButtonStyle}" Width="65" Height="26" FontSize="10" Padding="0" Margin="6,0,0,0" Click="SaveSettingsBtn_Click"/>
                                     </StackPanel>
                                 </Grid>
+
+                                <!-- LIVE INPUT TESTER PANEL (in-app replacement for dualsense_visual.exe) -->
+                                <Border x:Name="ControllerTesterPanel" Grid.Row="5" Visibility="Collapsed" Background="#15FFFFFF" BorderBrush="#200099FF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,10,0,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- LEFT: digital + analog input readouts -->
+                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                            <TextBlock Text="LIVE INPUT" FontSize="10" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
+                                            <TextBlock x:Name="TesterConnectionText" Text="No controller connected" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,6" TextWrapping="Wrap"/>
+                                            <TextBlock x:Name="TesterButtonsText" Text="Buttons: -" FontSize="10" Foreground="White" Margin="0,0,0,8" TextWrapping="Wrap" FontFamily="Consolas"/>
+
+                                            <Grid Margin="0,0,0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="28"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="34"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="L2" FontSize="10" Foreground="White" VerticalAlignment="Center"/>
+                                                <ProgressBar x:Name="TesterL2Bar" Grid.Column="1" Minimum="0" Maximum="255" Height="10" Background="#20FFFFFF" Foreground="#0099FF"/>
+                                                <TextBlock x:Name="TesterL2Text" Grid.Column="2" Text="0" FontSize="10" Foreground="White" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+                                            </Grid>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="28"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="34"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="R2" FontSize="10" Foreground="White" VerticalAlignment="Center"/>
+                                                <ProgressBar x:Name="TesterR2Bar" Grid.Column="1" Minimum="0" Maximum="255" Height="10" Background="#20FFFFFF" Foreground="#0099FF"/>
+                                                <TextBlock x:Name="TesterR2Text" Grid.Column="2" Text="0" FontSize="10" Foreground="White" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+                                            </Grid>
+
+                                            <TextBlock x:Name="TesterLeftStickText" Text="Left Stick:  X=128 Y=128" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterRightStickText" Text="Right Stick: X=128 Y=128" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterTouchText" Text="Touchpad: released" FontSize="10" Foreground="White" FontFamily="Consolas"/>
+                                        </StackPanel>
+
+                                        <!-- RIGHT: output tests (rumble, LEDs, lightbar, adaptive triggers) -->
+                                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                            <TextBlock Text="OUTPUT TESTS" FontSize="10" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
+
+                                            <TextBlock Text="Rumble" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <Button Content="Low Freq" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Click="TesterRumbleLow_Click"/>
+                                                <Button Content="High Freq" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterRumbleHigh_Click"/>
+                                                <Button Content="Stop" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterRumbleStop_Click"/>
+                                            </StackPanel>
+
+                                            <TextBlock Text="Lightbar &amp; Player LEDs" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <Button Content="Set Lightbar Color" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Click="TesterLightbarApply_Click" ToolTip="Applies the RED/GREEN/BLUE slider values to the controller lightbar"/>
+                                                <Button Content="Reset" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterLightbarReset_Click"/>
+                                                <Button Content="Cycle Player LED" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterPlayerLed_Click"/>
+                                            </StackPanel>
+
+                                            <TextBlock Text="Adaptive Triggers (both L2/R2)" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <Button Content="Off" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Click="TesterTriggerOff_Click"/>
+                                                <Button Content="Feedback" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerFeedback_Click"/>
+                                                <Button Content="Weapon" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerWeapon_Click"/>
+                                                <Button Content="Vibration" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerVibration_Click"/>
+                                            </StackPanel>
+                                            <TextBlock x:Name="TesterStatusText" Text="" FontSize="9" Foreground="#FFCC66" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </Grid>
 
                             <!-- COLUMN 2: RIGHT SIDE MAPPINGS -->
@@ -992,13 +1117,14 @@
                             <!-- UI SETTINGS CARD -->
                             <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
-                                    <TextBlock Text="UI &amp; LOCALIZATION" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
+                                    <TextBlock x:Name="UiLocalizationHeaderTextBlock" Text="UI &amp; LOCALIZATION" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" MinHeight="35"/>
                                             <RowDefinition Height="Auto" MinHeight="35"/>
                                         </Grid.RowDefinitions>
                                         
@@ -1015,6 +1141,16 @@
                                             <ComboBoxItem Content="Русский (Россия)" Tag="ru-RU"/>
                                             <ComboBoxItem Content="简体中文 (中国)" Tag="zh-CN"/>
                                             <ComboBoxItem Content="繁體中文 (台灣)" Tag="zh-TW"/>
+                                        </ComboBox>
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="UI Scale (Font &amp; Layout Size)" VerticalAlignment="Center" Foreground="#FFA0A0A5"/>
+                                        <ComboBox x:Name="UiScaleCombo" Grid.Row="1" Grid.Column="1" Width="200" Height="26" HorizontalAlignment="Right" Background="#20FFFFFF" Foreground="Black" SelectionChanged="UiScaleCombo_SelectionChanged">
+                                            <ComboBoxItem Content="80%" Tag="0.8"/>
+                                            <ComboBoxItem Content="100% (Default)" Tag="1.0"/>
+                                            <ComboBoxItem Content="125%" Tag="1.25"/>
+                                            <ComboBoxItem Content="150%" Tag="1.5"/>
+                                            <ComboBoxItem Content="175%" Tag="1.75"/>
+                                            <ComboBoxItem Content="200%" Tag="2.0"/>
                                         </ComboBox>
                                     </Grid>
                                 </StackPanel>
@@ -1196,6 +1332,37 @@
                             <Button Content="Run Boot Analyzer" Width="180" Height="32" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeCrashedGame_Click"/>
                         </StackPanel>
                     </Grid>
+                </Border>
+            </Grid>
+
+            <!-- FIRST-RUN SETUP OVERLAY DIALOG (games folder picker) -->
+            <Grid x:Name="FirstRunOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
+                <Border Background="#1C1F26" BorderBrush="#0099FF" BorderThickness="1.5" CornerRadius="12" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>
+                    </Border.Effect>
+                    <StackPanel>
+                        <TextBlock Text="Welcome to PCSX5" FontSize="22" FontWeight="ExtraBold" Foreground="White" Margin="0,0,0,6"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#FFA0A0A5" FontSize="13" LineHeight="20" Margin="0,0,0,18"
+                                   Text="Before you start, choose the folder where your PS5 game dumps are stored. PCSX5 will scan it to build your game library. You can add or change folders later in System Settings."/>
+
+                        <TextBlock Text="GAMES FOLDER" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
+                        <Grid Margin="0,0,0,20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="#20FFFFFF" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10,6">
+                                <TextBlock x:Name="FirstRunFolderText" Text="No folder selected" Foreground="White" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            </Border>
+                            <Button Grid.Column="1" Content="Browse..." Width="100" Height="32" Margin="10,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="FirstRunBrowse_Click"/>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Skip for Now" Width="120" Height="34" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Click="FirstRunSkip_Click"/>
+                            <Button x:Name="FirstRunContinueBtn" Content="Continue" Width="140" Height="34" Style="{StaticResource ModernButtonStyle}" IsEnabled="False" Click="FirstRunContinue_Click"/>
+                        </StackPanel>
+                    </StackPanel>
                 </Border>
             </Grid>
         </Grid>

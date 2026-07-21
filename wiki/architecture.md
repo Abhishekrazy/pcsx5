@@ -10,7 +10,7 @@
 | HLE | `src/hle/` | High-level emulation of userland libraries (`hle.cpp`, `libkernel.cpp`, ...) |
 | GPU | `src/gpu/` | Graphics emulation |
 | Memory | `src/memory/` | Guest address space (reserve/commit, read/write helpers) |
-| UI | C# WPF (`pcsx5_ui`) | Frontend; drives the native core |
+| UI | C# WPF (`pcsx5.exe`) | Frontend; hosts the native core in-process via `pcsx5_core.dll` (`CoreBridge` P/Invoke). `pcsx5_cli.exe` is the thin native CLI shim over the same core. |
 | Compat | `src/compat/` | Per-title compatibility database |
 | Diagnostics | `src/diagnostics/` | Crash handler, minidump bundles |
 

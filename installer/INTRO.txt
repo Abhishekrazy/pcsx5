@@ -6,13 +6,15 @@ modern WPF frontend (Windows 11 Fluent design).
 Before you continue, please make sure your system meets these requirements:
 
   - Windows 10/11 (64-bit)
-  - .NET 9.0 Desktop Runtime
   - A Vulkan-compatible GPU
   - The latest Visual C++ Redistributable
 
-During setup you will be asked to choose the folder where your PS5 game
-dumps are stored. PCSX5 scans this folder to build your game library. You
-can skip it and add or change game folders at any time from the UI
+(No .NET runtime installation is needed - the app is self-contained.)
+
+When you first launch PCSX5, the app will ask you to choose the folder
+where your PS5 game dumps are stored (you can skip this and do it later).
+PCSX5 scans this folder to build your game library. You can add or change
+game folders at any time from the UI
 (Paths -> GameFolders in config.ini).
 
 PCSX5 does not include any games, firmware, or copyrighted Sony content.

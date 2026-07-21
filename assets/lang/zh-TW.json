@@ -5,6 +5,7 @@
   "sidebar.view": "檢視",
   "sidebar.help": "說明",
   "sidebar.language": "語言",
+  "sidebar.input": "輸入",
   "status.running": "執行中",
   "status.paused": "已暫停",
   "status.idle": "閒置",

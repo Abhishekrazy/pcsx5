@@ -5,6 +5,7 @@
   "sidebar.view": "视图",
   "sidebar.help": "帮助",
   "sidebar.language": "语言",
+  "sidebar.input": "输入",
   "status.running": "运行中",
   "status.paused": "已暂停",
   "status.idle": "空闲",

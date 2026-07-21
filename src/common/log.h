@@ -52,6 +52,15 @@ namespace LogConfig {
     // LogLevel::Critical to only see fatal conditions.
     void SetLevel(LogCategory category, LogLevel level);
     LogLevel GetLevel(LogCategory category);
+
+    // Callback sink for in-process hosts (the core DLL embedded in the WPF
+    // app): every emitted record is forwarded to `callback` in addition to
+    // the stdout/file sinks.  Level/category are passed as their plain enum
+    // int values so the ABI stays C-friendly.  The callback runs on the
+    // logging thread without any internal locks held; `user` is passed
+    // through unchanged.  Null callback disables the sink.
+    using LogCallback = void (*)(int level, int category, const char* message, void* user);
+    void SetLogCallback(LogCallback callback, void* user);
 }
 
 // Stringification helpers used by diagnostics, the test harness, and the
