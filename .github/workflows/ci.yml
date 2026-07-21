@@ -111,6 +111,3 @@ jobs:
             PCSX5_*_Release.zip
             *-Setup.exe
           generate_release_notes: true
-          # Alpha tags publish as full releases; only -beta / -rc
-          # tags are marked as pre-releases.
-          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
