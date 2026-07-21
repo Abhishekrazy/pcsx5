@@ -315,6 +315,9 @@ variable to the full path of `ISCC.exe` to override.  The result is
 CI builds both the portable ZIP and the installer on every push, and
 attaches them to the GitHub Release when a `v*` tag is pushed
 (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+Tags with a prerelease suffix (`v0.0.1-alpha`, `v0.2.0-beta`,
+`v1.0.0-rc.1`) publish as a GitHub **pre-release**; plain tags
+(`v1.0.0`) publish as a stable release.
 
 ---
 
@@ -339,6 +342,7 @@ A typical CI runner image needs:
 
 ## 13. License
 
-This project is licensed under the [MIT License](LICENSE).  By submitting
+This project is licensed under the [GNU General Public License v2.0](LICENSE).
+By submitting
 a pull request you agree to license your contribution under the same
 terms.
