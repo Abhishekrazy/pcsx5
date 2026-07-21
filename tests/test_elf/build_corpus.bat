@@ -25,15 +25,15 @@ if errorlevel 1 (
 pushd "%HERE%"
 
 echo [BUILD] test_guest.elf
-clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -Wl,--entry=_start -o "%OUTDIR%test_guest.elf"  main.cpp      || goto :error
+clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -fuse-ld=lld -Wl,--entry=_start -o "%OUTDIR%test_guest.elf"  main.cpp      || goto :error
 echo [BUILD] tls_guest.elf
-clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -Wl,--entry=_start -o "%OUTDIR%tls_guest.elf"   tls_main.cpp  || goto :error
+clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -fuse-ld=lld -Wl,--entry=_start -o "%OUTDIR%tls_guest.elf"   tls_main.cpp  || goto :error
 echo [BUILD] reloc_guest.elf
-clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -Wl,--entry=_start -o "%OUTDIR%reloc_guest.elf" reloc_main.cpp || goto :error
+clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -fuse-ld=lld -Wl,--entry=_start -o "%OUTDIR%reloc_guest.elf" reloc_main.cpp || goto :error
 echo [BUILD] pie_guest.elf
 clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -fPIE -pie -Wl,--entry=_start -o "%OUTDIR%pie_guest.elf" pie_main.cpp  || goto :error
 echo [BUILD] fixed_guest.elf
-clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -Wl,--entry=_start -o "%OUTDIR%fixed_guest.elf" fixed_main.cpp || goto :error
+clang -target x86_64-pc-linux-gnu -ffreestanding -nostdlib -fuse-ld=lld -Wl,--entry=_start -o "%OUTDIR%fixed_guest.elf" fixed_main.cpp || goto :error
 
 popd
 echo [SUCCESS] ELF corpus built in %OUTDIR%.
