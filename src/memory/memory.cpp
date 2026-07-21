@@ -273,6 +273,33 @@ Status Commit(guest_addr_t address, u64 size, u32 protection) {
     const u64 aligned_size = ALIGN_UP(size, PAGE_SIZE);
     const DWORD win_prot = TranslateProtection(protection);
     void* ptr = reinterpret_cast<void*>(address);
+
+    // Already-committed region (e.g. overlapping ELF segments sharing one
+    // 16KB guest page): MEM_COMMIT cannot change protection on committed
+    // pages, so merge the requested rights into the existing ones instead.
+    {
+        std::lock_guard<std::mutex> lock(g_regions_mutex);
+        for (auto& r : g_regions) {
+            if (r.base <= address && address + aligned_size <= r.base + r.size &&
+                r.committed) {
+                const u32 merged = r.protection | protection;
+                const DWORD merged_win = TranslateProtection(merged);
+                DWORD old_prot = 0;
+                if (!VirtualProtect(ptr, aligned_size, merged_win, &old_prot)) {
+                    const DWORD err = GetLastError();
+                    LOG_ERROR(Memory, "Commit: VirtualProtect(merge) failed at 0x%llx (err=%lu)",
+                              address, err);
+                    return Status::Win32Error;
+                }
+                r.protection = merged;
+                r.win32_prot = merged_win;
+                LOG_DEBUG(Memory, "Commit merged protection at [0x%llx-0x%llx] -> prot=%u",
+                          address, address + aligned_size, merged);
+                return Status::Ok;
+            }
+        }
+    }
+
     void* committed = VirtualAlloc(ptr, aligned_size, MEM_COMMIT, win_prot);
     if (!committed) {
         const DWORD err = GetLastError();
