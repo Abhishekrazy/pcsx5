@@ -8,8 +8,9 @@ Actions.
 
 ## 1. Release channels
 
-PCSX5 uses [semantic versioning](https://semver.org/) with prerelease
-suffixes.  There are three channels:
+PCSX5 uses [semantic versioning](https://semver.org/) —
+`v<major>.<minor>.<patch>` — with an optional channel suffix.
+There are three channels:
 
 | Channel | Tag format | Example | GitHub Release type |
 | ------- | ---------- | ------- | ------------------- |
@@ -26,6 +27,28 @@ Notes:
   `v0.0.1-alpha.2`, `v0.1.0-beta.3`, `v1.0.0-rc.1`.
 * Every push to `main` and every pull request still builds and tests,
   but only `v*` tags publish a GitHub Release.
+
+### Version numbers: major / minor / patch
+
+* **Patch** (`v0.0.1 → v0.0.2`) — bug fixes and small improvements
+  that do not change behavior in a major way.  Example: a crash fix
+  on top of the first alpha ships as `v0.0.2-alpha`.
+* **Minor** (`v0.0.x → v0.1.0`) — new features, new HLE modules,
+  notable compatibility gains.
+* **Major** (`v0.x → v1.0.0`) — first stable / milestone releases and
+  breaking changes.
+
+Patch releases keep the channel of the release they fix:
+
+| Release that ships | Tag |
+| ------------------ | --- |
+| First alpha | `v0.0.1-alpha` |
+| Patch: crash fix on the alpha | `v0.0.2-alpha` |
+| Next feature batch, still alpha | `v0.1.0-alpha` |
+| Promote to beta | `v0.2.0-beta` |
+| Beta patch | `v0.2.1-beta` |
+| First stable | `v1.0.0` |
+| Stable hotfix | `v1.0.1` |
 
 ---
 
