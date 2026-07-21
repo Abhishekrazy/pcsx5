@@ -575,10 +575,14 @@ if(BUILD_TESTING)
 
     if(CLANG_EXECUTABLE)
         # Copy every freestanding test source next to the build tree so the
-        # .bat file can operate on a stable working directory.
-        file(COPY ${CMAKE_SOURCE_DIR}/tests/test_elf/main.cpp
-                  ${CMAKE_SOURCE_DIR}/tests/test_elf/tls_main.cpp
-                  ${CMAKE_SOURCE_DIR}/tests/test_elf/build_all.bat
+        # .bat file can operate on a stable working directory.  build_all.bat
+        # derives source names from the ELF name (<elf>_main.cpp), so the
+        # copies must be renamed accordingly.
+        file(COPY_FILE ${CMAKE_SOURCE_DIR}/tests/test_elf/main.cpp
+             ${CMAKE_BINARY_DIR}/test_elf/test_guest_main.cpp)
+        file(COPY_FILE ${CMAKE_SOURCE_DIR}/tests/test_elf/tls_main.cpp
+             ${CMAKE_BINARY_DIR}/test_elf/tls_guest_main.cpp)
+        file(COPY ${CMAKE_SOURCE_DIR}/tests/test_elf/build_all.bat
                   ${CMAKE_SOURCE_DIR}/tests/test_elf/build_elf.bat
                   ${CMAKE_SOURCE_DIR}/tests/test_elf/build_tls_elf.bat
                   ${CMAKE_SOURCE_DIR}/tests/test_elf/build_corpus.bat
@@ -594,7 +598,9 @@ if(BUILD_TESTING)
             COMMENT "Building freestanding guest test ELFs (clang)"
             VERBATIM
         )
-        add_custom_target(guest_test_elfs
+        # ALL: ctest does not build targets — the ELFs must be produced by the
+        # default build or the smoke tests fail with missing files (CI bug).
+        add_custom_target(guest_test_elfs ALL
             DEPENDS ${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
                     ${CMAKE_BINARY_DIR}/test_elf/tls_guest.elf
         )
@@ -699,6 +705,39 @@ add_executable(dump_imports
     )
     target_include_directories(dualsense_test PRIVATE src)
     target_compile_options(dualsense_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+
+    # ------------------------------------------------------------------------
+    # dualsense_visual — windowed Dear ImGui DualSense tester.  Same input
+    # path as dualsense_test (src/gpu/dualsense_hid.h) rendered live: buttons
+    # with a per-button "tested" checklist, stick plots, L2/R2 bars, touchpad
+    # finger view, gyro/accel, plus rumble and adaptive-trigger output
+    # controls.  Interactive dev tool; not a ctest test.
+    # ------------------------------------------------------------------------
+    add_executable(dualsense_visual
+        tools/dualsense_visual.cpp
+        src/common/log.cpp
+        ${IMGUI_DIR}/imgui.cpp
+        ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp
+        ${IMGUI_DIR}/imgui_widgets.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_include_directories(dualsense_visual PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends)
+    target_compile_options(dualsense_visual PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    # ImGui is third-party: keep it at /W3 without /WX (MSVC warns on the
+    # OpenGL3 backend under /W4, e.g. C4701 on last_pixel_unpack_buffer).
+    set_source_files_properties(
+        ${IMGUI_DIR}/imgui.cpp
+        ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp
+        ${IMGUI_DIR}/imgui_widgets.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+        TARGET_DIRECTORY dualsense_visual
+        PROPERTIES COMPILE_OPTIONS "/W3"
+    )
+    target_link_libraries(dualsense_visual PRIVATE glfw opengl32)
 
     # Dump the dynamic-tag table of a real PS5 game ELF to identify
     # which DT_* / PT_* tags are actually used (Sony-specific tags

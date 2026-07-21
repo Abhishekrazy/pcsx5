@@ -1226,6 +1226,49 @@ namespace Pcsx5Ui
             return null;
         }
 
+        private string LocateDualSenseTester()
+        {
+            string uiDir = AppDomain.CurrentDomain.BaseDirectory;
+            string[] locations = {
+                Path.Combine(uiDir, "dualsense_visual.exe"),
+                Path.Combine(uiDir, "build", "dualsense_visual.exe"),
+                Path.Combine(uiDir, "..", "build", "dualsense_visual.exe")
+            };
+
+            foreach (var loc in locations)
+            {
+                if (File.Exists(loc)) return Path.GetFullPath(loc);
+            }
+
+            return null;
+        }
+
+        // Launch the standalone DualSense tester (dualsense_visual.exe).
+        private void ControllerTesterBtn_Click(object sender, RoutedEventArgs e)
+        {
+            string testerPath = LocateDualSenseTester();
+            if (testerPath == null)
+            {
+                LogConsole("Error: Could not locate dualsense_visual.exe.");
+                MessageBox.Show("Could not locate dualsense_visual.exe (the controller tester).",
+                                "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = testerPath,
+                    UseShellExecute = true
+                });
+                LogConsole("Controller tester launched.");
+            }
+            catch (Exception ex)
+            {
+                LogConsole("Failed to launch controller tester: " + ex.Message);
+            }
+        }
+
         private string LocateSndDecode()
         {
             string uiDir = AppDomain.CurrentDomain.BaseDirectory;
