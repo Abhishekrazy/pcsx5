@@ -5,7 +5,7 @@
 ![PCSX5 Logo](https://img.shields.io/badge/PCSX5-PS5%20Emulator-00D9FF?style=for-the-badge&logo=playstation&logoColor=white)
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Abhishekrazy/pcsx5/build.yml?branch=main&style=flat-square&logo=github-actions&logoColor=white)](https://github.com/Abhishekrazy/pcsx5/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square&logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![License: GPL v2](https://img.shields.io/badge/License-GPL_v2-blue.svg?style=flat-square&logo=gnu&logoColor=white)](LICENSE)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg?style=flat-square&logo=c%2B%2B&logoColor=white)](https://isocpp.org/std/the-standard)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?style=flat-square&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![Vulkan](https://img.shields.io/badge/Graphics-Vulkan%201.3-red?style=flat-square&logo=vulkan&logoColor=white)](https://www.vulkan.org/)
@@ -160,7 +160,7 @@ pcsx5/
 ├── tools/               # Build scripts, automation
 ├── CMakeLists.txt       # Main build configuration
 ├── BUILDING.md          # Detailed build guide
-└── LICENSE              # MIT License
+└── LICENSE              # GNU General Public License v2.0
 ```
 
 ---
@@ -208,30 +208,24 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 📄 License
 
-PCSX5 is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
+PCSX5 is licensed under the **GNU General Public License v2.0** — see [LICENSE](LICENSE) for details.
 
 ```
-MIT License
+PCSX5 - a PlayStation 5 emulator
+Copyright (C) 2026 PCSX5 Team
 
-Copyright (c) 2024 PCSX5 Contributors
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; version 2 of the License.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 ```
 
 ---
