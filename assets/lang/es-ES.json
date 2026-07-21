@@ -56,7 +56,7 @@
   "msg.resumed": "Emulador reanudado",
   "msg.paused": "Emulador pausado",
   "msg.touched_compat": "Entrada de compatibilidad modificada para %s",
-  "system.header": "SISTEMA",
+  "system.header": "Sistema",
   "system.cpu": "CPU",
   "system.gpu": "GPU",
   "system.memory": "Memoria",

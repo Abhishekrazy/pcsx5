@@ -745,7 +745,9 @@
 
                                             <TextBlock x:Name="TesterLeftStickText" Text="Left Stick:  X=128 Y=128" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
                                             <TextBlock x:Name="TesterRightStickText" Text="Right Stick: X=128 Y=128" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterTouchText" Text="Touchpad: released" FontSize="10" Foreground="White" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterTouchText" Text="Touchpad: released" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterGyroText" Text="Gyro:  -" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterAccelText" Text="Accel: -" FontSize="10" Foreground="White" FontFamily="Consolas"/>
                                         </StackPanel>
 
                                         <!-- RIGHT: output tests (rumble, LEDs, lightbar, adaptive triggers) -->
@@ -772,6 +774,12 @@
                                                 <Button Content="Feedback" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerFeedback_Click"/>
                                                 <Button Content="Weapon" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerWeapon_Click"/>
                                                 <Button Content="Vibration" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerVibration_Click"/>
+                                            </StackPanel>
+                                            <TextBlock Text="Speaker &amp; Microphone (USB only)" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <Button Content="Play Test Tone" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Click="TesterPlayTone_Click" ToolTip="Plays a 440 Hz tone through the DualSense speaker (USB audio endpoint, channels 1-2)"/>
+                                                <Button x:Name="TesterMicTestBtn" Content="Mic Test" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterMicTest_Click" ToolTip="Live level meter from the DualSense microphone (USB only)"/>
+                                                <ProgressBar x:Name="TesterMicLevelBar" Minimum="0" Maximum="100" Width="80" Height="10" Background="#20FFFFFF" Foreground="#0099FF" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                             </StackPanel>
                                             <TextBlock x:Name="TesterStatusText" Text="" FontSize="9" Foreground="#FFCC66" TextWrapping="Wrap"/>
                                         </StackPanel>

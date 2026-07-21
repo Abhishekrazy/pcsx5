@@ -56,7 +56,7 @@
   "msg.resumed": "Emulatore ripreso",
   "msg.paused": "Emulatore in pausa",
   "msg.touched_compat": "Voce compatibilità modificata per %s",
-  "system.header": "SISTEMA",
+  "system.header": "Sistema",
   "system.cpu": "CPU",
   "system.gpu": "GPU",
   "system.memory": "Memoria",

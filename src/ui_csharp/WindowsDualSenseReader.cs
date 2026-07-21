@@ -29,6 +29,26 @@ namespace Pcsx5Ui
         Options = 1 << 14,
         TouchPad = 1 << 15,
         Back = 1 << 16, // DualSense "Create" button
+        PlayStation = 1 << 17, // PS logo button
+        Mic = 1 << 18, // mic mute button below the PS button
+    }
+
+    // One touchpad finger contact, decoded from the 4-byte touch point in the
+    // input report (offsets match the native dualsense_hid.h DecodeTouchPoint).
+    public readonly struct HostGamepadTouchPoint
+    {
+        public bool Active { get; }
+        public byte Id { get; }
+        public ushort X { get; } // 0..1919
+        public ushort Y { get; } // 0..1079
+
+        public HostGamepadTouchPoint(bool Active, byte Id, ushort X, ushort Y)
+        {
+            this.Active = Active;
+            this.Id = Id;
+            this.X = X;
+            this.Y = Y;
+        }
     }
 
     public readonly struct HostGamepadState
@@ -41,6 +61,10 @@ namespace Pcsx5Ui
         public byte RightY { get; }
         public byte LeftTrigger { get; }
         public byte RightTrigger { get; }
+        public HostGamepadTouchPoint Touch0 { get; }
+        public HostGamepadTouchPoint Touch1 { get; }
+        public HostGamepadSensorVec3 Gyro { get; }
+        public HostGamepadSensorVec3 Accel { get; }
 
         public HostGamepadState(
             bool Connected,
@@ -50,7 +74,11 @@ namespace Pcsx5Ui
             byte RightX,
             byte RightY,
             byte LeftTrigger,
-            byte RightTrigger)
+            byte RightTrigger,
+            HostGamepadTouchPoint Touch0 = default,
+            HostGamepadTouchPoint Touch1 = default,
+            HostGamepadSensorVec3 Gyro = default,
+            HostGamepadSensorVec3 Accel = default)
         {
             this.Connected = Connected;
             this.Buttons = Buttons;
@@ -60,6 +88,26 @@ namespace Pcsx5Ui
             this.RightY = RightY;
             this.LeftTrigger = LeftTrigger;
             this.RightTrigger = RightTrigger;
+            this.Touch0 = Touch0;
+            this.Touch1 = Touch1;
+            this.Gyro = Gyro;
+            this.Accel = Accel;
+        }
+    }
+
+    // One 3-axis sensor vector (gyro or accel), raw int16 little-endian as
+    // reported (gyro: +/-2000 dps full scale, accel: ~8192 LSB/g).
+    public readonly struct HostGamepadSensorVec3
+    {
+        public short X { get; }
+        public short Y { get; }
+        public short Z { get; }
+
+        public HostGamepadSensorVec3(short X, short Y, short Z)
+        {
+            this.X = X;
+            this.Y = Y;
+            this.Z = Z;
         }
     }
 
@@ -94,15 +142,18 @@ namespace Pcsx5Ui
         private static string _devicePath;
         private static bool _bluetooth;
         private static bool _outputReady;
-        private static bool _lightbarSetupPending;
         private static byte _outputSequence;
         private static FileStream _outputStream;
+        private static byte _rawButtons0;
+        private static byte _rawButtons1;
+        private static byte _rawButtons2;
         private static byte _motorLeft;
         private static byte _motorRight;
         private static byte _lightbarRed;
         private static byte _lightbarGreen;
         private static byte _lightbarBlue = 64; // PS-style blue default
         private static byte _playerLeds = 0x04; // center LED = player 1
+        private static byte _micLed; // 0 = off, 1 = on, 2 = pulse
 
         // Adaptive trigger effect blocks: 7 bytes each (type + 6 params), packed
         // into the 10-byte trigger effect zones of the output report.
@@ -148,6 +199,19 @@ namespace Pcsx5Ui
             }
 
             return state.Connected;
+        }
+
+        // Diagnostic: the three raw button bytes from the last input report
+        // (hat/face, shoulders, PS/touch-click/mute). Used by the input tester
+        // to verify bit-level parsing against hardware.
+        internal static void GetRawButtonBytes(out byte b0, out byte b1, out byte b2)
+        {
+            lock (Gate)
+            {
+                b0 = _rawButtons0;
+                b1 = _rawButtons1;
+                b2 = _rawButtons2;
+            }
         }
 
         private static void SetState(in HostGamepadState state)
@@ -203,6 +267,26 @@ namespace Pcsx5Ui
                 }
 
                 _playerLeds = bitmask;
+                SendOutputLocked();
+            }
+        }
+
+        // Microphone LED: 0 = off, 1 = on, 2 = pulse.
+        internal static void SetMicLed(byte mode)
+        {
+            if (mode > 2)
+            {
+                mode = 0;
+            }
+
+            lock (Gate)
+            {
+                if (_micLed == mode)
+                {
+                    return;
+                }
+
+                _micLed = mode;
                 SendOutputLocked();
             }
         }
@@ -270,7 +354,6 @@ namespace Pcsx5Ui
                 _devicePath = path;
                 _bluetooth = bluetooth;
                 _outputReady = true;
-                _lightbarSetupPending = true;
                 SendOutputLocked();
             }
         }
@@ -326,35 +409,50 @@ namespace Pcsx5Ui
 
         private static byte[] BuildOutputReportLocked()
         {
+            // Byte-for-byte the same layout as the native (working)
+            // dualsense_hid.h SendOutputLocked:
+            //   common[0]    enable flags 0: 0x01 right motor, 0x02 left motor
+            //   common[1]    enable flags 1: 0x01 mic LED, 0x04 lightbar color,
+            //                0x10 player LEDs, 0x40/0x80 trigger effects
+            //   common[2/3]  right (small) / left (large) motor
+            //   common[8]    mic LED mode
+            //   common[10]   right trigger mode, [11..20] params
+            //   common[21]   left trigger mode,  [22..31] params
+            //   common[38]   LED flags, [41] LED on/off (0x02 = on),
+            //                [42] brightness, [43] player LEDs (+0x20 instant)
+            //   common[44..46] lightbar RGB
             Span<byte> common = stackalloc byte[47];
-            common[0] = 0x03;             // flags0: enable both rumble motors
-            common[0] |= 0x04 | 0x08;     // flags0: enable right + left trigger effects
-            common[1] = 0x04 | 0x10;      // flags1: lightbar setup + player indicator
+            common[0] = 0x03;              // enable both rumble motors
+            common[0] |= 0x04 | 0x08;      // allow right + left trigger FFB
+            common[1] = 0x40 | 0x80;       // enable right + left trigger effects
+            common[1] |= 0x01;             // enable mic (mute) LED
+            common[1] |= 0x04;             // enable lightbar (RGB LED) color
+            common[1] |= 0x08;             // ResetLights: release LEDs from wireless
+                                           // firmware control (required on BT; the
+                                           // working DS5W library sets it every report)
+            common[1] |= 0x10;             // enable player LEDs
             common[2] = _motorRight;
             common[3] = _motorLeft;
+            common[8] = _micLed;
 
-            // Right trigger effect block: common[10] = type, common[11..16] = params
+            // Right trigger effect block: common[10] = type, [11..] = params
             common[10] = _rightTriggerEffect[0];
             for (var i = 1; i < 7; i++)
             {
                 common[10 + i] = _rightTriggerEffect[i];
             }
 
-            // Left trigger effect block: common[21] = type, common[22..27] = params
+            // Left trigger effect block: common[21] = type, [22..] = params
             common[21] = _leftTriggerEffect[0];
             for (var i = 1; i < 7; i++)
             {
                 common[21 + i] = _leftTriggerEffect[i];
             }
 
-            if (_lightbarSetupPending)
-            {
-                common[38] |= 0x02;
-                common[41] = 0x01;
-                _lightbarSetupPending = false;
-            }
-
-            common[43] = _playerLeds;
+            common[38] = 0x03;
+            common[41] = 0x02;             // 0x02 = LEDs on (0x01 disables all LEDs)
+            common[42] = 0x00;             // brightness: high
+            common[43] = (byte)(_playerLeds | 0x20); // 0x20 = instant (no fade)
             common[44] = _lightbarRed;
             common[45] = _lightbarGreen;
             common[46] = _lightbarBlue;
@@ -528,6 +626,7 @@ namespace Pcsx5Ui
         private static bool TryParseReport(ReadOnlySpan<byte> report, out HostGamepadState state)
         {
             int offset;
+            bool compact = false;
             if (report.Length >= 11 && report[0] == 0x01)
             {
                 offset = 1;
@@ -535,6 +634,15 @@ namespace Pcsx5Ui
             else if (report.Length >= 12 && report[0] == 0x31)
             {
                 offset = 2;
+            }
+            else if (report.Length >= 10 && report[0] == 0x01)
+            {
+                // Compact Bluetooth 0x01 report (10 bytes, per the official BT
+                // report descriptor): sticks at 1..4, buttons at 5/6/7, L2/R2
+                // analog at 8/9, no touch finger data. (Same layout the native
+                // reader calls "DS4-style".)
+                compact = true;
+                offset = 1;
             }
             else
             {
@@ -546,11 +654,27 @@ namespace Pcsx5Ui
             var leftY = report[offset + 1];
             var rightX = report[offset + 2];
             var rightY = report[offset + 3];
-            var l2 = report[offset + 4];
-            var r2 = report[offset + 5];
-            var buttons0 = report[offset + 7];
-            var buttons1 = report[offset + 8];
-            var buttons2 = report[offset + 9];
+            byte l2, r2, buttons0, buttons1, buttons2;
+            if (compact)
+            {
+                buttons0 = report[offset + 4];
+                buttons1 = report[offset + 5];
+                buttons2 = report[offset + 6];
+                l2 = report[offset + 7];
+                r2 = report[offset + 8];
+            }
+            else
+            {
+                l2 = report[offset + 4];
+                r2 = report[offset + 5];
+                buttons0 = report[offset + 7];
+                buttons1 = report[offset + 8];
+                buttons2 = report[offset + 9];
+            }
+
+            _rawButtons0 = buttons0;
+            _rawButtons1 = buttons1;
+            _rawButtons2 = buttons2;
 
             var buttons = HostGamepadButtons.None;
             buttons |= (buttons0 & 0x10) != 0 ? HostGamepadButtons.Square : 0;
@@ -566,7 +690,37 @@ namespace Pcsx5Ui
             buttons |= (buttons1 & 0x20) != 0 ? HostGamepadButtons.Options : 0;
             buttons |= (buttons1 & 0x40) != 0 ? HostGamepadButtons.L3 : 0;
             buttons |= (buttons1 & 0x80) != 0 ? HostGamepadButtons.R3 : 0;
+            buttons |= (buttons2 & 0x01) != 0 ? HostGamepadButtons.PlayStation : 0;
             buttons |= (buttons2 & 0x02) != 0 ? HostGamepadButtons.TouchPad : 0;
+            buttons |= (buttons2 & 0x04) != 0 ? HostGamepadButtons.Mic : 0;
+
+            // Touch fingers: 4 bytes each at offset+32 / offset+36 (standard
+            // DualSense layout, same as native dualsense_hid.h ParseReport).
+            var touch0 = default(HostGamepadTouchPoint);
+            var touch1 = default(HostGamepadTouchPoint);
+            if (report.Length >= offset + 40)
+            {
+                touch0 = DecodeTouchPoint(report.Slice(offset + 32, 4));
+                touch1 = DecodeTouchPoint(report.Slice(offset + 36, 4));
+            }
+
+            // Gyro at offset+15, accel at offset+21, three int16 LE each
+            // (same offsets/order as native dualsense_hid.h ParseReport and
+            // the Linux hid-playstation driver). Absent in the compact
+            // 10-byte BT report.
+            var gyro = default(HostGamepadSensorVec3);
+            var accel = default(HostGamepadSensorVec3);
+            if (!compact && report.Length >= offset + 27)
+            {
+                gyro = new HostGamepadSensorVec3(
+                    ReadS16LE(report.Slice(offset + 15, 2)),
+                    ReadS16LE(report.Slice(offset + 17, 2)),
+                    ReadS16LE(report.Slice(offset + 19, 2)));
+                accel = new HostGamepadSensorVec3(
+                    ReadS16LE(report.Slice(offset + 21, 2)),
+                    ReadS16LE(report.Slice(offset + 23, 2)),
+                    ReadS16LE(report.Slice(offset + 25, 2)));
+            }
 
             state = new HostGamepadState(
                 Connected: true,
@@ -576,8 +730,25 @@ namespace Pcsx5Ui
                 RightX: rightX,
                 RightY: rightY,
                 LeftTrigger: l2,
-                RightTrigger: r2);
+                RightTrigger: r2,
+                Touch0: touch0,
+                Touch1: touch1,
+                Gyro: gyro,
+                Accel: accel);
             return true;
+        }
+
+        private static short ReadS16LE(ReadOnlySpan<byte> p) => (short)(p[0] | (p[1] << 8));
+
+        private static HostGamepadTouchPoint DecodeTouchPoint(ReadOnlySpan<byte> p)
+        {
+            // Bit 7 of byte 0 set = finger NOT touching; low 7 bits = contact id.
+            // 12-bit X then 12-bit Y packed into bytes 1..3.
+            return new HostGamepadTouchPoint(
+                Active: (p[0] & 0x80) == 0,
+                Id: (byte)(p[0] & 0x7F),
+                X: (ushort)(p[1] | ((p[2] & 0x0F) << 8)),
+                Y: (ushort)((p[2] >> 4) | (p[3] << 4)));
         }
 
         private static HostGamepadButtons HatToButtons(int hat) => hat switch
