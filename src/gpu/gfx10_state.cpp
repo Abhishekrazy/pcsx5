@@ -470,11 +470,27 @@ SamplerState DecodeSampler(const u32 w[4]) {
     out.addr_x = ToVkAddressMode(w[0] & 0x7u);
     out.addr_y = ToVkAddressMode((w[0] >> 3) & 0x7u);
     out.addr_z = ToVkAddressMode((w[0] >> 6) & 0x7u);
+
+    // H8.2: LOD bias (w[0] bits 16-23, signed 8-bit 5.3 fixed point).
+    s32 bias_s = static_cast<s32>(static_cast<s8>((w[0] >> 16) & 0xFFu));
+    out.lod_bias = static_cast<float>(bias_s) / 8.0f;
+
+    // Min/max LOD (w[1] bits 0-11 / 12-23, 12-bit 8.4 fixed point).
+    out.min_lod = static_cast<float>((w[1] >> 0) & 0xFFFu) / 16.0f;
+    out.max_lod = static_cast<float>((w[1] >> 12) & 0xFFFu) / 16.0f;
+
     out.mag = to_filter((w[2] >> 20) & 0x3u);
     out.min = to_filter((w[2] >> 22) & 0x3u);
     const u32 mip = (w[2] >> 26) & 0x3u;
     out.mip = mip == 2 ? VK_SAMPLER_MIPMAP_MODE_LINEAR
                        : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+    // H8.2: anisotropy (w[2] bits 14-16: 2-bit level + bit-16 enable).
+    out.anisotropy_enable = ((w[2] >> 16) & 1u) != 0;
+    if (out.anisotropy_enable) {
+        static const float kAniso[] = {1.0f, 2.0f, 4.0f, 8.0f, 16.0f};
+        out.max_anisotropy = kAniso[((w[2] >> 14) & 0x3u) < 5 ? ((w[2] >> 14) & 0x3u) : 0];
+    }
     return out;
 }
 

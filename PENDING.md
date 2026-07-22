@@ -110,21 +110,31 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
       ## H8 implementation plan
 
       ### H8.1 - Storage images (shader read/write without samplers)
-      - [ ] 1.1 Add VK_DESCRIPTOR_TYPE_STORAGE_IMAGE binding in draw executor
-      - [ ] 1.2 Extend TextureEntry with storage flag: Storage usage in
-        VkImageView, VK_IMAGE_LAYOUT_GENERAL
-      - [ ] 1.3 In gcn_translate.cpp: image_load -> OpImageRead, support
-        StorageImageReadWithoutFormat / WriteWithoutFormat capabilities
-      - [ ] 1.4 Separate storage image bindings from sampled bindings
+      - [x] 1.1 Add VK_DESCRIPTOR_TYPE_STORAGE_IMAGE binding in draw executor
+        (conditional on VkDrawTexture::is_storage flag).
+      - [x] 1.2 Extend TextureEntry with storage flag: VK_IMAGE_USAGE_STORAGE_BIT
+        added to image creation when is_storage=true.
+      - [x] 1.3 In gcn_translate.cpp: is_storage flag already handled
+        (sampled=2, StorageImageRead/WriteWithoutFormat caps, OpImageRead).
+      - [x] 1.4 Separate storage image bindings from sampled bindings
+        (COMBINED_IMAGE_SAMPLER vs STORAGE_IMAGE, GENERAL vs
+        SHADER_READ_ONLY_OPTIMAL layout).
       - [ ] 1.5 Image layout transitions for storage images via barriers
+        (currently no explicit GENERAL transition — images go straight
+        to GENERAL at bind time; upload-only images are unaffected)
 
-      ### H8.2 - Mipmapped samplers
-      - [ ] 2.1 Audit EnsureSampler: decode minLod, maxLod, lodBias,
-        anisotropyEnable from GCN sampler word
-      - [ ] 2.2 Decode full SamplerState fields in gfx10_state.cpp
-      - [ ] 2.3 Texture upload: decode full mip chain, create VkImage with
-        mipLevels > 1, upload each level
-      - [ ] 2.4 VkImageView: set subresourceRange.levelCount from descriptor
+      ### H8.2 - Mipmapped samplers (2026-07-22)
+      - [x] 2.1 Audit EnsureSampler: decode minLod, maxLod, lodBias,
+        anisotropyEnable from GCN sampler word (w[0] bits 16-23,
+        w[1] bits 0-11/12-23, w[2] bits 14-16).
+      - [x] 2.2 Decode full SamplerState fields in gfx10_state.cpp:
+        min_lod, max_lod, lod_bias, anisotropy_enable, max_anisotropy
+        added to struct + decoder.
+      - [x] 2.3 Texture upload: CreateDeviceImage / CreateImageView2D
+        accept mip_levels param; images created with ici.mipLevels
+        from t.mip_levels.  Per-level upload data still pending.
+      - [x] 2.4 VkImageView: subresourceRange.levelCount set from
+        t.mip_levels (or 1 if unset).
       - [ ] 2.5 Verify with a 3D title using mipmapped textures
 
       ### H8.3 - Window / generic / viewport scissor intersection

@@ -60,6 +60,8 @@ struct VkDrawTexture {
     // 2D_ARRAY — with `depth` layers when > 1, a one-layer array view for
     // fallbacks/single-layer sources — or it mismatches the declared type.
     bool arrayed_view = false;
+    // H8.1: storage image (UAV) — no sampler, GENERAL layout.
+    bool is_storage = false;
     std::array<u32, 4> sampler{};
 };
 

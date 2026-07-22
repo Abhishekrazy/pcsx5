@@ -288,14 +288,14 @@ void ImageBarrier(VkImage image, VkImageLayout from, VkImageLayout to,
 
 bool CreateDeviceImage(VkImage& image, VkDeviceMemory& mem, u32 w, u32 h,
                        VkFormat format, VkImageUsageFlags usage,
-                       u32 layers = 1) {
+                       u32 layers = 1, u32 mip_levels = 1) {
     VkContext* ctx = g_ds.ctx;
     VkImageCreateInfo ici = {};
     ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     ici.imageType = VK_IMAGE_TYPE_2D;
     ici.format = format;
     ici.extent = { w, h, 1 };
-    ici.mipLevels = 1;
+    ici.mipLevels = mip_levels;
     ici.arrayLayers = layers;
     ici.samples = VK_SAMPLE_COUNT_1_BIT;
     ici.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -328,7 +328,8 @@ bool CreateDeviceImage(VkImage& image, VkDeviceMemory& mem, u32 w, u32 h,
 }
 
 VkImageView CreateImageView2D(VkImage image, VkFormat format, u32 dst_select,
-                              bool arrayed = false, u32 layers = 1) {
+                              bool arrayed = false, u32 layers = 1,
+                              u32 level_count = 1) {
     VkContext* ctx = g_ds.ctx;
     VkImageViewCreateInfo vci = {};
     vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -338,7 +339,7 @@ VkImageView CreateImageView2D(VkImage image, VkFormat format, u32 dst_select,
     vci.format = format;
     vci.components = Gfx10::DecodeComponentMapping(dst_select);
     vci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    vci.subresourceRange.levelCount = 1;
+    vci.subresourceRange.levelCount = level_count;
     vci.subresourceRange.layerCount = layers;
     VkImageView view = VK_NULL_HANDLE;
     if (ctx->fn.CreateImageView(ctx->device, &vci, nullptr, &view) != VK_SUCCESS) {
@@ -426,16 +427,18 @@ TextureEntry* EnsureTexture(const VkDrawTexture& t, VkFormat format) {
     // view so the descriptor matches the shader's declared image type.
     e.layers = t.arrayed_view ? (t.depth > 1 ? t.depth : 1) : 1;
     e.arrayed = t.arrayed_view;
+    const u32 mip_count = t.mip_levels > 0 ? t.mip_levels : 1;
     if (!CreateDeviceImage(e.image, e.mem, t.width, t.height, format,
                            VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                               VK_IMAGE_USAGE_SAMPLED_BIT,
-                           e.layers)) {
-        LOG_WARN(GPU, "draw: texture image creation failed (%ux%u fmt=%d).",
-                 t.width, t.height, static_cast<int>(format));
+                               VK_IMAGE_USAGE_SAMPLED_BIT |
+                               (t.is_storage ? VK_IMAGE_USAGE_STORAGE_BIT : 0),
+                           e.layers, mip_count)) {
+        LOG_WARN(GPU, "draw: texture image creation failed (%ux%u fmt=%d mips=%u).",
+                 t.width, t.height, static_cast<int>(format), mip_count);
         return nullptr;
     }
     e.view = CreateImageView2D(e.image, format, t.dst_select, e.arrayed,
-                               e.layers);
+                               e.layers, mip_count);
     if (!e.view) {
         g_ds.ctx->fn.DestroyImage(g_ds.ctx->device, e.image, nullptr);
         g_ds.ctx->fn.FreeMemory(g_ds.ctx->device, e.mem, nullptr);
@@ -615,7 +618,12 @@ VkSampler EnsureSampler(const std::array<u32, 4>& w) {    u64 h = kHashSeed;
     sci.addressModeU = s.addr_x;
     sci.addressModeV = s.addr_y;
     sci.addressModeW = s.addr_z;
-    sci.maxLod = 0.0f; // single mip level on the 2D path
+    // H8.2: decode mip LOD range, bias, and anisotropy from GCN words.
+    sci.minLod = s.min_lod;
+    sci.maxLod = s.max_lod > s.min_lod ? s.max_lod : s.min_lod + 1.0f;
+    sci.mipLodBias = s.lod_bias;
+    sci.anisotropyEnable = s.anisotropy_enable;
+    sci.maxAnisotropy = s.max_anisotropy;
     VkSampler sampler = VK_NULL_HANDLE;
     if (g_ds.ctx->fn.CreateSampler(g_ds.ctx->device, &sci, nullptr, &sampler) != VK_SUCCESS) {
         return VK_NULL_HANDLE;
@@ -1257,13 +1265,17 @@ bool VkDrawExecute(const VkDrawCall& call) {
         if (!tex) {
             return false;
         }
-        VkSampler sampler = EnsureSampler(t.sampler);
-        if (!sampler) {
-            return false;
+        if (t.is_storage) {
+            image_infos[i].sampler = VK_NULL_HANDLE;
+            image_infos[i].imageView = tex->view;
+            image_infos[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        } else {
+            VkSampler sampler = EnsureSampler(t.sampler);
+            if (!sampler) return false;
+            image_infos[i].sampler = sampler;
+            image_infos[i].imageView = tex->view;
+            image_infos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         }
-        image_infos[i].sampler = sampler;
-        image_infos[i].imageView = tex->view;
-        image_infos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
     // Storage buffers: per-draw host-visible uploads of the guest ranges.
@@ -1397,7 +1409,9 @@ bool VkDrawExecute(const VkDrawCall& call) {
         iw.dstSet = set;
         iw.dstBinding = 1 + i;
         iw.descriptorCount = 1;
-        iw.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        iw.descriptorType = (i < call.textures.size() && call.textures[i].is_storage)
+            ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+            : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         iw.pImageInfo = &image_infos[i];
         writes.push_back(iw);
     }
