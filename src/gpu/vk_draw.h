@@ -117,6 +117,32 @@ bool VkDrawIsReady();
 // failure class) when the draw cannot be built — the frame simply misses it.
 bool VkDrawExecute(const VkDrawCall& call);
 
+// H6: one guest compute dispatch.
+struct VkDispatchCall {
+    // Translated compute shader SPIR-V.
+    const u32* cs_words = nullptr; size_t cs_word_count = 0;
+
+    // Resource bindings: storage buffers (UAV/SRV) + optionally images.
+    std::vector<VkDrawBuffer> buffers;
+    std::vector<u32>          cs_scalars; // 256 dword initial SGPR state
+
+    // Image bindings for compute (sampled or storage).
+    std::vector<VkDrawTexture> textures;
+    // Per-texture storage flag — when true the binding is
+    // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE instead of COMBINED_IMAGE_SAMPLER.
+    std::vector<bool> texture_is_storage;
+
+    // Dispatch dimensions (from COMPUTE_DIM_X/Y/Z or indirect buffer).
+    u32 group_count_x = 0;
+    u32 group_count_y = 0;
+    u32 group_count_z = 0;
+    bool indirect = false;          // true -> group counts from indirect buffer
+    u64 indirect_addr = 0;          // guest address of VkDispatchIndirectCommand
+};
+
+// Executes one compute dispatch (H6).  Returns false on failure (logged).
+bool VkDispatchExecute(const VkDispatchCall& call);
+
 // M6: submits the accumulated batch without waiting for it.  Called at the
 // flip boundary (VkDrawLookupRenderTarget, which the backend invokes right
 // before presenting) and at shutdown; also safe to call any time.

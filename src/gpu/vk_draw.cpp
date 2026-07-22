@@ -930,6 +930,110 @@ VkPipeline EnsurePipeline(const VkDrawCall& call, u64 key, VkShaderModule vs,
 }
 
 // ---------------------------------------------------------------------------
+// H6: compute pipeline layout + descriptor set layout.
+// Binding model (same as graphics but with COMPUTE stage):
+//   Set 0, Binding 0: StorageBuffer array  (buffer_count)
+//   Set 0, Bindings 1..N: CombinedImageSampler or StorageImage (image_count)
+// ---------------------------------------------------------------------------
+VkPipelineLayout EnsureComputePipelineLayout(u32 buffer_count, u32 image_count,
+                                              VkDescriptorSetLayout* set_layout_out,
+                                              const std::vector<bool>& is_storage) {
+    const u64 key = (static_cast<u64>(buffer_count) << 32) | image_count;
+    const u64 ns_key = key | (1ull << 63); // separate namespace from graphics
+    const auto pipe_it = g_ds.pipe_layouts.find(ns_key);
+    if (pipe_it != g_ds.pipe_layouts.end()) {
+        *set_layout_out = g_ds.set_layouts[key];
+        return pipe_it->second;
+    }
+
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    bindings.reserve(std::max(1u, 1 + image_count));
+
+    VkDescriptorSetLayoutBinding buffers = {};
+    buffers.binding = 0;
+    buffers.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    buffers.descriptorCount = buffer_count;
+    buffers.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings.push_back(buffers);
+
+    for (u32 i = 0; i < image_count; ++i) {
+        VkDescriptorSetLayoutBinding image = {};
+        image.binding = 1 + i;
+        image.descriptorType = (i < is_storage.size() && is_storage[i])
+            ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+            : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        image.descriptorCount = 1;
+        image.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings.push_back(image);
+    }
+
+    VkDescriptorSetLayoutCreateInfo lci = {};
+    lci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    lci.bindingCount = static_cast<u32>(bindings.size());
+    lci.pBindings = bindings.data();
+    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+    if (g_ds.ctx->fn.CreateDescriptorSetLayout(g_ds.ctx->device, &lci, nullptr,
+                                                &set_layout) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
+
+    VkPipelineLayoutCreateInfo plci = {};
+    plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount = 1;
+    plci.pSetLayouts = &set_layout;
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    if (g_ds.ctx->fn.CreatePipelineLayout(g_ds.ctx->device, &plci, nullptr,
+                                           &layout) != VK_SUCCESS) {
+        g_ds.ctx->fn.DestroyDescriptorSetLayout(g_ds.ctx->device, set_layout, nullptr);
+        return VK_NULL_HANDLE;
+    }
+    g_ds.set_layouts.emplace(key, set_layout);
+    g_ds.pipe_layouts.emplace(ns_key, layout);
+    *set_layout_out = set_layout;
+    return layout;
+}
+
+// Compute pipeline cache key (cs digest + layout key).
+u64 ComputePipelineKey(u64 cs_digest, u32 buffer_count, u32 image_count) {
+    u64 h = 0xB16B00B5C0FFEEull;
+    h = HashU64(h, cs_digest);
+    h = HashU64(h, (static_cast<u64>(buffer_count) << 32) | image_count);
+    return h;
+}
+
+VkPipeline EnsureComputePipeline(VkShaderModule cs, const VkDispatchCall& call,
+                                  VkPipelineLayout layout,
+                                  u32 buffer_count, u32 image_count) {
+    const u64 digest = SpirvDigest(call.cs_words, call.cs_word_count);
+    const u64 key = ComputePipelineKey(digest, buffer_count, image_count);
+    auto it = g_ds.pipelines.find(key);
+    if (it != g_ds.pipelines.end()) return it->second;
+
+    VkPipelineShaderStageCreateInfo stage = {};
+    stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stage.module = cs;
+    stage.pName = "main";
+
+    VkComputePipelineCreateInfo cpci = {};
+    cpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    cpci.stage = stage;
+    cpci.layout = layout;
+
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    const VkResult r = g_ds.ctx->fn.CreateComputePipelines(
+        g_ds.ctx->device, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline);
+    if (r != VK_SUCCESS) {
+        LOG_WARN(GPU, "compute: vkCreateComputePipelines failed (%d).", static_cast<int>(r));
+        return VK_NULL_HANDLE;
+    }
+    g_ds.pipelines.emplace(key, pipeline);
+    LOG_INFO(GPU, "compute: created pipeline (cs=0x%llx, buffers=%u, images=%u)",
+             digest, buffer_count, image_count);
+    return pipeline;
+}
+
+// ---------------------------------------------------------------------------
 // Guest buffers + descriptor set.
 // ---------------------------------------------------------------------------
 HostBuffer* EnsureGuestBuffer(u64 base, u64 size) {
@@ -988,11 +1092,12 @@ bool VkDrawInitialize(VkContext* ctx) {
     const VkDescriptorPoolSize sizes[] = {
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024 },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 256 },  // H6: compute UAV images
     };
     VkDescriptorPoolCreateInfo dpci = {};
     dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     dpci.maxSets = 64;
-    dpci.poolSizeCount = 2;
+    dpci.poolSizeCount = 3;
     dpci.pPoolSizes = sizes;
     if (ctx->fn.CreateDescriptorPool(ctx->device, &dpci, nullptr,
                                      &g_ds.desc_pool) != VK_SUCCESS) {
@@ -1331,6 +1436,136 @@ bool VkDrawExecute(const VkDrawCall& call) {
     }
     ctx->fn.CmdEndRenderPass(g_ds.cmd);
     // The batch stays open; VkDrawFlush (flip) submits it.
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// H6: compute dispatch executor (Phase 2+3).
+// Supports buffer-only dispatches; texture/storage-image bindings are a
+// future addition (H6.1 / H8) — the descriptor layout accepts them but
+// EnsureTexture needs a VkFormat we do not carry yet.
+// ---------------------------------------------------------------------------
+bool VkDispatchExecute(const VkDispatchCall& call) {
+    VkContext* ctx = g_ds.ctx;
+    if (!ctx || !g_ds.recording) return false;
+    if (!call.cs_words || call.cs_word_count == 0) return false;
+
+    const u32 gx = call.group_count_x ? call.group_count_x : 1;
+    const u32 gy = call.group_count_y ? call.group_count_y : 1;
+    const u32 gz = call.group_count_z ? call.group_count_z : 1;
+    const u32 image_count = static_cast<u32>(call.textures.size());
+
+    // Flush any pending graphics batch — compute may consume its output.
+    if (g_ds.draw_slot > 0) VkDrawFlush();
+
+    // Upload buffers + initial scalar state into staging.
+    VkDescriptorBufferInfo buffer_info = {};
+    VkDeviceSize upload_off = 0;
+    const u32 n_buf = static_cast<u32>(call.buffers.size());
+    const bool has_buffers = n_buf > 0 || !call.cs_scalars.empty();
+    if (has_buffers) {
+        VkDeviceSize total = 0;
+        for (const auto& b : call.buffers) total += b.size_bytes;
+        total += kScalarSlotBytes;
+        if (!StagingAlloc(total, &upload_off)) return false;
+        u8* mapped = nullptr;
+        if (ctx->fn.MapMemory(ctx->device, g_ds.staging.mem,
+                              upload_off, total, 0,
+                              reinterpret_cast<void**>(&mapped)) != VK_SUCCESS)
+            return false;
+        VkDeviceSize off = 0;
+        for (const auto& b : call.buffers) {
+            if (b.size_bytes > 0)
+                Memory::ReadBuffer(b.guest_addr, mapped + off,
+                                   static_cast<size_t>(b.size_bytes));
+            off += b.size_bytes;
+        }
+        std::memcpy(mapped + off, call.cs_scalars.data(),
+                    std::min(call.cs_scalars.size() * sizeof(u32),
+                             static_cast<size_t>(kScalarSlotBytes)));
+        ctx->fn.UnmapMemory(ctx->device, g_ds.staging.mem);
+        buffer_info.buffer = g_ds.staging.buf;
+        buffer_info.offset = upload_off;
+        buffer_info.range = total;
+    }
+
+    // Image descriptors (H6.1 placeholder: textures not yet bound).
+    std::vector<VkDescriptorImageInfo> image_infos(image_count);
+
+    // Layout, module, pipeline (cached).
+    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+    VkPipelineLayout layout = EnsureComputePipelineLayout(
+        has_buffers ? 1u : 0u, image_count, &set_layout,
+        call.texture_is_storage);
+    if (!layout) return false;
+
+    const u64 cs_digest = SpirvDigest(call.cs_words, call.cs_word_count);
+    VkShaderModule cs = EnsureModule(call.cs_words, call.cs_word_count, cs_digest);
+    if (!cs) return false;
+
+    VkPipeline pipeline = EnsureComputePipeline(
+        cs, call, layout, has_buffers ? 1u : 0u, image_count);
+    if (!pipeline) return false;
+
+    // Descriptor set.
+    VkDescriptorSetAllocateInfo dsai = {};
+    dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    dsai.descriptorPool = g_ds.desc_pool;
+    dsai.descriptorSetCount = 1;
+    dsai.pSetLayouts = &set_layout;
+    VkDescriptorSet set = VK_NULL_HANDLE;
+    if (ctx->fn.AllocateDescriptorSets(ctx->device, &dsai, &set) != VK_SUCCESS)
+        return false;
+
+    std::vector<VkWriteDescriptorSet> writes;
+    writes.reserve(1 + image_count);
+    if (has_buffers) {
+        VkWriteDescriptorSet bw = {};
+        bw.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        bw.dstSet = set;
+        bw.dstBinding = 0;
+        bw.descriptorCount = 1;
+        bw.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bw.pBufferInfo = &buffer_info;
+        writes.push_back(bw);
+    }
+    for (u32 i = 0; i < image_count; ++i) {
+        VkWriteDescriptorSet iw = {};
+        iw.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        iw.dstSet = set;
+        iw.dstBinding = 1 + i;
+        iw.descriptorCount = 1;
+        iw.descriptorType = (i < call.texture_is_storage.size() &&
+                             call.texture_is_storage[i])
+            ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+            : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        iw.pImageInfo = &image_infos[i];
+        writes.push_back(iw);
+    }
+    ctx->fn.UpdateDescriptorSets(ctx->device, static_cast<u32>(writes.size()),
+                                 writes.data(), 0, nullptr);
+
+    // Record dispatch.
+    ctx->fn.CmdBindPipeline(g_ds.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    ctx->fn.CmdBindDescriptorSets(g_ds.cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                  layout, 0, 1, &set, 0, nullptr);
+    if (call.indirect && call.indirect_addr) {
+        VkDispatchIndirectCommand cmd;
+        Memory::ReadBuffer(call.indirect_addr, &cmd, sizeof(cmd));
+        VkDeviceSize ioff = 0;
+        if (StagingAlloc(sizeof(cmd), &ioff)) {
+            u8* m = nullptr;
+            if (ctx->fn.MapMemory(ctx->device, g_ds.staging.mem,
+                                  ioff, sizeof(cmd), 0,
+                                  reinterpret_cast<void**>(&m)) == VK_SUCCESS) {
+                std::memcpy(m, &cmd, sizeof(cmd));
+                ctx->fn.UnmapMemory(ctx->device, g_ds.staging.mem);
+                ctx->fn.CmdDispatchIndirect(g_ds.cmd, g_ds.staging.buf, ioff);
+            }
+        }
+    } else {
+        ctx->fn.CmdDispatch(g_ds.cmd, gx, gy, gz);
+    }
     return true;
 }
 

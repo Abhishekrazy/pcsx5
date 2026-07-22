@@ -68,22 +68,32 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
       - [x] 1.5 CachedAttributeCount returns 0 for compute (no interface
         attributes).
 
-      ### Phase 2 - resource binding for compute
-      - [ ] 2.1 DescriptorSetLayout: UAV storage images, storage buffers,
-        uniform buffers, samplers
-      - [ ] 2.2 VkPipelineLayout for compute (vk_draw or vk_compute sibling)
-      - [ ] 2.3 Map GCN resource tables to Vulkan descriptor bindings
+      ### Phase 2 - resource binding for compute (2026-07-22)
+      - [x] 2.1 DescriptorSetLayout: UAV storage images, storage buffers,
+        uniform buffers, samplers — compute-specific layout in
+        EnsureComputePipelineLayout with VK_SHADER_STAGE_COMPUTE_BIT.
+        Supports both COMBINED_IMAGE_SAMPLER and STORAGE_IMAGE per binding.
+      - [x] 2.2 VkPipelineLayout for compute (separate from graphics,
+        cached under ns_key via bit-63 namespace marker).
+      - [x] 2.3 Map GCN resource tables: buffer upload + scalar state
+        appended as last StorageBuffer slot; image bindings accepted
+        in layout but not yet populated (H6.1/H8 — needs VkFormat).
 
-      ### Phase 3 - compute pipeline + dispatch
-      - [ ] 3.1 VkComputePipelineCreateInfo with compute stage
-      - [ ] 3.2 Shader-cache-backed VkCreateComputePipelines
-      - [ ] 3.3 vkCmdDispatch: bind pipeline + descriptors, push constants,
-        dispatch
+      ### Phase 3 - compute pipeline + dispatch (2026-07-22)
+      - [x] 3.1 VkComputePipelineCreateInfo with compute stage
+      - [x] 3.2 Shader-cache-backed VkCreateComputePipelines (via
+        EnsureComputePipeline, cached by cs_digest + layout_key)
+      - [x] 3.3 vkCmdDispatch: bind pipeline + descriptors, push
+        constants, dispatch (VkDispatchExecute in vk_draw.cpp)
       - [ ] 3.4 IT_DISPATCH_INDIRECT via VkDispatchIndirectCommand
+        (code path exists but untested — no indirect captures on file)
 
-      ### Phase 4 - integration
-      - [ ] 4.1 WalkCommandBuffer: replace WARN drop with dispatch exec
+      ### Phase 4 - integration (2026-07-22)
+      - [x] 4.1 WalkCommandBuffer: replace WARN drop with dispatch exec
+        via AgcExecuteDispatch (decode → translate → VkDispatchExecute).
+        DS_*/atomic shaders fail translation with a clear LOG_WARN.
       - [ ] 4.2 Pipeline barrier for compute-to-graphics transitions
+        (needed when compute writes a buffer/image that graphics reads)
       - [ ] 4.3 Test with compute-using title or synthetic test
 
       ### Phase 5 - tests

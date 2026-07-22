@@ -111,6 +111,11 @@ struct VkFunctions {
     PFN_vkCmdSetBlendConstants          CmdSetBlendConstants = nullptr;
     PFN_vkCmdCopyBuffer                 CmdCopyBuffer = nullptr;
     PFN_vkCmdCopyImage                  CmdCopyImage = nullptr;
+
+    // H6: compute dispatch.
+    PFN_vkCreateComputePipelines    CreateComputePipelines = nullptr;
+    PFN_vkCmdDispatch               CmdDispatch = nullptr;
+    PFN_vkCmdDispatchIndirect       CmdDispatchIndirect = nullptr;
 };
 
 struct VkContext {
