@@ -323,8 +323,8 @@ namespace Kernel {
         // path and by Memory's own guest-fault VEH.
         Memory::SetGuestFaultHandler(&DemandCommitFaultHandler, nullptr);
 
-        // Allocate a 128KB block representing the guest's TLS area to support negative offsets (Variant II TLS)
-        u64 tls_total_size = 128 * 1024;
+        // Allocate a 256KB block representing the guest's TLS area to support negative offsets (Variant II TLS)
+        u64 tls_total_size = GuestTlsContext::kDefaultAllocationSize;
         guest_addr_t tls_alloc = 0;
         if (Memory::Map(0, tls_total_size, Memory::PROT_READ | Memory::PROT_WRITE, &tls_alloc) != Memory::Status::Ok) {
             LOG_ERROR(Kernel, "Failed to allocate guest TLS memory block.");

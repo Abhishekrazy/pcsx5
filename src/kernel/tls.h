@@ -8,7 +8,7 @@ namespace Kernel {
     // the thread pointer lies inside the allocation so negative TLS offsets are valid.
     class GuestTlsContext {
     public:
-        static constexpr u64 kDefaultAllocationSize = 128 * 1024;
+        static constexpr u64 kDefaultAllocationSize = 256 * 1024;
         static constexpr u64 kDefaultThreadPointerOffset = kDefaultAllocationSize / 2;
 
         bool Configure(guest_addr_t allocation_base, u64 allocation_size,
