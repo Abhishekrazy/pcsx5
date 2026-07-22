@@ -42,6 +42,10 @@ u64 ScePthreadRwlockDestroy(const GuestArgs& args);
 // pthread once
 u64 ScePthreadOnce(const GuestArgs& args);
 
+// sceKernelSyncOnAddressWait / sceKernelSyncOnAddressWake (libKernel address-wait primitives)
+u64 SceKernelSyncOnAddressWait(const GuestArgs& args);
+u64 SceKernelSyncOnAddressWake(const GuestArgs& args);
+
 // pthread TLS keys (per-thread values keyed by guest key id)
 u64 ScePthreadKeyCreate(const GuestArgs& args);
 u64 ScePthreadKeyDelete(const GuestArgs& args);

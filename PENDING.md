@@ -32,23 +32,6 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
       throw-type/message dump, failing-variant tag dump, parser-frame
       and array-element dumps, .work/guest_text.bin snapshot.
 
-- [x] H8. Storage images, mipmapped samplers, window/generic/vport
-      scissor intersection in the draw executor.
-
-      ## H8 implementation plan
-
-      ### H8.1 - Storage images (shader read/write without samplers)
-      - [x] 1.5 Image layout transitions for storage images via barriers
-        (StageIntoImage transition supports GENERAL layout & COMPUTE_SHADER_BIT access masks).
-
-      ### H8.2 - Mipmapped samplers (2026-07-22)
-      - [x] 2.5 Verify with a 3D title using mipmapped textures
-        (verified LOD bias, min/max LOD range, and max anisotropy decoding in DecodeSampler & EnsureSampler).
-
-      ### H8.3 - Window / generic / viewport scissor intersection
-      - [x] 3.5 Test pixel-perfect clipping vs SharpEmu reference
-        (verified 3-way screen/generic/vport scissor intersection logic in DecodeViewportScissor & IntersectScissors).
-
 
 
 ## From KytyPS5 & SharpEmu commit analysis (2026-07-22)
@@ -58,71 +41,63 @@ not yet ported.  Sorted by estimated impact on game booting.
 
 ### HIGH — missing kernel primitives (may block game boot)
 
-- [ ] P1. **Implement sceKernelSyncOnAddressWait/Wake** (SharpEmu #422).
-      libKernel's address-wait primitives are unimplemented — every wait
-      returns immediately and guest runtimes that build spinlocks/queues on
-      top busy-spin forever.  This is a leading candidate for the Construct
-      runtime's 31-thread worker pool race in Dreaming Sarah (H4).
-      Files: new `src/hle/libkernel_syncaddr.cpp` (or extend libkernel_sync).
+- [x] P1. **Implement sceKernelSyncOnAddressWait/Wake** (SharpEmu #422)
+      - [x] P1.1 Define wait/wake structures & state tables in `src/hle/libkernel_sync.cpp` or new `src/hle/libkernel_syncaddr.cpp`.
+      - [x] P1.2 Implement `sceKernelSyncOnAddressWait` (sleep on address until wake or timeout).
+      - [x] P1.3 Implement `sceKernelSyncOnAddressWake` (wake N waiting threads for address).
+      - [x] P1.4 Register NID export symbols in HLE dispatcher (`libkernel`).
+      - [x] P1.5 Unit tests for single & multi-threaded address wait/wake in `kernel_sync_tests.cpp`.
 
-- [ ] P2. **Full SysV variadic float ABI (XMM0-XMM7 capture)** (SharpEmu #59).
-      Our import trampoline spills only XMM0 (now via dispatcher.asm XMM save
-      area) and never captures XMM1-XMM7 for variadic float args.  HLE
-      handlers for variadic functions (printf family) cannot access float args
-      past the first, so %f/%e/%g reads garbage and desynchronizes the
-      argument stream.  The Construct runtime may call guest_vsnprintf with
-      float arguments during JSON number formatting.
-      Files: `src/hle/dispatcher.asm`, `src/hle/guest_printf.cpp`.
+- [ ] P2. **Full SysV variadic float ABI (XMM0-XMM7 capture)** (SharpEmu #59)
+      - [ ] P2.1 Extend `src/hle/dispatcher.asm` trampoline to save XMM1-XMM7 registers to guest stack/args struct on import calls.
+      - [ ] P2.2 Update `GuestArgs` / `HleDispatch` parameter parser to expose floating point register bank.
+      - [ ] P2.3 Update `src/hle/guest_printf.cpp` vsnprintf format parser to extract float args from XMM bank.
+      - [ ] P2.4 Unit test variadic float formatting with multiple `%f` / `%g` arguments in `guest_printf_tests.cpp`.
 
-- [ ] P3. **BMI1/BMI2/ABM instruction emulation** (SharpEmu #249).
-      Our AMD compat layer (src/cpu/amd_compat) covers SSE4a EXTRQ/INSERTQ
-      and MONITORX/MWAITX but NOT BMI/BMI2/ABM (ANDN, BLSI, BLSMSK, BLSR,
-      BEXTR, BZHI, TZCNT, LZCNT, RORX, SARX, SHLX, SHRX, PDEP, PEXT).
-      Guest code using these crashes with STATUS_ILLEGAL_INSTRUCTION on CPUs
-      that lack them.  Port from SharpEmu's BmiInstructionEmulator.
+- [ ] P3. **BMI1/BMI2/ABM instruction emulation** (SharpEmu #249)
+      - [ ] P3.1 Add CPU feature detection & fallback handlers in `src/cpu/amd_compat.cpp` for BMI1/BMI2/ABM instructions.
+      - [ ] P3.2 Implement decoding & execution for bitwise instructions (`ANDN`, `BLSI`, `BLSMSK`, `BLSR`, `BZHI`, `BEXTR`).
+      - [ ] P3.3 Implement decoding & execution for bit manipulation / count instructions (`TZCNT`, `LZCNT`, `RORX`, `SARX`, `SHLX`, `SHRX`, `PDEP`, `PEXT`).
+      - [ ] P3.4 Unit tests in `sse4a_bitfield_tests.cpp` for BMI1/BMI2 instruction fallbacks.
 
-- [ ] P4. **TLS reservation audit: StartupStaticTlsReservation** (SharpEmu #454).
-      Doubled StartupStaticTlsReservation and fixed NID BHouLQzh0X0 in
-      SharpEmu to fix GTA V loading.  Our TLS block (headroom=0x10000,
-      total=128KB) may be too small for some titles.  Check if the main
-      thread's TLS allocation matches the doubled size.
+- [ ] P4. **TLS reservation audit: StartupStaticTlsReservation** (SharpEmu #454)
+      - [ ] P4.1 Audit `src/kernel/tls.cpp` static TLS headroom (increase from 128KB to matched target).
+      - [ ] P4.2 Check main thread TLS allocation size vs game binary requirement (`StartupStaticTlsReservation`).
+      - [ ] P4.3 Register/verify NID `BHouLQzh0X0` stub / export handling.
 
 ### MEDIUM — system completeness
 
-- [ ] P5. **Implement pthread semaphore exports** (SharpEmu #424).
-      Our libkernel has no sem_init/sem_wait/sem_post/sem_destroy exports.
-      Some games use semaphores for synchronization.
+- [ ] P5. **Implement pthread semaphore exports** (SharpEmu #424)
+      - [ ] P5.1 Define `sem_t` object structure in `src/hle/libkernel_sync.cpp`.
+      - [ ] P5.2 Implement `sem_init`, `sem_destroy`, `sem_wait`, `sem_trywait`, `sem_post`, `sem_getvalue`.
+      - [ ] P5.3 Register POSIX semaphore NID exports in `libkernel`.
+      - [ ] P5.4 Unit tests in `kernel_sync_tests.cpp`.
 
-- [ ] P6. **Add RandomExports HLE** (SharpEmu #413).
-      Linear-congruential / hardware RNG exports for games that seed RNG
-      from the system entropy source.
+- [ ] P6. **Add RandomExports HLE** (SharpEmu #413)
+      - [ ] P6.1 Implement `sceRandomGetRandomNumber` and hardware RNG fallback exports using C++ `<random>`.
+      - [ ] P6.2 Register NID exports in HLE symbol table.
 
-- [ ] P7. **Add missing libc string exports** (SharpEmu #132).
-      strchr, strrchr, memchr, strcat, strncat, strstr are referenced by
-      some titles but not registered in our HLE.
+- [ ] P7. **Add missing libc string exports** (SharpEmu #132)
+      - [ ] P7.1 Implement HLE exports for `strchr`, `strrchr`, `memchr`, `strcat`, `strncat`, `strstr` in `src/hle/liblibc.cpp`.
+      - [ ] P7.2 Register missing NID symbols in `libSceLibcInternal` / `libc`.
 
-- [ ] P8. **Implement pthread_yield NID** (SharpEmu #426).
-      NID B5GmVDKwpn0 / pthread_yield is not registered.  Currently
-      auto-stubbed (returns 0 / no-op), which is functionally correct but
-      logs a warning.
+- [ ] P8. **Implement pthread_yield NID** (SharpEmu #426)
+      - [ ] P8.1 Register NID `B5GmVDKwpn0` / `pthread_yield` explicitly in `libkernel.cpp` (calling `SwitchToThread()` / `std::this_thread::yield()`).
 
-- [ ] P9. **Fix lazy pthread object initialization** (Kyty 42d42e3).
-      Kyty fixed a bug where pthread objects were lazily initialized
-      incorrectly.  Review our pthread init sequence.
+- [ ] P9. **Fix lazy pthread object initialization** (Kyty 42d42e3)
+      - [ ] P9.1 Audit `src/hle/libkernel_sync.cpp` lazy mutex/cond initialization sequence against Kyty reference fix.
+      - [ ] P9.2 Verify concurrent lazy initialization under race conditions.
 
 ### LOW — features and compatibility
 
-- [ ] P10. **Add ASTRO BOT compatibility stubs** (SharpEmu #481).
-      Stubs for ContentExport, Font, and Pad calls Astro Bot needs.
-      Not relevant to current titles but nice for future-proofing.
+- [ ] P10. **Add ASTRO BOT compatibility stubs** (SharpEmu #481)
+      - [ ] P10.1 Implement stubs for `ContentExport`, `Font`, and `Pad` NID calls required by Astro Bot.
 
-- [ ] P11. **Implement sceFontGetVerticalLayout** (SharpEmu #492).
-      Font metrics HLE stub for games that query vertical font layout.
+- [ ] P11. **Implement sceFontGetVerticalLayout** (SharpEmu #492)
+      - [ ] P11.1 Implement `sceFontGetVerticalLayout` metrics stub in `src/hle/libfont.cpp` (or font HLE).
 
-- [ ] P12. **Memory: back free pages of partially-overlapping fixed mapping**
-      (SharpEmu #458).  Handles edge case in fixed-address memory
-      allocation where a new reservation partially overlaps an old one.
+- [ ] P12. **Memory: back free pages of partially-overlapping fixed mapping** (SharpEmu #458)
+      - [ ] P12.1 Update `src/memory/memory.cpp` fixed-address reservation logic to back free pages when new reservation overlaps existing partial mapping.
 
-- [ ] P13. **CPU: preserve guest return value across TLS lookup** (SharpEmu #104).
-      Rare edge case where a guest TLS access inside an HLE handler could
-      clobber the handler's return value before it reaches the caller.
+- [ ] P13. **CPU: preserve guest return value across TLS lookup** (SharpEmu #104)
+      - [ ] P13.1 Update TLS lookup helper in `src/cpu/cpu.cpp` / `dispatcher.asm` to preserve RAX/XMM0 guest return values across internal TLS resolution calls.
