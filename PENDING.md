@@ -60,10 +60,10 @@ not yet ported.  Sorted by estimated impact on game booting.
       - [x] P3.3 Implement decoding & execution for bit manipulation / count instructions (`TZCNT`, `LZCNT`, `RORX`, `SARX`, `SHLX`, `SHRX`, `PDEP`, `PEXT`).
       - [x] P3.4 Unit tests in `sse4a_bitfield_tests.cpp` for BMI1/BMI2 instruction fallbacks.
 
-- [ ] P4. **TLS reservation audit: StartupStaticTlsReservation** (SharpEmu #454)
-      - [ ] P4.1 Audit `src/kernel/tls.cpp` static TLS headroom (increase from 128KB to matched target).
-      - [ ] P4.2 Check main thread TLS allocation size vs game binary requirement (`StartupStaticTlsReservation`).
-      - [ ] P4.3 Register/verify NID `BHouLQzh0X0` stub / export handling.
+- [x] P4. **TLS reservation audit: StartupStaticTlsReservation** (SharpEmu #454)
+      - [x] P4.1 Audit `src/kernel/tls.cpp` static TLS headroom (increased from 128KB to 256KB in `kDefaultAllocationSize`).
+      - [x] P4.2 Check main thread TLS allocation size vs game binary requirement (`StartupStaticTlsReservation`).
+      - [x] P4.3 Register/verify NID `BHouLQzh0X0` stub / export handling.
 
 ### MEDIUM — system completeness
 
