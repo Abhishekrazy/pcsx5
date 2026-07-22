@@ -186,6 +186,12 @@ struct SamplerState {
     VkSamplerAddressMode addr_x = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     VkSamplerAddressMode addr_y = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     VkSamplerAddressMode addr_z = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    // H8.2: mip / anisotropy fields decoded from GCN sampler words.
+    float min_lod          = 0.0f;
+    float max_lod          = 0.0f;
+    float lod_bias         = 0.0f;
+    bool  anisotropy_enable = false;
+    float max_anisotropy   = 1.0f;
 };
 SamplerState DecodeSampler(const u32 w[4]);
 
