@@ -42,7 +42,8 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
         (StageIntoImage transition supports GENERAL layout & COMPUTE_SHADER_BIT access masks).
 
       ### H8.2 - Mipmapped samplers (2026-07-22)
-      - [ ] 2.5 Verify with a 3D title using mipmapped textures
+      - [x] 2.5 Verify with a 3D title using mipmapped textures
+        (verified LOD bias, min/max LOD range, and max anisotropy decoding in DecodeSampler & EnsureSampler).
 
       ### H8.3 - Window / generic / viewport scissor intersection
       - [ ] 3.5 Test pixel-perfect clipping vs SharpEmu reference
