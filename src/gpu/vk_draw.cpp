@@ -606,8 +606,10 @@ TextureEntry* EnsureFallbackTexture(bool arrayed) {
     return &g_ds.textures.emplace(key, e).first->second;
 }
 
-VkSampler EnsureSampler(const std::array<u32, 4>& w) {    u64 h = kHashSeed;
+VkSampler EnsureSampler(const std::array<u32, 4>& w) {
+    u64 h = kHashSeed;
     h = HashU64(h, w[0]);
+    h = HashU64(h, w[1]);
     h = HashU64(h, w[2]);
     auto it = g_ds.samplers.find(h);
     if (it != g_ds.samplers.end()) return it->second;

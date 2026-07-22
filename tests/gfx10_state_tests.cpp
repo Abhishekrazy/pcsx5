@@ -180,6 +180,9 @@ void TestSamplerAndSwizzle() {
     u32 w[4] = {};
     w[0] = 0u | (1u << 3) | (2u << 6); // repeat / mirrored / clamp
     w[2] = (1u << 20) | (3u << 22) | (2u << 26); // linear / linear / linear mip
+    w[0] |= (0x08u << 16); // LOD bias +1.0f (8 / 8)
+    w[1] = (16u) | (160u << 12); // min_lod 1.0f (16/16), max_lod 10.0f (160/16)
+    w[2] |= (1u << 16) | (3u << 14); // anisotropy enable=1, level=3 (8.0x)
     const SamplerState s = DecodeSampler(w);
     EXPECT_EQ(s.mag, VK_FILTER_LINEAR, "mag linear");
     EXPECT_EQ(s.min, VK_FILTER_LINEAR, "min linear");
@@ -187,6 +190,11 @@ void TestSamplerAndSwizzle() {
     EXPECT_EQ(s.addr_x, VK_SAMPLER_ADDRESS_MODE_REPEAT, "wrap x repeat");
     EXPECT_EQ(s.addr_y, VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT, "wrap y mirror");
     EXPECT_EQ(s.addr_z, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, "wrap z clamp");
+    EXPECT_EQ(s.min_lod, 1.0f, "min_lod 1.0");
+    EXPECT_EQ(s.max_lod, 10.0f, "max_lod 10.0");
+    EXPECT_EQ(s.lod_bias, 1.0f, "lod_bias 1.0");
+    EXPECT(s.anisotropy_enable, "anisotropy enable");
+    EXPECT_EQ(s.max_anisotropy, 8.0f, "max_anisotropy 8.0");
 
     const VkComponentMapping id = DecodeComponentMapping(0xFAC);
     EXPECT_EQ(id.r, VK_COMPONENT_SWIZZLE_R, "swizzle r");
