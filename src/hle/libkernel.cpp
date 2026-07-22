@@ -6,6 +6,7 @@
 #include "../kernel/thread.h"
 #include "../kernel/guest_clock.h"
 #include "../cpu/cpu.h"
+#include "../config/config.h"
 #include "../memory/memory.h"
 #include "../common/log.h"
 #include "../gpu/gpu.h"
@@ -805,17 +806,33 @@ namespace HLE {
         RegisterSymbol("libkernel", "j4ViWNHEgww#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t str = args.arg1;
             if (!str) return 0;
-            
+
             u64 len = 0;
-            while (Memory::Read<u8>(str + len) != 0) {
+            // Stop scanning at page boundaries to avoid host crashes from
+            // unmapped pages.  A zero-length string at page-start is OK: the
+            // first read inside a live page is always valid; if the page itself
+            // is unmapped the VEH fault handler takes over.
+            u64 page_start = str & ~(static_cast<u64>(0xFFF));
+            u64 page_end   = page_start + 0x1000;
+            while (str + len < page_end) {
+                bool ok = true;
+                u8 c = 0;
+                __try {
+                    c = Memory::Read<u8>(str + len);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    ok = false;
+                }
+                if (!ok) break;           // unmapped — stop
+                if (c == 0) break;        // found terminator
                 len++;
             }
-            
-            std::string content;
-            for (u64 i = 0; i < (len < 256 ? len : 256); ++i) {
-                content += static_cast<char>(Memory::Read<u8>(str + i));
+            // If the string crossed into an unmapped page, report length up to
+            // the fault boundary (the caller may still read within the mapped
+            // portion), capped at PAGE_SIZE to avoid unbounded loops.
+            if (len >= 0x1000) {
+                LOG_DEBUG(HLE, "libkernel::strlen(str: 0x%llx): string exceeds single page (truncated to %llu)", str, len);
             }
-            LOG_DEBUG(HLE, "libkernel::strlen(str: 0x%llx) -> %llu (Value: '%s')", str, len, content.c_str());
+            LOG_DEBUG(HLE, "libkernel::strlen(str: 0x%llx) -> %llu", str, len);
             return len;
         });
 
@@ -1019,11 +1036,22 @@ namespace HLE {
             LOG_WARN(HLE, "__cxa_guard_abort(guard: 0x%llx)", guard_ptr);
             return 0;
         });
+        // dhK16CKwhQg#T#T — appears right after strtod in the Construct runtime's
+        // JSON number parser; arg1 is a destination buffer (stack/scratch), arg2
+        // is the source value or format state.  The per-thread buffer is caller-
+        // provided, so we return arg1 rather than a shared static (which would
+        // race across the 31-thread P.Worker pool in PPSA02929).
+        RegisterSymbol("libkernel", "dhK16CKwhQg#T#T", [](const GuestArgs& args) -> u64 {
+            LOG_INFO(HLE, "dhK16CKwhQg#T#T called with 0x%llx, 0x%llx", args.arg1, args.arg2);
+            return args.arg1;
+        });
+
         // memmove (+P6FRGH4LfA#T#T) / memcpy (Q3VBxCXhUHs#T#T) and their
         // plain-name aliases share these impls.  Games occasionally call
-        // them with not-yet-mapped or bogus guest pointers; probing the
-        // range first avoids a first-chance AV that the dispatcher's SEH
-        // guard would otherwise swallow (and the kernel VEH would log).
+        // them with not-yet-mapped or bogus guest pointers; SEH-guard the
+        // actual move so a TOCTOU race between the IsWritable/IsReadable
+        // check and the CRT call (common with 31-thread worker pools) does
+        // not crash inside VCRUNTIME140.dll (the host memcpy/memmove).
         auto MemmoveImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             guest_addr_t src  = args.arg2;
@@ -1036,12 +1064,12 @@ namespace HLE {
             }
             LOG_DEBUG(HLE, "libkernel::memmove(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                if (!Memory::IsWritable(dest, count) || !Memory::IsReadable(src, count)) {
-                    LOG_WARN(HLE, "libkernel::memmove: unmapped guest range "
+                __try {
+                    std::memmove(reinterpret_cast<void*>(dest), reinterpret_cast<const void*>(src), count);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    LOG_WARN(HLE, "libkernel::memmove: AV during copy "
                              "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped", dest, src, count);
-                    return dest;
                 }
-                std::memmove(reinterpret_cast<void*>(dest), reinterpret_cast<const void*>(src), count);
             }
             return dest;
         };
@@ -1074,12 +1102,12 @@ namespace HLE {
 
             LOG_DEBUG(HLE, "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                if (!Memory::IsWritable(dest, count) || !Memory::IsReadable(src, count)) {
-                    LOG_WARN(HLE, "libkernel::memcpy: unmapped guest range "
+                __try {
+                    std::memmove(reinterpret_cast<void*>(dest), reinterpret_cast<const void*>(src), count);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    LOG_WARN(HLE, "libkernel::memcpy: AV during copy "
                              "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped", dest, src, count);
-                    return dest;
                 }
-                std::memmove(reinterpret_cast<void*>(dest), reinterpret_cast<const void*>(src), count);
             }
             return dest;
         };
@@ -1385,6 +1413,8 @@ namespace HLE {
 
         // scePthreadCreate (6UgtwV+0zb4#T#T) — spawns a guest thread via the
         // CpuCore registry (reached through the Kernel:: thread API).
+        // Honors the CpuConfig max_guest_threads limit to avoid race conditions
+        // in the Construct runtime's multi-threaded JSON parser (PPSA02929).
         RegisterSymbol("libkernel", "6UgtwV+0zb4#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t tid_out   = args.arg1;
             guest_addr_t attr_ptr  = args.arg2;
@@ -1399,6 +1429,21 @@ namespace HLE {
                     u8 c = Memory::Read<u8>(name_ptr + i);
                     if (!c) break;
                     name += static_cast<char>(c);
+                }
+            }
+
+            // Thread count limit: if max_guest_threads > 0, count active
+            // guest threads and reject new ones past the limit.  The game
+            // may retry or continue without the thread.
+            {
+                const int max_threads = ConfigService::EffectiveFor("").cpu.max_guest_threads;
+                if (max_threads > 0) {
+                    const int active = CpuCore::ActiveThreadCount();
+                    if (active >= max_threads) {
+                        LOG_INFO(HLE, "scePthreadCreate(NID): thread limit %d reached (%d active), "
+                                 "rejecting '%s' (EAGAIN)", max_threads, active, name.c_str());
+                        return 11; // EAGAIN
+                    }
                 }
             }
 
@@ -1419,7 +1464,14 @@ namespace HLE {
             void* tls_block = VirtualAlloc(nullptr, kTlsHeadroom + kTlsSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             u64 tls_base = reinterpret_cast<u64>(tls_block) + kTlsHeadroom;
             if (tls_block) {
+                // Self-pointer at tp[0] (FreeBSD TCB convention)
                 *reinterpret_cast<u64*>(tls_base) = tls_base;
+                // Seed additional TLS slots (SharpEmu SeedTlsLayout compat)
+                if (*reinterpret_cast<u64*>(tls_base + 16) == 0) {
+                    *reinterpret_cast<u64*>(tls_base + 16) = tls_base;
+                }
+                *reinterpret_cast<u64*>(tls_base + 40) = 0xC0C0C0C0C0C0C0BEULL;
+                *reinterpret_cast<u64*>(tls_base + 96) = tls_base;
             }
 
             u64 tid = 0;
@@ -1466,15 +1518,26 @@ namespace HLE {
         RegisterSymbol("libkernel", "6sJWiWSRuqk#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
             u64 n = args.arg3;
-            if (dst && src && n > 0 && n < 0x10000000ULL)
-                strncpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src), n);
+            if (dst && src && n > 0 && n < 0x10000000ULL) {
+                __try {
+                    strncpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src), n);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    LOG_WARN(HLE, "libkernel::strncpy: AV (dst: 0x%llx, src: 0x%llx, n: %llu)", dst, src, n);
+                }
+            }
             return dst;
         });
 
         // strcpy
         auto StrcpyImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
-            if (dst && src) strcpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
+            if (dst && src) {
+                __try {
+                    strcpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    LOG_WARN(HLE, "libkernel::strcpy: AV (dst: 0x%llx, src: 0x%llx)", dst, src);
+                }
+            }
             return dst;
         };
         RegisterSymbol("libkernel", "strcpy#T#T", StrcpyImpl);
@@ -1483,7 +1546,13 @@ namespace HLE {
         // strcat (Ls4tzzhimqQ#T#T)
         auto StrcatImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
-            if (dst && src) strcat(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
+            if (dst && src) {
+                __try {
+                    strcat(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    LOG_WARN(HLE, "libkernel::strcat: AV (dst: 0x%llx, src: 0x%llx)", dst, src);
+                }
+            }
             return dst;
         };
         RegisterSymbol("libkernel", "strcat#T#T", StrcatImpl);
@@ -1508,12 +1577,12 @@ namespace HLE {
             u32 ch = static_cast<u32>(args.arg2);
             u64 n = args.arg3;
             if (dst && n > 0 && n < 0x10000000ULL) {
-                if (!Memory::IsWritable(dst, n)) {
-                    LOG_WARN(HLE, "libkernel::memset: unmapped guest range "
+                __try {
+                    std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    LOG_WARN(HLE, "libkernel::memset: AV during memset "
                              "(dest: 0x%llx, count: %llu) — skipped", dst, n);
-                    return dst;
                 }
-                std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n);
             }
             return dst;
         });

@@ -19,6 +19,7 @@
 
 extern HleDispatch         : proc
 extern SetHostStackPointer : proc
+extern SetIncomingXmm0     : proc
 
 ;=============================================================================
 ; HleCommonDispatcher
@@ -62,22 +63,47 @@ HleCommonDispatcher proc
     mov  rbp, rcx           ; SysV arg4
     mov  rbx, r10           ; symbol_id
 
-    ; Step 4: Build Windows ABI call frame (need 16-byte aligned rsp before CALL)
-    ; entry_rsp was 16n-8 (ret addr pushed by guest CALL). After 8 pushes
-    ; (64 bytes): rsp = 16n - 72 -> misaligned. Shadow space = 32 bytes,
-    ; stack args 5-9 = 40 bytes + 8 pad; sub 88: rsp = 16n - 160 = 16-aligned.
+    ; Step 4: Save caller-volatile XMM registers (XMM0-XMM7) so the HLE
+    ; handler's SSE usage does not corrupt the guest's floating-point state.
+    ; Matching KytyPS5's pattern (runtimeLinker.cpp save_xmm/load_xmm).
+    ; After Step 2, rsp = 16n - 72 (= misaligned).  sub 128 keeps it misaligned.
+    sub  rsp, 8*16
+    movups [rsp],      xmm0
+    movups [rsp+16],   xmm1
+    movups [rsp+32],   xmm2
+    movups [rsp+48],   xmm3
+    movups [rsp+64],   xmm4
+    movups [rsp+80],   xmm5
+    movups [rsp+96],   xmm6
+    movups [rsp+112],  xmm7
+
+    ; Step 4b: Save the incoming XMM0 argument for HLE handlers that need
+    ; floating-point arguments (sce::Json::Value::set(double), etc.).
+    ; XMM0 still holds the guest's value (movups is non-destructive).
+    ; Shadow + align: 40 = 32 + 8; rsp = 16n-200-40 = 16(n-15) = 16-aligned.
+    sub  rsp, 40
+    movq rcx, xmm0
+    call SetIncomingXmm0
+    add  rsp, 40
+
+    ; Step 5: Build Windows ABI call frame (need 16-byte aligned rsp before CALL)
+    ; entry_rsp was 16n-8 (ret addr pushed by guest CALL). After 8 pushes (64 bytes):
+    ; rsp = 16n - 72. After sub 128 (Step 4 XMM save): rsp = 16n - 200. After sub 88:
+    ; rsp = 16n - 288 = 16-aligned.  The 8 original push values (r8/r9/rbx..r15 + ret_rip)
+    ; now sit at [rsp + 88 + 128 + 0..63] = [rsp + 216..279] and [rsp + 280] = ret_rip.
     sub  rsp, 88
 
     ; Stack args for HleDispatch (beyond rcx, rdx, r8, r9).
-    ; r8_orig/r9_orig were pushed before the callee-saved regs; after sub 88
-    ; they live at [rsp + 88 + 56] and [rsp + 88 + 48].
+    ; After sub 88 + sub 128: r8_orig = [rsp + 88 + 128 + 56] = [rsp + 272],
+    ; r9_orig = [rsp + 88 + 128 + 48] = [rsp + 264], ret_rip = [rsp + 88 + 128 + 64]
+    ; = [rsp + 280].
     mov  [rsp + 32], rbp    ; arg5 = rcx_orig (SysV arg4)
-    mov  rax, [rsp + 144]   ; r8_orig
+    mov  rax, [rsp + 272]   ; r8_orig
     mov  [rsp + 40], rax    ; arg6 = r8_orig (SysV arg5)
-    mov  rax, [rsp + 136]   ; r9_orig
+    mov  rax, [rsp + 264]   ; r9_orig
     mov  [rsp + 48], rax    ; arg7 = r9_orig (SysV arg6)
     mov  [rsp + 56], r15    ; arg8 = guest_rip
-    lea  rax, [rsp + 152]   ; entry guest rsp (ret addr at [rax], stack args at [rax+8])
+    lea  rax, [rsp + 280]   ; entry guest rsp (ret addr at [rax], stack args at [rax+8])
     mov  [rsp + 64], rax    ; arg9 = guest_rsp
 
     mov  rcx, rbx           ; arg1 = symbol_id
@@ -93,7 +119,18 @@ HleCommonDispatcher proc
     ; always safe.
     movq xmm0, rax
 
-    add  rsp, 88
+    add  rsp, 88            ; drop call frame; rsp now points to XMM save area
+
+    ; Restore XMM1-XMM7 (keep XMM0 from our mirror above).
+    movups xmm1, [rsp+16]
+    movups xmm2, [rsp+32]
+    movups xmm3, [rsp+48]
+    movups xmm4, [rsp+64]
+    movups xmm5, [rsp+80]
+    movups xmm6, [rsp+96]
+    movups xmm7, [rsp+112]
+
+    add  rsp, 8*16          ; drop XMM save area
 
     pop  rbx
     pop  rbp

@@ -1,8 +1,10 @@
+#define _CRT_SECURE_NO_WARNINGS
 // See guest_printf.h for the design notes.
 #include "guest_printf.h"
 #include "../memory/memory.h"
 #include <cstdio>
 #include <cstring>
+#include <locale.h>
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -249,7 +251,8 @@ std::string FormatGuestString(const std::string& fmt, SysVAmd64VaList& valist) {
             *p++ = type;
             *p = '\0';
             char buf[1024];
-            std::snprintf(buf, sizeof(buf), hfmt, v);
+            static _locale_t c_locale = _create_locale(LC_ALL, "C");
+            _snprintf_l(buf, sizeof(buf), hfmt, c_locale, v);
             result += buf;
             break;
         }

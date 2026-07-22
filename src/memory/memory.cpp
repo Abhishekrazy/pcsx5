@@ -462,9 +462,11 @@ Status Query(guest_addr_t address, MemoryInfo* out_info) {
 
 bool IsReadable(guest_addr_t address, u64 size) {
     if (size == 0) return true;
-    for (u64 off = 0; off < size; off += PAGE_SIZE) {
+    u64 start_page = address & ~(static_cast<u64>(PAGE_SIZE - 1));
+    u64 end_page   = (address + size - 1) & ~(static_cast<u64>(PAGE_SIZE - 1));
+    for (u64 p = start_page; p <= end_page; p += PAGE_SIZE) {
         MemoryInfo info{};
-        if (Query(address + off, &info) != Status::Ok) return false;
+        if (Query(p, &info) != Status::Ok) return false;
         if (!info.is_committed) return false;
         if (!(info.protection & PROT_READ)) return false;
     }
@@ -473,9 +475,11 @@ bool IsReadable(guest_addr_t address, u64 size) {
 
 bool IsWritable(guest_addr_t address, u64 size) {
     if (size == 0) return true;
-    for (u64 off = 0; off < size; off += PAGE_SIZE) {
+    u64 start_page = address & ~(static_cast<u64>(PAGE_SIZE - 1));
+    u64 end_page   = (address + size - 1) & ~(static_cast<u64>(PAGE_SIZE - 1));
+    for (u64 p = start_page; p <= end_page; p += PAGE_SIZE) {
         MemoryInfo info{};
-        if (Query(address + off, &info) != Status::Ok) return false;
+        if (Query(p, &info) != Status::Ok) return false;
         if (!info.is_committed) return false;
         if (!(info.protection & PROT_WRITE)) return false;
     }

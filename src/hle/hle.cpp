@@ -3,6 +3,7 @@
 #include "../common/log.h"
 #include "../common/nid.h"
 #include "../gpu/gpu.h"
+#include <xmmintrin.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <atomic>
@@ -33,7 +34,22 @@ extern "C" void SetHostStackPointer(uintptr_t rsp) {
     tls_host_stack_pointer = rsp;
 }
 
+// Thread-local storage for the incoming XMM0 floating-point argument.
+// Set by the dispatcher asm before each HLE dispatch so handlers for
+// functions like sce::Json::Value::set(double) can read the double value
+// from XMM0 (SysV ABI: float args in XMM0-XMM7). GuestArgs only captures
+// GPRs (rdi, rsi, rdx, rcx, r8, r9).
+static thread_local u64 tls_incoming_xmm0 = 0;
+
+extern "C" void SetIncomingXmm0(u64 val) {
+    tls_incoming_xmm0 = val;
+}
+
 namespace HLE {
+    u64 GetIncomingXmm0() {
+        return tls_incoming_xmm0;
+    }
+
     void RegisterLibKernel();
     void RegisterLibKernelSync();
     void RegisterLibPad();
@@ -49,6 +65,7 @@ namespace HLE {
     void RegisterLibKeystone();
     void RegisterLibAudioOut();
     void RegisterLibAtrac9();
+    void RegisterLibJson();
 
     static std::unordered_map<std::string, HleSymbol> g_symbol_registry;
     static std::unordered_map<u64, HleSymbol>         g_id_index;       // fast O(1) dispatch
@@ -102,12 +119,16 @@ namespace HLE {
             g_guest_exit_env_armed.load(std::memory_order_acquire)) {
             g_guest_exit_code = exit_code;
             longjmp(g_guest_exit_env, 1);
-            // longjmp never returns.
-            std::abort();
+            // longjmp never returns — unreachable past here.
         }
         // Off the main guest thread there is no armed setjmp buffer; fall
-        // back to terminating the process (legacy behaviour).
+        // back to terminating the process immediately to avoid letting other
+        // active threads crash during host CRT exit teardown.
+#ifdef _WIN32
+        ::TerminateProcess(::GetCurrentProcess(), exit_code);
+#else
         std::exit(static_cast<int>(exit_code));
+#endif
     }
 
     // ---------------------------------------------------------------------
@@ -272,6 +293,7 @@ namespace HLE {
         RegisterLibKeystone();
         RegisterLibAudioOut();
         RegisterLibAtrac9();
+        RegisterLibJson();
 
         // Gap filler: log-and-return-0 stubs under their real names for every
         // NID-database entry no module implemented.  Must run LAST so it

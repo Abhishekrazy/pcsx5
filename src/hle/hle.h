@@ -109,6 +109,13 @@ namespace HLE {
     // registration (existing keys are skipped before RegisterSymbol runs).
     void RegisterNidDbStubs();
 
+    // Register libSceJson / sce::Json HLE handlers
+    void RegisterLibJson();
+
+    // Get the incoming XMM0 argument (float/double) from the current HLE dispatch.
+    // Set by the dispatcher asm before each call via SetIncomingXmm0.
+    u64 GetIncomingXmm0();
+
     // Resolve symbol by exact module+name key; returns thunk address or 0
     guest_addr_t Resolve(const std::string& module_name, const std::string& name);
 

@@ -656,6 +656,50 @@ namespace GPU {
         }
     }
 
+    // SEH-safe helper: blits the guest framebuffer into the host DIB buffer
+    // with aspect-correct scaling.  Extracted from RenderFrame so MSVC's
+    // C2712 (__try + C++ object unwinding) does not fire.
+    static bool BlitGuestFramebufferToDib(guest_addr_t framebuffer_addr) {
+        int fit_x = 0, fit_y = 0, fit_w = g_width, fit_h = g_height;
+        FitRect(static_cast<int>(g_fb_width), static_cast<int>(g_fb_height),
+                g_width, g_height, &fit_x, &fit_y, &fit_w, &fit_h);
+        __try {
+            const u8* src = reinterpret_cast<const u8*>(framebuffer_addr);
+            for (int y = 0; y < fit_h; ++y) {
+                int src_y = (y * static_cast<int>(g_fb_height)) / fit_h;
+                for (int x = 0; x < fit_w; ++x) {
+                    int src_x = (x * static_cast<int>(g_fb_width)) / fit_w;
+
+                    u8 r = 0, g_ch = 0, b = 0;
+                    if (g_fb_format == 2) { // RGB565
+                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 2;
+                        u16 pixel = *reinterpret_cast<const u16*>(src + src_offset);
+                        r = ((pixel >> 11) & 0x1F) * 255 / 31;
+                        g_ch = ((pixel >> 5) & 0x3F) * 255 / 63;
+                        b = (pixel & 0x1F) * 255 / 31;
+                    } else if (g_fb_format == 1) { // BGRA8
+                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 4;
+                        const u8* pixel = src + src_offset;
+                        b = pixel[0];
+                        g_ch = pixel[1];
+                        r = pixel[2];
+                    } else { // RGBA8 (default)
+                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 4;
+                        const u8* pixel = src + src_offset;
+                        r = pixel[0];
+                        g_ch = pixel[1];
+                        b = pixel[2];
+                    }
+
+                    g_dib_buffer[(fit_y + y) * g_width + (fit_x + x)] = (0xFF << 24) | (r << 16) | (g_ch << 8) | b;
+                }
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            return false;
+        }
+        return true;
+    }
+
     void RenderFrame(guest_addr_t framebuffer_addr) {
         if (!g_window || !g_hwnd) return;
 
@@ -706,48 +750,10 @@ namespace GPU {
             }
         }
 
-        // Blit guest framebuffer → host DIB buffer (BGRA)
-        // Guest FB format is dynamic (RGBA8, BGRA8, or RGB565) - scale-blit
-        // aspect-correct into the window-sized DIB (letterbox/pillarbox).
-        int fit_x = 0, fit_y = 0, fit_w = g_width, fit_h = g_height;
-        FitRect(static_cast<int>(g_fb_width), static_cast<int>(g_fb_height),
-                g_width, g_height, &fit_x, &fit_y, &fit_w, &fit_h);
         std::fill(g_dib_buffer.begin(), g_dib_buffer.end(), 0xFF000000u);
-        __try {
-            const u8* src = reinterpret_cast<const u8*>(framebuffer_addr);
-            for (int y = 0; y < fit_h; ++y) {
-                int src_y = (y * static_cast<int>(g_fb_height)) / fit_h;
-                for (int x = 0; x < fit_w; ++x) {
-                    int src_x = (x * static_cast<int>(g_fb_width)) / fit_w;
-                    
-                    u8 r = 0, g_ch = 0, b = 0;
-                    if (g_fb_format == 2) { // RGB565
-                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 2;
-                        u16 pixel = *reinterpret_cast<const u16*>(src + src_offset);
-                        r = ((pixel >> 11) & 0x1F) * 255 / 31;
-                        g_ch = ((pixel >> 5) & 0x3F) * 255 / 63;
-                        b = (pixel & 0x1F) * 255 / 31;
-                    } else if (g_fb_format == 1) { // BGRA8
-                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 4;
-                        const u8* pixel = src + src_offset;
-                        b = pixel[0];
-                        g_ch = pixel[1];
-                        r = pixel[2];
-                    } else { // RGBA8 (default)
-                        int src_offset = (src_y * static_cast<int>(g_fb_width) + src_x) * 4;
-                        const u8* pixel = src + src_offset;
-                        r = pixel[0];
-                        g_ch = pixel[1];
-                        b = pixel[2];
-                    }
-                    
-                    g_dib_buffer[(fit_y + y) * g_width + (fit_x + x)] = (0xFF << 24) | (r << 16) | (g_ch << 8) | b;
-                }
-            }
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
-            // Guest framebuffer address turned out invalid – fallback to boot screen
+        if (!BlitGuestFramebufferToDib(framebuffer_addr)) {
             LOG_WARN(GPU, "RenderFrame: Access violation reading guest framebuffer 0x%llx, falling back to boot screen.", framebuffer_addr);
-            RenderBootScreenNow(); // locks Boot().mutex internally (no C++ objects here: SEH)
+            RenderBootScreenNow();
             return;
         }
 
