@@ -67,37 +67,37 @@ not yet ported.  Sorted by estimated impact on game booting.
 
 ### MEDIUM — system completeness
 
-- [ ] P5. **Implement pthread semaphore exports** (SharpEmu #424)
-      - [ ] P5.1 Define `sem_t` object structure in `src/hle/libkernel_sync.cpp`.
-      - [ ] P5.2 Implement `sem_init`, `sem_destroy`, `sem_wait`, `sem_trywait`, `sem_post`, `sem_getvalue`.
-      - [ ] P5.3 Register POSIX semaphore NID exports in `libkernel`.
-      - [ ] P5.4 Unit tests in `kernel_sync_tests.cpp`.
+- [x] P5. **Implement pthread semaphore exports** (SharpEmu #424)
+      - [x] P5.1 Define `sem_t` object structure in `src/hle/libkernel_sync.cpp`.
+      - [x] P5.2 Implement `sem_init`, `sem_destroy`, `sem_wait`, `sem_trywait`, `sem_post`, `sem_getvalue`.
+      - [x] P5.3 Register POSIX semaphore NID exports in `libkernel`.
+      - [x] P5.4 Unit tests in `kernel_sync_tests.cpp`.
 
-- [ ] P6. **Add RandomExports HLE** (SharpEmu #413)
-      - [ ] P6.1 Implement `sceRandomGetRandomNumber` and hardware RNG fallback exports using C++ `<random>`.
-      - [ ] P6.2 Register NID exports in HLE symbol table.
+- [x] P6. **Add RandomExports HLE** (SharpEmu #413)
+      - [x] P6.1 Implement `sceRandomGetRandomNumber` and hardware RNG fallback exports using C++ `<random>`.
+      - [x] P6.2 Register NID exports in HLE symbol table.
 
-- [ ] P7. **Add missing libc string exports** (SharpEmu #132)
-      - [ ] P7.1 Implement HLE exports for `strchr`, `strrchr`, `memchr`, `strcat`, `strncat`, `strstr` in `src/hle/liblibc.cpp`.
-      - [ ] P7.2 Register missing NID symbols in `libSceLibcInternal` / `libc`.
+- [x] P7. **Add missing libc string exports** (SharpEmu #132)
+      - [x] P7.1 Implement HLE exports for `strchr`, `strrchr`, `memchr`, `strcat`, `strncat`, `strstr` in `src/hle/liblibc.cpp`.
+      - [x] P7.2 Register missing NID symbols in `libSceLibcInternal` / `libc`.
 
-- [ ] P8. **Implement pthread_yield NID** (SharpEmu #426)
-      - [ ] P8.1 Register NID `B5GmVDKwpn0` / `pthread_yield` explicitly in `libkernel.cpp` (calling `SwitchToThread()` / `std::this_thread::yield()`).
+- [x] P8. **Implement pthread_yield NID** (SharpEmu #426)
+      - [x] P8.1 Register NID `B5GmVDKwpn0` / `pthread_yield` explicitly in `libkernel.cpp` (calling `SwitchToThread()` / `std::this_thread::yield()`).
 
-- [ ] P9. **Fix lazy pthread object initialization** (Kyty 42d42e3)
-      - [ ] P9.1 Audit `src/hle/libkernel_sync.cpp` lazy mutex/cond initialization sequence against Kyty reference fix.
-      - [ ] P9.2 Verify concurrent lazy initialization under race conditions.
+- [x] P9. **Fix lazy pthread object initialization** (Kyty 42d42e3)
+      - [x] P9.1 Audit `src/hle/libkernel_sync.cpp` lazy mutex/cond initialization sequence against Kyty reference fix.
+      - [x] P9.2 Verify concurrent lazy initialization under race conditions.
 
 ### LOW — features and compatibility
 
-- [ ] P10. **Add ASTRO BOT compatibility stubs** (SharpEmu #481)
-      - [ ] P10.1 Implement stubs for `ContentExport`, `Font`, and `Pad` NID calls required by Astro Bot.
+- [x] P10. **Add ASTRO BOT compatibility stubs** (SharpEmu #481)
+      - [x] P10.1 Implement stubs for `ContentExport`, `Font`, and `Pad` NID calls required by Astro Bot.
 
-- [ ] P11. **Implement sceFontGetVerticalLayout** (SharpEmu #492)
-      - [ ] P11.1 Implement `sceFontGetVerticalLayout` metrics stub in `src/hle/libfont.cpp` (or font HLE).
+- [x] P11. **Implement sceFontGetVerticalLayout** (SharpEmu #492)
+      - [x] P11.1 Implement `sceFontGetVerticalLayout` metrics stub in `src/hle/libfont.cpp` (or font HLE).
 
-- [ ] P12. **Memory: back free pages of partially-overlapping fixed mapping** (SharpEmu #458)
-      - [ ] P12.1 Update `src/memory/memory.cpp` fixed-address reservation logic to back free pages when new reservation overlaps existing partial mapping.
+- [x] P12. **Memory: back free pages of partially-overlapping fixed mapping** (SharpEmu #458)
+      - [x] P12.1 Update `src/memory/memory.cpp` fixed-address reservation logic to back free pages when new reservation overlaps existing partial mapping.
 
-- [ ] P13. **CPU: preserve guest return value across TLS lookup** (SharpEmu #104)
-      - [ ] P13.1 Update TLS lookup helper in `src/cpu/cpu.cpp` / `dispatcher.asm` to preserve RAX/XMM0 guest return values across internal TLS resolution calls.
+- [x] P13. **CPU: preserve guest return value across TLS lookup** (SharpEmu #104)
+      - [x] P13.1 Update TLS lookup helper in `src/cpu/cpu.cpp` / `dispatcher.asm` to preserve RAX/XMM0 guest return values across internal TLS resolution calls.

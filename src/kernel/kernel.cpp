@@ -1050,10 +1050,9 @@ namespace Kernel {
         u64 src2_val = src2_slot ? *src2_slot : 0;
         if (insn.is_memory_src && insn.mem_addr) {
             if (insn.operand_size == 32) {
-                u32 val32 = 0;
-                if (Memory::ReadBuffer(insn.mem_addr, &val32, 4)) src1_val = val32;
+                src1_val = Memory::Read<u32>(insn.mem_addr);
             } else {
-                Memory::ReadBuffer(insn.mem_addr, &src1_val, 8);
+                src1_val = Memory::Read<u64>(insn.mem_addr);
             }
         }
 

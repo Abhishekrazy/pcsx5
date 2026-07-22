@@ -65,6 +65,14 @@ u64 SceKernelPollSema(const GuestArgs& args);
 u64 SceKernelSignalSema(const GuestArgs& args);
 u64 SceKernelDeleteSema(const GuestArgs& args);
 
+// pthread POSIX semaphores (sem_t variables)
+u64 ScePthreadSemInit(const GuestArgs& args);
+u64 ScePthreadSemDestroy(const GuestArgs& args);
+u64 ScePthreadSemWait(const GuestArgs& args);
+u64 ScePthreadSemTrywait(const GuestArgs& args);
+u64 ScePthreadSemPost(const GuestArgs& args);
+u64 ScePthreadSemGetValue(const GuestArgs& args);
+
 // sceKernel* event flags (handle-based bitmask, wait-any/all)
 u64 SceKernelCreateEventFlag(const GuestArgs& args);
 u64 SceKernelSetEventFlag(const GuestArgs& args);

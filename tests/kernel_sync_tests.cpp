@@ -493,6 +493,34 @@ void TestSyncOnAddress() {
     std::printf("  sync_on_address: OK\n");
 }
 
+void TestPosixSemaphore() {
+    const guest_addr_t sem_var = g_page + 0x300;
+    const guest_addr_t val_ptr = g_page + 0x308;
+    assert(ScePthreadSemInit(Args(sem_var, 0, 1)) == 0);
+
+    assert(ScePthreadSemGetValue(Args(sem_var, val_ptr)) == 0);
+    assert(Memory::Read<s32>(val_ptr) == 1);
+
+    assert(ScePthreadSemWait(Args(sem_var)) == 0); // decrements count to 0
+    assert(ScePthreadSemTrywait(Args(sem_var)) == SCE_KERNEL_ERROR_EBUSY); // count is 0
+
+    std::atomic<bool> woke{false};
+    std::thread t([&] {
+        assert(ScePthreadSemWait(Args(sem_var)) == 0);
+        woke = true;
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    assert(!woke);
+
+    assert(ScePthreadSemPost(Args(sem_var)) == 0);
+    t.join();
+    assert(woke);
+
+    assert(ScePthreadSemDestroy(Args(sem_var)) == 0);
+    std::printf("  posix_semaphore: OK\n");
+}
+
 } // namespace
 
 int main() {
@@ -521,6 +549,7 @@ int main() {
     TestClock();
     TestGuestPathTranslation();
     TestSyncOnAddress();
+    TestPosixSemaphore();
 
     Memory::Shutdown();
     std::printf("All kernel sync tests passed!\n");

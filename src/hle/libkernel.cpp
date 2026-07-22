@@ -23,6 +23,7 @@
 #include <io.h>
 #include <fcntl.h>
 #include <cstdio>
+#include <random>
 #include <cerrno>
 #include <string>
 #include <sys/stat.h>
@@ -1619,6 +1620,35 @@ namespace HLE {
         RegisterSymbol("libkernel", "g7zzzLDYGw0#T#T", [](const GuestArgs& args) -> u64 {
             return GuestSprintf(args);
         });
+
+        // pthread_yield (B5GmVDKwpn0) — yields execution to other ready threads
+        auto PthreadYieldImpl = [](const GuestArgs& /*args*/) -> u64 {
+            std::this_thread::yield();
+            return 0;
+        };
+        RegisterSymbol("libkernel", "pthread_yield", PthreadYieldImpl);
+        RegisterSymbol("libkernel", "B5GmVDKwpn0", PthreadYieldImpl);
+
+        // RandomExports HLE (sceRandomGetRandomNumber / hardware RNG fallback)
+        auto RandomGetRandomNumberImpl = [](const GuestArgs& args) -> u64 {
+            const guest_addr_t buf = args.arg1;
+            const u64 size = args.arg2;
+            if (!buf || size == 0) return 0;
+            static std::mt19937_64 rng(std::random_device{}());
+            u8* p = reinterpret_cast<u8*>(buf);
+            u64 offset = 0;
+            while (offset < size) {
+                u64 val = rng();
+                size_t chunk = std::min<size_t>(sizeof(val), size - offset);
+                std::memcpy(p + offset, &val, chunk);
+                offset += chunk;
+            }
+            return 0;
+        };
+        for (const char* mod : {"libkernel", "libSceRandom", "libSceRng"}) {
+            RegisterSymbol(mod, "sceRandomGetRandomNumber", RandomGetRandomNumberImpl);
+            RegisterSymbol(mod, "sceKernelGetRandomNumber", RandomGetRandomNumberImpl);
+        }
 
         // =====================================================================
         // Semaphore symbols (sceKernelCreate/Wait/Signal/Poll/DeleteSema) are

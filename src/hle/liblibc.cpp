@@ -2346,6 +2346,38 @@ void RegisterLibLibc() {
         return 0;
     };
 
+    auto StrchrImpl = [](const GuestArgs& args) -> u64 {
+        if (!args.arg1) return 0;
+        const char* hit = std::strchr(reinterpret_cast<const char*>(args.arg1), static_cast<int>(args.arg2));
+        return hit ? reinterpret_cast<u64>(hit) : 0;
+    };
+    auto StrrchrImpl = [](const GuestArgs& args) -> u64 {
+        if (!args.arg1) return 0;
+        const char* hit = std::strrchr(reinterpret_cast<const char*>(args.arg1), static_cast<int>(args.arg2));
+        return hit ? reinterpret_cast<u64>(hit) : 0;
+    };
+    auto StrcatImpl = [](const GuestArgs& args) -> u64 {
+        if (!args.arg1 || !args.arg2) return args.arg1;
+        char* dst = reinterpret_cast<char*>(args.arg1);
+        const char* src = reinterpret_cast<const char*>(args.arg2);
+        const size_t dst_len = std::strlen(dst);
+        const size_t src_len = std::strlen(src);
+        std::memcpy(dst + dst_len, src, src_len + 1);
+        return args.arg1;
+    };
+    auto StrncatImpl = [](const GuestArgs& args) -> u64 {
+        if (!args.arg1 || !args.arg2 || !args.arg3) return args.arg1;
+        char* dst = reinterpret_cast<char*>(args.arg1);
+        const char* src = reinterpret_cast<const char*>(args.arg2);
+        const size_t dst_len = std::strlen(dst);
+        const size_t n = static_cast<size_t>(args.arg3);
+        size_t src_len = std::strlen(src);
+        if (src_len > n) src_len = n;
+        std::memcpy(dst + dst_len, src, src_len);
+        dst[dst_len + src_len] = '\0';
+        return args.arg1;
+    };
+
     for (const char* module : {"libSceLibcInternal", "libc", "libkernel"}) {
         RegisterSymbol(module, "strtoll", StrtollImpl);
         RegisterSymbol(module, "VOBg+iNwB-4", StrtollImpl);  // strtoll
@@ -2358,6 +2390,11 @@ void RegisterLibLibc() {
         RegisterSymbol(module, "strtof", StrtofImpl);
         RegisterSymbol(module, "memchr", MemchrImpl);
         RegisterSymbol(module, "8u8lPzUEq+U", MemchrImpl);   // memchr
+        RegisterSymbol(module, "strchr", StrchrImpl);
+        RegisterSymbol(module, "strrchr", StrrchrImpl);
+        RegisterSymbol(module, "strcat", StrcatImpl);
+        RegisterSymbol(module, "strncat", StrncatImpl);
+        RegisterSymbol(module, "strstr", StrstrImpl);
         RegisterSymbol(module, "gettimeofday", GettimeofdayImpl);
         RegisterSymbol(module, "n88vx3C5nW8", GettimeofdayImpl); // gettimeofday
     }
