@@ -54,11 +54,11 @@ not yet ported.  Sorted by estimated impact on game booting.
       - [x] P2.3 Update `src/hle/guest_printf.cpp` vsnprintf format parser to extract float args from XMM bank.
       - [x] P2.4 Unit test variadic float formatting with multiple `%f` / `%g` arguments in `guest_printf_tests.cpp`.
 
-- [ ] P3. **BMI1/BMI2/ABM instruction emulation** (SharpEmu #249)
-      - [ ] P3.1 Add CPU feature detection & fallback handlers in `src/cpu/amd_compat.cpp` for BMI1/BMI2/ABM instructions.
-      - [ ] P3.2 Implement decoding & execution for bitwise instructions (`ANDN`, `BLSI`, `BLSMSK`, `BLSR`, `BZHI`, `BEXTR`).
-      - [ ] P3.3 Implement decoding & execution for bit manipulation / count instructions (`TZCNT`, `LZCNT`, `RORX`, `SARX`, `SHLX`, `SHRX`, `PDEP`, `PEXT`).
-      - [ ] P3.4 Unit tests in `sse4a_bitfield_tests.cpp` for BMI1/BMI2 instruction fallbacks.
+- [x] P3. **BMI1/BMI2/ABM instruction emulation** (SharpEmu #249)
+      - [x] P3.1 Add CPU feature detection & fallback handlers in `src/cpu/amd_compat.cpp` for BMI1/BMI2/ABM instructions.
+      - [x] P3.2 Implement decoding & execution for bitwise instructions (`ANDN`, `BLSI`, `BLSMSK`, `BLSR`, `BZHI`, `BEXTR`).
+      - [x] P3.3 Implement decoding & execution for bit manipulation / count instructions (`TZCNT`, `LZCNT`, `RORX`, `SARX`, `SHLX`, `SHRX`, `PDEP`, `PEXT`).
+      - [x] P3.4 Unit tests in `sse4a_bitfield_tests.cpp` for BMI1/BMI2 instruction fallbacks.
 
 - [ ] P4. **TLS reservation audit: StartupStaticTlsReservation** (SharpEmu #454)
       - [ ] P4.1 Audit `src/kernel/tls.cpp` static TLS headroom (increase from 128KB to matched target).

@@ -972,8 +972,22 @@ namespace Kernel {
         }
     }
 
+    static u64* GprSlot(PCONTEXT context, u8 index) {
+        switch (index) {
+            case 0:  return &context->Rax; case 1:  return &context->Rcx;
+            case 2:  return &context->Rdx; case 3:  return &context->Rbx;
+            case 4:  return &context->Rsp; case 5:  return &context->Rbp;
+            case 6:  return &context->Rsi; case 7:  return &context->Rdi;
+            case 8:  return &context->R8;  case 9:  return &context->R9;
+            case 10: return &context->R10; case 11: return &context->R11;
+            case 12: return &context->R12; case 13: return &context->R13;
+            case 14: return &context->R14; case 15: return &context->R15;
+            default: return nullptr;
+        }
+    }
+
     static bool TryRecoverAmdCompatInstruction(PCONTEXT context, u64 rip) {
-        u8 bytes[8] = {0};
+        u8 bytes[15] = {0};
         if (!SafeRead(bytes, reinterpret_cast<const void*>(rip), sizeof(bytes))) {
             return false;
         }
@@ -995,33 +1009,80 @@ namespace Kernel {
             return true;
         }
 
-        // EXTRQ / INSERTQ immediate form: validate the bit field before
-        // touching any register, and decline undefined forms so they still
-        // reach the normal crash path.
-        if (!CpuCore::AmdCompat::IsValidBitField(insn.field_len, insn.field_idx)) {
-            return false;
-        }
-        M128A* dest = XmmSlot(context, insn.dest_xmm);
-        if (!dest) {
-            return false;
-        }
-        if (insn.kind == InstructionKind::Extrq) {
-            dest->Low = CpuCore::AmdCompat::ExtractBitField(
-                dest->Low, insn.field_len, insn.field_idx);
-        } else {
-            M128A* src = XmmSlot(context, insn.src_xmm);
-            if (!src) {
+        if (insn.kind == InstructionKind::Extrq || insn.kind == InstructionKind::Insertq) {
+            // EXTRQ / INSERTQ immediate form: validate the bit field before
+            // touching any register, and decline undefined forms so they still
+            // reach the normal crash path.
+            if (!CpuCore::AmdCompat::IsValidBitField(insn.field_len, insn.field_idx)) {
                 return false;
             }
-            dest->Low = CpuCore::AmdCompat::InsertBitField(
-                dest->Low, src->Low, insn.field_len, insn.field_idx);
+            M128A* dest = XmmSlot(context, insn.dest_xmm);
+            if (!dest) {
+                return false;
+            }
+            if (insn.kind == InstructionKind::Extrq) {
+                dest->Low = CpuCore::AmdCompat::ExtractBitField(
+                    dest->Low, insn.field_len, insn.field_idx);
+            } else {
+                M128A* src = XmmSlot(context, insn.src_xmm);
+                if (!src) {
+                    return false;
+                }
+                dest->Low = CpuCore::AmdCompat::InsertBitField(
+                    dest->Low, src->Low, insn.field_len, insn.field_idx);
+            }
+            dest->High = 0;
+            context->Rip = rip + insn.length;
+            if (++g_sse4a_instructions_emulated == 1) {
+                LOG_INFO(Kernel, "Host lacks SSE4a EXTRQ/INSERTQ used by the guest; "
+                                 "emulating those instructions in software.");
+            }
+            return true;
         }
-        dest->High = 0;
+
+        // BMI1 / BMI2 / ABM GPR instruction handling
+        u64* dst_slot = GprSlot(context, insn.dest_gpr);
+        u64* src1_slot = GprSlot(context, insn.src1_gpr);
+        u64* src2_slot = GprSlot(context, insn.src2_gpr);
+        if (!dst_slot) return false;
+
+        u64 src1_val = src1_slot ? *src1_slot : 0;
+        u64 src2_val = src2_slot ? *src2_slot : 0;
+        if (insn.is_memory_src && insn.mem_addr) {
+            if (insn.operand_size == 32) {
+                u32 val32 = 0;
+                if (Memory::ReadBuffer(insn.mem_addr, &val32, 4)) src1_val = val32;
+            } else {
+                Memory::ReadBuffer(insn.mem_addr, &src1_val, 8);
+            }
+        }
+
+        u64 res = 0;
+        switch (insn.kind) {
+            case InstructionKind::Andn:   res = CpuCore::AmdCompat::EmulateAndn(src2_val, src1_val, insn.operand_size); break;
+            case InstructionKind::Blsi:   res = CpuCore::AmdCompat::EmulateBlsi(src1_val, insn.operand_size); break;
+            case InstructionKind::Blsmsk: res = CpuCore::AmdCompat::EmulateBlsmsk(src1_val, insn.operand_size); break;
+            case InstructionKind::Blsr:   res = CpuCore::AmdCompat::EmulateBlsr(src1_val, insn.operand_size); break;
+            case InstructionKind::Bextr:  res = CpuCore::AmdCompat::EmulateBextr(src1_val, src2_val, insn.operand_size); break;
+            case InstructionKind::Bzhi:   res = CpuCore::AmdCompat::EmulateBzhi(src1_val, src2_val, insn.operand_size); break;
+            case InstructionKind::Tzcnt:  res = CpuCore::AmdCompat::EmulateTzcnt(src1_val, insn.operand_size); break;
+            case InstructionKind::Lzcnt:  res = CpuCore::AmdCompat::EmulateLzcnt(src1_val, insn.operand_size); break;
+            case InstructionKind::Rorx:   res = CpuCore::AmdCompat::EmulateRorx(src1_val, insn.imm8, insn.operand_size); break;
+            case InstructionKind::Sarx:   res = CpuCore::AmdCompat::EmulateSarx(src1_val, src2_val, insn.operand_size); break;
+            case InstructionKind::Shlx:   res = CpuCore::AmdCompat::EmulateShlx(src1_val, src2_val, insn.operand_size); break;
+            case InstructionKind::Shrx:   res = CpuCore::AmdCompat::EmulateShrx(src1_val, src2_val, insn.operand_size); break;
+            case InstructionKind::Pdep:   res = CpuCore::AmdCompat::EmulatePdep(src2_val, src1_val, insn.operand_size); break;
+            case InstructionKind::Pext:   res = CpuCore::AmdCompat::EmulatePext(src2_val, src1_val, insn.operand_size); break;
+            default: return false;
+        }
+
+        if (insn.operand_size == 32) {
+            *dst_slot = res & 0xFFFFFFFFu;
+        } else {
+            *dst_slot = res;
+        }
+
         context->Rip = rip + insn.length;
-        if (++g_sse4a_instructions_emulated == 1) {
-            LOG_INFO(Kernel, "Host lacks SSE4a EXTRQ/INSERTQ used by the guest; "
-                             "emulating those instructions in software.");
-        }
         return true;
     }
 // ---------------------------------------------------------------------------
