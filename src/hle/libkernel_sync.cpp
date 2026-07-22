@@ -339,6 +339,33 @@ std::mutex g_once_lock;
 std::unordered_set<guest_addr_t> g_once_done;
 
 // ---------------------------------------------------------------------------
+// sceKernelSyncOnAddressWait / Wake (libKernel address-wait primitives)
+// ---------------------------------------------------------------------------
+struct SyncAddressEntry {
+    std::mutex m;
+    std::condition_variable cv;
+    u32 waiters = 0;
+};
+std::mutex g_sync_addr_lock;
+std::unordered_map<guest_addr_t, std::shared_ptr<SyncAddressEntry>> g_sync_addr_map;
+
+static std::shared_ptr<SyncAddressEntry> GetSyncAddressEntry(guest_addr_t addr) {
+    std::lock_guard<std::mutex> lk(g_sync_addr_lock);
+    auto& entry = g_sync_addr_map[addr];
+    if (!entry) {
+        entry = std::make_shared<SyncAddressEntry>();
+    }
+    return entry;
+}
+
+static void CleanSyncAddressEntry(guest_addr_t addr, const std::shared_ptr<SyncAddressEntry>& entry) {
+    std::lock_guard<std::mutex> lk(g_sync_addr_lock);
+    if (entry->waiters == 0) {
+        g_sync_addr_map.erase(addr);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // pthread TLS keys — per-thread value maps
 // ---------------------------------------------------------------------------
 struct TlsKey {
@@ -752,6 +779,79 @@ u64 ScePthreadOnce(const GuestArgs& args) {
     LOG_DEBUG(HLE, "scePthreadOnce(0x%llx): invoking init 0x%llx", once_ptr, init_fn);
     InvokeGuestFunction(init_fn, 0, 0, 0);
     SafeWriteU64(once_ptr, 1);
+    return 0;
+}
+
+// ===========================================================================
+// sceKernelSyncOnAddressWait / Wake (libKernel address-wait primitives)
+// ===========================================================================
+u64 SceKernelSyncOnAddressWait(const GuestArgs& args) {
+    const guest_addr_t addr    = args.arg1;
+    const u64          expected = args.arg2;
+    const u32          timeout  = static_cast<u32>(args.arg3); // microseconds (0 = infinite)
+
+    if (!addr) return SCE_KERNEL_ERROR_EINVAL;
+
+    // Check expected value at target address (32-bit or 64-bit integer compare)
+    u64 current_val = 0;
+    if (!SafeReadU64(addr, current_val)) {
+        return SCE_KERNEL_ERROR_EINVAL;
+    }
+
+    // Compare 32-bit low part or full 64-bit value depending on expected size
+    const u32 cur32 = static_cast<u32>(current_val & 0xFFFFFFFF);
+    const u32 exp32 = static_cast<u32>(expected & 0xFFFFFFFF);
+    if (cur32 != exp32) {
+        return SCE_KERNEL_ERROR_EBUSY;
+    }
+
+    auto entry = GetSyncAddressEntry(addr);
+    std::unique_lock<std::mutex> lk(entry->m);
+    entry->waiters++;
+
+    bool timed_out = false;
+    if (timeout == 0) {
+        entry->cv.wait(lk);
+    } else {
+        const auto res = entry->cv.wait_for(lk, std::chrono::microseconds(timeout));
+        if (res == std::cv_status::timeout) {
+            timed_out = true;
+        }
+    }
+
+    entry->waiters--;
+    lk.unlock();
+    CleanSyncAddressEntry(addr, entry);
+
+    return timed_out ? SCE_KERNEL_ERROR_ETIMEDOUT : 0;
+}
+
+u64 SceKernelSyncOnAddressWake(const GuestArgs& args) {
+    const guest_addr_t addr  = args.arg1;
+    const s32          count = static_cast<s32>(args.arg2); // 0 or negative = wake all, > 0 = wake N
+
+    if (!addr) return SCE_KERNEL_ERROR_EINVAL;
+
+    std::shared_ptr<SyncAddressEntry> entry;
+    {
+        std::lock_guard<std::mutex> lk(g_sync_addr_lock);
+        auto it = g_sync_addr_map.find(addr);
+        if (it != g_sync_addr_map.end()) {
+            entry = it->second;
+        }
+    }
+
+    if (!entry) return 0;
+
+    std::lock_guard<std::mutex> lk(entry->m);
+    if (count <= 0 || static_cast<u32>(count) >= entry->waiters) {
+        entry->cv.notify_all();
+    } else {
+        for (s32 i = 0; i < count; ++i) {
+            entry->cv.notify_one();
+        }
+    }
+
     return 0;
 }
 
@@ -1348,6 +1448,8 @@ void RegisterLibKernelSync() {
 
     // pthread once + TLS keys
     RegisterSymbol("libkernel", "scePthreadOnce", ScePthreadOnce);
+    RegisterSymbol("libkernel", "sceKernelSyncOnAddressWait", SceKernelSyncOnAddressWait);
+    RegisterSymbol("libkernel", "sceKernelSyncOnAddressWake", SceKernelSyncOnAddressWake);
     RegisterSymbol("libkernel", "scePthreadKeyCreate", ScePthreadKeyCreate);
     RegisterSymbol("libkernel", "scePthreadKeyDelete", ScePthreadKeyDelete);
     RegisterSymbol("libkernel", "scePthreadGetspecific", ScePthreadGetspecific);

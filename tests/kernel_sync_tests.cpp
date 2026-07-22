@@ -461,6 +461,38 @@ void TestGuestPathTranslation() {
     std::printf("  guest path translation: OK\n");
 }
 
+void TestSyncOnAddress() {
+    const guest_addr_t sync_var = g_page + 0x200;
+    Memory::Write<u64>(sync_var, 42);
+
+    // Mismatched expected value -> EBUSY immediately without waiting
+    assert(SceKernelSyncOnAddressWait(Args(sync_var, 99, 0)) == SCE_KERNEL_ERROR_EBUSY);
+
+    // Timeout test (wait 5ms for value 42, times out with ETIMEDOUT)
+    assert(SceKernelSyncOnAddressWait(Args(sync_var, 42, 5000)) == SCE_KERNEL_ERROR_ETIMEDOUT);
+
+    // Multi-threaded wait/wake test
+    std::atomic<bool> thread_started{false};
+    std::atomic<u64> wait_res{0xDEADBEEF};
+
+    std::thread t([&] {
+        thread_started = true;
+        wait_res = SceKernelSyncOnAddressWait(Args(sync_var, 42, 0)); // infinite wait
+    });
+
+    while (!thread_started) {
+        std::this_thread::yield();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    // Wake 1 waiter
+    assert(SceKernelSyncOnAddressWake(Args(sync_var, 1)) == 0);
+    t.join();
+    assert(wait_res == 0); // Waiter woke up successfully
+
+    std::printf("  sync_on_address: OK\n");
+}
+
 } // namespace
 
 int main() {
@@ -488,6 +520,7 @@ int main() {
     TestEqueue();
     TestClock();
     TestGuestPathTranslation();
+    TestSyncOnAddress();
 
     Memory::Shutdown();
     std::printf("All kernel sync tests passed!\n");
