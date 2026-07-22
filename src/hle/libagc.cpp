@@ -661,6 +661,10 @@ constexpr u32 kSpiPsInputAddr = 0x1B4;
 // Context/uconfig registers consumed by the executor (slot 0 only — 2D path).
 constexpr u32 kPaScScreenScissorTl = 0x00C;
 constexpr u32 kPaScScreenScissorBr = 0x00D;
+constexpr u32 kPaScGenericScissorTl = 0x090;
+constexpr u32 kPaScGenericScissorBr = 0x091;
+constexpr u32 kPaScVportScissorTl   = 0x094;
+constexpr u32 kPaScVportScissorBr   = 0x095;
 constexpr u32 kCbTargetMask        = 0x08E;
 constexpr u32 kCbBlendRed          = 0x105; // ..CB_BLEND_ALPHA 0x108
 constexpr u32 kPaClVportXScale     = 0x10F; // XOFFSET 0x110, YSCALE 0x111, YOFFSET 0x112
@@ -1297,6 +1301,10 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
     call.vport_yoffset = cx(kPaClVportXScale + 3, 0);
     call.screen_scissor_tl = cx(kPaScScreenScissorTl, 0);
     call.screen_scissor_br = cx(kPaScScreenScissorBr, 0);
+    call.generic_scissor_tl = cx(kPaScGenericScissorTl, 0);
+    call.generic_scissor_br = cx(kPaScGenericScissorBr, 0);
+    call.vport_scissor_tl   = cx(kPaScVportScissorTl, 0);
+    call.vport_scissor_br   = cx(kPaScVportScissorBr, 0);
 
     if (has_target) {
         call.rt_base        = rt.address;

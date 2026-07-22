@@ -478,8 +478,35 @@ SamplerState DecodeSampler(const u32 w[4]) {
     return out;
 }
 
+// Intersects three GCN scissor sources into one VkRect2D.
+// Sources with TL bit-31 clear are skipped (disabled).
+static VkRect2D IntersectScissors(s32 x1, s32 y1, s32 x2, s32 y2,
+                                   u32 tl_bits, u32 br_bits,
+                                   u32 target_w, u32 target_h) {
+    if (tl_bits & 0x80000000u) {
+        // Bit 31 set = enabled.  Decode signed 15-bit coords.
+        s32 gx1 = static_cast<s32>(tl_bits & 0x7FFFu);
+        s32 gy1 = static_cast<s32>((tl_bits >> 16) & 0x7FFFu);
+        s32 gx2 = static_cast<s32>(br_bits & 0x7FFFu);
+        s32 gy2 = static_cast<s32>((br_bits >> 16) & 0x7FFFu);
+        if (gx1 < 0) gx1 = 0; if (gy1 < 0) gy1 = 0;
+        if (gx2 > static_cast<s32>(target_w)) gx2 = target_w;
+        if (gy2 > static_cast<s32>(target_h)) gy2 = target_h;
+        x1 = (std::max)(x1, gx1); y1 = (std::max)(y1, gy1);
+        x2 = (std::min)(x2, gx2); y2 = (std::min)(y2, gy2);
+    }
+    if (x2 <= x1) x2 = x1 + 1;
+    if (y2 <= y1) y2 = y1 + 1;
+    VkRect2D s;
+    s.offset = {x1, y1};
+    s.extent = {static_cast<u32>(x2 - x1), static_cast<u32>(y2 - y1)};
+    return s;
+}
+
 ViewportScissor DecodeViewportScissor(u32 xs_b, u32 xo_b, u32 ys_b, u32 yo_b,
                                       u32 screen_tl, u32 screen_br,
+                                      u32 generic_tl, u32 generic_br,
+                                      u32 vport_tl, u32 vport_br,
                                       u32 target_w, u32 target_h) {
     ViewportScissor out;
     const float xs = Bits(xs_b), xo = Bits(xo_b);
@@ -504,22 +531,29 @@ ViewportScissor DecodeViewportScissor(u32 xs_b, u32 xo_b, u32 ys_b, u32 yo_b,
 
     // An all-zero screen-scissor pair is the reset placeholder: full target.
     if (screen_tl == 0 && screen_br == 0) {
-        out.scissor.offset = { 0, 0 };
-        out.scissor.extent = { target_w, target_h };
-        return out;
+        screen_tl = 0u;
+        screen_br = (target_h << 16) | target_w;
     }
+    // Decode screen scissor as the base rect.
     s32 x1 = static_cast<s32>(screen_tl & 0x7FFFu);
     s32 y1 = static_cast<s32>((screen_tl >> 16) & 0x7FFFu);
     s32 x2 = static_cast<s32>(screen_br & 0x7FFFu);
     s32 y2 = static_cast<s32>((screen_br >> 16) & 0x7FFFu);
-    if (x1 < 0) x1 = 0;
-    if (y1 < 0) y1 = 0;
+    if (x1 < 0) x1 = 0; if (y1 < 0) y1 = 0;
     if (x2 > static_cast<s32>(target_w)) x2 = static_cast<s32>(target_w);
     if (y2 > static_cast<s32>(target_h)) y2 = static_cast<s32>(target_h);
     if (x2 <= x1) x2 = x1 + 1;
     if (y2 <= y1) y2 = y1 + 1;
-    out.scissor.offset = { x1, y1 };
-    out.scissor.extent = { static_cast<u32>(x2 - x1), static_cast<u32>(y2 - y1) };
+
+    // H8.3: intersect with generic scissor (enabled when TL bit 31 set).
+    out.scissor = IntersectScissors(x1, y1, x2, y2,
+                                     generic_tl, generic_br,
+                                     target_w, target_h);
+    out.scissor = IntersectScissors(out.scissor.offset.x, out.scissor.offset.y,
+                                     out.scissor.offset.x + static_cast<s32>(out.scissor.extent.width),
+                                     out.scissor.offset.y + static_cast<s32>(out.scissor.extent.height),
+                                     vport_tl, vport_br,
+                                     target_w, target_h);
     return out;
 }
 
