@@ -55,6 +55,7 @@ constexpr u32 SCE_KERNEL_ERROR_EDEADLK   = 0x80020023;
 constexpr u64 kMutexTokenTag  = 0x4D54000000000000ULL; // 'MT'
 constexpr u64 kCondTokenTag   = 0x434E000000000000ULL; // 'CN'
 constexpr u64 kRwlockTokenTag = 0x5257000000000000ULL; // 'RW'
+constexpr u64 kSemTokenTag    = 0x534D000000000000ULL; // 'SM'
 constexpr u64 kTokenTagMask   = 0xFFFF000000000000ULL;
 
 bool SafeReadU64(guest_addr_t addr, u64& out) {
@@ -260,6 +261,7 @@ std::unordered_map<u64, std::unique_ptr<GuestMutex>> g_mutexes; // token -> obj
 u64 g_next_mutex_token = 1;
 
 GuestMutex* LookupOrCreateMutex(guest_addr_t var, bool create_if_missing) {
+    std::lock_guard<std::mutex> lk(g_mutex_map_lock);
     u64 token = 0;
     if (SafeReadU64(var, token) && (token & kTokenTagMask) == kMutexTokenTag) {
         auto it = g_mutexes.find(token);
@@ -289,6 +291,7 @@ std::unordered_map<u64, std::unique_ptr<GuestCond>> g_conds; // token -> obj
 u64 g_next_cond_token = 1;
 
 GuestCond* LookupOrCreateCond(guest_addr_t var, bool create_if_missing) {
+    std::lock_guard<std::mutex> lk(g_cond_map_lock);
     u64 token = 0;
     if (SafeReadU64(var, token) && (token & kTokenTagMask) == kCondTokenTag) {
         auto it = g_conds.find(token);
@@ -318,6 +321,7 @@ std::unordered_map<u64, std::unique_ptr<GuestRwlock>> g_rwlocks; // token -> obj
 u64 g_next_rwlock_token = 1;
 
 GuestRwlock* LookupOrCreateRwlock(guest_addr_t var, bool create_if_missing) {
+    std::lock_guard<std::mutex> lk(g_rwlock_map_lock);
     u64 token = 0;
     if (SafeReadU64(var, token) && (token & kTokenTagMask) == kRwlockTokenTag) {
         auto it = g_rwlocks.find(token);
@@ -328,6 +332,34 @@ GuestRwlock* LookupOrCreateRwlock(guest_addr_t var, bool create_if_missing) {
     auto obj = std::make_unique<GuestRwlock>();
     GuestRwlock* raw = obj.get();
     g_rwlocks[new_token] = std::move(obj);
+    SafeWriteU64(var, new_token);
+    return raw;
+}
+
+// ---------------------------------------------------------------------------
+// POSIX pthread semaphores (sem_t variables)
+// ---------------------------------------------------------------------------
+struct PosixSem {
+    std::mutex m;
+    std::condition_variable cv;
+    s32 count = 0;
+};
+std::mutex g_posix_sem_map_lock;
+std::unordered_map<u64, std::unique_ptr<PosixSem>> g_posix_sems;
+u64 g_next_posix_sem_token = 1;
+
+static PosixSem* LookupOrCreatePosixSem(guest_addr_t var, bool create, s32 init_value = 0) {
+    u64 token = 0;
+    if (SafeReadU64(var, token) && (token & kTokenTagMask) == kSemTokenTag) {
+        auto it = g_posix_sems.find(token);
+        if (it != g_posix_sems.end()) return it->second.get();
+    }
+    if (!create) return nullptr;
+    u64 new_token = kSemTokenTag | g_next_posix_sem_token++;
+    auto obj = std::make_unique<PosixSem>();
+    obj->count = init_value;
+    PosixSem* raw = obj.get();
+    g_posix_sems[new_token] = std::move(obj);
     SafeWriteU64(var, new_token);
     return raw;
 }
@@ -852,6 +884,106 @@ u64 SceKernelSyncOnAddressWake(const GuestArgs& args) {
         }
     }
 
+    return 0;
+}
+
+// ===========================================================================
+// POSIX pthread semaphores
+// ===========================================================================
+u64 ScePthreadSemInit(const GuestArgs& args) {
+    const guest_addr_t sem_ptr = args.arg1;
+    const s32 pshared = static_cast<s32>(args.arg2);
+    const u32 value = static_cast<u32>(args.arg3);
+    (void)pshared;
+    if (!sem_ptr) return SCE_KERNEL_ERROR_EINVAL;
+
+    std::lock_guard<std::mutex> lk(g_posix_sem_map_lock);
+    LookupOrCreatePosixSem(sem_ptr, true, static_cast<s32>(value));
+    return 0;
+}
+
+u64 ScePthreadSemDestroy(const GuestArgs& args) {
+    const guest_addr_t sem_ptr = args.arg1;
+    if (!sem_ptr) return SCE_KERNEL_ERROR_EINVAL;
+
+    u64 token = 0;
+    std::lock_guard<std::mutex> lk(g_posix_sem_map_lock);
+    if (SafeReadU64(sem_ptr, token) && (token & kTokenTagMask) == kSemTokenTag) {
+        g_posix_sems.erase(token);
+    }
+    SafeWriteU64(sem_ptr, 0);
+    return 0;
+}
+
+u64 ScePthreadSemWait(const GuestArgs& args) {
+    const guest_addr_t sem_ptr = args.arg1;
+    if (!sem_ptr) return SCE_KERNEL_ERROR_EINVAL;
+
+    PosixSem* sem = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_posix_sem_map_lock);
+        sem = LookupOrCreatePosixSem(sem_ptr, true);
+    }
+    if (!sem) return SCE_KERNEL_ERROR_EINVAL;
+
+    std::unique_lock<std::mutex> lk(sem->m);
+    while (sem->count <= 0) {
+        sem->cv.wait(lk);
+    }
+    sem->count--;
+    return 0;
+}
+
+u64 ScePthreadSemTrywait(const GuestArgs& args) {
+    const guest_addr_t sem_ptr = args.arg1;
+    if (!sem_ptr) return SCE_KERNEL_ERROR_EINVAL;
+
+    PosixSem* sem = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_posix_sem_map_lock);
+        sem = LookupOrCreatePosixSem(sem_ptr, true);
+    }
+    if (!sem) return SCE_KERNEL_ERROR_EINVAL;
+
+    std::lock_guard<std::mutex> lk(sem->m);
+    if (sem->count <= 0) {
+        return SCE_KERNEL_ERROR_EBUSY;
+    }
+    sem->count--;
+    return 0;
+}
+
+u64 ScePthreadSemPost(const GuestArgs& args) {
+    const guest_addr_t sem_ptr = args.arg1;
+    if (!sem_ptr) return SCE_KERNEL_ERROR_EINVAL;
+
+    PosixSem* sem = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_posix_sem_map_lock);
+        sem = LookupOrCreatePosixSem(sem_ptr, true);
+    }
+    if (!sem) return SCE_KERNEL_ERROR_EINVAL;
+
+    std::lock_guard<std::mutex> lk(sem->m);
+    sem->count++;
+    sem->cv.notify_one();
+    return 0;
+}
+
+u64 ScePthreadSemGetValue(const GuestArgs& args) {
+    const guest_addr_t sem_ptr = args.arg1;
+    const guest_addr_t sval_ptr = args.arg2;
+    if (!sem_ptr || !sval_ptr) return SCE_KERNEL_ERROR_EINVAL;
+
+    PosixSem* sem = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_posix_sem_map_lock);
+        sem = LookupOrCreatePosixSem(sem_ptr, true);
+    }
+    if (!sem) return SCE_KERNEL_ERROR_EINVAL;
+
+    std::lock_guard<std::mutex> lk(sem->m);
+    TryWriteS32(sval_ptr, sem->count);
     return 0;
 }
 
@@ -1467,6 +1599,14 @@ void RegisterLibKernelSync() {
     RegisterSymbol("libkernel", "sceKernelPollSema", SceKernelPollSema);
     RegisterSymbol("libkernel", "sceKernelSignalSema", SceKernelSignalSema);
     RegisterSymbol("libkernel", "sceKernelDeleteSema", SceKernelDeleteSema);
+
+    // POSIX pthread semaphores (sem_* family)
+    RegisterSymbol("libkernel", "sem_init", ScePthreadSemInit);
+    RegisterSymbol("libkernel", "sem_destroy", ScePthreadSemDestroy);
+    RegisterSymbol("libkernel", "sem_wait", ScePthreadSemWait);
+    RegisterSymbol("libkernel", "sem_trywait", ScePthreadSemTrywait);
+    RegisterSymbol("libkernel", "sem_post", ScePthreadSemPost);
+    RegisterSymbol("libkernel", "sem_getvalue", ScePthreadSemGetValue);
 
     // sceKernel* event flags
     RegisterSymbol("libkernel", "sceKernelCreateEventFlag", SceKernelCreateEventFlag);

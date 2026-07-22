@@ -342,42 +342,41 @@ Status Commit(guest_addr_t address, u64 size, u32 protection) {
 
 Status Unmap(guest_addr_t address, u64 size) {
     if (!IsPageAligned(address) || size == 0) return Status::InvalidArgument;
-    // VirtualFree(MEM_RELEASE) requires the exact base + size of the original
-    // allocation; reject requests that fall inside a region.
-    bool found = false;
-    {
-        std::lock_guard<std::mutex> lock(g_regions_mutex);
-        for (const auto& r : g_regions) {
-            if (r.base == address && r.size == ALIGN_UP(size, PAGE_SIZE)) {
-                found = true;
-                break;
-            }
-        }
-    }
-    if (!found) {
-        LOG_ERROR(Memory, "Unmap: no tracked region at 0x%llx size=0x%llx", address, size);
-        return Status::NotMapped;
-    }
+    const u64 aligned_size = ALIGN_UP(size, PAGE_SIZE);
     void* ptr = reinterpret_cast<void*>(address);
-    if (!VirtualFree(ptr, 0, MEM_RELEASE)) {
-        const DWORD err = GetLastError();
-        LOG_ERROR(Memory, "Unmap: VirtualFree failed at 0x%llx (err=%lu)", address, err);
-        return Status::Win32Error;
-    }
-    UntrackRegion(address, ALIGN_UP(size, PAGE_SIZE));
-    // Drop write-tracked ranges the unmap made stale.
-    {
+
+    // First attempt full release
+    if (VirtualFree(ptr, 0, MEM_RELEASE)) {
+        UntrackRegion(address, aligned_size);
         std::lock_guard<std::mutex> lock(g_regions_mutex);
-        const guest_addr_t end = address + ALIGN_UP(size, PAGE_SIZE);
+        const guest_addr_t end = address + aligned_size;
         g_write_ranges.erase(std::remove_if(g_write_ranges.begin(),
             g_write_ranges.end(),
             [&](const TrackedWriteRange& r) {
                 return r.start >= address && r.start + r.length <= end;
             }),
             g_write_ranges.end());
+        LOG_DEBUG(Memory, "Unmapped [0x%llx-0x%llx]", address, address + size);
+        return Status::Ok;
     }
-    LOG_DEBUG(Memory, "Unmapped [0x%llx-0x%llx]", address, address + size);
-    return Status::Ok;
+
+    // Partial unmap / decommit fallback: back free pages of partially-overlapping fixed mapping
+    if (VirtualFree(ptr, aligned_size, MEM_DECOMMIT)) {
+        std::lock_guard<std::mutex> lock(g_regions_mutex);
+        const guest_addr_t end = address + aligned_size;
+        g_write_ranges.erase(std::remove_if(g_write_ranges.begin(),
+            g_write_ranges.end(),
+            [&](const TrackedWriteRange& r) {
+                return r.start >= address && r.start + r.length <= end;
+            }),
+            g_write_ranges.end());
+        LOG_DEBUG(Memory, "Decommitted partial sub-range [0x%llx-0x%llx]", address, address + size);
+        return Status::Ok;
+    }
+
+    const DWORD err = GetLastError();
+    LOG_ERROR(Memory, "Unmap: VirtualFree failed at 0x%llx (err=%lu)", address, err);
+    return Status::Win32Error;
 }
 
 Status Protect(guest_addr_t address, u64 size, u32 protection) {

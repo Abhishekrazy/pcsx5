@@ -388,6 +388,24 @@ namespace HLE {
             return 0; // SCE_OK
         });
 
+        // ASTRO BOT stubs: ContentExport, Font, Pad extensions
+        auto StubZero = [](const GuestArgs& /*args*/) -> u64 { return 0; };
+        for (const char* mod : {"libSceContentExport", "libSceFont", "libScePad", "libkernel"}) {
+            RegisterSymbol(mod, "sceContentExportInit", StubZero);
+            RegisterSymbol(mod, "sceContentExportTerm", StubZero);
+            RegisterSymbol(mod, "sceFontGetVerticalLayout", [](const GuestArgs& args) -> u64 {
+                if (args.arg2) {
+                    // SceFontVerticalLayout metrics struct
+                    Memory::Write<u32>(args.arg2 + 0, 16); // line height
+                    Memory::Write<u32>(args.arg2 + 4, 12); // baseline offset
+                }
+                return 0;
+            });
+            RegisterSymbol(mod, "scePadSetMotionSensorState", StubZero);
+            RegisterSymbol(mod, "scePadSetTiltCorrectionState", StubZero);
+            RegisterSymbol(mod, "scePadSetAngularVelocityDeadbandState", StubZero);
+        }
+
         LOG_INFO(HLE, "libScePad HLE symbols registered successfully");
     }
 
