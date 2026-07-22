@@ -205,6 +205,46 @@ void TestDecodeRejectsNonRecoverable() {
     EXPECT(!Decode(truncated, sizeof(truncated), &insn), "rejects truncated input");
 }
 
+void TestBmiOperations() {
+    using namespace CpuCore::AmdCompat;
+    // ANDN: (~src1) & src2
+    EXPECT_EQ64(EmulateAndn(0x0F0F0F0F0F0F0F0FULL, 0xFFFFFFFFFFFFFFFFULL, 64), 0xF0F0F0F0F0F0F0F0ULL, "ANDN 64-bit");
+    EXPECT_EQ64(EmulateAndn(0x000000FF, 0x0000FFFF, 32), 0x0000FF00ULL, "ANDN 32-bit");
+
+    // BLSI: (-src) & src
+    EXPECT_EQ64(EmulateBlsi(0x00000010, 32), 0x10ULL, "BLSI low bit set");
+    EXPECT_EQ64(EmulateBlsi(0x00000000, 32), 0x0ULL, "BLSI zero");
+
+    // BLSMSK: (src - 1) ^ src
+    EXPECT_EQ64(EmulateBlsmsk(0x00000008, 32), 0x0FULL, "BLSMSK");
+
+    // BLSR: (src - 1) & src
+    EXPECT_EQ64(EmulateBlsr(0x0000000C, 32), 0x08ULL, "BLSR");
+
+    // BEXTR: extract bit field by start/length
+    EXPECT_EQ64(EmulateBextr(0x123456789ABCDEF0ULL, (16 | (16 << 8)), 64), 0x9ABCULL, "BEXTR 64-bit");
+
+    // BZHI: zero high bits starting at index
+    EXPECT_EQ64(EmulateBzhi(0xFFFFFFFFFFFFFFFFULL, 16, 64), 0xFFFFULL, "BZHI 16");
+
+    // TZCNT / LZCNT
+    EXPECT_EQ64(EmulateTzcnt(0x00000008, 32), 3ULL, "TZCNT");
+    EXPECT_EQ64(EmulateTzcnt(0, 32), 32ULL, "TZCNT zero 32-bit");
+    EXPECT_EQ64(EmulateLzcnt(0x00000008, 32), 28ULL, "LZCNT");
+    EXPECT_EQ64(EmulateLzcnt(0, 32), 32ULL, "LZCNT zero 32-bit");
+
+    // RORX / SARX / SHLX / SHRX
+    EXPECT_EQ64(EmulateRorx(0x10000000, 4, 32), 0x01000000ULL, "RORX");
+    EXPECT_EQ64(EmulateSarx(0x80000000, 4, 32), 0xF8000000ULL, "SARX");
+    EXPECT_EQ64(EmulateShlx(0x00000001, 8, 32), 0x00000100ULL, "SHLX");
+    EXPECT_EQ64(EmulateShrx(0x00000100, 8, 32), 0x00000001ULL, "SHRX");
+
+    // PDEP / PEXT
+    EXPECT_EQ64(EmulatePdep(0x55, 0x00FF, 32), 0x55ULL, "PDEP low byte");
+    EXPECT_EQ64(EmulatePdep(0x55, 0xFF00, 32), 0x5500ULL, "PDEP mid byte");
+    EXPECT_EQ64(EmulatePext(0x12345678, 0x0F0F0F0F, 32), 0x2468ULL, "PEXT");
+}
+
 } // namespace
 
 int main() {
@@ -226,6 +266,7 @@ int main() {
     TestDecodeInsertqWithRex();
     TestDecodeMonitorxMwaitx();
     TestDecodeRejectsNonRecoverable();
+    TestBmiOperations();
 
     std::printf("sse4a_bitfield tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
