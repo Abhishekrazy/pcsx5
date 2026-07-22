@@ -38,9 +38,8 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
       ## H8 implementation plan
 
       ### H8.1 - Storage images (shader read/write without samplers)
-      - [ ] 1.5 Image layout transitions for storage images via barriers
-        (currently no explicit GENERAL transition — images go straight
-        to GENERAL at bind time; upload-only images are unaffected)
+      - [x] 1.5 Image layout transitions for storage images via barriers
+        (StageIntoImage transition supports GENERAL layout & COMPUTE_SHADER_BIT access masks).
 
       ### H8.2 - Mipmapped samplers (2026-07-22)
       - [ ] 2.5 Verify with a 3D title using mipmapped textures

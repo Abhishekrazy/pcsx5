@@ -364,17 +364,19 @@ void StageIntoImage(VkImage image, u32 w, u32 h, VkImageLayout final_layout,
     region.imageExtent = { w, h, 1 };
     g_ds.ctx->fn.CmdCopyBufferToImage(g_ds.cmd, g_ds.staging.buf, image,
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    VkAccessFlags dst_access = VK_ACCESS_SHADER_READ_BIT;
+    VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                                     VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    if (final_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        dst_access = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dst_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    } else if (final_layout == VK_IMAGE_LAYOUT_GENERAL) {
+        dst_access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    }
     ImageBarrier(image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, final_layout,
-                 VK_ACCESS_TRANSFER_WRITE_BIT,
-                 final_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-                     ? VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-                           VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                     : VK_ACCESS_SHADER_READ_BIT,
-                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                 final_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-                     ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                     : VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-                           VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+                 VK_ACCESS_TRANSFER_WRITE_BIT, dst_access,
+                 VK_PIPELINE_STAGE_TRANSFER_BIT, dst_stage,
                  layers);
 }
 
@@ -565,7 +567,8 @@ bool UploadTexture(TextureEntry& e, const VkDrawTexture& t,
     VkDeviceSize off = 0;
     if (!StagingAlloc(static_cast<VkDeviceSize>(pixels.size()), &off)) return false;
     if (!WriteHostBuffer(g_ds.staging, off, pixels.data(), pixels.size())) return false;
-    StageIntoImage(e.image, t.width, t.height, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    const VkImageLayout target_layout = t.is_storage ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    StageIntoImage(e.image, t.width, t.height, target_layout,
                    off, layers);
     return true;
 }
