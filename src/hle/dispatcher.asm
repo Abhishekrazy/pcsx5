@@ -20,6 +20,7 @@
 extern HleDispatch         : proc
 extern SetHostStackPointer : proc
 extern SetIncomingXmm0     : proc
+extern SetIncomingXmmBlock : proc
 
 ;=============================================================================
 ; HleCommonDispatcher
@@ -77,13 +78,12 @@ HleCommonDispatcher proc
     movups [rsp+96],   xmm6
     movups [rsp+112],  xmm7
 
-    ; Step 4b: Save the incoming XMM0 argument for HLE handlers that need
-    ; floating-point arguments (sce::Json::Value::set(double), etc.).
-    ; XMM0 still holds the guest's value (movups is non-destructive).
+    ; Step 4b: Save the incoming XMM argument block (XMM0-XMM7) for HLE handlers
+    ; that need floating-point arguments (sce::Json::Value::set(double), printf %f, etc.).
     ; Shadow + align: 40 = 32 + 8; rsp = 16n-200-40 = 16(n-15) = 16-aligned.
     sub  rsp, 40
-    movq rcx, xmm0
-    call SetIncomingXmm0
+    lea  rcx, [rsp + 40]    ; rcx = pointer to XMM0-XMM7 save block on stack
+    call SetIncomingXmmBlock
     add  rsp, 40
 
     ; Step 5: Build Windows ABI call frame (need 16-byte aligned rsp before CALL)
