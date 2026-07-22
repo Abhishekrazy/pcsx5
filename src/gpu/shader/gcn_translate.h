@@ -41,6 +41,7 @@ namespace GPU::Shader {
 enum class GcnSpirvStage {
     Vertex,
     Pixel,
+    Compute,
 };
 
 // Pixel render-target kinds (mirrors SharpEmu's Gen5PixelOutputKind).
@@ -109,6 +110,12 @@ struct GcnTranslateOptions {
     // Dispatcher-iteration safety valve (0 = unbounded).  Matches
     // SharpEmu's SHARPEMU_SHADER_MAX_STEPS default.
     u32 max_dispatcher_steps = 100000;
+
+    // Compute stage: workgroup dimensions from COMPUTE_PGM_RSRC2.
+    // 0 in any axis means that axis is not used (the built-in still reads 1).
+    u32 workgroup_size_x = 0;
+    u32 workgroup_size_y = 0;
+    u32 workgroup_size_z = 0;
 };
 
 struct GcnSpirvShader {
