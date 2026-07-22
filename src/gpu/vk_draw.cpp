@@ -1416,7 +1416,10 @@ bool VkDrawExecute(const VkDrawCall& call) {
 
     const Gfx10::ViewportScissor vps = Gfx10::DecodeViewportScissor(
         call.vport_xscale, call.vport_xoffset, call.vport_yscale, call.vport_yoffset,
-        call.screen_scissor_tl, call.screen_scissor_br, rt->width, rt->height);
+        call.screen_scissor_tl, call.screen_scissor_br,
+        call.generic_scissor_tl, call.generic_scissor_br,
+        call.vport_scissor_tl, call.vport_scissor_br,
+        rt->width, rt->height);
     ctx->fn.CmdSetViewport(g_ds.cmd, 0, 1, &vps.viewport);
     ctx->fn.CmdSetScissor(g_ds.cmd, 0, 1, &vps.scissor);
     float blend_constants[4];
@@ -1566,6 +1569,19 @@ bool VkDispatchExecute(const VkDispatchCall& call) {
     } else {
         ctx->fn.CmdDispatch(g_ds.cmd, gx, gy, gz);
     }
+
+    // H6-4.2: compute-to-graphics barrier — make compute shader writes
+    // visible to subsequent graphics draws in the same command buffer.
+    VkMemoryBarrier mem_barrier = {};
+    mem_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    mem_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    mem_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    ctx->fn.CmdPipelineBarrier(g_ds.cmd,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               0, 1, &mem_barrier, 0, nullptr, 0, nullptr);
+
     return true;
 }
 

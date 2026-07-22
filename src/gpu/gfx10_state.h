@@ -201,6 +201,8 @@ struct ViewportScissor {
 ViewportScissor DecodeViewportScissor(u32 xscale_bits, u32 xoffset_bits,
                                       u32 yscale_bits, u32 yoffset_bits,
                                       u32 screen_tl, u32 screen_br,
+                                      u32 generic_tl, u32 generic_br,
+                                      u32 vport_tl, u32 vport_br,
                                       u32 target_w, u32 target_h);
 
 } // namespace GPU::Gfx10

@@ -90,14 +90,16 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
 
       ### Phase 4 - integration (2026-07-22)
       - [x] 4.1 WalkCommandBuffer: replace WARN drop with dispatch exec
-        via AgcExecuteDispatch (decode → translate → VkDispatchExecute).
+        via AgcExecuteDispatch (decode -> translate -> VkDispatchExecute).
         DS_*/atomic shaders fail translation with a clear LOG_WARN.
-      - [ ] 4.2 Pipeline barrier for compute-to-graphics transitions
-        (needed when compute writes a buffer/image that graphics reads)
+      - [x] 4.2 Pipeline barrier for compute-to-graphics transitions
+        (VkMemoryBarrier COMPUTE_SHADER_BIT -> ALL_GRAPHICS_BIT after
+        every dispatch, added in VkDispatchExecute).
       - [ ] 4.3 Test with compute-using title or synthetic test
 
-      ### Phase 5 - tests
-      - [ ] 5.1 Compute shader translation round-trip tests
+      ### Phase 5 - tests (2026-07-22)
+      - [x] 5.1 Compute shader translation round-trip tests (SBarrier,
+        GLCompute verification, DS_*/BufferAtomic rejection). 402 total.
       - [ ] 5.2 Integration: dispatch to buffer readback to CPU verify
       - [ ] 5.3 PM4 golden test with compute dispatch
 
@@ -126,13 +128,14 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
       - [ ] 2.5 Verify with a 3D title using mipmapped textures
 
       ### H8.3 - Window / generic / viewport scissor intersection
-      - [ ] 3.1 Identify three scissor sources in Uc shadow:
-        screen_scissor_tl/br, PA_SC_GENERIC_SCISSOR,
-        PA_SC_VPORT_SCISSOR(n)
-      - [ ] 3.2 Compute intersection: max of mins, min of maxs across all
-        three scissors; clamp zero-size
-      - [ ] 3.3 Skip generic scissor when disabled (PA_SU_SC_MODE_CNTL bit)
-      - [ ] 3.4 Apply final intersected scissor via vkCmdSetScissor
+      - [x] 3.1 Identify three scissor sources: PA_SC_SCREEN_SCISSOR,
+        PA_SC_GENERIC_SCISSOR, PA_SC_VPORT_SCISSOR_0.  Register
+        constants in libagc.cpp.
+      - [x] 3.2 Compute intersection via IntersectScissors helper
+        (max of mins, min of maxs, clamp zero-size).
+      - [x] 3.3 Skip generic scissor when disabled (TL bit 31 clear).
+      - [x] 3.4 Apply final intersected scissor via DecodeViewportScissor
+        (all three sources passed from VkDrawCall).
       - [ ] 3.5 Test pixel-perfect clipping vs SharpEmu reference
 
 

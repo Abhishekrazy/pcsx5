@@ -204,7 +204,7 @@ void TestViewportScissor() {
     // 1920x1080 target, standard full-frame viewport scales.
     const ViewportScissor full = DecodeViewportScissor(
         F2Bits(960.0f), F2Bits(960.0f), F2Bits(-540.0f), F2Bits(540.0f),
-        0, 0, 1920, 1080);
+        0, 0, 0, 0, 0, 0, 1920, 1080);
     EXPECT_EQ(full.viewport.width, 1920.0f, "viewport width 2*xscale");
     EXPECT_EQ(full.viewport.height, -1080.0f, "negative height y-flip passthrough");
     EXPECT_EQ(full.viewport.x, 0.0f, "viewport x");
@@ -212,7 +212,7 @@ void TestViewportScissor() {
     EXPECT_EQ(full.scissor.extent.width, 1920u, "zero scissor pair -> full target");
 
     // Unusable scales fall back to the full target.
-    const ViewportScissor fb = DecodeViewportScissor(0, 0, 0, 0, 0, 0, 1280, 720);
+    const ViewportScissor fb = DecodeViewportScissor(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1280, 720);
     EXPECT_EQ(fb.viewport.width, 1280.0f, "fallback viewport width");
     EXPECT_EQ(fb.viewport.height, -720.0f, "fallback viewport keeps guest Y-down clip");
     EXPECT_EQ(fb.viewport.y, 720.0f, "fallback viewport y = target height");
@@ -222,7 +222,7 @@ void TestViewportScissor() {
     const u32 br = 500u | (400u << 16);
     const ViewportScissor sc = DecodeViewportScissor(
         F2Bits(960.0f), F2Bits(960.0f), F2Bits(540.0f), F2Bits(540.0f),
-        tl, br, 1920, 1080);
+        tl, br, 0, 0, 0, 0, 1920, 1080);
     EXPECT_EQ(sc.scissor.offset.x, 100, "scissor x");
     EXPECT_EQ(sc.scissor.offset.y, 50, "scissor y");
     EXPECT_EQ(sc.scissor.extent.width, 400u, "scissor w");

@@ -94,6 +94,10 @@ struct VkDrawCall {
     u32 vport_xscale = 0, vport_xoffset = 0, vport_yscale = 0, vport_yoffset = 0;
     u32 screen_scissor_tl = 0, screen_scissor_br = 0;
 
+    // H8.3: additional scissor sources for intersection.
+    u32 generic_scissor_tl = 0, generic_scissor_br = 0;
+    u32 vport_scissor_tl   = 0, vport_scissor_br   = 0;
+
     // Render target (CB_COLOR0_* decode input).
     u64 rt_base = 0;
     u32 rt_width = 0, rt_height = 0;

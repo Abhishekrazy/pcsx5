@@ -677,6 +677,61 @@ bool FindControlPc(const GcnProgram& program, u32& pc) {
 }
 
 // Vertex: v_mov -> export -> endpgm.  Real encodings from the corpus.
+// H6 Phase 5.1: compute shader translation test.
+void TestTranslateCompute() {
+    // Minimal compute: S_BARRIER + S_ENDPGM should translate cleanly.
+    GcnInstruction barrier;
+    barrier.pc = 0; barrier.encoding = GcnEncoding::Sopp;
+    barrier.opcode = "SBarrier"; barrier.words = {0xBF8A0000};
+    GcnInstruction end;
+    end.pc = 4; end.encoding = GcnEncoding::Sopp;
+    end.opcode = "SEndpgm"; end.words = {0xBF810000};
+    GcnProgram program;
+    program.instructions = {barrier, end};
+
+    GcnTranslateOptions options =
+        GcnTranslateDefaultOptions(program, GcnSpirvStage::Compute);
+    options.workgroup_size_x = 64;
+
+    GcnSpirvShader shader;
+    std::string error;
+    EXPECT(GcnTranslateToSpirv(program, options, shader, error),
+           "compute translation");
+    EXPECT(error.empty(), "no error");
+    EXPECT(shader.attribute_count == 0, "compute has 0 interface attrs");
+
+    // Verify execution model in SPIR-V header (word 5 = GLCompute).
+    // The entry point is OpEntryPoint(15) with execution model immediate.
+    bool glcompute = false;
+    for (size_t i = 0; i + 2 < shader.words.size(); ++i) {
+        if ((shader.words[i] & 0xFFFF) == 15 && shader.words[i + 1] == 5)
+            glcompute = true;
+    }
+    EXPECT(glcompute, "entry point uses GLCompute");
+
+    // Rejection: DS_*/atomics.
+    {
+        GcnInstruction di;
+        di.pc = 0; di.encoding = GcnEncoding::Ds;
+        di.opcode = "DS_Read"; di.words = {0xDC000000, 0};
+        di.sources = {GcnOperand::Vector(0), GcnOperand::Vector(1)};
+        di.destinations = {GcnOperand::Vector(2)};
+        GcnProgram p; p.instructions = {di, end};
+        GcnSpirvShader s; std::string e;
+        EXPECT(!GcnTranslateToSpirv(p, options, s, e), "DS_Read rejected");
+    }
+    {
+        GcnInstruction di;
+        di.pc = 0; di.encoding = GcnEncoding::Mubuf;
+        di.opcode = "BufferAtomic"; di.words = {0xE0000000, 0};
+        di.sources = {GcnOperand::Vector(0), GcnOperand::Vector(1)};
+        di.destinations = {GcnOperand::Vector(2)};
+        GcnProgram p; p.instructions = {di, end};
+        GcnSpirvShader s; std::string e;
+        EXPECT(!GcnTranslateToSpirv(p, options, s, e), "BufferAtomic rejected");
+    }
+}
+
 void TestTranslateVertex() {
     const std::vector<u32> dwords = {
         0x7E1402F2,             // VMovB32 v10, src[242]
@@ -1354,6 +1409,7 @@ int main() {
     TestSpirvDedup();
     TestTranslateVertex();
     TestTranslatePixel();
+    TestTranslateCompute();
     TestTranslateArrayedImageSample();
     TestTranslateAluFlow();
     TestTranslateRejectsDpp();
