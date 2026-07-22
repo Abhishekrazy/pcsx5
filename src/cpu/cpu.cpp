@@ -10,10 +10,12 @@
 
 #include "cpu.h"
 #include "../common/log.h"
+#include "../config/config.h"
 #include "../hle/hle.h"
 #include "../kernel/syscalls.h"
 #include "../kernel/kernel.h"
 #include "../kernel/tls_patch.h"
+#include <intrin.h>
 #include <unordered_map>
 
 namespace {
@@ -158,9 +160,26 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
 
     LOG_INFO(Cpu, "Guest thread %llu starting at entry=0x%llx, arg=0x%llx", id, entry, argument);
 
+    // Save and clear the host's GS-based TLS slot pointers before entering
+    // guest code (KytyPS5 pattern, pthread.cpp lines 783-807).  The guest
+    // should never access GS (PS5 uses FS-based TLS), but running native
+    // x86-64 code on Windows means the guest CAN read GS if it tries, and
+    // the host's TLS slot values leaking into the guest could corrupt the
+    // HLE dispatch path when TlsGetValue is called.  Clear both slots so
+    // any inadvertent GS access by the guest hits null instead of host data.
+    // The saved values are restored after InvokeGuestFunction returns.
+    const u64 saved_gs_08 = __readgsqword(0x08);
+    const u64 saved_gs_10 = __readgsqword(0x10);
+    __writegsqword(0x08, 0);
+    __writegsqword(0x10, 0);
+
     // Execute the guest thread entry point.
     // The guest function receives its argument in rdi (SysV ABI first arg).
     u64 ret = InvokeGuestFunction(entry, argument, 0, 0);
+
+    // Restore host GS TLS slot pointers after guest execution.
+    __writegsqword(0x08, saved_gs_08);
+    __writegsqword(0x10, saved_gs_10);
 
     LOG_INFO(Cpu, "Guest thread %llu exited with 0x%llx", id, ret);
     HandleThreadExit(id, ret);
@@ -266,6 +285,12 @@ u64 CreateThread(guest_addr_t entry_point, guest_addr_t stack_base, u64 stack_si
     raw->host_thread_id = host_tid;
     raw->is_running = true;
 
+    // Apply CPU affinity if configured
+    int affinity = ConfigService::EffectiveFor("").cpu.affinity_mask;
+    if (affinity > 0) {
+        SetThreadAffinityMask(handle, static_cast<DWORD_PTR>(affinity));
+    }
+
     LOG_INFO(Cpu, "Created guest thread '%s' (id=%llu, entry=0x%llx, stack=0x%llx, tls=0x%llx)",
              raw->name.c_str(), raw->id, entry_point, stack_base, tls_base);
     return raw->id;
@@ -333,6 +358,11 @@ std::vector<GuestThread*> GetAllThreads() {
         out.push_back(thread.get());
     }
     return out;
+}
+
+int ActiveThreadCount() {
+    std::lock_guard<std::mutex> lock(g_registry_mutex);
+    return static_cast<int>(g_threads.size());
 }
 
 bool JoinThread(u64 thread_id, u64* out_exit_code) {

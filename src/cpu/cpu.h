@@ -168,6 +168,9 @@ namespace CpuCore {
     // Get all active guest threads
     std::vector<GuestThread*> GetAllThreads();
 
+    // Get the number of currently active guest threads
+    int ActiveThreadCount();
+
     // Signal a thread to wake up (for condvar / wait synchronization)
     bool WakeThread(u64 thread_id);
 

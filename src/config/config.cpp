@@ -442,6 +442,20 @@ void WriteInput   (JsonValue& root, const InputConfig&    i) {
     root.o["input"]  = std::move(v);
 }
 
+void ReadCpu     (const JsonValue& root, CpuConfig&      c) {
+    if (const JsonValue* v = Field(root, "cpu"); v && v->is_object()) {
+        if (auto* p = Field(*v, "max_guest_threads")) c.max_guest_threads = static_cast<int>(p->is_number() ? p->n : c.max_guest_threads);
+        if (auto* p = Field(*v, "affinity_mask"))     c.affinity_mask     = static_cast<int>(p->is_number() ? p->n : c.affinity_mask);
+    }
+}
+
+void WriteCpu    (JsonValue& root, const CpuConfig&      c) {
+    JsonValue v; v.type = JsonValue::Type::Object;
+    v.o["max_guest_threads"] = IntV(c.max_guest_threads);
+    v.o["affinity_mask"]     = IntV(c.affinity_mask);
+    root.o["cpu"]            = std::move(v);
+}
+
 void ReadUi      (const JsonValue& root, UiConfig&       u) {
     if (const JsonValue* v = Field(root, "ui"); v && v->is_object()) {
         if (auto* p = Field(*v, "language")) u.language = (p->is_string() ? p->s : u.language);
@@ -666,6 +680,7 @@ Config EffectiveFor(const std::string& title_id) {
         eff.graphics = t.graphics;
         eff.audio    = t.audio;
         eff.input    = t.input;
+        eff.cpu      = t.cpu;
         eff.loader   = t.loader;
         eff.savedata_crypto = t.savedata_crypto;
         eff.schema_version = t.schema_version;
@@ -786,6 +801,7 @@ bool LoadFromFile(const std::string& path, Config& out, std::string* error) {
     ReadGraphics(root, out.graphics);
     ReadAudio   (root, out.audio);
     ReadInput   (root, out.input);
+    ReadCpu     (root, out.cpu);
     ReadUi      (root, out.ui);
     ReadLoader  (root, out.loader);
     ReadSaveDataCrypto(root, out.savedata_crypto);
@@ -814,6 +830,7 @@ bool SaveToFile(const std::string& path, const Config& cfg, std::string* error) 
     WriteGraphics(root, cfg.graphics);
     WriteAudio   (root, cfg.audio);
     WriteInput   (root, cfg.input);
+    WriteCpu     (root, cfg.cpu);
     WriteUi      (root, cfg.ui);
     WriteLoader  (root, cfg.loader);
     WriteSaveDataCrypto(root, cfg.savedata_crypto);

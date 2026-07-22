@@ -73,6 +73,11 @@ struct InputConfig {
     bool  rumble   = true;
 };
 
+struct CpuConfig {
+    int   max_guest_threads = 0;               // 0 = unlimited, >0 = max concurrent guest threads
+    int   affinity_mask     = 0;               // 0 = default, >0 = CPU affinity mask for guest threads
+};
+
 struct UiConfig {
     std::string language = "en-US";            // BCP-47 tag, e.g. "en-US", "ja-JP"
 };
@@ -125,6 +130,7 @@ struct Config {
     GraphicsConfig graphics;
     AudioConfig    audio;
     InputConfig    input;
+    CpuConfig      cpu;
     UiConfig       ui;
     LoaderConfig   loader;
     SaveDataCrypto savedata_crypto; // per-title savedata XTS keys (see above)

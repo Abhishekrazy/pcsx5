@@ -218,6 +218,8 @@ add_library(pcsx5_core SHARED
     src/hle/libnp.cpp
     src/hle/libkeystone.cpp
     src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
     src/common/nid.cpp
     ${KERNEL_SRC}
@@ -437,6 +439,8 @@ if(BUILD_TESTING)
     src/hle/libnp.cpp
     src/hle/libkeystone.cpp
     src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
@@ -487,6 +491,8 @@ if(BUILD_TESTING)
     src/hle/libnp.cpp
     src/hle/libkeystone.cpp
     src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         src/reports/reports.cpp
         ${DISPATCHER_SRC}
@@ -551,6 +557,8 @@ if(BUILD_TESTING)
     src/hle/libnp.cpp
     src/hle/libkeystone.cpp
     src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         src/diagnostics/diagnostics.cpp
         ${DISPATCHER_SRC}
@@ -1037,6 +1045,8 @@ add_executable(dump_imports
     src/hle/libnp.cpp
     src/hle/libkeystone.cpp
     src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
@@ -1088,6 +1098,8 @@ add_executable(dump_imports
     src/hle/libnp.cpp
     src/hle/libkeystone.cpp
     src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
@@ -1139,6 +1151,8 @@ add_executable(dump_imports
     src/hle/libnp.cpp
     src/hle/libkeystone.cpp
     src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
@@ -1191,6 +1205,8 @@ add_executable(dump_imports
         src/hle/libnp.cpp
         src/hle/libkeystone.cpp
         src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
@@ -1243,6 +1259,8 @@ add_executable(dump_imports
         src/hle/libnp.cpp
         src/hle/libkeystone.cpp
         src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
@@ -1295,6 +1313,8 @@ add_executable(dump_imports
         src/hle/libnp.cpp
         src/hle/libkeystone.cpp
         src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )
@@ -1347,6 +1367,8 @@ add_executable(dump_imports
         src/hle/libnp.cpp
         src/hle/libkeystone.cpp
         src/hle/libatrac9.cpp
+    src/hle/libjson.h
+    src/hle/libjson.cpp
     src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )

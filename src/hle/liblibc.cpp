@@ -2296,7 +2296,8 @@ void RegisterLibLibc() {
     auto StrtodImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1) return 0;
         char* end = nullptr;
-        const double v = std::strtod(reinterpret_cast<const char*>(args.arg1), &end);
+        static _locale_t c_locale = _create_locale(LC_ALL, "C");
+        const double v = _strtod_l(reinterpret_cast<const char*>(args.arg1), &end, c_locale);
         if (args.arg2) Memory::Write<u64>(args.arg2, reinterpret_cast<u64>(end));
         u64 bits = 0;
         static_assert(sizeof(bits) == sizeof(v));
@@ -2313,7 +2314,8 @@ void RegisterLibLibc() {
     auto StrtofImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1) return 0;
         char* end = nullptr;
-        const float v = std::strtof(reinterpret_cast<const char*>(args.arg1), &end);
+        static _locale_t c_locale = _create_locale(LC_ALL, "C");
+        const float v = _strtof_l(reinterpret_cast<const char*>(args.arg1), &end, c_locale);
         if (args.arg2) Memory::Write<u64>(args.arg2, reinterpret_cast<u64>(end));
         u32 bits = 0;
         std::memcpy(&bits, &v, sizeof(bits));

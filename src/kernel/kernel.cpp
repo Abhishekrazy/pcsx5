@@ -343,6 +343,17 @@ namespace Kernel {
         
         // Write the pointer to the base itself at offset 0 (FreeBSD TCB self-pointer convention)
         Memory::Write<u64>(g_guest_tls.ThreadPointer(), g_guest_tls.ThreadPointer());
+        // Seed additional TLS layout slots that libc/CRT expect (SharpEmu
+        // DirectExecutionBackend.SeedTlsLayout compatibility).
+        // tp[16] = self-pointer (Orbis fiber/thread-local runtime convention)
+        const auto tp_val = g_guest_tls.ThreadPointer();
+        if (Memory::Read<u64>(tp_val + 16) == 0) {
+            Memory::Write<u64>(tp_val + 16, tp_val);
+        }
+        // tp[40] = canary sentinel (detects stack/TLS corruption)
+        Memory::Write<u64>(tp_val + 40, 0xC0C0C0C0C0C0C0BEULL);
+        // tp[96] = self-pointer (alternate TLS access path)
+        Memory::Write<u64>(tp_val + 96, tp_val);
         LOG_INFO(Kernel, "Allocated guest TLS block [0x%llx - 0x%llx], base at 0x%llx", 
                  tls_alloc, tls_alloc + tls_total_size, g_guest_tls.ThreadPointer());
 
@@ -1284,7 +1295,9 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                 Memory::ReadBuffer(tls_address, &tls_value, access_size);
                                 
                                 u64* reg_ptr = nullptr;
-                                switch (reg) {
+                                // In 64-bit mode with REX prefix, reg can be 8-15
+                                u8 full_reg = static_cast<u8>(reg | ((rex & 0x04) ? 8 : 0));
+                                switch (full_reg) {
                                     case 0: reg_ptr = &context->Rax; break;
                                     case 1: reg_ptr = &context->Rcx; break;
                                     case 2: reg_ptr = &context->Rdx; break;
@@ -1293,6 +1306,14 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     case 5: reg_ptr = &context->Rbp; break;
                                     case 6: reg_ptr = &context->Rsi; break;
                                     case 7: reg_ptr = &context->Rdi; break;
+                                    case 8: reg_ptr = &context->R8; break;
+                                    case 9: reg_ptr = &context->R9; break;
+                                    case 10: reg_ptr = &context->R10; break;
+                                    case 11: reg_ptr = &context->R11; break;
+                                    case 12: reg_ptr = &context->R12; break;
+                                    case 13: reg_ptr = &context->R13; break;
+                                    case 14: reg_ptr = &context->R14; break;
+                                    case 15: reg_ptr = &context->R15; break;
                                 }
                                 
                                 if (reg_ptr) {
@@ -1311,7 +1332,9 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                             }
                             else if (opcode == 0x89) {
                                 u64* reg_ptr = nullptr;
-                                switch (reg) {
+                                // In 64-bit mode with REX prefix, reg can be 8-15
+                                u8 full_reg = static_cast<u8>(reg | ((rex & 0x04) ? 8 : 0));
+                                switch (full_reg) {
                                     case 0: reg_ptr = &context->Rax; break;
                                     case 1: reg_ptr = &context->Rcx; break;
                                     case 2: reg_ptr = &context->Rdx; break;
@@ -1320,6 +1343,14 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     case 5: reg_ptr = &context->Rbp; break;
                                     case 6: reg_ptr = &context->Rsi; break;
                                     case 7: reg_ptr = &context->Rdi; break;
+                                    case 8: reg_ptr = &context->R8; break;
+                                    case 9: reg_ptr = &context->R9; break;
+                                    case 10: reg_ptr = &context->R10; break;
+                                    case 11: reg_ptr = &context->R11; break;
+                                    case 12: reg_ptr = &context->R12; break;
+                                    case 13: reg_ptr = &context->R13; break;
+                                    case 14: reg_ptr = &context->R14; break;
+                                    case 15: reg_ptr = &context->R15; break;
                                 }
                                 
                                 if (reg_ptr) {
@@ -1363,6 +1394,23 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Patch-site retry: when the TLS instruction parser above fails because
+        // the bytes at RIP are `E8 ...` (a TlsPatch relocation stub) rather than
+        // the original `64 48 8B ...` pattern — this happens when a thread hits
+        // a site between HandleStubFault's restoration and TryPatchSite's
+        // re-patch.  Just retry: the thread either has a bound TP (stub works)
+        // or the stub faults and HandleStubFault deals with it.
+        if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+            u8 first_byte = 0;
+            if (SafeRead(&first_byte, reinterpret_cast<void*>(context->Rip), 1) && first_byte == 0xE8) {
+                u64 rip = context->Rip;
+                if (rip >= 0x800000000 && rip < 0x900000000) {
+                    LOG_INFO(Kernel, "TlsPatch: retrying patched site at 0x%llx after TLS decode miss", rip);
+                    return EXCEPTION_CONTINUE_EXECUTION;
                 }
             }
         }
