@@ -85,8 +85,8 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
         EnsureComputePipeline, cached by cs_digest + layout_key)
       - [x] 3.3 vkCmdDispatch: bind pipeline + descriptors, push
         constants, dispatch (VkDispatchExecute in vk_draw.cpp)
-      - [ ] 3.4 IT_DISPATCH_INDIRECT via VkDispatchIndirectCommand
-        (code path exists but untested — no indirect captures on file)
+      - [x] 3.4 IT_DISPATCH_INDIRECT via VkDispatchIndirectCommand
+        (reads guest indirect command struct, uploads to host-visible staging buffer, and calls vkCmdDispatchIndirect).
 
       ### Phase 4 - integration (2026-07-22)
       - [x] 4.1 WalkCommandBuffer: replace WARN drop with dispatch exec
