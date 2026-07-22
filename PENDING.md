@@ -1,18 +1,13 @@
 # Pending — prioritized work queue
 
 Low/medium priority first; high-priority items broken into small,
-independently verifiable pieces. Completed Phase 5 M3 details moved to
-PROGRESS.md / ROADMAP.md.
+independently verifiable pieces.
 
 ## High priority — M3.3 menus (broken into pieces)
 
 Context: splash renders correctly; after ~180 frames the guest enters a
 content-load phase (no draws), then the run dies silently ~8-10 min in.
 
-- [x] H1. Fix the silent death: reproduce with full logging, catch where
-      DIAGNOSED and instrumented (heartbeat, CRT hooks, stack guarantee).
-      Fixed by H3 (C++ exception unwind support) — the game's catch handler
-      now runs correctly for exception types it can handle.
 - [~] H4. Verify menus render after H1-H3; compare against SharpEmu
       golden dumps; fix remaining format/tiling/blend mismatches.
       IN PROGRESS (2026-07-22): two independent crashes identified.
@@ -37,115 +32,20 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
       throw-type/message dump, failing-variant tag dump, parser-frame
       and array-element dumps, .work/guest_text.bin snapshot.
 
-## High priority — later GPU work (after menus)
-
-- [~] H6. Compute queue support.
-      Outcome 2026-07-20 (wave 2): packet plumbing is complete -
-      `sceAgcCbDispatch`/`sceAgcDcb/AcbDispatchIndirect` emit
-      IT_DISPATCH_DIRECT/INDIRECT packets, the submit walker parses and
-      counts them, and COMPUTE_PGM_LO/HI (kComputePgmLo/Hi) is tracked in
-      the Sh shadow.  Log sweep of every capture in .work/*.log shows
-      zero dispatches from the 2D titles, so the executor is DEFERRED:
-      dispatch packets now log a clear WARN ("NOT IMPLEMENTED ... H6;
-      dispatch dropped", includes group dims + CS address) instead of a
-      silent INFO.
-
-      ## H6 implementation plan
-
-      ### Phase 1 - compute shader translation (2026-07-22)
-      - [x] 1.1 Add `GcnSpirvStage::Compute` to gcn_translate.h:
-        Entry-point with GLCompute execution model, gl_GlobalInvocationID,
-        gl_WorkGroupID, gl_LocalInvocationID builtin inputs.
-        Workgroup size from LocalSize(workgroup_size_x/y/z).
-      - [x] 1.2 Reject unsupported compute patterns loudly (DS_*,
-        atomics) at TryCompile entry.
-      - [x] 1.3 Extend GcnTranslateOptions: workgroup_size_x/y/z on the
-        options struct; GcnTranslateDefaultOptions defaults to (64,1,1).
-      - [x] 1.4 GcnTranslate compute stage routing: DeclareModule adds
-        compute cap, DeclareStageInterface declares builtin Input vars,
-        EmitInitialState loads WorkgroupId->SGPR[0..2],
-        LocalInvocationId->VGPR[0..2].  TryEmitExport returns true (no-op).
-      - [x] 1.5 CachedAttributeCount returns 0 for compute (no interface
-        attributes).
-
-      ### Phase 2 - resource binding for compute (2026-07-22)
-      - [x] 2.1 DescriptorSetLayout: UAV storage images, storage buffers,
-        uniform buffers, samplers — compute-specific layout in
-        EnsureComputePipelineLayout with VK_SHADER_STAGE_COMPUTE_BIT.
-        Supports both COMBINED_IMAGE_SAMPLER and STORAGE_IMAGE per binding.
-      - [x] 2.2 VkPipelineLayout for compute (separate from graphics,
-        cached under ns_key via bit-63 namespace marker).
-      - [x] 2.3 Map GCN resource tables: buffer upload + scalar state
-        appended as last StorageBuffer slot; image bindings accepted
-        in layout but not yet populated (H6.1/H8 — needs VkFormat).
-
-      ### Phase 3 - compute pipeline + dispatch (2026-07-22)
-      - [x] 3.1 VkComputePipelineCreateInfo with compute stage
-      - [x] 3.2 Shader-cache-backed VkCreateComputePipelines (via
-        EnsureComputePipeline, cached by cs_digest + layout_key)
-      - [x] 3.3 vkCmdDispatch: bind pipeline + descriptors, push
-        constants, dispatch (VkDispatchExecute in vk_draw.cpp)
-      - [x] 3.4 IT_DISPATCH_INDIRECT via VkDispatchIndirectCommand
-        (reads guest indirect command struct, uploads to host-visible staging buffer, and calls vkCmdDispatchIndirect).
-
-      ### Phase 4 - integration (2026-07-22)
-      - [x] 4.1 WalkCommandBuffer: replace WARN drop with dispatch exec
-        via AgcExecuteDispatch (decode -> translate -> VkDispatchExecute).
-        DS_*/atomic shaders fail translation with a clear LOG_WARN.
-      - [x] 4.2 Pipeline barrier for compute-to-graphics transitions
-        (VkMemoryBarrier COMPUTE_SHADER_BIT -> ALL_GRAPHICS_BIT after
-        every dispatch, added in VkDispatchExecute).
-      - [ ] 4.3 Test with compute-using title or synthetic test
-
-      ### Phase 5 - tests (2026-07-22)
-      - [x] 5.1 Compute shader translation round-trip tests (SBarrier,
-        GLCompute verification, DS_*/BufferAtomic rejection). 402 total.
-      - [ ] 5.2 Integration: dispatch to buffer readback to CPU verify
-      - [ ] 5.3 PM4 golden test with compute dispatch
-
-
 - [ ] H8. Storage images, mipmapped samplers, window/generic/vport
       scissor intersection in the draw executor.
 
       ## H8 implementation plan
 
       ### H8.1 - Storage images (shader read/write without samplers)
-      - [x] 1.1 Add VK_DESCRIPTOR_TYPE_STORAGE_IMAGE binding in draw executor
-        (conditional on VkDrawTexture::is_storage flag).
-      - [x] 1.2 Extend TextureEntry with storage flag: VK_IMAGE_USAGE_STORAGE_BIT
-        added to image creation when is_storage=true.
-      - [x] 1.3 In gcn_translate.cpp: is_storage flag already handled
-        (sampled=2, StorageImageRead/WriteWithoutFormat caps, OpImageRead).
-      - [x] 1.4 Separate storage image bindings from sampled bindings
-        (COMBINED_IMAGE_SAMPLER vs STORAGE_IMAGE, GENERAL vs
-        SHADER_READ_ONLY_OPTIMAL layout).
       - [ ] 1.5 Image layout transitions for storage images via barriers
         (currently no explicit GENERAL transition — images go straight
         to GENERAL at bind time; upload-only images are unaffected)
 
       ### H8.2 - Mipmapped samplers (2026-07-22)
-      - [x] 2.1 Audit EnsureSampler: decode minLod, maxLod, lodBias,
-        anisotropyEnable from GCN sampler word (w[0] bits 16-23,
-        w[1] bits 0-11/12-23, w[2] bits 14-16).
-      - [x] 2.2 Decode full SamplerState fields in gfx10_state.cpp:
-        min_lod, max_lod, lod_bias, anisotropy_enable, max_anisotropy
-        added to struct + decoder.
-      - [x] 2.3 Texture upload: CreateDeviceImage / CreateImageView2D
-        accept mip_levels param; images created with ici.mipLevels
-        from t.mip_levels.  Per-level upload data still pending.
-      - [x] 2.4 VkImageView: subresourceRange.levelCount set from
-        t.mip_levels (or 1 if unset).
       - [ ] 2.5 Verify with a 3D title using mipmapped textures
 
       ### H8.3 - Window / generic / viewport scissor intersection
-      - [x] 3.1 Identify three scissor sources: PA_SC_SCREEN_SCISSOR,
-        PA_SC_GENERIC_SCISSOR, PA_SC_VPORT_SCISSOR_0.  Register
-        constants in libagc.cpp.
-      - [x] 3.2 Compute intersection via IntersectScissors helper
-        (max of mins, min of maxs, clamp zero-size).
-      - [x] 3.3 Skip generic scissor when disabled (TL bit 31 clear).
-      - [x] 3.4 Apply final intersected scissor via DecodeViewportScissor
-        (all three sources passed from VkDrawCall).
       - [ ] 3.5 Test pixel-perfect clipping vs SharpEmu reference
 
 
@@ -225,12 +125,3 @@ not yet ported.  Sorted by estimated impact on game booting.
 - [ ] P13. **CPU: preserve guest return value across TLS lookup** (SharpEmu #104).
       Rare edge case where a guest TLS access inside an HLE handler could
       clobber the handler's return value before it reaches the caller.
-
-## Done (2026-07-19/20)
-
-M3.2b/c/d (runtime SGPR model, draw executor, present from GPU image);
-splash pixels on screen; libSceAudioOut + waveOut; pad core + rumble/
-touchpad/motion-neutral; AV hygiene (memcpy probes, VEH hardening,
-sceSysmoduleIsLoaded); window responsiveness (guest worker thread);
-UI flood-proof console; real boot-progress screen; no-arg UI launch;
-BUILDING.md test list. See PROGRESS.md for details.

@@ -336,9 +336,28 @@ void TestSubmitWalker() {
     const u64 multi_id = SymbolId("libSceAgcDriver", "sceAgcDriverSubmitMultiDcbs");
     EXPECT(multi_id != 0, "sceAgcDriverSubmitMultiDcbs resolves");
     const u64 draws_before2 = HLE::AgcGetSubmittedStats(0);
+    const u64 dispatches_before = HLE::AgcGetSubmittedStats(1);
     EXPECT_EQ(HleDispatch(multi_id, arrays, arrays + 16, 2, 0, 0, 0, 0x7304, 0), (u64)0,
               "SubmitMultiDcbs -> 0");
     EXPECT_EQ(HLE::AgcGetSubmittedStats(0), draws_before2 + 2, "multi-submit counted both draws");
+
+    // Compute dispatch test (IT_DISPATCH_DIRECT and IT_DISPATCH_INDIRECT).
+    std::vector<u32> cs_stream;
+    // IT_DISPATCH_DIRECT (length 4, opcode 0x15: header + gx + gy + gz = 4 dwords)
+    cs_stream.push_back(Pm4(4, 0x15, 0));
+    cs_stream.push_back(4); // gx
+    cs_stream.push_back(2); // gy
+    cs_stream.push_back(1); // gz
+    // IT_DISPATCH_INDIRECT (length 3, opcode 0x16: header + addr_lo + addr_hi = 3 dwords)
+    cs_stream.push_back(Pm4(3, 0x16, 0));
+    cs_stream.push_back(0x100); // indirect_addr lo
+    cs_stream.push_back(0);     // indirect_addr hi
+    const guest_addr_t cs_pkt = cb + 0x1000;
+    Memory::WriteBuffer(cs_pkt, cs_stream.data(), cs_stream.size() * 4);
+    Memory::Write<u64>(pkt + 0, cs_pkt);
+    Memory::Write<u32>(pkt + 8, static_cast<u32>(cs_stream.size()));
+    EXPECT_EQ(HleDispatch(submit_id, pkt, 0, 0, 0, 0, 0, 0x7305, 0), (u64)0, "SubmitDcb compute -> 0");
+    EXPECT_EQ(HLE::AgcGetSubmittedStats(1), dispatches_before + 2, "walker counted compute dispatches");
 
     Memory::Unmap(cb, 0x2000);
     Memory::Unmap(pkt, 0x1000);

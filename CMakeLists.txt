@@ -1513,6 +1513,8 @@ add_executable(dump_imports
         src/hle/libnp.cpp
         src/hle/libkeystone.cpp
         src/hle/libatrac9.cpp
+        src/hle/libjson.h
+        src/hle/libjson.cpp
         src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )

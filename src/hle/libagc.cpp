@@ -1539,7 +1539,7 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
         // The dispatch executor translates the CS and issues vkCmdDispatch.
         // Real compute shaders often use DS_*/atomics which the translator
         // rejects — those dispatches fail with a clear log line.
-        if (op == kItDispatchDirect && length >= 5) {
+        if (op == kItDispatchDirect && length >= 4) {
             ++dispatches;
             ++st.total_dispatches;
             const u32 gx = Memory::Read<u32>(packet + 4);

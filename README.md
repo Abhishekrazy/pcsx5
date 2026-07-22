@@ -33,7 +33,7 @@
 | **HLE Kernel** | 🟡 Partial | Thread management, memory, file descriptors, synchronization primitives |
 | **HLE Libraries** | 🟡 Partial | libkernel, libpad, libvideoout, libagc, libsnd, libgpu |
 | **ELF Loader** | 🟢 Working | PIE/fixed-address, dynamic linking, TLS, segment mapping |
-| **Vulkan Backend** | 🟡 Experimental | Command buffer recording, pipeline management, swapchain |
+| **Vulkan Backend** | 🟢 Working | Graphics & compute pipelines, command buffer recording, swapchain, shader translation |
 | **Memory Management** | 🟢 Working | Virtual memory, page protection, guest fault handling (VEH) |
 | **Diagnostics/Reports** | 🟢 Working | JSON compatibility reports, logging, memory stats |
 | **Lua Scripting** | 🟢 Working | Init scripts, automation, testing |
