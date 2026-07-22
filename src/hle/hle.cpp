@@ -40,14 +40,26 @@ extern "C" void SetHostStackPointer(uintptr_t rsp) {
 // from XMM0 (SysV ABI: float args in XMM0-XMM7). GuestArgs only captures
 // GPRs (rdi, rsi, rdx, rcx, r8, r9).
 static thread_local u64 tls_incoming_xmm0 = 0;
+static thread_local u64 tls_incoming_xmm_block[8] = {};
 
 extern "C" void SetIncomingXmm0(u64 val) {
     tls_incoming_xmm0 = val;
 }
 
+extern "C" void SetIncomingXmmBlock(const u64* ptr) {
+    if (ptr) {
+        std::memcpy(tls_incoming_xmm_block, ptr, sizeof(tls_incoming_xmm_block));
+        tls_incoming_xmm0 = tls_incoming_xmm_block[0];
+    }
+}
+
 namespace HLE {
     u64 GetIncomingXmm0() {
         return tls_incoming_xmm0;
+    }
+
+    const u64* GetIncomingXmmBlock() {
+        return tls_incoming_xmm_block;
     }
 
     void RegisterLibKernel();
@@ -756,6 +768,10 @@ namespace HLE {
         args.arg4 = rcx;
         args.arg5 = r8;
         args.arg6 = r9;
+        const u64* xmm_block = GetIncomingXmmBlock();
+        if (xmm_block) {
+            std::memcpy(args.xmm_args, xmm_block, sizeof(args.xmm_args));
+        }
         // First SysV stack argument sits right above the guest return address.
         args.stack_args = guest_rsp ? guest_rsp + 8 : 0;
         g_current_guest_rip = guest_rip;

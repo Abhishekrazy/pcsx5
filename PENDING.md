@@ -48,11 +48,11 @@ not yet ported.  Sorted by estimated impact on game booting.
       - [x] P1.4 Register NID export symbols in HLE dispatcher (`libkernel`).
       - [x] P1.5 Unit tests for single & multi-threaded address wait/wake in `kernel_sync_tests.cpp`.
 
-- [ ] P2. **Full SysV variadic float ABI (XMM0-XMM7 capture)** (SharpEmu #59)
-      - [ ] P2.1 Extend `src/hle/dispatcher.asm` trampoline to save XMM1-XMM7 registers to guest stack/args struct on import calls.
-      - [ ] P2.2 Update `GuestArgs` / `HleDispatch` parameter parser to expose floating point register bank.
-      - [ ] P2.3 Update `src/hle/guest_printf.cpp` vsnprintf format parser to extract float args from XMM bank.
-      - [ ] P2.4 Unit test variadic float formatting with multiple `%f` / `%g` arguments in `guest_printf_tests.cpp`.
+- [x] P2. **Full SysV variadic float ABI (XMM0-XMM7 capture)** (SharpEmu #59)
+      - [x] P2.1 Extend `src/hle/dispatcher.asm` trampoline to save XMM1-XMM7 registers to guest stack/args struct on import calls.
+      - [x] P2.2 Update `GuestArgs` / `HleDispatch` parameter parser to expose floating point register bank.
+      - [x] P2.3 Update `src/hle/guest_printf.cpp` vsnprintf format parser to extract float args from XMM bank.
+      - [x] P2.4 Unit test variadic float formatting with multiple `%f` / `%g` arguments in `guest_printf_tests.cpp`.
 
 - [ ] P3. **BMI1/BMI2/ABM instruction emulation** (SharpEmu #249)
       - [ ] P3.1 Add CPU feature detection & fallback handlers in `src/cpu/amd_compat.cpp` for BMI1/BMI2/ABM instructions.

@@ -286,11 +286,15 @@ std::string FormatGuestStringFromRegs(const std::string& fmt, const GuestArgs& a
     reg_save_area[4] = args.arg5;
     reg_save_area[5] = args.arg6;
 
+    // Populate FP slots (XMM0-XMM7, 16 bytes / 2 u64 slots per XMM register).
+    // SysV AMD64 va_list places XMM0-XMM7 at reg_save_area + 48.
+    for (int i = 0; i < 8; ++i) {
+        reg_save_area[6 + i * 2] = args.xmm_args[i]; // low 64 bits (double/float)
+    }
+
     SysVAmd64VaList valist;
     valist.gp_offset = first_vararg * 8;
-    // No xmm registers were captured: point fp_offset past the FP save area so
-    // any %f falls through to the (zeroed) upper slots instead of desyncing gp.
-    valist.fp_offset = 48 + 128;
+    valist.fp_offset = 48; // XMM0-XMM7 captured at offset 48
     // Overflow args beyond r9 live on the guest stack.  If the dispatcher did
     // not supply the guest stack pointer, drain from a zeroed dummy instead of
     // dereferencing address 0.

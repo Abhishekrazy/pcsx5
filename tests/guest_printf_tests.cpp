@@ -263,6 +263,24 @@ void TestRegisteredSymbols() {
     }
 }
 
+void TestVariadicFloatFormatting() {
+    // Tests variadic float formatting with multiple %f / %g / %e args passed via xmm_args
+    HLE::GuestArgs args = {};
+    args.arg1 = 0; // dst
+    args.arg2 = 0; // fmt
+
+    // Pack double representations into xmm_args[0..2]
+    const double val0 = 3.14159;
+    const double val1 = -12.5;
+    const double val2 = 0.00042;
+    std::memcpy(&args.xmm_args[0], &val0, sizeof(val0));
+    std::memcpy(&args.xmm_args[1], &val1, sizeof(val1));
+    std::memcpy(&args.xmm_args[2], &val2, sizeof(val2));
+
+    ExpectStr(HLE::FormatGuestStringFromRegs("%.2f, %.1f, %g", args, 2),
+              "3.14, -12.5, 0.00042", "variadic float formatting from xmm_args");
+}
+
 } // namespace
 
 int main() {
@@ -285,6 +303,7 @@ int main() {
     TestFormatFromRegs();
     TestHandlers();
     TestRegisteredSymbols();
+    TestVariadicFloatFormatting();
 
     HLE::Shutdown();
     Memory::Shutdown();

@@ -16,6 +16,8 @@ namespace HLE {
         u64 arg4; // rcx
         u64 arg5; // r8
         u64 arg6; // r9
+        // SysV float/vector argument registers (XMM0-XMM7) captured by the dispatcher.
+        u64 xmm_args[8] = {};
         // Guest address of the first stack-resident argument (SysV overflow
         // arg area): [guest_rsp_at_thunk_entry + 8].  Variadic HLE handlers
         // (sprintf family) read overflow varargs from here.  0 if the
@@ -48,6 +50,8 @@ namespace HLE {
 
     bool Initialize();
     void Shutdown();
+    u64 GetIncomingXmm0();
+    const u64* GetIncomingXmmBlock();
 
     // Test-mode helpers --------------------------------------------------------
     // When strict-import mode is enabled, Resolve/ResolveAny refuse to auto-stub
