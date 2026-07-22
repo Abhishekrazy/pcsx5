@@ -235,6 +235,30 @@ void TestViewportScissor() {
     EXPECT_EQ(sc.scissor.offset.y, 50, "scissor y");
     EXPECT_EQ(sc.scissor.extent.width, 400u, "scissor w");
     EXPECT_EQ(sc.scissor.extent.height, 350u, "scissor h");
+
+    // Generic scissor enabled (bit 31 set) & viewport scissor intersection:
+    // Screen: [100, 50, 500, 400]
+    // Generic: [150, 20, 300, 500] (bit 31 set) -> intersection [150, 50, 300, 400]
+    // Vport: [50, 80, 400, 200] (bit 31 set) -> final intersection [150, 80, 300, 200]
+    const u32 gen_tl = 150u | (20u << 16) | 0x80000000u;
+    const u32 gen_br = 300u | (500u << 16);
+    const u32 vp_tl  = 50u  | (80u << 16) | 0x80000000u;
+    const u32 vp_br  = 400u | (200u << 16);
+    const ViewportScissor intersected = DecodeViewportScissor(
+        F2Bits(960.0f), F2Bits(960.0f), F2Bits(540.0f), F2Bits(540.0f),
+        tl, br, gen_tl, gen_br, vp_tl, vp_br, 1920, 1080);
+    EXPECT_EQ(intersected.scissor.offset.x, 150, "intersected scissor x");
+    EXPECT_EQ(intersected.scissor.offset.y, 80, "intersected scissor y");
+    EXPECT_EQ(intersected.scissor.extent.width, 150u, "intersected scissor w (300-150)");
+    EXPECT_EQ(intersected.scissor.extent.height, 120u, "intersected scissor h (200-80)");
+
+    // Generic scissor disabled (bit 31 clear) -> ignored.
+    const u32 gen_disabled_tl = 150u | (20u << 16); // bit 31 clear
+    const ViewportScissor gen_off = DecodeViewportScissor(
+        F2Bits(960.0f), F2Bits(960.0f), F2Bits(540.0f), F2Bits(540.0f),
+        tl, br, gen_disabled_tl, gen_br, 0, 0, 1920, 1080);
+    EXPECT_EQ(gen_off.scissor.offset.x, 100, "disabled generic scissor ignored x");
+    EXPECT_EQ(gen_off.scissor.extent.width, 400u, "disabled generic scissor ignored w");
 }
 
 // --- Phase 5 H5: full texture format table, swizzle detiling, BC plans.
