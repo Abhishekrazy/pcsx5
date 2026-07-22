@@ -261,18 +261,23 @@ std::unordered_map<u64, std::unique_ptr<GuestMutex>> g_mutexes; // token -> obj
 u64 g_next_mutex_token = 1;
 
 GuestMutex* LookupOrCreateMutex(guest_addr_t var, bool create_if_missing) {
-    std::lock_guard<std::mutex> lk(g_mutex_map_lock);
     u64 token = 0;
-    if (SafeReadU64(var, token) && (token & kTokenTagMask) == kMutexTokenTag) {
+    const bool read_ok = SafeReadU64(var, token);
+    if (read_ok && (token & kTokenTagMask) == kMutexTokenTag) {
+        std::lock_guard<std::mutex> lk(g_mutex_map_lock);
         auto it = g_mutexes.find(token);
         if (it != g_mutexes.end()) return it->second.get();
     }
     if (!create_if_missing) return nullptr;
+    std::lock_guard<std::mutex> lk(g_mutex_map_lock);
+    // Double check after acquiring lock
+    if (SafeReadU64(var, token) && (token & kTokenTagMask) == kMutexTokenTag) {
+        auto it = g_mutexes.find(token);
+        if (it != g_mutexes.end()) return it->second.get();
+    }
     const u64 new_token = kMutexTokenTag | g_next_mutex_token++;
     auto obj = std::make_unique<GuestMutex>();
-    // A guest word of 1 is the static adaptive-mutex initializer; any other
-    // unrecognised value (zero included) promotes to a default mutex.
-    if (token == 1) obj->type = MutexType::AdaptiveNp;
+    if (read_ok && token == 1) obj->type = MutexType::AdaptiveNp;
     GuestMutex* raw = obj.get();
     g_mutexes[new_token] = std::move(obj);
     SafeWriteU64(var, new_token);
@@ -562,11 +567,7 @@ u64 ScePthreadMutexattrDestroy(const GuestArgs& args) {
 u64 ScePthreadMutexLock(const GuestArgs& args) {
     const guest_addr_t var = args.arg1;
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
-    GuestMutex* m = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_mutex_map_lock);
-        m = LookupOrCreateMutex(var, true);
-    }
+    GuestMutex* m = LookupOrCreateMutex(var, true);
     if (!m) return SCE_KERNEL_ERROR_EINVAL;
     return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/false);
 }
@@ -574,11 +575,7 @@ u64 ScePthreadMutexLock(const GuestArgs& args) {
 u64 ScePthreadMutexTrylock(const GuestArgs& args) {
     const guest_addr_t var = args.arg1;
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
-    GuestMutex* m = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_mutex_map_lock);
-        m = LookupOrCreateMutex(var, true);
-    }
+    GuestMutex* m = LookupOrCreateMutex(var, true);
     if (!m) return SCE_KERNEL_ERROR_EINVAL;
     return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/true);
 }
@@ -586,11 +583,7 @@ u64 ScePthreadMutexTrylock(const GuestArgs& args) {
 u64 ScePthreadMutexUnlock(const GuestArgs& args) {
     const guest_addr_t var = args.arg1;
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
-    GuestMutex* m = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_mutex_map_lock);
-        m = LookupOrCreateMutex(var, false);
-    }
+    GuestMutex* m = LookupOrCreateMutex(var, false);
     if (!m) {
         LOG_WARN(HLE, "scePthreadMutexUnlock(0x%llx): unknown mutex", var);
         return SCE_KERNEL_ERROR_EINVAL;
@@ -629,41 +622,41 @@ u64 ScePthreadCondInit(const GuestArgs& args) {
 
 static u64 CondWaitImpl(guest_addr_t cond_var, guest_addr_t mutex_var, DWORD timeout_ms) {
     if (!cond_var || !mutex_var) return SCE_KERNEL_ERROR_EINVAL;
-    GuestCond* c = nullptr;
-    GuestMutex* m = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_cond_map_lock);
-        c = LookupOrCreateCond(cond_var, true);
-    }
-    {
-        std::lock_guard<std::mutex> lk(g_mutex_map_lock);
-        m = LookupOrCreateMutex(mutex_var, true);
-    }
+    GuestCond* c = LookupOrCreateCond(cond_var, true);
+    GuestMutex* m = LookupOrCreateMutex(mutex_var, true);
     if (!c || !m) return SCE_KERNEL_ERROR_EINVAL;
     const u64 tid = CurrentTlsIdentity();
-    std::unique_lock<std::mutex> lk(m->m);
-    // Games occasionally condwait on a mutex they never locked; adopt
-    // ownership so the unlock/wait/re-lock cycle stays balanced and the
-    // mutex is actually released while waiting.
-    if (m->owner == 0 && m->recursion == 0) {
-        MutexAcquireLocked(*m, tid);
+    {
+        std::unique_lock<std::mutex> lk(m->m);
+        // Games occasionally condwait on a mutex they never locked; adopt
+        // ownership so the unlock/wait/re-lock cycle stays balanced and the
+        // mutex is actually released while waiting.
+        if (m->owner == 0 && m->recursion == 0) {
+            MutexAcquireLocked(*m, tid);
+        }
+        if (m->owner != tid || m->recursion != 1) {
+            return SCE_KERNEL_ERROR_EINVAL;
+        }
+        // Caller holds the mutex: release it (handing off to any head waiter)
+        // while waiting and re-acquire before returning.
+        m->recursion = 0;
+        MutexHandoffLocked(*m);
     }
-    if (m->owner != tid || m->recursion != 1) {
-        return SCE_KERNEL_ERROR_EINVAL;
-    }
-    // Caller holds the mutex: release it (handing off to any head waiter)
-    // while waiting and re-acquire before returning.
-    m->recursion = 0;
-    MutexHandoffLocked(*m);
+
     bool ok;
-    if (timeout_ms == INFINITE) {
-        c->cv.wait(lk);
-        ok = true;
-    } else {
-        ok = c->cv.wait_for(lk, std::chrono::milliseconds(timeout_ms)) ==
-             std::cv_status::no_timeout;
+    {
+        std::unique_lock<std::mutex> clk(g_cond_map_lock);
+        if (timeout_ms == INFINITE) {
+            c->cv.wait(clk);
+            ok = true;
+        } else {
+            ok = c->cv.wait_for(clk, std::chrono::milliseconds(timeout_ms)) ==
+                 std::cv_status::no_timeout;
+        }
     }
+
     // Re-acquire the mutex, honouring the FIFO waiter queue.
+    std::unique_lock<std::mutex> lk(m->m);
     if (m->owner == 0 && m->waiters.empty()) {
         MutexAcquireLocked(*m, tid);
     } else if (m->owner != tid) {
@@ -685,22 +678,14 @@ u64 ScePthreadCondTimedwait(const GuestArgs& args) {
 }
 
 u64 ScePthreadCondSignal(const GuestArgs& args) {
-    GuestCond* c = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_cond_map_lock);
-        c = LookupOrCreateCond(args.arg1, true);
-    }
+    GuestCond* c = LookupOrCreateCond(args.arg1, true);
     if (!c) return SCE_KERNEL_ERROR_EINVAL;
     c->cv.notify_one();
     return 0;
 }
 
 u64 ScePthreadCondBroadcast(const GuestArgs& args) {
-    GuestCond* c = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_cond_map_lock);
-        c = LookupOrCreateCond(args.arg1, true);
-    }
+    GuestCond* c = LookupOrCreateCond(args.arg1, true);
     if (!c) return SCE_KERNEL_ERROR_EINVAL;
     c->cv.notify_all();
     return 0;
@@ -736,11 +721,7 @@ u64 ScePthreadRwlockInit(const GuestArgs& args) {
 u64 ScePthreadRwlockRdlock(const GuestArgs& args) {
     const guest_addr_t var = args.arg1;
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
-    GuestRwlock* rw = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_rwlock_map_lock);
-        rw = LookupOrCreateRwlock(var, true);
-    }
+    GuestRwlock* rw = LookupOrCreateRwlock(var, true);
     if (!rw) return SCE_KERNEL_ERROR_EINVAL;
     AcquireSRWLockShared(&rw->srw);
     rw->readers.fetch_add(1);
@@ -750,11 +731,7 @@ u64 ScePthreadRwlockRdlock(const GuestArgs& args) {
 u64 ScePthreadRwlockWrlock(const GuestArgs& args) {
     const guest_addr_t var = args.arg1;
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
-    GuestRwlock* rw = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_rwlock_map_lock);
-        rw = LookupOrCreateRwlock(var, true);
-    }
+    GuestRwlock* rw = LookupOrCreateRwlock(var, true);
     if (!rw) return SCE_KERNEL_ERROR_EINVAL;
     AcquireSRWLockExclusive(&rw->srw);
     rw->writer.store(true);
@@ -764,11 +741,7 @@ u64 ScePthreadRwlockWrlock(const GuestArgs& args) {
 u64 ScePthreadRwlockUnlock(const GuestArgs& args) {
     const guest_addr_t var = args.arg1;
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
-    GuestRwlock* rw = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_rwlock_map_lock);
-        rw = LookupOrCreateRwlock(var, false);
-    }
+    GuestRwlock* rw = LookupOrCreateRwlock(var, false);
     if (!rw) {
         LOG_WARN(HLE, "scePthreadRwlockUnlock(0x%llx): unknown rwlock", var);
         return SCE_KERNEL_ERROR_EINVAL;
