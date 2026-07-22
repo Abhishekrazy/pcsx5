@@ -94,6 +94,11 @@ u64 HeapAllocLocked(u64 size, u64 align) {
             g_heap_free.erase(it);
         }
         WriteHeader(aligned, size);
+        // Zero user data: the Construct runtime expects zero-initialized heap
+        // (like Orbis OS provides) and its internal allocator reuses blocks
+        // without clearing them — stale data from a prior allocation shows up
+        // as phantom variants (tag=0xb0) during JSON parsing.
+        if (aligned) std::memset(reinterpret_cast<void*>(aligned), 0, size);
         return aligned;
     }
 
@@ -104,6 +109,9 @@ u64 HeapAllocLocked(u64 size, u64 align) {
         if (g_heap_bump != 0 && g_heap_bump + total <= g_heap_end) {
             g_heap_bump += total;
             WriteHeader(aligned, size);
+            // Zero user data (safe no-op for fresh zeroed pages, required
+            // after arena reuse cycles).
+            if (aligned) std::memset(reinterpret_cast<void*>(aligned), 0, size);
             return aligned;
         }
         if (!HeapGrowLocked(total + align + kHeaderSize)) {

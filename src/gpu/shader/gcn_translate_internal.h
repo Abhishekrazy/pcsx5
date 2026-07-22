@@ -210,10 +210,15 @@ private:
     std::vector<ImageResource>          image_resources_;
     std::map<u32, int>                  image_binding_by_pc_;
     std::map<u32, int>                  buffer_binding_by_pc_;
-    u32 position_output_      = 0;
-    u32 vertex_index_input_   = 0;
-    u32 instance_index_input_ = 0;
-    u32 frag_coord_input_     = 0;
+    u32 position_output_         = 0;
+    u32 vertex_index_input_      = 0;
+    u32 instance_index_input_    = 0;
+    u32 frag_coord_input_        = 0;
+
+    // Compute stage builtins (H6).  Zero means unused / non-compute.
+    u32 compute_workgroup_id_        = 0; // BuiltIn WorkgroupId (uvec3)
+    u32 compute_local_invocation_id_ = 0; // BuiltIn LocalInvocationId (uvec3)
+    u32 compute_global_invocation_id_ = 0; // BuiltIn GlobalInvocationId (uvec3)
 
     // ---- type ids ----------------------------------------------------
     u32 void_type_   = 0;

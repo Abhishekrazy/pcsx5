@@ -30,6 +30,26 @@ bool SpirvTranslateContext::TryCompile(GcnSpirvShader& out, std::string& error) 
         return false;
     }
 
+    // H6-1.2: Reject unsupported compute patterns early.
+    if (stage_ == GcnSpirvStage::Compute) {
+        for (const GcnInstruction& ins : program_.instructions) {
+            const std::string& opcode = ins.opcode;
+            // Data-share (LDS/scratch) is not yet implemented.
+            if (opcode.compare(0, 3, "DS_") == 0) {
+                error = "H6: data-share instruction '" + opcode +
+                        "' not yet implemented for compute";
+                return false;
+            }
+            // Global/image atomics are not yet implemented.
+            if (opcode == "BufferAtomic" || opcode == "GlobalAtomic" ||
+                opcode == "ImageAtomic" || opcode.find("Atomic") != std::string::npos) {
+                error = "H6: atomic instruction '" + opcode +
+                        "' not yet implemented for compute";
+                return false;
+            }
+        }
+    }
+
     DeclareModule();
     const std::vector<ShaderBlock> blocks = BuildBasicBlocks(program_);
     if (blocks.empty()) {
@@ -119,6 +139,8 @@ bool SpirvTranslateContext::TryCompile(GcnSpirvShader& out, std::string& error) 
         module_.AddLabel(kill_label);
         module_.AddStatement(SpirvOp::Kill, {});
         module_.AddLabel(return_label);
+    } else if (stage_ == GcnSpirvStage::Compute) {
+        // H6: compute shaders have no fragment kill.  No special exit needed.
     }
 
     module_.AddStatement(SpirvOp::Return, {});
@@ -126,15 +148,25 @@ bool SpirvTranslateContext::TryCompile(GcnSpirvShader& out, std::string& error) 
 
     const SpirvExecutionModel model = stage_ == GcnSpirvStage::Vertex
         ? SpirvExecutionModel::Vertex
+        : stage_ == GcnSpirvStage::Compute
+        ? SpirvExecutionModel::GLCompute
         : SpirvExecutionModel::Fragment;
     module_.AddEntryPoint(model, main, "main", interfaces_);
     if (stage_ == GcnSpirvStage::Pixel) {
         module_.AddExecutionMode(main, SpirvExecutionMode::OriginUpperLeft);
+    } else if (stage_ == GcnSpirvStage::Compute) {
+        // Workgroup size declared via LocalSize execution mode from options.
+        const u32 wx = options_.workgroup_size_x ? options_.workgroup_size_x : 1;
+        const u32 wy = options_.workgroup_size_y ? options_.workgroup_size_y : 1;
+        const u32 wz = options_.workgroup_size_z ? options_.workgroup_size_z : 1;
+        module_.AddExecutionMode(main, SpirvExecutionMode::LocalSize, {wx, wy, wz});
     }
 
     out.words = module_.Build();
     out.attribute_count = stage_ == GcnSpirvStage::Vertex
         ? static_cast<u32>(vertex_outputs_.size())
+        : stage_ == GcnSpirvStage::Compute
+        ? 0u
         : static_cast<u32>(pixel_inputs_.size());
     return true;
 }
@@ -146,6 +178,11 @@ void SpirvTranslateContext::DeclareModule() {
     module_.AddCapability(SpirvCapability::Shader);
     module_.AddCapability(SpirvCapability::Int64);
     module_.AddCapability(SpirvCapability::ImageQuery);
+    if (stage_ == GcnSpirvStage::Compute) {
+        // Compute-specific capabilities: workgroup builtins, shared memory.
+        // StorageImageRead/WriteWithoutFormat may be needed if compute uses
+        // UAV images — added by DeclareImages when bindings require them.
+    }
 
     glsl_ = module_.ImportExtInst("GLSL.std.450");
 
@@ -400,6 +437,32 @@ void SpirvTranslateContext::DeclareStageInterface() {
             binding.guest_slot, PixelOutput{variable, output_type, binding.kind});
         interfaces_.push_back(variable);
     }
+
+    // Compute stage: workgroup builtin input variables (H6).
+    if (stage_ == GcnSpirvStage::Compute) {
+        const u32 input_uvec3_pointer =
+            module_.TypePointer(SpirvStorageClass::Input, uvec3_type_);
+        compute_workgroup_id_ = module_.AddGlobalVariable(
+            input_uvec3_pointer, SpirvStorageClass::Input);
+        module_.AddDecoration(compute_workgroup_id_, SpirvDecoration::BuiltIn,
+            {static_cast<u32>(SpirvBuiltIn::WorkgroupId)});
+        module_.AddName(compute_workgroup_id_, "gl_WorkGroupID");
+        interfaces_.push_back(compute_workgroup_id_);
+
+        compute_local_invocation_id_ = module_.AddGlobalVariable(
+            input_uvec3_pointer, SpirvStorageClass::Input);
+        module_.AddDecoration(compute_local_invocation_id_, SpirvDecoration::BuiltIn,
+            {static_cast<u32>(SpirvBuiltIn::LocalInvocationId)});
+        module_.AddName(compute_local_invocation_id_, "gl_LocalInvocationID");
+        interfaces_.push_back(compute_local_invocation_id_);
+
+        compute_global_invocation_id_ = module_.AddGlobalVariable(
+            input_uvec3_pointer, SpirvStorageClass::Input);
+        module_.AddDecoration(compute_global_invocation_id_, SpirvDecoration::BuiltIn,
+            {static_cast<u32>(SpirvBuiltIn::GlobalInvocationId)});
+        module_.AddName(compute_global_invocation_id_, "gl_GlobalInvocationID");
+        interfaces_.push_back(compute_global_invocation_id_);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -450,6 +513,29 @@ void SpirvTranslateContext::EmitInitialState() {
         for (const auto& [location, output] : vertex_outputs_) {
             Store(output, module_.ConstantNull(vec4_type_));
         }
+        return;
+    }
+
+    if (stage_ == GcnSpirvStage::Compute) {
+        // H6: Load workgroup builtins into SGPR/VGPR slots as the guest
+        // compute ABI expects.  WorkgroupId → SGPR[0..2],
+        // LocalInvocationId → VGPR[0..2],
+        // GlobalInvocationId is available as a builtin but not stored
+        // (recomputed by guest code if needed — not part of GCN ABI).
+        const u32 wg_id   = Load(uvec3_type_, compute_workgroup_id_);
+        const u32 li_id   = Load(uvec3_type_, compute_local_invocation_id_);
+        StoreS(0, module_.AddInstruction(SpirvOp::CompositeExtract, uint_type_,
+                                         {wg_id, 0u}));
+        StoreS(1, module_.AddInstruction(SpirvOp::CompositeExtract, uint_type_,
+                                         {wg_id, 1u}));
+        StoreS(2, module_.AddInstruction(SpirvOp::CompositeExtract, uint_type_,
+                                         {wg_id, 2u}));
+        StoreV(0, module_.AddInstruction(SpirvOp::CompositeExtract, uint_type_,
+                                         {li_id, 0u}), /*guard_with_exec=*/false);
+        StoreV(1, module_.AddInstruction(SpirvOp::CompositeExtract, uint_type_,
+                                         {li_id, 1u}), /*guard_with_exec=*/false);
+        StoreV(2, module_.AddInstruction(SpirvOp::CompositeExtract, uint_type_,
+                                         {li_id, 2u}), /*guard_with_exec=*/false);
         return;
     }
 
@@ -1436,6 +1522,8 @@ bool SpirvTranslateContext::TryEmitExport(
         return true;
     }
 
+    // Compute stage: no exports (returns true above for the non-pixel case
+    // when target doesn't match vertex conditions — safe no-op).
     // Vertex stage.
     u32 output_variable = 0;
     if (export_.target >= 12 && export_.target < 16) {
@@ -1715,6 +1803,7 @@ u32 CachedAttributeCount(const std::vector<u32>& words, GcnSpirvStage stage) {
     constexpr u32 kOpVariable  = 59;
     constexpr u32 kDecLocation = 30;
     // SPIR-V StorageClass: Input = 1, Output = 3.
+    if (stage == GcnSpirvStage::Compute) return 0; // no interface attributes
     const u32 wanted_class = stage == GcnSpirvStage::Vertex ? 3u /*Output*/
                                                             : 1u /*Input*/;
 
@@ -1897,7 +1986,7 @@ GcnTranslateOptions GcnTranslateDefaultOptions(const GcnProgram& program,
             options.pixel_outputs.push_back(
                 GcnPixelOutputBinding{0, 0, GcnPixelOutputKind::Float});
         }
-    } else {
+    } else if (stage == GcnSpirvStage::Vertex) {
         u32 max_param = 0;
         for (const GcnInstruction& ins : program.instructions) {
             if (const auto* export_ = std::get_if<GcnExportControl>(&ins.control)) {
@@ -1907,6 +1996,13 @@ GcnTranslateOptions GcnTranslateDefaultOptions(const GcnProgram& program,
             }
         }
         options.required_vertex_output_count = static_cast<int>(max_param);
+    } else if (stage == GcnSpirvStage::Compute) {
+        // H6: compute has no vertex exports or pixel MRTs.  Workgroup size
+        // must be set by the caller from COMPUTE_PGM_RSRC2 before translation.
+        // Default to (64, 1, 1) if not set (common GCN wavefront size).
+        if (options.workgroup_size_x == 0) options.workgroup_size_x = 64;
+        if (options.workgroup_size_y == 0) options.workgroup_size_y = 1;
+        if (options.workgroup_size_z == 0) options.workgroup_size_z = 1;
     }
 
     for (const GcnInstruction& ins : program.instructions) {
