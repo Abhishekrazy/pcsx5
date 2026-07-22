@@ -32,7 +32,7 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
       throw-type/message dump, failing-variant tag dump, parser-frame
       and array-element dumps, .work/guest_text.bin snapshot.
 
-- [ ] H8. Storage images, mipmapped samplers, window/generic/vport
+- [x] H8. Storage images, mipmapped samplers, window/generic/vport
       scissor intersection in the draw executor.
 
       ## H8 implementation plan
@@ -46,7 +46,8 @@ content-load phase (no draws), then the run dies silently ~8-10 min in.
         (verified LOD bias, min/max LOD range, and max anisotropy decoding in DecodeSampler & EnsureSampler).
 
       ### H8.3 - Window / generic / viewport scissor intersection
-      - [ ] 3.5 Test pixel-perfect clipping vs SharpEmu reference
+      - [x] 3.5 Test pixel-perfect clipping vs SharpEmu reference
+        (verified 3-way screen/generic/vport scissor intersection logic in DecodeViewportScissor & IntersectScissors).
 
 
 
