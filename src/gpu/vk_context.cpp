@@ -240,6 +240,10 @@ bool CreateLogicalDevice(VkContext* ctx) {
     VK_LOAD_DEVICE(ctx, CmdSetBlendConstants);
     VK_LOAD_DEVICE(ctx, CmdCopyBuffer);
     VK_LOAD_DEVICE(ctx, CmdCopyImage);
+    // H6: compute dispatch.
+    VK_LOAD_DEVICE(ctx, CreateComputePipelines);
+    VK_LOAD_DEVICE(ctx, CmdDispatch);
+    VK_LOAD_DEVICE(ctx, CmdDispatchIndirect);
 
     ctx->fn.GetDeviceQueue(ctx->device, ctx->queue_family, 0, &ctx->queue);
     ctx->fn.GetPhysicalDeviceMemoryProperties(ctx->phys, &ctx->mem_props);

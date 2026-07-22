@@ -136,6 +136,7 @@ constexpr u32 kSpiShaderPgmLoEs = 0x0C8, kSpiShaderPgmHiEs = 0x0C9;
 constexpr u32 kSpiShaderPgmLoLs = 0x148, kSpiShaderPgmHiLs = 0x149;
 constexpr u32 kSpiShaderPgmLoGs = 0x08A, kSpiShaderPgmHiGs = 0x08B;
 constexpr u32 kComputePgmLo     = 0x20C, kComputePgmHi     = 0x20D;
+constexpr u32 kComputePgmRsrc2  = 0x213;
 
 // Guest command-buffer struct layout (AgcExports.cs CommandBuffer*Offset).
 constexpr u64 kCbCursorUpOff   = 0x10;
@@ -1013,6 +1014,81 @@ bool AgcBuildDrawProgram(
     return true;
 }
 
+// H6 Phase 4: execute one compute dispatch through the Vulkan dispatch
+// executor.  The shadow's COMPUTE_PGM_* registers hold the shader address;
+// dispatch dimensions come from the packet.  Currently most real compute
+// shaders fail translation (DS_*/atomics not yet supported) — the failure
+// is logged and the dispatch is silently dropped.
+void AgcExecuteDispatch(AgcSubmitShadow& st, const char* queue_name,
+                        u32 gx, u32 gy, u32 gz,
+                        u64 indirect_addr) {
+    using namespace GPU::Shader;
+    const u64 cs_addr = AgcShadowShaderAddress(st.sh, kComputePgmLo, kComputePgmHi);
+    if (cs_addr == 0) return;
+
+    GcnProgram cs_program;
+    if (!AgcDecodeDrawShader(cs_addr, cs_program)) return;
+
+    // Evaluate scalar state for compute.
+    GcnEvaluation cs_eval;
+    const GcnEvaluation* cs_eval_p = nullptr;
+    {
+        const AgcUserDataBank bank = AgcSelectUserDataBank(st.sh, false);
+        // Compute user data starts at SGPR 0 (same convention as PS).
+        if (AgcEvaluateDrawShader(cs_addr, cs_program,
+                                  AgcCollectUserData(st.sh, bank), 0, "cs",
+                                  cs_eval)) {
+            cs_eval_p = &cs_eval;
+        }
+    }
+
+    // Buffer list from evaluation.
+    std::vector<GPU::VkDrawBuffer> buffers;
+    if (cs_eval_p) {
+        for (const auto& b : cs_eval_p->buffer_bindings) {
+            buffers.push_back({b.base_address, b.size_bytes});
+        }
+    }
+
+    // Build translation options.
+    GcnTranslateOptions options = GcnTranslateDefaultOptions(cs_program, GcnSpirvStage::Compute);
+    options.initial_scalar_registers = cs_eval_p
+        ? cs_eval_p->initial_scalar_registers
+        : std::vector<u32>{};
+    // Extract workgroup size from COMPUTE_PGM_RSRC2.
+    const auto rsrc2_it = st.sh.find(kComputePgmRsrc2);
+    const u32 rsrc2 = (rsrc2_it != st.sh.end()) ? rsrc2_it->second : 0u;
+    options.workgroup_size_x = rsrc2 & 0x3Fu;
+    options.workgroup_size_y = (rsrc2 >> 8) & 0x3Fu;
+    options.workgroup_size_z = (rsrc2 >> 16) & 0x3Fu;
+
+    // Translate.
+    GcnSpirvShader cs_spirv;
+    std::string error;
+    if (!GcnTranslateToSpirv(cs_program, options, cs_spirv, error)) {
+        LOG_WARN(HLE, "AGC %s: dispatch translate FAILED: %s", queue_name, error.c_str());
+        return;
+    }
+
+    // Build dispatch call.
+    GPU::VkDispatchCall dc;
+    dc.cs_words = cs_spirv.words.data();
+    dc.cs_word_count = cs_spirv.words.size();
+    dc.buffers = std::move(buffers);
+    dc.cs_scalars = cs_eval_p
+        ? GcnPackInitialScalarState(cs_eval_p->initial_scalar_registers)
+        : std::vector<u32>(256, 0);
+    dc.group_count_x = gx;
+    dc.group_count_y = gy;
+    dc.group_count_z = gz;
+    dc.indirect = (indirect_addr != 0);
+    dc.indirect_addr = indirect_addr;
+
+    GPU::VkDispatchExecute(dc);
+    LOG_INFO(HLE, "AGC %s: dispatch groups=(%u,%u,%u) cs=0x%llx — EXECUTED",
+             queue_name, gx, gy, gz, cs_addr);
+}
+
 // M3.2c: executes one guest draw through the Vulkan draw executor.  The
 // shadow supplies the fixed-function state; the per-draw scalar evaluation
 // supplies the descriptors.  Failures are logged once per shader pair and
@@ -1451,24 +1527,23 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
             }
         }
 
-        // Compute dispatches (H6): packet plumbing is complete (sceAgcCbDispatch
-        // emission, walker parsing, CS state tracking) but no executor exists —
-        // the GCN->SPIR-V translator deliberately rejects the DS/global-memory
-        // atomics real compute shaders need.  Log clearly and drop.
+        // Compute dispatches (H6 Phase 4): packet plumbing + executor ready.
+        // The dispatch executor translates the CS and issues vkCmdDispatch.
+        // Real compute shaders often use DS_*/atomics which the translator
+        // rejects — those dispatches fail with a clear log line.
         if (op == kItDispatchDirect && length >= 5) {
             ++dispatches;
             ++st.total_dispatches;
-            const u64 cs = AgcShadowShaderAddress(st.sh, kComputePgmLo, kComputePgmHi);
-            LOG_WARN(HLE, "AGC %s: dispatch groups=(%u,%u,%u) cs=0x%llx — NOT IMPLEMENTED (compute executor deferred, H6); dispatch dropped",
-                     queue_name, Memory::Read<u32>(packet + 4),
-                     Memory::Read<u32>(packet + 8), Memory::Read<u32>(packet + 12), cs);
+            const u32 gx = Memory::Read<u32>(packet + 4);
+            const u32 gy = Memory::Read<u32>(packet + 8);
+            const u32 gz = Memory::Read<u32>(packet + 12);
+            AgcExecuteDispatch(st, queue_name, gx, gy, gz, 0);
         }
         if (op == kItDispatchIndirect && length >= 3) {
             ++dispatches;
             ++st.total_dispatches;
-            const u64 cs = AgcShadowShaderAddress(st.sh, kComputePgmLo, kComputePgmHi);
-            LOG_WARN(HLE, "AGC %s: dispatch indirect offset=0x%X cs=0x%llx — NOT IMPLEMENTED (compute executor deferred, H6); dispatch dropped",
-                     queue_name, Memory::Read<u32>(packet + 4), cs);
+            const u64 indirect_dst = packet + 4;
+            AgcExecuteDispatch(st, queue_name, 0, 0, 0, indirect_dst);
         }
 
         if (op == kItNop && reg == kRWaitFlipDone && length >= 3) {
