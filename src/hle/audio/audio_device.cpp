@@ -21,6 +21,9 @@ AudioDevice* CreateWasapiDevice();
 AudioDevice* CreateXa2Device();
 #endif
 
+// SDL audio (cross-platform, dynamically loaded).
+AudioDevice* CreateSdlAudioDevice();
+
 // ---------------------------------------------------------------------------
 // AudioDevice::Create — factory
 // ---------------------------------------------------------------------------
@@ -55,15 +58,20 @@ AudioDevice* AudioDevice::Create(AalBackendType type) {
             return new PacingAudioDevice();
 #endif
 
-        case AalBackendType::SDL:
-            // SDL backend is cross-platform but not yet implemented.
-            LOG_WARN(HLE, "AAL: SDL audio backend not yet implemented");
+        case AalBackendType::SDL: {
+            AudioDevice* d = CreateSdlAudioDevice();
+            if (d && d->Open(AalFormat{})) { d->Close(); return d; }
+            delete d;
+            LOG_WARN(HLE, "AAL: SDL audio backend not available");
             return new PacingAudioDevice();
+        }
 
         case AalBackendType::Auto: {
             // Probe priority: SDL → XAudio2 → WASAPI → waveOut → Pacing
+            AudioDevice* d = CreateSdlAudioDevice();
+            if (d) return d;
 #ifdef _WIN32
-            AudioDevice* d = CreateXa2Device();
+            d = CreateXa2Device();
             if (d) return d;
             d = CreateWasapiDevice();
             if (d) return d;
