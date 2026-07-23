@@ -7,6 +7,16 @@
 
 namespace GPU {
 
+// VRR / vsync config globals — set from ConfigService by the frontend
+// via VkPresentSetVrrConfig().
+bool g_config_vsync = true;
+bool g_config_vrr   = false;
+
+void VkPresentSetVrrConfig(bool vsync, bool vrr) {
+    g_config_vsync = vsync;
+    g_config_vrr   = vrr;
+}
+
 namespace {
 
 struct PresentState {
@@ -146,7 +156,37 @@ bool CreateSwapchain(VkContext* ctx, u32 width, u32 height) {
         }
     }
 
-    // FIFO (vsync) is guaranteed to exist.
+    // R1: VRR support — query available present modes and pick the best one
+    // based on the config (video.vrr, video.vsync).
+    u32 pm_count = 0;
+    ctx->fn.GetPhysicalDeviceSurfacePresentModesKHR(ctx->phys, ctx->surface,
+                                                     &pm_count, nullptr);
+    std::vector<VkPresentModeKHR> present_modes(pm_count);
+    ctx->fn.GetPhysicalDeviceSurfacePresentModesKHR(ctx->phys, ctx->surface,
+                                                     &pm_count,
+                                                     present_modes.data());
+
+    auto has_mode = [&](VkPresentModeKHR m) {
+        for (auto pm : present_modes) if (pm == m) return true;
+        return false;
+    };
+
+    // Select present mode:
+    //   VRR + RELAXED available → FIFO_RELAXED (adaptive vsync with VRR)
+    //   VRR + IMMEDIATE → IMMEDIATE (tear-free via VRR display)
+    //   config.vsync = true → FIFO (guaranteed, traditional vsync)
+    //   config.vsync = false → IMMEDIATE (uncapped, may tear)
+    VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+    if (g_config_vrr && has_mode(VK_PRESENT_MODE_FIFO_RELAXED_KHR)) {
+        present_mode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+    } else if (g_config_vrr && has_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)) {
+        present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    } else if (!g_config_vsync && has_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)) {
+        present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    } else if (has_mode(VK_PRESENT_MODE_MAILBOX_KHR)) {
+        present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+    }
+
     VkExtent2D extent = caps.currentExtent;
     if (extent.width == 0xFFFFFFFFu) {
         extent.width = width;
@@ -182,7 +222,7 @@ bool CreateSwapchain(VkContext* ctx, u32 width, u32 height) {
     ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     ci.preTransform = caps.currentTransform;
     ci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    ci.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    ci.presentMode = present_mode;
     ci.clipped = VK_TRUE;
 
     const VkResult r = ctx->fn.CreateSwapchainKHR(ctx->device, &ci, nullptr, &g_ps.swapchain);

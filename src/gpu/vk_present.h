@@ -50,6 +50,11 @@ VkFormat VkPresentSrgbCounterpart(VkFormat format);
 // requires a linear->sRGB encode that a plain blit does not perform.
 bool VkPresentIsLinearFloatSource(VkFormat format);
 
+// R1: VRR / vsync configuration.  Called when config is loaded.
+// `vsync` enables VK_PRESENT_MODE_FIFO_KHR; `vrr` tries FIFO_RELAXED or
+// IMMEDIATE which let a VRR display (FreeSync / G-SYNC) handle tearing.
+void VkPresentSetVrrConfig(bool vsync, bool vrr);
+
 // Phase 5 validation (golden-image tests): optional per-frame readback hook.
 // When installed, every presented frame is delivered to the callback as
 // tightly packed BGRA8 at the guest (unscaled) resolution, read back from
