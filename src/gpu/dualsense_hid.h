@@ -494,37 +494,44 @@ namespace DualSense {
                 report[77] = static_cast<u8>(crc >> 24);
                 build_len = 78;
             } else if (fmt == 2 || fmt == 1) {
-                u8 common[47] = {};
-                common[0] = 0x03;              // enable both rumble motors
+                u8 common[48] = {};
+                common[0] = 0x03;              // valid_flag0: enable both rumble motors
+                // valid_flag1 (SDL DS5_OUTPUT_VALID_FLAG1 layout):
+                //   bit 0 = mute_led   bit 1 = lightbar   bit 2 = player_ind
+                //   bit 3 = fade       bit 4 = mic_led    bit 6 = right_trig
+                //   bit 7 = left_trig
                 common[1] = 0x40 | 0x80;       // enable right + left trigger effects
-                common[2] = g_motor_small;
-                common[3] = g_motor_large;
+                common[2] = g_motor_small;     // motor_left (SDL offset +3)
+                common[3] = g_motor_large;     // motor_right (SDL offset +4)
                 common[10] = g_trigger[1].mode;  // right
                 std::memcpy(common + 11, g_trigger[1].params, 10);
                 common[21] = g_trigger[0].mode;  // left
                 std::memcpy(common + 22, g_trigger[0].params, 10);
-                // Player indicator LEDs (offsets per SDL's DS5EffectsState_t
-                // and DualSense-Windows DS5_Output.cpp; enable flags in byte 1).
-                common[1] |= 0x10;             // enable player LEDs
+                // LED config: corrected per SDL DS5EffectsState_t layout.
+                common[1] |= 0x04;             // valid_flag1 bit 2: enable player LEDs
                 common[38] = 0x03;
                 common[41] = g_leds_disabled ? 0x01 : 0x02;
                 common[42] = g_led_brightness;
-                common[43] = g_player_leds;
+                // Corrected byte positions: SDL layout has lightbar at +44..+46
+                // and player_leds at +47.  Since common starts at USB+1/BT+3,
+                // common[n] → report[1+n] (USB).
+                common[43] = g_lightbar[0];    // USB[44] = lightbar R (was player_leds)
+                common[44] = g_lightbar[1];    // USB[45] = lightbar G
+                common[45] = g_lightbar[2];    // USB[46] = lightbar B
+                common[46] = g_player_leds;    // USB[47] = player_leds (was lightbar B)
                 if (!g_player_led_fade) {
-                    common[43] |= 0x20;        // 0x20 set = instant, clear = fade
+                    common[46] |= 0x20;        // 0x20 set = instant, clear = fade
                 }
-                // Microphone LED + lightbar.
-                common[1] |= 0x01;             // enable mic LED
-                common[8] = g_mic_led;
-                common[1] |= 0x04;             // enable lightbar color
-                common[44] = g_lightbar[0];
-                common[45] = g_lightbar[1];
-                common[46] = g_lightbar[2];
+                // Mic LED: valid_flag1 bit 4 (0x10) enables the mic_led byte.
+                common[1] |= 0x10;             // enable mic LED (corrected from 0x01)
+                common[8] = g_mic_led;         // USB[9] = mic_led
+                common[1] |= 0x02;             // valid_flag1 bit 1: enable lightbar
+                common[47] = 0x00;             // padding for 48-byte alignment
 
                 if (fmt == 1) {
                     report[0] = 0x02;
                     std::memcpy(report + 1, common, sizeof(common));
-                    build_len = 48;
+                    build_len = 49;  // 1 (report id) + 48 (common)
                 } else {
                     report[0] = 0x31;
                     report[1] = static_cast<u8>((g_out_seq & 0x0F) << 4);

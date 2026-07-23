@@ -384,3 +384,132 @@ PS5's `libSceM4Player` provides a standard media playback API.
   - How to add a new backend
   - How to add abstraction for a new platform
   - Testing guide for hardware backends
+
+---
+
+## Phase D — DualSense HID Fixes & Improvements (High Priority)
+
+*Goal: fix Bluetooth mic/speaker, LED RGB, and integrate the tester
+UI into the button layout system for reuse in the emulator UI.*
+
+### D1. Bluetooth Mic/Speaker Fix
+
+- [ ] **D1.1 Audit Bluetooth output report format**:
+  - BT output reports use HID report ID 0x31 (vs USB 0x02)
+  - BT frames need: `0x31 | seq(1) | data(…) | crc32(4)`
+  - USB output report length is ~63 bytes, BT is ~547 bytes (padded)
+  - Check `g_out_report_len` is read correctly from device caps
+- [ ] **D1.2 Fix HID output write for BT**:
+  - Update `WriteOutputReport` in dualsense_hid.h to frame BT reports
+    with sequence number + CRC32
+  - BT sequence number must increment monotonically per report
+  - CRC32 covers the full report (header + data)
+- [ ] **D1.3 Verify mic/speaker routing**:
+  - Mic audio: the DualSense input report contains 16-bit PCM mic data
+    at offset ~34 (4 channels × 16-bit for directional mic array)
+  - Speaker audio: the DualSense output report accepts haptics + speaker
+    audio in the same payload
+  - Route mic data to host audio input device, speaker data to output
+
+### D2. Lightbar LED RGB Fix
+
+- [ ] **D2.1 Audit output report byte offsets**:
+  - USB output: `report[0]=0x02`, lightbar RGB at offset 0x06 (3 bytes R,G,B)
+  - BT output: `report[0]=0x31`, lightbar RGB at offset 0x06 (3 bytes R,G,B)
+  - Flag byte at offset 0x02 must have bit 0x02 set to enable lightbar writes
+  - Verify byte order (the DualSense uses R-G-B, some clones use G-R-B)
+- [ ] **D2.2 Add validation**:
+  - Check `g_out_report_len` >= required offset before writing
+  - Verify the enable flags are correctly OR'd in `SendOutputLocked`
+  - Add debug logging of the actual bytes written for the lightbar
+- [ ] **D2.3 Test both USB and BT paths**:
+  - USB path: report id 0x02 → lightbar at offset 3-5 → flag at offset 2
+  - BT path: report id 0x31 → lightbar at offset 7-9 → flag at offset 6
+  - The `SendOutputLocked` function must dispatch to the right template
+
+### D3. Tester UI → Button Layout Integration
+
+- [ ] **D3.1 Create shared `ButtonLayout` component**:
+  - Render PlayStation controller button shapes in correct positions
+  - Circle (◯), Cross (✕), Square (□), Triangle (△)
+  - D-pad, L1/R1, L2/R2 (trigger bars), L3/R3 (stick clicks)
+  - Analog stick overlays showing current X/Y position
+  - Touchpad with finger position circles
+  - Gyro/Accel 3-axis readout bars
+- [ ] **D3.2 Embed in ImGui**:
+  - Create an `ImGui::ButtonLayout(state)` widget
+  - Color each button green when pressed, white when idle
+  - Show "tested" checkmark when each button has been seen pressed
+- [ ] **D3.3 Embed in WPF UI**:
+  - Port the ImGui layout to a WPF `UserControl` for the launcher
+  - Bind controller state from the core API
+- [ ] **D3.4 Replace standalone tester tools**:
+  - Remove or redirect `dualsense_test` and `dualsense_visual` to
+    the unified `--test-input` CLI mode that opens the ImGui tester
+
+### D4. Player LED & Battery
+
+- [ ] **D4.1 Wire player LEDs to user profile**:
+  - Call `SetPlayerLeds` with bitmask matching active controller index
+  - Update on profile switch
+- [ ] **D4.2 Expose battery in UI**:
+  - Read `Sample::battery_level` and `battery_charging`
+  - Show in the debug overlay and libScePad HLE
+
+---
+
+## Phase R — Rendering Enhancements (High Priority)
+
+*Goal: modern display features — VRR, FSR upscaling, HDR.*
+
+### R1. Variable Refresh Rate (VRR)
+
+- [ ] **R1.1 Vulkan VK_KHR_swapchain with VRR**:
+  - Query monitor VRR support via DXGI (`IDXGIFactory5` /
+    `DXGI_ADAPTER_FLAG2_SUPPORT_VARIABLE_REFRESH_RATE`)
+  - Enable adaptive vsync with `VK_PRESENT_MODE_FIFO_RELAXED_EXT`
+    or `VK_PRESENT_MODE_IMMEDIATE_EXT` + VRR
+  - Config: `video.vrr = true|false`
+- [ ] **R1.2 Tear-free presentation**:
+  - D3D12: `DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING` + `DXGI_PRESENT_ALLOW_TEARING`
+  - Vulkan: `VK_PRESENT_MODE_IMMEDIATE_EXT` under VRR display
+- [ ] **R1.3 Frame pacing for VRR**:
+  - Remove fixed 60 Hz vblank throttle when VRR active
+  - Guest flip → immediate GPU present (no wait)
+  - Let the display's VRR engine manage timing
+
+### R2. FidelityFX Super Resolution (FSR)
+
+- [ ] **R2.1 FSR 2.x integration**:
+  - Bundle `ffx_fsr2_api_vk.dll` or link `FFX_FSR2` SDK
+  - FSR 2 inputs: low-res color buffer, depth, motion vectors,
+    exposure, reactive mask
+  - Create FSR 2 compute pipeline from provided SPIR-V shaders
+- [ ] **R2.2 FSR 3 frame generation**:
+  - AMD Fluid Motion Frames (AFMF) for frame doubling
+  - Optical flow interpolation between adjacent presented frames
+  - Requires two-frame history buffer and motion vector input
+- [ ] **R2.3 FSR quality presets**:
+  - Config: `video.fsr = off|quality|balanced|performance|ultra_performance`
+  - Quality → 1.5x scale, Balanced → 1.7x, Performance → 2.0x
+  - Render resolution set by `resolution_scale` × FSR preset
+- [ ] **R2.4 RCAS sharpening pass**:
+  - Apply FSR's Robust Contrast Adaptive Sharpening as post-process
+  - Configurable sharpness slider (0.0..1.0)
+- [ ] **R2.5 FSR in render pipeline**:
+  - Guest draw at low res → FSR 2 upscale → RCAS sharpen → present
+  - Vulkan image layout transitions: COLOR_ATTACHMENT → COMPUTE_SHADER_READ
+  - GPU timing queries for FSR pass duration in debug overlay
+
+### R3. HDR Support (Long-term)
+
+- [ ] **R3.1 Vulkan HDR swapchain**:
+  - `VK_SURFACE_FORMAT_A2B10G10R10_UNORM_PACK32`
+  - `VkSurfaceFullScreenExclusiveWin32InfoEXT` for exclusive fullscreen
+- [ ] **R3.2 HDR metadata passthrough**:
+  - Read ST.2086 mastering display metadata from game
+  - Pass via `VkHdrMetadataEXT` to display
+- [ ] **R3.3 Tonemapping (PQ → SDR)**:
+  - ST.2084 (Perceptual Quantizer) to sRGB conversion shader
+  - Auto-detect display HDR capability
+  - Config: `video.hdr = auto|on|off`
