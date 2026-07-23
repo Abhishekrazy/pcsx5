@@ -12,6 +12,7 @@
 // the actual game filesystem (including eboot.bin, sce_sys/, etc.).
 
 #include "pkg_ps5.h"
+#include "pfs.h"
 #include "../common/crypto.h"
 #include "../common/log.h"
 
@@ -467,6 +468,89 @@ bool ExtractPkgPs5Entry(const PkgPs5Image& image,
 // ---------------------------------------------------------------------------
 // ExtractPkgPs5
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ExtractEbootFromPkgPs5 — find the PFS image in the PS5 PKG, extract it,
+// mount it, and extract eboot.bin to the output directory.
+// ---------------------------------------------------------------------------
+bool ExtractEbootFromPkgPs5(const std::string& pkg_path,
+                             const std::string& out_dir,
+                             const std::string& passcode) {
+    PkgPs5Image image;
+    if (!ParsePkgPs5(pkg_path, image)) return false;
+
+    // Find the PFS image entry and the eboot entry.
+    const PkgPs5Entry* pfs_entry = nullptr;
+    for (const auto& e : image.entries) {
+        if (e.TypeId() == kPkgPs5TypePfsImage && e.size > 0) {
+            pfs_entry = &e;
+            break;
+        }
+    }
+    if (!pfs_entry) {
+        LOG_ERROR(Loader, "No PFS image entry found in PS5 PKG.");
+        return false;
+    }
+
+    LOG_INFO(Loader, "PFS image entry: id=0x%04X offset=0x%llx size=0x%llx (%llu MB)",
+             pfs_entry->id,
+             static_cast<unsigned long long>(pfs_entry->offset),
+             static_cast<unsigned long long>(pfs_entry->size),
+             static_cast<unsigned long long>(pfs_entry->size) / (1024 * 1024));
+
+    // Extract the PFS image to a temp file.
+    const std::string pfs_temp = out_dir + "/pfs_image.dat";
+    if (!ExtractPkgPs5Entry(image, *pfs_entry, pfs_temp, passcode)) {
+        LOG_ERROR(Loader, "Failed to extract PFS image from PKG.");
+        return false;
+    }
+
+    // Mount the PFS image and extract its contents.
+    PfsImage pfs;
+    if (!MountPfs(pfs_temp, pfs, /*writable=*/false)) {
+        LOG_ERROR(Loader, "Failed to mount PFS image.");
+        return false;
+    }
+
+    // List root contents.
+    std::vector<PfsEntry> root_entries;
+    if (!ListDirectory(pfs, "/", root_entries)) {
+        LOG_ERROR(Loader, "Failed to list PFS root.");
+        return false;
+    }
+
+    LOG_INFO(Loader, "PFS root contents:");
+    for (const auto& e : root_entries) {
+        LOG_INFO(Loader, "  %s%s (%llu bytes)",
+                 e.name.c_str(),
+                 e.is_directory ? "/" : "",
+                 static_cast<unsigned long long>(e.size));
+    }
+
+    // Extract eboot.bin.
+    bool eboot_found = false;
+    for (const auto& e : root_entries) {
+        if (e.name == "eboot.bin" && !e.is_directory) {
+            const std::string eboot_out = out_dir + "/eboot.bin";
+            if (ExtractFile(pfs, "/eboot.bin", eboot_out)) {
+                LOG_INFO(Loader, "Extracted eboot.bin (%llu bytes) -> %s",
+                         static_cast<unsigned long long>(e.size),
+                         eboot_out.c_str());
+                eboot_found = true;
+            }
+            break;
+        }
+    }
+
+    if (!eboot_found) {
+        // Try a recursive extract of everything so user can find it.
+        LOG_WARN(Loader, "eboot.bin not found at PFS root; extracting all files.");
+        ExtractAll(pfs, out_dir);
+    }
+
+    LOG_INFO(Loader, "PS5 PKG extraction complete -> %s", out_dir.c_str());
+    return true;
+}
+
 bool ExtractPkgPs5(const std::string& path,
                     const std::string& out_dir,
                     const std::string& passcode) {
