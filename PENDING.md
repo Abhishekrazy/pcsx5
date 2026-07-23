@@ -291,10 +291,93 @@ hardware, focusing on the highest-impact bottlenecks first.*
   - Include last N frames of trace ring
   - Include GPU pipeline cache on crash
 
+## Phase V — Video Decoder Support (High Priority)
+
+*Goal: play game cutscenes and UI videos encoded in common formats
+used by PS5 titles — Bink 2, CRI Sofdec2 (USM), H.264/H.265,
+VP9/AV1.  Each format gets a decoder backend behind a unified
+VideoDecoder interface.*
+
+### V1. Video Decoder Abstraction Layer (VDAL)
+
+- [ ] **V1.1 Define `VideoDecoder` interface**:
+  - `Open(url_or_data, format) -> bool`
+  - `GetNextFrame() -> VideoFrame {pixels, timestamp, duration}`
+  - `Seek(timestamp) -> bool`
+  - `GetAudioTracks() -> tracks[]`  (for audio stream routing)
+  - `GetVideoInfo() -> {width, height, fps, codec}`
+  - `Close()`
+- [ ] **V1.2 Define `VideoFrame` structure**:
+  - Pixel data in GPU-friendly format (RGBA8, YUV420, NV12)
+  - Timestamp + duration (for A/V sync)
+  - Side data for HDR metadata when present
+- [ ] **V1.3 Backend factory** with auto-probe:
+  - Hardware decoder (DXVA/VDPAU) → FFmpeg → Bink2 → CRI
+
+### V2. Bink 2 Video Support
+
+Bink 2 (RAD Game Tools) is used by hundreds of games including many
+PS5 titles. The SDK is royalty-free for developers.
+
+- [ ] **V2.1 `Bink2Decoder : VideoDecoder`**:
+  - Load Bink 2 `.bik2` files
+  - Decode to RGBA8 frames via the Bink 2 SDK (RADTelemetry)
+  - Frame-accurate seeking
+- [ ] **V2.2 Bink 1 fallback** (`.bik` files used in PS4 back-compat):
+  - Decode via the older Bink 1 format
+- [ ] **V2.3 GPU upload integration**:
+  - Upload decoded frames directly to Vulkan/D3D12 texture
+  - Zero-copy path when possible (shared surfaces)
+
+### V3. CRI Sofdec2 / USM Support
+
+CRIWARE's movie format is heavily used in Japanese PS5 games (Namco,
+Square Enix, Atlus, etc.). The `.usm` container wraps H.264 or H.265
+video with ADPCM audio.
+
+- [ ] **V3.1 `CriUsmDecoder : VideoDecoder`**:
+  - Parse USM container headers and track metadata
+  - Extract H.264/H.265 video stream
+  - Extract ADPCM audio stream → route to audio device
+- [ ] **V3.2 H.264/H.265 decoding**:
+  - Use D3D11VA / DXVA hardware decoder on Windows
+  - FFmpeg software fallback for cross-platform
+- [ ] **V3.3 A/V sync**:
+  - Timestamp-based sync with audio output device
+  - Dropped-frame handling for performance
+
+### V4. Generic Media Playback (libSceM4Player HLE)
+
+PS5's `libSceM4Player` provides a standard media playback API.
+
+- [ ] **V4.1 FFmpeg-based decoder**:
+  - `FFmpegDecoder : VideoDecoder`
+  - Supports H.264, H.265, VP9, AV1
+  - Hardware acceleration via D3D11VA / Vulkan video
+  - Cross-platform (Windows, Linux, macOS)
+- [ ] **V4.2 Integrate with libScePlayer HLE**:
+  - Route `scePlayerOpen` etc. to `FFmpegDecoder`
+  - Map PS5 media API to generic decoder
+- [ ] **V4.3 Subtitle overlay**:
+  - Render subtitle bitmaps onto video frames
+  - Support PGS, UTF-8 subtitle formats
+
+### V5. Video Output Integration
+
+- [ ] **V5.1 Video frame → GPU texture upload**:
+  - Upload decoded YUV/RGBA frames to Vulkan or D3D textures
+  - Use Vulkan samplers for color conversion (YUV→RGB)
+- [ ] **V5.2 Video overlay compositing**:
+  - Composite video over game rendering or boot screen
+  - Handle letterbox/aspect-ratio correction
+- [ ] **V5.3 A/V sync timing**:
+  - Use guest clock for timestamp alignment
+  - Frame-dropping policy based on decoder backlog
+
 ### S3. Documentation
 
 - [ ] **S3.1 Architecture docs update**:
-  - Document new abstraction layers (GAL/AAL/IAL/PAL)
+  - Document new abstraction layers (GAL/AAL/IAL/PAL/VDAL)
   - Add PKG extraction workflow docs
   - Update wiki with PS5 PKG format notes
 - [ ] **S3.2 Developer guide**:

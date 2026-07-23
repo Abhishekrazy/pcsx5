@@ -236,6 +236,10 @@ add_library(pcsx5_core SHARED
     src/gpu/gal.h
     src/gpu/gal.cpp
     src/gpu/gal_backends.cpp
+    src/gpu/input/input_backend.h
+    src/gpu/input/input_backend.cpp
+    src/gpu/input/glfw_keyboard_backend.cpp
+    src/gpu/input/xinput_backend.cpp
     src/gpu/vulkan_backend.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
