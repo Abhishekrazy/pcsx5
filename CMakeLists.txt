@@ -259,6 +259,8 @@ add_library(pcsx5_core SHARED
     ${SHADER_TRANSLATE_SRC}
     src/diagnostics/diagnostics.h
     src/diagnostics/diagnostics.cpp
+    src/diagnostics/frame_timing.h
+    src/diagnostics/frame_timing.cpp
     src/config/config.h
     src/config/config.cpp
     src/reports/reports.h
