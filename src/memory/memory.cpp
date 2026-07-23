@@ -620,6 +620,29 @@ void TrackGuestWrites(guest_addr_t address, u64 byte_count) {
         ArmWriteRangeLocked(r);
         return;
     }
+    // O1.4: coalesce with adjacent ranges to reduce VirtualProtect calls.
+    for (auto& r : g_write_ranges) {
+        if (r.start + r.length == start) {
+            // Adjacent after existing range — extend.
+            r.length += length;
+            if (r.armed) {
+                DisarmWriteRangeLocked(r);
+                ArmWriteRangeLocked(r);
+            }
+            return;
+        }
+        if (start + length == r.start) {
+            // Adjacent before existing range — extend backward.
+            const u64 new_len = r.length + length;
+            r.start = start;
+            r.length = new_len;
+            if (r.armed) {
+                DisarmWriteRangeLocked(r);
+                ArmWriteRangeLocked(r);
+            }
+            return;
+        }
+    }
     TrackedWriteRange fresh{address, start, length, 0, false};
     ArmWriteRangeLocked(fresh);
     g_write_ranges.push_back(fresh);
