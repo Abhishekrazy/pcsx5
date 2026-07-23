@@ -230,6 +230,11 @@ add_library(pcsx5_core SHARED
     src/hle/audio/xa2_device.cpp
     src/common/nid.cpp
     src/common/platform/platform_win32.cpp
+    src/media/video_decoder.h
+    src/media/video_decoder.cpp
+    src/media/bink2_decoder.cpp
+    src/media/cri_usm_decoder.cpp
+    src/media/ffmpeg_decoder.cpp
     ${KERNEL_SRC}
     ${CPU_SRC}
     src/gpu/gpu.h

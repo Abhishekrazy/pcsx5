@@ -12,6 +12,7 @@ enum class LogCategory {
     HLE,
     GPU,
     Cpu,
+    Media,
     General
 };
 
