@@ -507,6 +507,11 @@ MemoryStats GetStats() {
     return s;
 }
 
+bool IsValidGuestPointer(guest_addr_t address) {
+    MemoryInfo info{};
+    return Query(address, &info) == Status::Ok;
+}
+
 void ReadBuffer(guest_addr_t addr, void* dest, u64 size) {
     if (addr >= 0x200000000ULL && addr < 0x202000000ULL) {
         LOG_DEBUG(Memory, "Framebuffer read at guest 0x%llx (size=%llu)", addr, size);

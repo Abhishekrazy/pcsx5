@@ -85,6 +85,11 @@ bool IsExecutable(guest_addr_t address, u64 size);
 MemoryStats GetStats();
 
 // ---------------------------------------------------------------------------
+// Returns true when `address` falls inside any tracked memory region
+// (reserved or committed).  Fast check suitable for validating guest-
+// supplied pointers in HLE before writing them to guest memory.
+bool IsValidGuestPointer(guest_addr_t address);
+
 // Read/write helpers (pointer-fast; no fault recovery)
 // ---------------------------------------------------------------------------
 template <typename T>

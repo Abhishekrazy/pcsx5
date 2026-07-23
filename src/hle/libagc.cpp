@@ -2032,6 +2032,14 @@ void RegisterLibAgc() {
         const u64 regs_addr = args.arg2;
         if (cmd == 0 || regs_addr == 0) return AgcError(kAgcErrorInvalidArgument);
         if (!Memory::IsWritable(cmd, 16)) return AgcError(kAgcErrorMemoryFault);
+        // H4.2: validate that regs_addr is a known guest pointer before
+        // writing it into the PM4 buffer — a leaked host pointer (0x7ff...)
+        // later dereferenced by the guest would crash inside VCRUNTIME140.
+        if (!Memory::IsValidGuestPointer(regs_addr)) {
+            LOG_WARN(HLE, "SetIndirectPatchAddress: regs_addr 0x%llx is not a valid "
+                          "guest pointer — rejecting", regs_addr);
+            return AgcError(kAgcErrorInvalidArgument);
+        }
         Memory::Write<u32>(cmd + 8, static_cast<u32>(regs_addr & 0xFFFFFFFFull));
         Memory::Write<u32>(cmd + 12, static_cast<u32>(regs_addr >> 32));
         return 0;
@@ -2101,6 +2109,12 @@ void RegisterLibAgc() {
         const u32 cache_policy = static_cast<u32>(args.arg5) & 0xFF; // read, not emitted
         const u64 address = args.arg6;
         if (cb == 0 || size > 1 || compare_func > 7 || operation > 4 || cache_policy > 3) {
+            return 0;
+        }
+        // H4.2: validate the memory address before writing it into the PM4
+        // packet — a leaked host pointer would corrupt GPU state or crash.
+        if (!Memory::IsValidGuestPointer(address)) {
+            LOG_WARN(HLE, "DcbWaitRegMem: address 0x%llx is not a valid guest pointer", address);
             return 0;
         }
         const u64 reference   = Memory::Read<u64>(args.stack_args + 0);

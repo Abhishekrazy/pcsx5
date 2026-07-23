@@ -45,6 +45,34 @@ namespace Kernel {
     static u64 g_process_id = GetCurrentProcessId();
     static bool g_in_proc = false;
 
+    // ------------------------------------------------------------------
+    // VEH recursion guard (H4.3): prevents host stack exhaustion from
+    // recursive re-entry of the vectored exception handler.  The VEH
+    // can be re-entered when instruction emulation (TLS reads, demand-
+    // commit) itself faults — the recursion counter detects this and
+    // passes the recursive fault through unmangled so the OS can
+    // terminate the process normally.
+    // ------------------------------------------------------------------
+    thread_local int g_veh_recursion_depth = 0;
+    constexpr int kMaxVehRecursionDepth = 8;
+
+    struct VehRecursionGuard {
+        bool m_skip = false;
+        VehRecursionGuard() {
+            if (++g_veh_recursion_depth > kMaxVehRecursionDepth) {
+                LOG_CRITICAL(Kernel,
+                    "VEH: recursion depth %d exceeded (max %d) — passing "
+                    "exception through; RIP=0x%llx",
+                    g_veh_recursion_depth, kMaxVehRecursionDepth,
+                    reinterpret_cast<u64>(_AddressOfReturnAddress()));
+                m_skip = true;
+            }
+        }
+        ~VehRecursionGuard() {
+            if (!m_skip) --g_veh_recursion_depth;
+        }
+    };
+
     void SetInProcMode(bool enabled) {
         g_in_proc = enabled;
     }
@@ -1122,6 +1150,11 @@ namespace Kernel {
 // that merely *install* handlers continue to run.
 // ---------------------------------------------------------------------------
 static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info) {
+        // H4.3: recursion guard — must be first in the handler to
+        // prevent host stack exhaustion from recursive VEH re-entry.
+        VehRecursionGuard guard;
+        if (guard.m_skip) return EXCEPTION_CONTINUE_SEARCH;
+
         PEXCEPTION_RECORD exception_record = exception_info->ExceptionRecord;
         PCONTEXT context = exception_info->ContextRecord;
 
