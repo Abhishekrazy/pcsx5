@@ -6,6 +6,7 @@
 // Forward declarations for each backend's factory.
 InputBackend* CreateGlfwKeyboardBackend();
 InputBackend* CreateXInputBackend();
+InputBackend* CreateDualSenseInputBackend();
 
 // ===========================================================================
 // InputBackend::Create — factory
@@ -16,6 +17,9 @@ InputBackend* InputBackend::Create(const std::string& backend_name) {
     }
     if (backend_name == "xinput") {
         return CreateXInputBackend();
+    }
+    if (backend_name == "dualsense" || backend_name == "ds" || backend_name == "hid") {
+        return CreateDualSenseInputBackend();
     }
     if (backend_name == "null") {
         return new NullInputBackend();
