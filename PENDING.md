@@ -77,7 +77,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] P1.3 Auto-detect PS4 vs PS5 PKG by magic in CLI `--extract-pkg`
 - [x] P2.2 `ExtractEbootFromPkgPs5`: PKG→PFS→mount→eboot.bin end-to-end
 - [ ] **P2.1 PFS reader: compressed block support**
-- [ ] **P3 SELF→ELF extraction** (parse SELF header, decrypt inner ELF with fPKG keys)
+- [x] P3 SELF→ELF extraction (already implemented in elf.cpp: LoadSelf + ExtractInnerElf, works for fPKG; rejects encrypted retail SELFs)
 
 ### P4. PkgToolBox
 - [ ] P4.1 Audit PkgToolBox PS5 logic for header correctness
