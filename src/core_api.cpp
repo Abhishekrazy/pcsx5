@@ -203,6 +203,10 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     // Hand the audio output settings to libSceAudioOut (0 = Off / silent-paced).
     HLE::SetAudioOutConfig(cfg.audio.backend, cfg.audio.volume);
 
+    // R1.3: wire VRR config to Vulkan present mode + videoout vblank pump.
+    GPU::SetVrrConfig(cfg.graphics.vsync, cfg.graphics.vrr);
+    HLE::VideoOutSetVrrMode(cfg.graphics.vrr);
+
     // Install the crash-report handler early so any later crash (including
     // during subsystem init) is captured.  Skipped in in-proc mode: the host
     // process owns its unhandled-exception policy.
