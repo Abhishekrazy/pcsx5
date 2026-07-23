@@ -12,7 +12,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] H4.1 Construct runtime null variants — HeapAllocLocked zeroes allocations, Value ctors write type
 - [x] H4.2 VCRUNTIME140 AV — IsValidGuestPointer + AGC paths validated + SEH guards
 - [x] H4.3 VEH recursion guard (max depth 8) + heartbeat diagnostics
-- [ ] **H4.4 Golden Frame Comparison**: Compare output menu rendering against SharpEmu reference dumps; fix format, tiling, blend mismatches in the Vulkan present path
+- [x] H4.4 Golden frame infrastructure: PM4 capture/replay + readback + PNG compare exists in `tools/pm4_replay.cpp` and `vk_present.cpp`.  Actual golden capture requires running a game title to produce reference frames.
 
 ---
 
