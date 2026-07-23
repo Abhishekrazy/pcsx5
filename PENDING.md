@@ -106,7 +106,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] O1.1 Large page support (MEM_LARGE_PAGES for ≥2 MB allocations)
 - [ ] **O1.2 Direct-mapped guest memory** (single large VirtualAlloc reservation)
 - [x] O1.3 Pre-commit 256 MB at 0x800000000 on boot
-- [ ] **O1.4 Batch write-tracking protection changes**
+- [x] O1.4 Write-tracking coalescing (merge adjacent ranges → fewer VirtualProtect calls)
 
 ### O2. GPU Pipeline
 - [x] O2.1 Command batching (256 draws/batch, submitted once per flip)

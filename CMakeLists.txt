@@ -228,6 +228,7 @@ add_library(pcsx5_core SHARED
     src/hle/audio/waveout_device.cpp
     src/hle/audio/wasapi_device.cpp
     src/hle/audio/xa2_device.cpp
+    src/hle/audio/sdl_audio_device.cpp
     src/common/nid.cpp
     src/common/platform/platform_win32.cpp
     src/media/video_decoder.h
