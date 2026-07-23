@@ -107,6 +107,7 @@ const char* LogCategoryName(LogCategory c) {
         case LogCategory::HLE:     return "HLE";
         case LogCategory::GPU:     return "GPU";
         case LogCategory::Cpu:     return "Cpu";
+        case LogCategory::Media:   return "Media";
         case LogCategory::General: return "General";
     }
     return "Unknown";
