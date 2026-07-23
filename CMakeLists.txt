@@ -967,6 +967,18 @@ add_executable(dump_imports
     target_compile_options(pkg_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME pkg COMMAND pkg_tests)
 
+    # PS5 PKG parser test — synthetic minimal PS5 PKG header.
+    add_executable(pkg_ps5_tests
+        tests/pkg_ps5_tests.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+        src/loader/pkg_ps5.cpp
+        src/loader/pfs.cpp
+    )
+    target_include_directories(pkg_ps5_tests PRIVATE src)
+    target_compile_options(pkg_ps5_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME pkg_ps5 COMMAND pkg_ps5_tests)
+
     # ------------------------------------------------------------------------
     # Phase 1 — PFS image parser tests (read-only) — synthetic PFS fixtures.
     # ------------------------------------------------------------------------
