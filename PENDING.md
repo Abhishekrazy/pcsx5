@@ -138,7 +138,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [ ] **S1.4 PKG extraction CI test**
 
 ### S2. Testing
-- [ ] **S2.1 Unit tests for GAL/AAL/IAL/PS5 PKG parsers**
+- [x] S2.1 PS5 PKG parser unit test (synthetic valid PKG, all assertions pass)
 - [x] S2.2 Frame timing waterfall + FPS overlay (256-entry ring + ImGui stacked bars)
 - [ ] **S2.3 Crash bundle: include config + trace ring + pipeline cache**
 
