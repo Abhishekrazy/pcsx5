@@ -85,6 +85,12 @@ struct ButtonLayoutState {
     bool     connected    = false;
     bool     dualsense_connected = false;
 
+    // Battery info (from DualSense HID or estimated for other controllers).
+    uint8_t  battery_level    = 0;    // 0..100 percent (0 = unknown)
+    bool     battery_charging = false;
+    bool     battery_full     = false;
+    bool     headphone_connected = false;
+
     // Latched "tested" state per button (set true the first time pressed).
     bool tested[kButtonLayoutCount] = {};
 
