@@ -979,6 +979,18 @@ add_executable(dump_imports
     target_compile_options(pkg_ps5_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME pkg_ps5 COMMAND pkg_ps5_tests)
 
+    # Headless smoke test — pure CPU PKG parser, no GPU/window required.
+    add_executable(headless_smoke
+        tests/headless_smoke.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+        src/loader/pkg_ps5.cpp
+        src/loader/pfs.cpp
+    )
+    target_include_directories(headless_smoke PRIVATE src)
+    target_compile_options(headless_smoke PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME headless_smoke COMMAND headless_smoke)
+
     # ------------------------------------------------------------------------
     # Phase 1 — PFS image parser tests (read-only) — synthetic PFS fixtures.
     # ------------------------------------------------------------------------

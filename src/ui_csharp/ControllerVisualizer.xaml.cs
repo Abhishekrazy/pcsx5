@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 
 namespace Pcsx5Ui
@@ -116,11 +117,11 @@ namespace Pcsx5Ui
             SetEllipseGlow(SquareBtn, s.SquarePressed, "#FF77AA");
             SetEllipseGlow(TriangleBtn, s.TrianglePressed, "#30CC44");
 
-            // D-pad: we set fill colors via the ellipses/rectangles directly
-            SetRectFill(UpRect, s.UpPressed, "#65A5D9");
-            SetRectFill(DownRect, s.DownPressed, "#65A5D9");
-            SetRectFill(LeftRect, s.LeftPressed, "#65A5D9");
-            SetRectFill(RightRect, s.RightPressed, "#65A5D9");
+            // D-pad: we set fill colors via the rectangles directly
+            SetRectFill(UpRect2, s.UpPressed, "#65A5D9");
+            SetRectFill(DownRect2, s.DownPressed, "#65A5D9");
+            SetRectFill(LeftRect2, s.LeftPressed, "#65A5D9");
+            SetRectFill(RightRect2, s.RightPressed, "#65A5D9");
 
             // Stick positions
             MoveStickKnob(LeftStickKnob, LeftStickArea, s.LeftX, s.LeftY);
