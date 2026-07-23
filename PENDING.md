@@ -80,7 +80,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] P3 SELF→ELF extraction (already implemented in elf.cpp: LoadSelf + ExtractInnerElf, works for fPKG; rejects encrypted retail SELFs)
 
 ### P4. PkgToolBox
-- [ ] P4.1 Audit PkgToolBox PS5 logic for header correctness
+- [x] P4.1 Audit PkgToolBox PS5 logic — entry table format matches ({u32 id, u32 type, u64 offset, u64 size, u64 pad}).  Layout table at 0x400 matches (8 × u64).  Minor: Python reads u64 for file count, C++ reads u32 — acceptable.
 - [x] P4.4 Document extraction workflow (`wiki/pkg-extraction.md`)
 
 ---
@@ -116,7 +116,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### O3. CPU/Threading
 - [x] O3.3 VEH TLS cache (thread_local t_tls_base, no mutex contention)
-- [ ] **O3.1 Thread affinity** (already has affinity_mask config, verify)
+- [x] O3.1 Thread affinity + naming (affinity_mask config + SetThreadName)
 - [ ] **O3.2 Guest thread scheduling** (reduce mutex contention in sync primitives)
 
 ### O4. Audio Buffers
