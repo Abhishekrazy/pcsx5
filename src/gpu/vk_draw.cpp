@@ -1145,16 +1145,16 @@ bool VkDrawInitialize(VkContext* ctx) {
         return false;
     }
 
-    // Per-draw descriptor sets, recycled via vkResetDescriptorPool when the
-    // batch fence is consumed (BeginBatch).
+    // O2.3: pre-allocated descriptor pool sized for kBatchDraws (256)
+    // per frame with generous headroom for storage buffers + samplers.
     const VkDescriptorPoolSize sizes[] = {
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024 },
-        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 256 },  // H6: compute UAV images
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2048 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2048 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 512 },  // H6: compute UAV images
     };
     VkDescriptorPoolCreateInfo dpci = {};
     dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    dpci.maxSets = 64;
+    dpci.maxSets = kBatchDraws * 2;  // 512 sets (2 per draw worst case)
     dpci.poolSizeCount = 3;
     dpci.pPoolSizes = sizes;
     if (ctx->fn.CreateDescriptorPool(ctx->device, &dpci, nullptr,

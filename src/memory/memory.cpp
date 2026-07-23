@@ -196,6 +196,21 @@ bool Initialize() {
     } else {
         LOG_INFO(Memory, "Mapped guest framebuffer region at 0x%llx-0x%llx", out_fb_addr, out_fb_addr + 0x2000000);
     }
+
+    // O1.3: pre-commit commonly-used guest memory regions at boot to reduce
+    // demand-commit fault overhead.  The 256 MB region starting at 0x800000000
+    // covers the main ELF, PRX modules, and early heap/stack allocations.
+    {
+        guest_addr_t pre_base = 0x800000000ULL;
+        u64 pre_size = 256ULL * 1024 * 1024;  // 256 MB
+        guest_addr_t out = 0;
+        Status ps = Map(pre_base, pre_size, PROT_READ | PROT_WRITE, &out);
+        if (ps == Status::Ok) {
+            LOG_INFO(Memory, "Pre-committed 256 MB at 0x%llx (demand-commit optimization)", pre_base);
+        } else {
+            LOG_INFO(Memory, "Pre-commit skipped (will demand-commit on fault): %s", StatusAsString(ps));
+        }
+    }
     return true;
 }
 
