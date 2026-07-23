@@ -117,7 +117,9 @@ static void DrawTouchpad(ImDrawList* dl, ImVec2 pos, float width,
 }
 
 static void DrawGyroAccel(ImDrawList* dl, ImVec2 pos, float width,
-                           const float accel[3], const float gyro[3]) {
+                           const float accel[3], const float gyro[3],
+                           uint8_t battery_level, bool battery_charging,
+                           bool battery_full, int touch_count) {
     // Show 3-axis readout for accel and gyro
     char line[128];
     ImGui::PushFont(ImGui::GetFont());
@@ -158,8 +160,12 @@ static void DrawGyroAccel(ImDrawList* dl, ImVec2 pos, float width,
     dl->AddText(ImVec2(pos.x, y), status_color, line);
     y += line_height;
 
-    // Battery info placeholder
-    std::snprintf(line, sizeof(line), "Touch: %d finger(s)", touch_count);
+    // Battery info (from DualSense HID)
+    std::snprintf(line, sizeof(line), "Batt: %d%%%s%s  Touch: %d finger(s)",
+                  battery_level,
+                  battery_charging ? " CHG" : "",
+                  battery_full ? " FULL" : "",
+                  touch_count);
     dl->AddText(ImVec2(pos.x, y), IM_COL32(200, 200, 200, 180), line);
 
     ImGui::PopFont();
@@ -244,7 +250,9 @@ void ButtonLayoutRenderImGui(const char* title, ButtonLayoutState* state) {
     ImVec2 info_pos = to_pixel(0.02f, 0.90f);
     float info_w = layout_w * 0.96f;
     DrawGyroAccel(dl, info_pos, info_w,
-                  state->accel, state->gyro);
+                  state->accel, state->gyro,
+                  state->battery_level, state->battery_charging,
+                  state->battery_full, state->touch_count);
 
     ImGui::End();
 }

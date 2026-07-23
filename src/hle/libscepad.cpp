@@ -2,6 +2,7 @@
 #include "../common/log.h"
 #include "../gpu/gpu.h"
 #include "../memory/memory.h"
+#include "../gpu/dualsense_hid.h"
 
 namespace HLE {
 
@@ -85,8 +86,11 @@ namespace HLE {
             u32 g = static_cast<u32>(args.arg3);
             u32 b = static_cast<u32>(args.arg4);
 
-            LOG_DEBUG(HLE, "scePadSetLightBar(handle: 0x%X, r: %u, g: %u, b: %u) called", handle, r, g, b);
-
+            LOG_DEBUG(HLE, "scePadSetLightBar(handle: 0x%X, r: %u, g: %u, b: %u)", handle, r, g, b);
+            GPU::DualSense::SetLightBar(
+                static_cast<u8>(r & 0xFF),
+                static_cast<u8>(g & 0xFF),
+                static_cast<u8>(b & 0xFF));
             return 0; // SCE_OK
         });
 
@@ -238,8 +242,12 @@ namespace HLE {
             u32 handle = static_cast<u32>(args.arg1);
             u32 indicator = static_cast<u32>(args.arg2);
 
-            LOG_DEBUG(HLE, "scePadSetPlayerIndicator(handle: 0x%X, indicator: %u) called", handle, indicator);
-
+            LOG_DEBUG(HLE, "scePadSetPlayerIndicator(handle: 0x%X, indicator: %u)", handle, indicator);
+            // Map player indicator (0-based) to DualSense LED bitmask.
+            if (indicator <= 4) {
+                const u8 bitmask = static_cast<u8>(1u << indicator);
+                GPU::DualSense::SetPlayerLeds(bitmask, true);
+            }
             return 0; // SCE_OK
         });
 
