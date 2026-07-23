@@ -5,6 +5,8 @@
 #include "../memory/memory.h"
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -60,6 +62,10 @@ struct DrawState {
     VkCommandBuffer  cmd = VK_NULL_HANDLE;
     VkFence          fence = VK_NULL_HANDLE;
     VkDescriptorPool desc_pool = VK_NULL_HANDLE;
+    // O2.2: persistent VkPipelineCache — saves compiled pipelines between
+    // runs so only the first boot pays the compilation cost.
+    VkPipelineCache  pipeline_cache = VK_NULL_HANDLE;
+    static constexpr const char* kPipelineCachePath = "Cache/Pipelines/pipeline_cache.bin";
 
     // M6 batching: draws accumulate in `cmd` between flips; the batch is
     // submitted (not awaited) when the presenter looks up the render target.
@@ -936,7 +942,7 @@ VkPipeline EnsurePipeline(const VkDrawCall& call, u64 key, VkShaderModule vs,
 
     VkPipeline pipeline = VK_NULL_HANDLE;
     const VkResult r = g_ds.ctx->fn.CreateGraphicsPipelines(
-        g_ds.ctx->device, VK_NULL_HANDLE, 1, &gpci, nullptr, &pipeline);
+        g_ds.ctx->device, g_ds.pipeline_cache, 1, &gpci, nullptr, &pipeline);
     if (r != VK_SUCCESS) {
         LOG_WARN(GPU, "draw: vkCreateGraphicsPipelines failed (%d).", static_cast<int>(r));
         return VK_NULL_HANDLE;
@@ -1103,6 +1109,42 @@ bool VkDrawInitialize(VkContext* ctx) {
         return false;
     }
 
+    // O2.2: load persistent VkPipelineCache from disk.
+    VkPipelineCacheCreateInfo pcci = {};
+    pcci.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    std::vector<u8> cache_data;
+    std::ifstream pf(g_ds.kPipelineCachePath, std::ios::binary | std::ios::ate);
+    if (pf.is_open()) {
+        const auto sz = pf.tellg();
+        if (sz > 0) {
+            cache_data.resize(static_cast<size_t>(sz));
+            pf.seekg(0);
+            pf.read(reinterpret_cast<char*>(cache_data.data()),
+                    static_cast<std::streamsize>(cache_data.size()));
+            pcci.initialDataSize = cache_data.size();
+            pcci.pInitialData = cache_data.data();
+            LOG_INFO(GPU, "draw: loaded pipeline cache (%zu bytes)",
+                     cache_data.size());
+        }
+        pf.close();
+    }
+    using CreateCacheFn = VkResult(VKAPI_PTR*)(VkDevice,
+                                                 const VkPipelineCacheCreateInfo*,
+                                                 const VkAllocationCallbacks*,
+                                                 VkPipelineCache*);
+    auto create_cache = reinterpret_cast<CreateCacheFn>(
+        ctx->fn.GetDeviceProcAddr(ctx->device, "vkCreatePipelineCache"));
+    VkResult pcr = VK_ERROR_INITIALIZATION_FAILED;
+    if (create_cache) {
+        pcr = create_cache(ctx->device, &pcci, nullptr, &g_ds.pipeline_cache);
+    }
+    if (pcr != VK_SUCCESS) {
+        LOG_WARN(GPU, "draw: CreatePipelineCache failed (%d), continuing.",
+                 static_cast<int>(pcr));
+        g_ds.pipeline_cache = VK_NULL_HANDLE;
+        return false;
+    }
+
     // Per-draw descriptor sets, recycled via vkResetDescriptorPool when the
     // batch fence is consumed (BeginBatch).
     const VkDescriptorPoolSize sizes[] = {
@@ -1168,6 +1210,38 @@ void VkDrawShutdown() {
     DestroyHostBuffer(g_ds.staging);
     if (g_ds.desc_pool) ctx->fn.DestroyDescriptorPool(ctx->device, g_ds.desc_pool, nullptr);
     if (g_ds.fence) ctx->fn.DestroyFence(ctx->device, g_ds.fence, nullptr);
+    // O2.2: save persistent VkPipelineCache to disk via direct device
+    // function pointers (not in VkFunctions, load at run-time).
+    if (g_ds.pipeline_cache) {
+        using GetCacheDataFn = VkResult(VKAPI_PTR*)(VkDevice, VkPipelineCache,
+                                                      size_t*, void*);
+        auto get_data = reinterpret_cast<GetCacheDataFn>(
+            ctx->fn.GetDeviceProcAddr(ctx->device, "vkGetPipelineCacheData"));
+        using DestroyCacheFn = void(VKAPI_PTR*)(VkDevice, VkPipelineCache,
+                                                  const VkAllocationCallbacks*);
+        auto destroy = reinterpret_cast<DestroyCacheFn>(
+            ctx->fn.GetDeviceProcAddr(ctx->device, "vkDestroyPipelineCache"));
+        if (get_data && destroy) {
+            size_t data_size = 0;
+            if (get_data(ctx->device, g_ds.pipeline_cache,
+                         &data_size, nullptr) == VK_SUCCESS && data_size > 0) {
+                std::vector<u8> save_data(data_size);
+                if (get_data(ctx->device, g_ds.pipeline_cache,
+                             &data_size, save_data.data()) == VK_SUCCESS) {
+                    std::filesystem::create_directories("Cache/Pipelines");
+                    std::ofstream pf(g_ds.kPipelineCachePath,
+                                     std::ios::binary | std::ios::trunc);
+                    if (pf.is_open()) {
+                        pf.write(reinterpret_cast<const char*>(save_data.data()),
+                                 static_cast<std::streamsize>(save_data.size()));
+                        LOG_INFO(GPU, "draw: saved pipeline cache (%zu bytes)",
+                                 save_data.size());
+                    }
+                }
+            }
+            destroy(ctx->device, g_ds.pipeline_cache, nullptr);
+        }
+    }
     if (g_ds.cmd_pool) ctx->fn.DestroyCommandPool(ctx->device, g_ds.cmd_pool, nullptr);
     g_ds = DrawState{};
 }
