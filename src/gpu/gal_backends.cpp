@@ -6,23 +6,16 @@
 // to fall through to the next backend or the Null device).
 
 #include "gal.h"
+#include "vulkan/vulkan_device.h"
 #include "../common/log.h"
 
 // ===========================================================================
-// Vulkan backend — NOT YET PORTED TO GAL INTERFACE
+// Vulkan backend — wraps existing vk_context/vk_present/vk_draw
+// behind the GpuDevice interface via VulkanDevice adapter class.
 // ===========================================================================
-// The existing Vulkan code (vk_context, vk_present, vk_draw) still uses
-// the legacy GPU::* API (gpu.h).  Until it is refactored into a
-// VulkanDevice : GpuDevice subclass, this factory returns nullptr.
-// The legacy path is driven through GPU::Initialize() / RenderFrame()
-// in gpu.h as before.
 
-GpuDevice* CreateVulkanDevice(const GalConfig& /*config*/,
-                               const GalWindowCallbacks& /*callbacks*/) {
-    LOG_WARN(GPU, "GAL: Vulkan backend not yet ported to GpuDevice interface; "
-                  "use the legacy GPU::* API for now.");
-    return nullptr;
-}
+GpuDevice* CreateVulkanDevice(const GalConfig& config,
+                               const GalWindowCallbacks& callbacks);
 
 // ===========================================================================
 // GDI backend — NOT YET PORTED TO GAL INTERFACE

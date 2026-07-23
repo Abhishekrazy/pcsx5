@@ -78,8 +78,9 @@ struct GalConfig {
     bool           fullscreen  = false;
     float          resolution_scale = 1.0f;  // 0.5..2.0
     int            swapchain_image_count = 3;
-    bool           vsync       = true;
-    bool           debug       = false;      // enable validation layers
+    bool           vsync       = true;             // VK_PRESENT_MODE_FIFO_KHR
+    bool           vrr         = false;            // Variable Refresh Rate
+    bool           debug       = false;            // enable validation layers
 
     // Window system integration (see below)
     void*          native_window_handle = nullptr;  // HWND, etc.
