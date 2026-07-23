@@ -1,4 +1,4 @@
-# pcsx5 progress (as of 2026-07-19)
+# pcsx5 progress (as of 2026-07-24)
 
 ## Phases 0–4 — complete
 
@@ -15,41 +15,75 @@ config, `/app0`/`/savedata0` filesystem translation. 30/30 ctest green.
 | M1 Vulkan backend | done | Dynamic loading (no SDK), swapchain present proven pixel-correct, GDI fallback (`src/gpu/vk_*`) |
 | M1.5 boot blockers | done | Both games boot crash-free (see below) |
 | M2.1 shader foundation | done | Full RDNA2 decoder + metadata parser + SPIR-V builder (`src/gpu/shader/`); corpus of 81 real shaders decodes |
-| M2.2 SPIR-V emission | done, `c923dd6` | **81/81 corpus shaders translate; 81/81 accepted by NVIDIA ICD** (`shader_dump --translate-corpus` / `--validate-spv`) |
+| M2.2 SPIR-V emission | done, `c923dd6` | **81/81 corpus shaders translate; 81/81 accepted by NVIDIA ICD** |
 | M3.0 draw-time translation | done, `be2571a` | In-game: VS+PS found via register shadow at draw, translated, driver-validated |
-| M3.1 scalar evaluator | done, `2e165a7` | In-game: per-draw texture/vertex/constant buffer descriptors resolve to real guest addresses |
-| M3.2a vertex-format decode | done (uncommitted) | Dynamic descriptor-driven `BufferLoadFormat*` decode in translator; 81/81 re-validated |
+| M3.1 scalar evaluator | done, `2e165a7` | In-game: per-draw texture/vertex/constant buffer descriptors resolve |
+| M3.2a vertex-format decode | done | Dynamic descriptor-driven `BufferLoadFormat*` decode in translator |
+| **M3.3 menus (H4)** | 🟡 blockers in progress | VEH recursion guard added, AGC pointer validation added, heap zeroing confirmed (`HeapAllocLocked` zeros allocations) |
+| **R1 VRR** | 🔵 new | `VK_PRESENT_MODE_FIFO_RELAXED_KHR` + IMMEDIATE modes, VRR config |
+| **R2 FSR** | 🔵 scaffolded | `FsrUpscale` class, DLL detection, quality presets, needs SDK |
 
 ## Game status
 
 - **Dreaming Sarah (PPSA02929)**: boots indefinitely crash-free, submits
-  draws + flips every frame, Vulkan presents the guest FB. Window black —
-  draws aren't executed yet (that's M3 2c/3).
+  draws + flips every frame, Vulkan presents the guest FB.
 - **LOST EPIC (PPSA07429)**: boots through IL2CPP assembly loading.
 
-## Reference assets gathered
+## Phase 6 — Audio & Input Abstraction Layers (new, 2026-07-23)
 
-- SharpEmu install (`I:\Installed Games\sharpemu-win64-fbf2c2d`) with
-  Dreaming Sarah playable: 2 captured reference logs
-  (`sharpemu_ppsa02929_ref.log`, `_run2.log`) and **54 golden shader pairs**
-  (RDNA IR + working SPIR-V) in its `shader-dumps/`.
-- SharpEmu source clone (`sharpemu_clone/`) — blueprint for everything above.
+### Audio (AAL)
+- `AudioDevice` interface with 4 backends: WaveOut, WASAPI, XAudio2, Pacing
+- Factory auto-probes: XAudio2 → WASAPI → waveOut → Pacing
+- Volume scaling, stereo PCM16 conversion across all backends
+- Config: `audio.backend = 0|1|2` (Off / WASAPI / XAudio2)
 
-## Phase 7 (system services) — complete (2026-07-20)
+### Input (IAL)
+- `InputBackend` interface with 4 backends: GLFW keyboard, XInput, DualSense HID, Null
+- `InputMultiplexer` for merging multiple backends per frame (DualSense touch+motion always wins)
+- Full DualSense HID support: buttons, sticks, triggers, touchpad (2 fingers), gyro/accel, rumble, adaptive triggers, battery, mic audio
+- Config: `input.backend = keyboard|xinput|dualsense|null`
+- Lightbar RGB and player LED wiring via scePadSetLightBar / scePadSetPlayerIndicator
 
-- Savedata: real `sceSaveDataDirNameSearch` enumeration; per-title XTS
-  encryption keys in `TitleConfig` (`savedata_crypto`); encrypted savedata
-  container (`P5SD` archive + AES-XTS) decrypted on mount, re-encrypted on
-  commit/umount; per-user save dirs when multiple profiles exist.
-- PFS write support (`src/loader/pfs.*`): writable mounts, `WriteFile`,
-  `CreateFile`, free-block allocation with direct + single-indirect growth.
-- AES-128-XTS in `src/common/crypto.*` (IEEE 1619 vectors verified).
-- Trophies: unlocks persisted to `pcsx5_savedata/<title>/trophies.json`;
-  NpTrophy2 unlock callback now fired via `InvokeGuestFunction`.
-- Keystone: full 0x60-byte header parser with differentiated errors;
-  `.keystone` loaded+validated from app0 at boot.
-- Multi-user: `sceUserService*`/`sceNpGetOnlineId` read real config profiles.
-- 39/39 ctest green; fixed CI guest-smoke tests (`--report=` arg form).
+### Bluetooth DualSense Fixes
+- BT output report[2]: changed from 0x10→0x00 to fix mic/speaker enable
+- Mic audio extraction: 4-channel × 8-sample PCM16 from input report offset o+74
+
+## Phase 6b — Graphics Abstraction Layer (GAL, new, 2026-07-23)
+
+- `GpuDevice` interface: swapchain, resources, pipelines, draw commands, readback
+- Backends: VulkanDevice (adapter over existing vk_*), GDI (stub), Null (headless)
+- Factory auto-probes: Vulkan → GDI → Null
+- Runtime backend selection via `gpu.backend` config
+
+## Phase 6c — Platform Abstraction Layer (PAL, new, 2026-07-23)
+
+- `Platform::*` namespace: VirtualAlloc/mmap, threads, dynamic libs, VEH, CPU features
+- Full Windows implementation with large page support
+- CPU feature detection: SSE4a, BMI1/2, ABM (POPCNT/LZCNT), AVX/AVX2
+
+## Phase 6d — Video Decoder Abstraction Layer (VDAL, new, 2026-07-23)
+
+- `VideoDecoder` interface: open/seek/decode to RGBA8/YUV frames, A/V sync
+- Format auto-detection by magic bytes: Bink2 (KB12), CRI USM, MP4, WebM
+- Backends: Bink2 (bink2w64.dll), CRI USM, FFmpeg (avformat-61.dll)
+- NullVideoDecoder fallback when no backend available
+
+## Phase P — PS5 PKG Extraction (new, 2026-07-23)
+
+- PS5 PKG parser (`src/loader/pkg_ps5.*`): magic 0x7F464948, entry table with
+  file names, PFS image offset/size from layout table @0x400
+- fPKG AES-128-CBC entry decryption with scene passcode
+- `ExtractEbootFromPkgPs5`: PKG → PFS → mount → eboot.bin end-to-end pipeline
+- `--extract-pkg` CLI auto-detects PS4 vs PS5 PKG by magic byte
+- `ExtractAnyPkg` dispatcher: PS4 (0x7F434E54) → ParsePkg, PS5 → ExtractPkgPs5
+
+## Phase O — Performance Optimization (new, 2026-07-24)
+
+- **O1.1**: Large page support — `Map()` tries `MEM_LARGE_PAGES` (2 MB) for
+  allocations >= 2 MB, falls back to 4 KB pages
+- **O2.1**: kBatchDraws increased 64→256, all draws batched per frame
+- **O3.3**: VEH TLS cache — thread-local `t_tls_base` eliminates global mutex
+  on every VEH TLS trap
 
 ## Known non-blocking issues
 

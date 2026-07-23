@@ -56,6 +56,10 @@ namespace Kernel {
     thread_local int g_veh_recursion_depth = 0;
     constexpr int kMaxVehRecursionDepth = 8;
 
+    // O3.3: thread-local TLS base cache to avoid g_thread_mutex contention
+    // on every VEH TLS trap.  Updated when RegisterThread is called.
+    thread_local guest_addr_t t_tls_base = 0;
+
     struct VehRecursionGuard {
         bool m_skip = false;
         VehRecursionGuard() {
@@ -1347,13 +1351,17 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                         if (parse_success) {
                             u32 instr_len = static_cast<u32>(instr - rip);
                             
-                            u64 current_tid = GetCurrentThreadId();
-                            guest_addr_t tp = 0;
-                            {
+                            // O3.3: use thread-local TLS cache first to avoid
+                            // g_thread_mutex contention on every VEH TLS trap.
+                            guest_addr_t tp = t_tls_base;
+                            if (tp == 0) {
+                                // Fall back to global mutex path (slow).
+                                u64 current_tid = GetCurrentThreadId();
                                 std::lock_guard<std::mutex> lock(g_thread_mutex);
                                 auto it = g_threads.find(current_tid);
                                 if (it != g_threads.end()) {
                                     tp = it->second.tls_base;
+                                    t_tls_base = tp;  // prime the cache
                                 }
                             }
                             if (tp == 0) {
@@ -1695,6 +1703,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
     void RegisterThread(const ThreadContext& context) {
         std::lock_guard<std::mutex> lock(g_thread_mutex);
         g_threads[context.thread_id] = context;
+        t_tls_base = context.tls_base; // prime thread-local VEH cache (O3.3)
         LOG_INFO(Kernel, "Registered thread '%s' (id=%llu, entry=0x%llx, stack=0x%llx, stack_size=%llu, tls=0x%llx)",
                  context.name.c_str(), context.thread_id, context.entry_point,
                  context.stack_base, context.stack_size, context.tls_base);

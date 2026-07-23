@@ -22,9 +22,14 @@
 
 ## 🎮 About PCSX5
 
-**PCSX5** is an experimental **PlayStation 5 emulator** for Windows, written in modern C++20. It focuses on High-Level Emulation (HLE) of the PS5's system libraries and kernel, with a Vulkan-based graphics backend.
+**PCSX5** is an experimental **PlayStation 5 emulator** for Windows, written
+in modern C++20. It focuses on High-Level Emulation (HLE) of the PS5's system
+libraries and kernel, with a Vulkan-based graphics backend and a pluggable
+hardware abstraction layer design.
 
-> ⚠️ **Early Development Stage** — PCSX5 is in active development. Most commercial games will not boot or play correctly. This project is for research, education, and preservation purposes.
+> ⚠️ **Early Development Stage** — PCSX5 is in active development. Most
+> commercial games will not boot or play correctly. This project is for
+> research, education, and preservation purposes.
 
 ### ✨ Key Features
 
@@ -34,10 +39,32 @@
 | **HLE Libraries** | 🟢 Working | libkernel, libpad, libvideoout, libagc, libsnd, libgpu, liblibc (string/sprintf/RNG/system exports) |
 | **ELF Loader** | 🟢 Working | PIE/fixed-address, dynamic linking, TLS, segment mapping |
 | **CPU Emulation** | 🟢 Working | SysV variadic float ABI (XMM0-XMM7), BMI1/BMI2/ABM instruction software fallback, VEH recovery |
-| **Vulkan Backend** | 🟢 Working | Graphics & compute pipelines, storage images, mipmapped samplers, 3-way scissor clipping, swapchain, shader translation |
-| **Memory Management** | 🟢 Working | Virtual memory, page protection, guest fault handling (VEH), partial overlapping fixed mapping |
+| **Vulkan Backend** | 🟢 Working | Graphics & compute pipelines, storage images, mipmapped samplers, 3-way scissor clipping, swapchain, VRR support (FreeSync/G-SYNC via FIFO_RELAXED) |
+| **Memory Management** | 🟢 Working | Virtual memory, page protection, guest fault handling (VEH), large page support (2 MB), partial overlapping fixed mapping |
+| **Audio (AAL)** | 🟢 Working | Abstracted audio layer with WASAPI / XAudio2 / waveOut / Pacing backends, auto-probe priority, per-backend volume |
+| **Input (IAL)** | 🟢 Working | Abstracted input layer with GLFW keyboard / XInput / DualSense HID backends, InputMultiplexer for merging, full touch/motion/gyro |
+| **VRR / Adaptive Sync** | 🟢 Working | Variable Refresh Rate support via `VK_PRESENT_MODE_FIFO_RELAXED_KHR` and `VK_PRESENT_MODE_IMMEDIATE_KHR` |
+| **FSR Upscaling** | 🟡 Scaffolding | FSR 2.x/3.x integration via `ffx_fsr2_api_vk.dll` with quality presets and RCAS sharpening (full implementation requires AMD FidelityFX SDK) |
+| **PS5 PKG Extraction** | 🟢 Working | PS5 PKG parser (magic 0x7F464948), fPKG AES-128-CBC decryption, PFS image mounting, `eboot.bin` extraction |
 | **Diagnostics/Reports** | 🟢 Working | JSON compatibility reports, logging, memory stats |
 | **Lua Scripting** | 🟢 Working | Init scripts, automation, testing |
+| **VEH/TLS Fast Path** | 🟢 Optimized | Thread-local TLS cache eliminates mutex contention on every VEH trap |
+
+### Abstraction Layers
+
+PCSX5 uses a clean layered architecture so every subsystem can work with
+any OS-supported component:
+
+| Layer | Interface | Backends |
+|-------|-----------|----------|
+| **GAL** (Graphics) | `GpuDevice` | Vulkan (primary), GDI (fallback), Null (headless) |
+| **AAL** (Audio) | `AudioDevice` | WASAPI, XAudio2, waveOut, SDL (future), Pacing (null) |
+| **IAL** (Input) | `InputBackend` | GLFW keyboard, XInput, DualSense HID, Null |
+| **PAL** (Platform) | `Platform::*` | Win32 (VirtualAlloc, threads, VEH, CPU features) |
+| **VDAL** (Video) | `VideoDecoder` | Bink2 (.bik2), CRI USM (.usm), FFmpeg (H.264/H.265/VP9/AV1) |
+
+Backends are selected at runtime via config (`gpu.backend`, `audio.backend`,
+`input.backend`) and can be swapped without modifying HLE code.
 
 ---
 
@@ -105,7 +132,8 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Expected: 8+ passing tests covering ELF loading, memory management, TLS, HLE imports, and more.
+Expected: 30+ passing tests covering ELF loading, memory management, TLS,
+HLE imports, audio/pad state machines, AGC PM4, and more.
 
 ---
 
@@ -121,9 +149,18 @@ Expected: 8+ passing tests covering ELF loading, memory management, TLS, HLE imp
 .\build\bin\Release\pcsx5_cli.exe --config config.json "C:\Path\To\Game\eboot.bin"
 ```
 
+### Extract a PS5 PKG
+
+```powershell
+# Extract eboot.bin + all assets from a fake-signed PKG
+.\build\bin\Release\pcsx5_cli.exe --extract-pkg "game.pkg" output_dir/
+# Auto-detects PS4 vs PS5 PKG format by magic byte.
+```
+
 ### Supported Formats
 
 - **Decrypted ELF** (`.elf`, `eboot.bin`) — Primary format
+- **PS5 fPKG** (`.pkg`, magic `0x7F464948`) — PFS image + eboot.bin extraction
 - **PIE and fixed-address executables**
 - **Dynamic linking** with HLE library stubs
 
@@ -136,7 +173,21 @@ Expected: 8+ passing tests covering ELF loading, memory management, TLS, HLE imp
 | `F3` | Dump memory map |
 | `F4` | Dump thread list |
 | `F5` | Reload Lua init script |
+| `F11` | Toggle fullscreen |
 | `Esc` | Exit emulator |
+
+### DualSense Controller
+
+| Feature | USB | Bluetooth | Notes |
+|---------|-----|-----------|-------|
+| Buttons/Sticks/Triggers | ✅ | ✅ | Full mapping with deadzones |
+| Rumble | ✅ | ✅ | Both motors via HID output |
+| Adaptive Triggers | ✅ | ✅ | L2/R2 feedback/weapon/vibration |
+| Touchpad | ✅ | ✅ | Up to 2 fingers |
+| Gyro/Accel | ✅ | ✅ | 6-axis motion sensing |
+| Lightbar RGB | ✅ | ✅ | Configurable via scePadSetLightBar |
+| Player LEDs | ✅ | ✅ | Wired to user profile index |
+| Mic/Speaker | ✅ | 🟡 BT fixed (audio data path incomplete) |
 
 ---
 
@@ -145,26 +196,34 @@ Expected: 8+ passing tests covering ELF loading, memory management, TLS, HLE imp
 ```
 pcsx5/
 ├── src/
-│   ├── common/          # Logging, types, utilities
+│   ├── common/          # Logging, types, utilities, crypto
+│   │   └── platform/    # Platform Abstraction Layer (PAL)
 │   ├── kernel/          # Guest kernel: threads, memory, FD table, syscalls, TLS
-│   ├── loader/          # ELF parsing, dynamic linking, segment mapping
+│   ├── loader/          # ELF/SELF parsing, PKG/PS4+PS5, PFS, dynamic linking
 │   ├── memory/          # Virtual memory, page protection, VEH fault handling
 │   ├── hle/             # High-Level Emulation: libkernel, libpad, libvideoout, etc.
-│   ├── gpu/             # Vulkan backend, command buffers, pipelines
+│   │   └── audio/       # Audio Abstraction Layer (AAL) backends
+│   ├── gpu/             # GAL interface, Vulkan backend, shader compiler
+│   │   ├── input/       # Input Abstraction Layer (IAL) backends
+│   │   ├── shader/      # RDNA2→SPIR-V translator
+│   │   └── vulkan/      # VulkanDevice (GAL adapter)
+│   ├── media/           # Video Decoder Abstraction Layer (VDAL)
+│   ├── ui/              # ImGui overlay, button layout component
 │   ├── diagnostics/     # Compatibility reports, logging, statistics
 │   ├── config/          # Configuration system (JSON)
 │   ├── reports/         # JSON report generation
-│   ├── core_api.{h,cpp}  # C API seam (init/load/run/stop/shutdown) shared by
+│   ├── core_api.{h,cpp} # C API seam (init/load/run/stop/shutdown) shared by
 │   │                    # the WPF host and the pcsx5_cli shim
-│   ├── ui_csharp/       # WPF GUI (single-file pcsx5.exe, core in-process)
-│   └── lua/             # Lua 5.4 scripting engine for init/automation
+│   └── ui_csharp/       # WPF GUI (single-file pcsx5.exe, core in-process)
 ├── tests/               # Unit & integration tests
 ├── compat/              # Game-specific compatibility patches
 ├── assets/              # Shaders, fonts, localization
 ├── third_party/         # Vendored dependencies (GLFW, etc.)
-├── tools/               # Build scripts, automation
+├── tools/               # Build scripts, DualSense test tools, PkgToolBox
 ├── CMakeLists.txt       # Main build configuration
 ├── BUILDING.md          # Detailed build guide
+├── PENDING.md           # Prioritized work queue
+├── PROGRESS.md          # Development status and milestones
 └── LICENSE              # GNU General Public License v2.0
 ```
 
@@ -177,8 +236,10 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ### Areas Needing Help
 
 - 🎮 **HLE Library Stubs** — Implement missing syscalls and library functions
-- 🎨 **Vulkan Backend** — Pipeline caching, descriptor management, synchronization
+- 🎨 **Vulkan Backend** — Pipeline caching, descriptor management, full GAL port
 - 🧠 **Kernel Emulation** — Thread scheduling, synchronization primitives, signals
+- 📹 **Video Decoders** — Bink 2 / CRI USM / FFmpeg integration for cutscenes
+- 🎬 **VRR & FSR** — Variable refresh rate, FSR 2.x/3.x upscaling, HDR support
 - 🧪 **Testing** — Expand test corpus, add regression tests
 - 📚 **Documentation** — API docs, architecture guides, tutorials
 - 🐛 **Bug Reports** — Test games, file detailed issues with logs
@@ -222,15 +283,6 @@ Copyright (C) 2026 PCSX5 Team
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation; version 2 of the License.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License along
-with this program; if not, write to the Free Software Foundation, Inc.,
-51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 ```
 
 ---
@@ -242,6 +294,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 - **Dear ImGui** — Debug UI
 - **nlohmann/json** — JSON parsing
 - **Lua** — Scripting engine
+- **AMD** — FidelityFX Super Resolution (FSR)
+- **RAD Game Tools** — Bink 2 video format
+- **CRIWARE** — Sofdec2 movie format
 - **shadPS4 team** — HLE architecture inspiration
 - **RPCS3 team** — Emulation research and documentation
 - **All contributors** — Code, testing, reports, and feedback
