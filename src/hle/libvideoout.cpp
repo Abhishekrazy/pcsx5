@@ -59,6 +59,11 @@ constexpr u64 kOutputStatusSize     = 0x30;
 constexpr u64 kFlipStatusSize       = 0x28; // 40 bytes
 constexpr double kVblankHz          = 60.0;
 
+// R1.3: VRR mode — when enabled, the vblank pump skips the fixed 60 Hz
+// interval and instead fires on-demand after each flip, letting the
+// display's VRR engine manage timing.  Set from config (video.vrr).
+std::atomic<bool> g_vrr_active{false};
+
 struct VideoOutEventReg {
     u32 equeue = 0;
     u64 udata  = 0;
@@ -123,8 +128,17 @@ void VblankPumpLoop() {
     const auto interval = std::chrono::duration<double>(1.0 / kVblankHz);
     auto next_edge = std::chrono::steady_clock::now() + interval;
     while (!g_vblank_stop.load(std::memory_order_relaxed)) {
-        std::this_thread::sleep_until(next_edge);
-        next_edge += std::chrono::duration_cast<std::chrono::steady_clock::duration>(interval);
+        // R1.3: VRR mode — skip the fixed-interval sleep; instead wait
+        // on the condition variable (notified on flip).  The display's
+        // VRR engine (FreeSync/G-SYNC) handles the timing.
+        if (g_vrr_active.load(std::memory_order_relaxed)) {
+            std::unique_lock<std::mutex> lk(g_vblank_mtx);
+            g_vblank_cv.wait_for(lk, std::chrono::milliseconds(100));
+        } else {
+            std::this_thread::sleep_until(next_edge);
+            next_edge += std::chrono::duration_cast<
+                std::chrono::steady_clock::duration>(interval);
+        }
 
         g_vblank_edge_seq.fetch_add(1, std::memory_order_release);
         g_vblank_cv.notify_all();
@@ -204,6 +218,14 @@ u64 SubmitFlipImpl(const GuestArgs& args) {
     // event pumping, pad polling, and window-close handling all live on the
     // main thread's window loop — the guest thread never touches GLFW.
     GPU::RenderFrame(fb_addr);
+
+    // R1.3: VRR mode — notify the vblank pump to tick immediately instead of
+    // waiting for the next 60 Hz interval.  The display's VRR engine manages
+    // the actual frame timing; this lets the guest run at its own pace.
+    if (g_vrr_active.load(std::memory_order_relaxed)) {
+        g_vblank_cv.notify_one();
+    }
+
     return 0;
 }
 
@@ -291,6 +313,14 @@ bool VideoOutGetDisplayBufferInfo(u32 handle, s32 buffer_index,
     *width  = port->width;
     *height = port->height;
     return *addr != 0;
+}
+
+// R1.3: set VRR mode — called from config system when video.vrr changes.
+// When active, the vblank pump runs on-demand (flip-triggered) instead of
+// a fixed 60 Hz interval, letting the VRR display control timing.
+void VideoOutSetVrrMode(bool active) {
+    g_vrr_active.store(active, std::memory_order_relaxed);
+    LOG_INFO(HLE, "VideoOut: VRR mode %s", active ? "enabled" : "disabled");
 }
 
 void RegisterLibVideoOut() {

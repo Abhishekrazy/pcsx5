@@ -914,6 +914,10 @@ namespace GPU {
 
     // Spin the GLFW event loop until the window is closed.
     // Used to keep the final frame visible after a guest exit or crash.
+    void SetVrrConfig(bool vsync, bool vrr) {
+        VkPresentSetVrrConfig(vsync, vrr);
+    }
+
     void RunIdleLoop() {
         LOG_INFO(GPU, "Emulator halted - keeping window open until closed by user.");
         while (g_window && !glfwWindowShouldClose(g_window)) {

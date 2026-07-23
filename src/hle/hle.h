@@ -205,6 +205,7 @@ namespace HLE {
     // (libaudioout.cpp).  Called from main() after the config service loads;
     // backend: 0 = Off (silent, real-time paced), non-zero = waveOut.
     void SetAudioOutConfig(int backend, float volume);
+    void VideoOutSetVrrMode(bool active);
 
     // AGC submitted-DCB walker introspection (libagc.cpp; tests + M1-M3).
     // which: 0 = total draws, 1 = total dispatches, 2 = total flips (graphics queue).

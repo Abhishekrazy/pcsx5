@@ -103,5 +103,8 @@ namespace GPU {
     // Called from the main thread after the guest thread has finished (it
     // replaces the old guest-exit idle spin).
     void RunIdleLoop();
+
+    // R1: VRR / vsync configuration.  Wires into the Vulkan present layer.
+    void SetVrrConfig(bool vsync, bool vrr);
 }
 // namespace GPU
