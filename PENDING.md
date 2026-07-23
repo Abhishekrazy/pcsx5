@@ -29,7 +29,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] A2.1 Define `AudioDevice` interface (`src/hle/audio/audio_device.h`)
 - [x] A2.2-A2.4 Concrete backends: WaveOutDevice, WasapiDevice, Xa2Device
 - [x] A2.7 Backend factory + PacingAudioDevice null backend
-- [ ] **A2.5 Add SDL Audio backend** (`SdlAudioDevice : AudioDevice`)
+- [x] A2.5 SDL Audio backend (`SdlAudioDevice : AudioDevice`, dynamically loads SDL2.dll)
 
 ### A3. Input Abstraction Layer (IAL)
 - [x] A3.1 Define `InputBackend` interface (`src/gpu/input/input_backend.h`)
