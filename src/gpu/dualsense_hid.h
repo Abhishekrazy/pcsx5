@@ -427,7 +427,7 @@ namespace DualSense {
                     s.mic_channels = 4;
                     for (int ch = 0; ch < 4; ++ch) {
                         for (int smp = 0; smp < 8; ++smp) {
-                            const int off = o + 74 + (ch * 16) + (smp * 2);
+                            const size_t off = o + 74 + static_cast<size_t>(ch * 16 + smp * 2);
                             if (off + 2 <= static_cast<int>(len)) {
                                 s.mic_samples[ch][smp] = static_cast<s16>(
                                     static_cast<s16>(r[off]) |

@@ -260,6 +260,8 @@ add_library(pcsx5_core SHARED
     src/reports/reports.cpp
     src/lua/lua_init.h
     src/lua/lua_init.cpp
+    src/ui/button_layout.h
+    src/ui/button_layout.cpp
     ${DISPATCHER_SRC}
 )
 
