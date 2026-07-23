@@ -117,13 +117,20 @@ New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 
 # Copy main executables and DLLs
 Write-Log "Copying executables and DLLs..."
+$sndDecodeExe = Join-Path (Join-Path $buildDir "bin") "pcsx5_snd_decode.exe"
+if (-not (Test-Path $sndDecodeExe)) { $sndDecodeExe = Join-Path (Join-Path (Join-Path $buildDir "bin") $BuildConfig) "pcsx5_snd_decode.exe" }
+if (-not (Test-Path $sndDecodeExe)) { $sndDecodeExe = Join-Path $buildDir "pcsx5_snd_decode.exe" }
+
+$bootParserExe = Join-Path (Join-Path $buildDir $BuildConfig) "pcsx5_boot_parser.exe"
+if (-not (Test-Path $bootParserExe)) { $bootParserExe = Join-Path $buildDir "pcsx5_boot_parser.exe" }
+
 $filesToCopy = @(
     @{ Source = $pcsx5Exe; Dest = Join-Path $distDir "pcsx5.exe" },
     @{ Source = $pcsx5CliExe; Dest = Join-Path $distDir "pcsx5_cli.exe" },
     @{ Source = $pcsx5CoreDll; Dest = Join-Path $distDir "pcsx5_core.dll" },
     @{ Source = Join-Path $assetsDir "config.ini"; Dest = Join-Path $distDir "config.ini" },
-    @{ Source = Join-Path $buildDir "pcsx5_snd_decode.exe"; Dest = Join-Path $distDir "pcsx5_snd_decode.exe" },
-    @{ Source = Join-Path $buildDir "pcsx5_boot_parser.exe"; Dest = Join-Path $distDir "pcsx5_boot_parser.exe" }
+    @{ Source = $sndDecodeExe; Dest = Join-Path $distDir "pcsx5_snd_decode.exe" },
+    @{ Source = $bootParserExe; Dest = Join-Path $distDir "pcsx5_boot_parser.exe" }
 )
 
 foreach ($item in $filesToCopy) {

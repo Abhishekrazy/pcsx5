@@ -341,6 +341,8 @@ PCSX5_API int pcsx5_load(const char* eboot_path) {
     return 0;
 }
 
+static std::atomic<bool> g_paused{false};
+
 // ---------------------------------------------------------------------------
 // pcsx5_run — guest worker thread + window/message loop on the calling
 // thread (GLFW was initialized here, so the pump must stay here).
@@ -370,6 +372,10 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
     });
 
     while (!guest_done.load(std::memory_order_acquire)) {
+        if (g_paused.load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
         GPU::PumpWindowEvents();
         GPU::PollEvents();
         if (GPU::HasWindow() && GPU::ShouldCloseWindow()) {
@@ -420,10 +426,18 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
 }
 
 // ---------------------------------------------------------------------------
-// pcsx5_stop — thread-safe stop request observed on the next HLE dispatch.
+// pcsx5_stop / pcsx5_pause / pcsx5_resume
 // ---------------------------------------------------------------------------
 PCSX5_API void pcsx5_stop(void) {
     HLE::RequestStop();
+}
+
+PCSX5_API void pcsx5_pause(void) {
+    g_paused.store(true, std::memory_order_release);
+}
+
+PCSX5_API void pcsx5_resume(void) {
+    g_paused.store(false, std::memory_order_release);
 }
 
 // ---------------------------------------------------------------------------

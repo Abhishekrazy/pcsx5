@@ -119,6 +119,8 @@ set(CPU_SRC
     src/cpu/cpu.cpp
     src/cpu/amd_compat.h
     src/cpu/amd_compat.cpp
+    src/common/platform/platform.h
+    src/common/platform/platform_win32.cpp
 )
 
 # Shader recompiler (Phase 5 M2) — decoder, metadata reader, SPIR-V builder
@@ -278,7 +280,17 @@ add_library(pcsx5_core SHARED
 add_executable(pcsx5_cli
     src/main.cpp
     src/pcsx5.rc
+    src/common/log.cpp
+    src/common/nid.cpp
+    src/gpu/input/input_backend.h
+    src/gpu/input/input_backend.cpp
+    src/gpu/input/glfw_keyboard_backend.cpp
+    src/gpu/input/xinput_backend.cpp
+    src/gpu/input/dualsense_input_backend.cpp
+    src/gpu/input/sdl_gamecontroller_backend.cpp
+    src/gpu/dualsense_hid.h
 )
+target_include_directories(pcsx5_cli PRIVATE src ${GLFW3_INCLUDE_DIR})
 
 include(CTest)
 if(BUILD_TESTING)
@@ -687,7 +699,7 @@ target_compile_definitions(pcsx5_core PRIVATE PCSX5_HAS_LUA PCSX5_TLS_PATCH_FULL
 target_link_libraries(pcsx5_core PRIVATE glfw Vulkan::Headers lua ws2_32 nlohmann_json::nlohmann_json atrac9)
 target_include_directories(pcsx5_core PRIVATE src)
 
-target_link_libraries(pcsx5_cli PRIVATE pcsx5_core)
+target_link_libraries(pcsx5_cli PRIVATE pcsx5_core glfw Vulkan::Headers)
 target_include_directories(pcsx5_cli PRIVATE src)
 
 # Add Windows SDK include path for resource compiler (RC) to find windows.h
@@ -750,11 +762,7 @@ add_executable(dump_imports
     target_compile_options(nid_scan PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
 
     # ------------------------------------------------------------------------
-    # dualsense_test — standalone console utility that opens the DualSense
-    # through the header-only reader in src/gpu/dualsense_hid.h and shows a
-    # live view of every parsed input (buttons/sticks/triggers/touch/gyro/
-    # accel/transport) plus keyboard-driven output tests (rumble + adaptive
-    # trigger effects).  Interactive dev tool; not a ctest test.
+    # dualsense_test — redirection shim to pcsx5_cli --test-input (D3.4).
     # ------------------------------------------------------------------------
     add_executable(dualsense_test
         tools/dualsense_test.cpp
@@ -764,37 +772,14 @@ add_executable(dump_imports
     target_compile_options(dualsense_test PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
 
     # ------------------------------------------------------------------------
-    # dualsense_visual — windowed Dear ImGui DualSense tester.  Same input
-    # path as dualsense_test (src/gpu/dualsense_hid.h) rendered live: buttons
-    # with a per-button "tested" checklist, stick plots, L2/R2 bars, touchpad
-    # finger view, gyro/accel, plus rumble and adaptive-trigger output
-    # controls.  Interactive dev tool; not a ctest test.
+    # dualsense_visual — redirection shim to pcsx5_cli --test-input (D3.4).
     # ------------------------------------------------------------------------
     add_executable(dualsense_visual
         tools/dualsense_visual.cpp
         src/common/log.cpp
-        ${IMGUI_DIR}/imgui.cpp
-        ${IMGUI_DIR}/imgui_draw.cpp
-        ${IMGUI_DIR}/imgui_tables.cpp
-        ${IMGUI_DIR}/imgui_widgets.cpp
-        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
     )
-    target_include_directories(dualsense_visual PRIVATE src ${IMGUI_DIR} ${IMGUI_DIR}/backends)
+    target_include_directories(dualsense_visual PRIVATE src)
     target_compile_options(dualsense_visual PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    # ImGui is third-party: keep it at /W3 without /WX (MSVC warns on the
-    # OpenGL3 backend under /W4, e.g. C4701 on last_pixel_unpack_buffer).
-    set_source_files_properties(
-        ${IMGUI_DIR}/imgui.cpp
-        ${IMGUI_DIR}/imgui_draw.cpp
-        ${IMGUI_DIR}/imgui_tables.cpp
-        ${IMGUI_DIR}/imgui_widgets.cpp
-        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
-        TARGET_DIRECTORY dualsense_visual
-        PROPERTIES COMPILE_OPTIONS "/W3"
-    )
-    target_link_libraries(dualsense_visual PRIVATE glfw opengl32)
 
     # Dump the dynamic-tag table of a real PS5 game ELF to identify
     # which DT_* / PT_* tags are actually used (Sony-specific tags
@@ -1471,6 +1456,8 @@ add_executable(dump_imports
         src/hle/libnp.cpp
         src/hle/libkeystone.cpp
         src/hle/libatrac9.cpp
+        src/hle/libjson.h
+        src/hle/libjson.cpp
         src/hle/libaudioout.cpp
         ${DISPATCHER_SRC}
     )

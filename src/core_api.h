@@ -67,6 +67,10 @@ PCSX5_API int  pcsx5_run(pcsx5_window_cb window_cb, void* window_user);
 // observes the flag on its next HLE dispatch and pcsx5_run() returns.
 PCSX5_API void pcsx5_stop(void);
 
+// Pause / resume emulator execution loop. Safe to call from any thread.
+PCSX5_API void pcsx5_pause(void);
+PCSX5_API void pcsx5_resume(void);
+
 // Tear down all subsystems and persist the run summary/reports.  Must be
 // called after pcsx5_run() returns (or after a failed load) before the
 // process exits or a new session starts.

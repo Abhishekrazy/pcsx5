@@ -46,6 +46,12 @@ namespace Pcsx5Ui
         internal static extern void pcsx5_stop();
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_pause();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_resume();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern void pcsx5_shutdown();
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
