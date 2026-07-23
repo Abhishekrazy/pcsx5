@@ -93,7 +93,10 @@ struct DrawState {
 
 // Per-batch limits.  Exceeding one rotates the batch (submit + one fence
 // wait), so the wait is the resource-reuse sync point, not a per-draw one.
-constexpr u32          kBatchDraws      = 64;
+// O2.1: increased from 64 → 256 to reduce batch rotations during complex
+// draws.  Each draw takes one slot; 256 draws per flip is well above the
+// needs of any current title, so RotateBatch is almost never called.
+constexpr u32          kBatchDraws      = 256;
 constexpr VkDeviceSize kScalarSlotBytes = 256 * sizeof(u32);
 constexpr VkDeviceSize kIndexRingBytes  = 16ull * 1024 * 1024;
 constexpr VkDeviceSize kStagingRingBytes = 64ull * 1024 * 1024;
