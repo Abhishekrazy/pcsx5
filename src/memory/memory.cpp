@@ -220,10 +220,38 @@ Status Map(guest_addr_t address, u64 size, u32 protection, guest_addr_t* out_add
         return Status::InvalidArgument;
     }
 
-    const u64 aligned_size = ALIGN_UP(size, PAGE_SIZE);
+    u64 aligned_size = ALIGN_UP(size, PAGE_SIZE);
     const DWORD win_prot = TranslateProtection(protection);
     void* requested = reinterpret_cast<void*>(address);
-    void* allocated = VirtualAlloc(requested, aligned_size, MEM_RESERVE | MEM_COMMIT, win_prot);
+
+    // O1.1: try large pages (2 MB) for allocations >= 2 MB.  Falls back
+    // to regular 4 KB pages if the privilege is not held or the system
+    // does not support large pages.
+    void* allocated = nullptr;
+    const size_t large_page_min = ::GetLargePageMinimum();
+    if (large_page_min > 0 && aligned_size >= large_page_min) {
+        // SeLockMemoryPrivilege is required; enable best-effort.
+        HANDLE token = nullptr;
+        if (::OpenProcessToken(::GetCurrentProcess(),
+                                TOKEN_ADJUST_PRIVILEGES, &token)) {
+            TOKEN_PRIVILEGES tp{};
+            tp.PrivilegeCount = 1;
+            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            ::LookupPrivilegeValueA(nullptr, SE_LOCK_MEMORY_NAME,
+                                    &tp.Privileges[0].Luid);
+            ::AdjustTokenPrivileges(token, FALSE, &tp, 0, nullptr, nullptr);
+            ::CloseHandle(token);
+        }
+        // Align to large page size for MEM_LARGE_PAGES.
+        aligned_size = ALIGN_UP(aligned_size, large_page_min);
+        allocated = ::VirtualAlloc(requested, aligned_size,
+                                   MEM_RESERVE | MEM_COMMIT | MEM_LARGE_PAGES,
+                                   win_prot);
+    }
+    if (!allocated) {
+        allocated = ::VirtualAlloc(requested, aligned_size,
+                                   MEM_RESERVE | MEM_COMMIT, win_prot);
+    }
     if (!allocated) {
         const DWORD err = GetLastError();
         LOG_ERROR(Memory, "Map: VirtualAlloc failed at 0x%llx size=0x%llx prot=%u (err=%lu)",
