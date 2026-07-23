@@ -59,6 +59,10 @@ struct GraphicsConfig {
     bool  fullscreen       = false;
     int   renderer         = 0;                // 0=Vulkan, 1=OpenGL (future)
     float resolution_scale = 1.0f;             // 0.5..2.0
+    bool  vsync            = true;             // true = VK_PRESENT_MODE_FIFO_KHR
+    bool  vrr              = false;            // Variable Refresh Rate (VRR/FreeSync/G-SYNC)
+    int   vrr_min_fps      = 40;               // VRR floor (0 = use display's min)
+    int   present_mode     = -1;               // -1=auto, 0=FIFO, 1=RELAXED, 2=IMMEDIATE, 3=MAILBOX
 };
 
 struct AudioConfig {
