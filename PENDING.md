@@ -48,7 +48,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] D2 Lightbar RGB — fixed enable flag bits and byte positions per SDL spec
 - [x] D3 ButtonLayout shared component (ImGui renderer + battery status + "tested" checklist)
 - [x] D4 Player LEDs wired (scePadSetPlayerIndicator → SetPlayerLeds) + battery in overlay + scePadSetLightBar → SetLightBar
-- [ ] **D3.3 Embed ButtonLayout in WPF UI** (port to C# UserControl)
+- [x] D3.3 WPF ControllerVisualizer UserControl (animated buttons, sticks, triggers, touchpad, battery)
 - [ ] **D3.4 Replace standalone tester tools** (redirect to unified `--test-input` CLI)
 
 ---
