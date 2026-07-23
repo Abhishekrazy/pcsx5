@@ -128,6 +128,13 @@ bool ExtractPkgPs5(const std::string& path,
                    const std::string& out_dir,
                    const std::string& passcode = kPkgPs5ScenePasscode);
 
+// Extract eboot.bin from a PS5 PKG by extracting the PFS image, mounting
+// it, and reading eboot.bin from the PFS filesystem.  If eboot.bin is not
+// at the PFS root, all PFS files are extracted to `out_dir`.
+bool ExtractEbootFromPkgPs5(const std::string& pkg_path,
+                             const std::string& out_dir,
+                             const std::string& passcode = kPkgPs5ScenePasscode);
+
 // High-level dispatch: auto-detect PS4 vs PS5 PKG by magic and extract.
 // Returns false for unknown/unparseable formats.
 bool ExtractAnyPkg(const std::string& path,
