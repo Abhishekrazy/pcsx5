@@ -52,6 +52,13 @@ namespace DualSense {
         bool battery_full = false;
         bool headphone_connected = false;
         u8 trigger_feedback[2] = { 0, 0 }; // raw effect feedback, [0]=left [1]=right
+        // Mic audio: 4 channels × 8 samples × 16-bit PCM captured from the
+        // directional mic array on DualSense.  Only present when the firmware
+        // is actively streaming mic audio (bit 0x04 in the status byte, offset
+        // o+53).  Data offset: o+74 for standard DualSense input (USB & BT).
+        bool mic_active = false;      // true when mic data is present in report
+        u8   mic_channels = 0;        // 1..4 active mic channels
+        s16  mic_samples[4][8] = {};  // [channel][sample] PCM16 data
     };
 
     namespace detail {
@@ -407,6 +414,29 @@ namespace DualSense {
                 s.trigger_feedback[0] = r[o + 42]; // left
                 s.trigger_feedback[1] = r[o + 41]; // right
             }
+            // Mic audio data: standard DualSense input reports carry 4
+            // channels × 8 samples of 16-bit PCM mic data at offset o+74
+            // when the mic is actively streaming.
+            s.mic_active = false;
+            s.mic_channels = 0;
+            if (!ds4_layout && len >= o + 74 + 64) {
+                // Check mic status: bit 2 (0x04) in the status byte at o+53
+                // indicates the mic audio stream is live.
+                if (r[o + 53] & 0x04) {
+                    s.mic_active = true;
+                    s.mic_channels = 4;
+                    for (int ch = 0; ch < 4; ++ch) {
+                        for (int smp = 0; smp < 8; ++smp) {
+                            const int off = o + 74 + (ch * 16) + (smp * 2);
+                            if (off + 2 <= static_cast<int>(len)) {
+                                s.mic_samples[ch][smp] = static_cast<s16>(
+                                    static_cast<s16>(r[off]) |
+                                    (static_cast<s16>(r[off + 1]) << 8));
+                            }
+                        }
+                    }
+                }
+            }
             s.touch_count = static_cast<u8>((s.touch[0].active ? 1 : 0) +
                                             (s.touch[1].active ? 1 : 0));
             s.connected = true;
@@ -536,13 +566,19 @@ namespace DualSense {
                     report[0] = 0x31;
                     report[1] = static_cast<u8>((g_out_seq & 0x0F) << 4);
                     g_out_seq = static_cast<u8>((g_out_seq + 1) & 0x0F);
-                    report[2] = 0x10;
+                    // BT report[2]: 0x00 = default.  0x10 enables speaker
+                    // audio data following the common payload — only set
+                    // when actually sending haptics+audio (future).
+                    report[2] = 0x00;
                     std::memcpy(report + 3, common, sizeof(common));
                     const u32 crc = DualSenseCrc32(report, 74, 0xA2);
                     report[74] = static_cast<u8>(crc);
                     report[75] = static_cast<u8>(crc >> 8);
                     report[76] = static_cast<u8>(crc >> 16);
                     report[77] = static_cast<u8>(crc >> 24);
+                    // BT output must be padded to g_out_report_len (typically
+                    // 547 bytes for DualSense BT) — the WriteFile below does
+                    // this via out_len = max(build_len, g_out_report_len).
                     build_len = 78;
                 }
             } else {
