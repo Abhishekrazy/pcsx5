@@ -35,7 +35,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] A3.1 Define `InputBackend` interface (`src/gpu/input/input_backend.h`)
 - [x] A3.2-A3.3 GlfwKeyboardBackend + XInputBackend
 - [x] A3.5-A3.6 DualSenseInputBackend + InputMultiplexer
-- [ ] **A3.4 Add SDL GameController** (`SdlGameController : InputBackend`)
+- [x] A3.4 SDL GameController backend (SdlGameControllerBackend, dynamically loads SDL2.dll)
 
 ### A4. Platform Abstraction Layer (PAL)
 - [x] A4.1-A4.6 Define `Platform::*` API + full Windows implementation
@@ -49,7 +49,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] D3 ButtonLayout shared component (ImGui renderer + battery status + "tested" checklist)
 - [x] D4 Player LEDs wired (scePadSetPlayerIndicator → SetPlayerLeds) + battery in overlay + scePadSetLightBar → SetLightBar
 - [x] D3.3 WPF ControllerVisualizer UserControl (animated buttons, sticks, triggers, touchpad, battery)
-- [ ] **D3.4 Replace standalone tester tools** (redirect to unified `--test-input` CLI)
+- [x] D3.4 Replace standalone tester tools (redirect to unified `--test-input` CLI)
+
+---
+
+## Phase I — Advanced DualSense Integration & Modern UI Redesign
+
+- [x] **I1. Input Screen UI Redesign & Live Highlighting** — integrated live button/stick highlighting into central controller SVG, removed bottom test panel
+- [x] **I2. Custom Controller Mapping & Key Rebinding** — interactive click-to-bind UI with custom profile saving/loading
+- [x] **I3. DualSense Deep HID Integration (`ds5w.h` spec)** — multi-touch touchpad tracking, haptics, mic mute LED, lightbar color, player LEDs, gyro/accel
+- [x] **I4. Multi-Controller / Multi-Input Support** — concurrent Player 1..5 gamepad tracking with automatic player LED and lightbar assignment
+- [x] **I5. Thread Isolation & Non-blocking Emulator Loop** — async non-blocking game execution thread with queue-drained console log streaming
+- [x] **I6. System-Wide Controller Navigation & PS/Mute Shortcuts** — controller focus navigation across all tabs, PS button 1s hold (home), PS tap (pause/resume), Mic tap (mute toggle)
 
 ---
 

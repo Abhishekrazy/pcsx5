@@ -1,4 +1,8 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "core_api.h"
+#include "gpu/gpu.h"
+#include "gpu/input/input_backend.h"
+#include "ui/button_layout.h"
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -7,6 +11,9 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+
+// Forward: input tester mode (D3.4).
+static int RunInputTester();
 
 namespace {
 
@@ -82,6 +89,8 @@ int main(int argc, char* argv[]) {
         } else if (a == "-h" || a == "--help") {
             PrintUsage();
             return 0;
+        } else if (a == "--test-input") {
+            target_path = "--test-input";
         } else if (target_path.empty()) {
             target_path = a;
         } else {
@@ -95,6 +104,11 @@ int main(int argc, char* argv[]) {
     // PKG-extraction mode: run standalone and exit (no emulator startup).
     if (!extract_pkg_path.empty()) {
         return pcsx5_extract_pkg(extract_pkg_path.c_str(), extract_pkg_outdir.c_str());
+    }
+
+    // Input tester mode: show the controller visualizer + all input backends.
+    if (target_path == "--test-input") {
+        return RunInputTester();
     }
 
     if (target_path.empty()) {
@@ -128,4 +142,98 @@ int main(int argc, char* argv[]) {
 
     pcsx5_shutdown();
     return rc;
+}
+
+// D3.4: console-based input tester (replaces standalone dualsense_test).
+// Polls all available input backends and prints live state once per second.
+// Full visual version (ImGui ButtonLayout) requires access to GPU internals;
+// use the existing debug overlay or one of the standalone tools for visuals.
+static int RunInputTester() {
+    // Create all input backends.
+    static const int kMaxBackends = 4;
+    InputBackend* backends[kMaxBackends] = {};
+    const char* backend_names[kMaxBackends] = {"Keyboard", "XInput", "SDL", "DualSense"};
+    backends[0] = InputBackend::Create("keyboard");
+    backends[1] = InputBackend::Create("xinput");
+    backends[2] = InputBackend::Create("sdl");
+    backends[3] = InputBackend::Create("dualsense");
+
+    int active = 0;
+    for (int i = 0; i < kMaxBackends; ++i) {
+        if (backends[i] && backends[i]->Initialize(0)) {
+            std::printf("[%s] initialized\n", backend_names[i]);
+            ++active;
+        } else {
+            delete backends[i];
+            backends[i] = nullptr;
+        }
+    }
+    if (active == 0) {
+        std::fprintf(stderr, "No input backends available.\n");
+        return 1;
+    }
+
+    std::printf("\nInput tester running — press Ctrl+C to exit.\n");
+    std::printf("Polling %d backend(s) every second...\n\n", active);
+
+    static const char* kButtonNames[] = {
+        "Up","Down","Left","Right","L3","R3","L1","R1",
+        "L2","R2","Cross","Circle","Square","Triangle",
+        "Options","PS","Touchpad"
+    };
+
+    int frame = 0;
+    while (true) {
+        Sleep(250);  // 4 Hz polling
+
+        // Poll backends and merge.
+        uint32_t merged_buttons = 0;
+        uint8_t lx = 128, ly = 128, rx = 128, ry = 128;
+        uint8_t l2 = 0, r2 = 0;
+        int touch_count = 0;
+        bool any_connected = false;
+
+        for (int i = 0; i < kMaxBackends; ++i) {
+            if (!backends[i]) continue;
+            ControllerState s{};
+            if (!backends[i]->Poll(s)) continue;
+            if (!any_connected && s.connected) {
+                any_connected = true;
+                lx = s.left_x; ly = s.left_y;
+                rx = s.right_x; ry = s.right_y;
+                l2 = s.l2; r2 = s.r2;
+                touch_count = s.touch_count;
+                merged_buttons = s.buttons;
+            } else if (s.connected) {
+                // Later backends override.
+                merged_buttons = s.buttons;
+                lx = s.left_x; ly = s.left_y;
+                rx = s.right_x; ry = s.right_y;
+                l2 = s.l2; r2 = s.r2;
+                touch_count = s.touch_count;
+            }
+        }
+
+        // Print state.
+        if (!any_connected) {
+            if (frame % 4 == 0) std::printf("[%04d] No controller connected\n", ++frame);
+            ++frame;
+            continue;
+        }
+
+        // Build button string.
+        char btn_str[128] = {};
+        for (size_t i = 0; i < sizeof(kButtonNames)/sizeof(kButtonNames[0]); ++i) {
+            if (merged_buttons & (1u << i)) {
+                std::strcat(btn_str, kButtonNames[i]);
+                std::strcat(btn_str, " ");
+            }
+        }
+
+        ++frame;
+        std::printf("[%04d] Buttons: %-40s | L2:%3d R2:%3d | LS:(%3d,%3d) RS:(%3d,%3d) | Touch:%d\n",
+                    frame, btn_str, l2, r2, lx, ly, rx, ry, touch_count);
+    }
+
+    return 0;
 }

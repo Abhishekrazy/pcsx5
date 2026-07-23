@@ -1056,10 +1056,51 @@ namespace Pcsx5Ui
                 }
                 else
                 {
-                    rc = CoreBridge.pcsx5_load(game.EbootPath);
+                    string ebootToRun = game.EbootPath;
+
+                    // PKG Auto-Boot Pipeline
+                    if (!string.IsNullOrEmpty(ebootToRun) && ebootToRun.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase))
+                    {
+                        LogConsole($"[PKG Auto-Boot] Processing PKG archive: \"{ebootToRun}\"");
+                        Dispatcher.Invoke(() => FooterStatus.Text = $"Extracting PKG: {game.Title}...");
+
+                        string cacheExtractDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Cache", "PKG_Extracted", game.TitleId);
+                        Directory.CreateDirectory(cacheExtractDir);
+
+                        int extractRc = CoreBridge.pcsx5_extract_pkg(ebootToRun, cacheExtractDir);
+                        if (extractRc == 0)
+                        {
+                            LogConsole($"[PKG Auto-Boot] PKG extracted to {cacheExtractDir}");
+                            string candidate = Path.Combine(cacheExtractDir, "eboot.bin");
+                            if (!File.Exists(candidate))
+                            {
+                                var foundFiles = Directory.GetFiles(cacheExtractDir, "eboot.bin", SearchOption.AllDirectories);
+                                if (foundFiles.Length > 0) candidate = foundFiles[0];
+                            }
+                            if (File.Exists(candidate))
+                            {
+                                ebootToRun = candidate;
+                                LogConsole($"[PKG Auto-Boot] Resolved executable: {ebootToRun}");
+                            }
+                        }
+                        else
+                        {
+                            LogConsole($"[PKG Auto-Boot] PKG extraction notice (code {extractRc}). Attempting direct load...");
+                        }
+                    }
+
+                    rc = CoreBridge.pcsx5_load(ebootToRun);
                     if (rc != 0)
                     {
                         LogConsole($"Error: pcsx5_load failed (code {rc}).");
+                        Dispatcher.BeginInvoke(() =>
+                        {
+                            CrashExcCodeText.Text = $"0x{rc:X8} (Boot Load Failure)";
+                            CrashRipText.Text = ebootToRun;
+                            CrashAnalysisText.Text = $"Failed to load binary at '{ebootToRun}'. The file may be encrypted or corrupted.";
+                            CrashRawText.Text = $"Path: {ebootToRun}\nTitleId: {game.TitleId}\nError Code: {rc}";
+                            CrashDialogOverlay.Visibility = Visibility.Visible;
+                        });
                     }
                     else
                     {
@@ -1261,22 +1302,19 @@ namespace Pcsx5Ui
             }
         }
 
-        // Toggle the in-app DualSense input tester panel (replaces the old
-        // external dualsense_visual.exe launcher).
+        private void ShowTab(string tabName)
+        {
+            if (LibraryView != null) LibraryView.Visibility = tabName == "Library" ? Visibility.Visible : Visibility.Collapsed;
+            if (AnalyzerView != null) AnalyzerView.Visibility = tabName == "Analyzer" ? Visibility.Visible : Visibility.Collapsed;
+            if (ControllerView != null) ControllerView.Visibility = (tabName == "Controller" || tabName == "Input") ? Visibility.Visible : Visibility.Collapsed;
+            if (SettingsView != null) SettingsView.Visibility = tabName == "Settings" ? Visibility.Visible : Visibility.Collapsed;
+            if (LogsView != null) LogsView.Visibility = tabName == "Logs" ? Visibility.Visible : Visibility.Collapsed;
+            if (GameView != null) GameView.Visibility = tabName == "Game" ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         private void ControllerTesterBtn_Click(object sender, RoutedEventArgs e)
         {
-            bool show = ControllerTesterPanel.Visibility != Visibility.Visible;
-            ControllerTesterPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            ControllerTesterBtn.Content = show ? "Hide Tester" : "Input Tester";
-            if (show)
-            {
-                StartControllerVizPolling(); // make sure the 60 Hz poll is running
-                UpdateTesterStatusText();
-            }
-            else
-            {
-                TesterStopAllOutputs();
-            }
+            // Panel removed in favor of live controller graphic overlay
         }
 
         // --- INPUT TESTER OUTPUT ACTIONS ---
@@ -1999,6 +2037,70 @@ namespace Pcsx5Ui
             yield return PadTriangleOverlay;
             yield return PadOptionsOverlay;
             yield return PadBackOverlay;
+            if (PadPsOverlay != null) yield return PadPsOverlay;
+        }
+
+        private Button _activeRebindBtn = null;
+        private string _activeRebindTag = null;
+        private bool _psDown = false;
+        private bool _psHoldTriggered = false;
+        private DateTime _psDownAt = DateTime.MinValue;
+        private bool _isEmulatorPaused = false;
+        private System.Collections.Generic.Dictionary<string, string> _customMappings = new System.Collections.Generic.Dictionary<string, string>();
+
+        private void BtnMap_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn)
+            {
+                if (_activeRebindBtn != null && _activeRebindBtn != btn)
+                {
+                    ResetRebindBtnStyle(_activeRebindBtn);
+                }
+                _activeRebindBtn = btn;
+                _activeRebindTag = btn.Tag as string ?? btn.Name;
+                btn.Content = "[Press Key/Button]";
+                btn.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 204, 0));
+                FooterStatus.Text = $"Rebinding {_activeRebindTag}... Press any controller button or key.";
+            }
+        }
+
+        private void ResetRebindBtnStyle(Button btn)
+        {
+            if (btn == null) return;
+            btn.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White);
+            string tag = btn.Tag as string ?? btn.Name;
+            if (_customMappings.TryGetValue(tag, out var saved))
+            {
+                btn.Content = saved;
+            }
+        }
+
+        private void CheckRebindInput(HostGamepadButtons buttons)
+        {
+            if (_activeRebindBtn == null) return;
+
+            string newBinding = null;
+            if (buttons != HostGamepadButtons.None)
+            {
+                foreach (HostGamepadButtons btnFlag in System.Enum.GetValues(typeof(HostGamepadButtons)))
+                {
+                    if (btnFlag != HostGamepadButtons.None && buttons.HasFlag(btnFlag))
+                    {
+                        newBinding = btnFlag.ToString().ToLower();
+                        break;
+                    }
+                }
+            }
+
+            if (newBinding != null)
+            {
+                _customMappings[_activeRebindTag] = newBinding;
+                _activeRebindBtn.Content = newBinding;
+                _activeRebindBtn.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 204, 102));
+                FooterStatus.Text = $"Rebound {_activeRebindTag} -> {newBinding}";
+                _activeRebindBtn = null;
+                _activeRebindTag = null;
+            }
         }
 
         private void ControllerVizTimer_Tick(object sender, EventArgs e)
@@ -2006,11 +2108,17 @@ namespace Pcsx5Ui
             if (!WindowsDualSenseReader.TryGetState(out var state) || !state.Connected)
             {
                 ClearControllerVizOverlays();
-                UpdateTesterReadouts(default);
                 return;
             }
 
             var b = state.Buttons;
+
+            // Check interactive button rebind
+            if (_activeRebindBtn != null && b != HostGamepadButtons.None)
+            {
+                CheckRebindInput(b);
+            }
+
             PadUpOverlay.Opacity = b.HasFlag(HostGamepadButtons.Up) ? 1 : 0;
             PadDownOverlay.Opacity = b.HasFlag(HostGamepadButtons.Down) ? 1 : 0;
             PadLeftOverlay.Opacity = b.HasFlag(HostGamepadButtons.Left) ? 1 : 0;
@@ -2025,6 +2133,8 @@ namespace Pcsx5Ui
             PadR3Overlay.Opacity = b.HasFlag(HostGamepadButtons.R3) ? 1 : 0;
             PadOptionsOverlay.Opacity = b.HasFlag(HostGamepadButtons.Options) ? 1 : 0;
             PadBackOverlay.Opacity = b.HasFlag(HostGamepadButtons.Back) ? 1 : 0;
+            if (PadPsOverlay != null) PadPsOverlay.Opacity = b.HasFlag(HostGamepadButtons.PlayStation) ? 1 : 0;
+            if (PadMuteOverlay != null) PadMuteOverlay.Opacity = (b.HasFlag(HostGamepadButtons.Mic) || _micLedToggledOn) ? 1 : 0;
 
             // Triggers light up proportionally to their analog value
             PadL2Overlay.Opacity = Math.Max(state.LeftTrigger / 255.0, b.HasFlag(HostGamepadButtons.L2) ? 1 : 0);
@@ -2037,16 +2147,82 @@ namespace Pcsx5Ui
             PadTouchCenterOverlay.Opacity = clicked || TouchInZone(state, 640, 1280) ? 1 : 0;
             PadTouchRightOverlay.Opacity = clicked || TouchInZone(state, 1280, 1920) ? 1 : 0;
 
+            // Touch finger dots
+            if (TouchDot0 != null)
+            {
+                if (state.Touch0.Active)
+                {
+                    TouchDot0.Visibility = Visibility.Visible;
+                    Canvas.SetLeft(TouchDot0, 402 + (state.Touch0.X * 240.0 / 1919.0));
+                    Canvas.SetTop(TouchDot0, 268 + (state.Touch0.Y * 150.0 / 1079.0));
+                }
+                else
+                {
+                    TouchDot0.Visibility = Visibility.Hidden;
+                }
+            }
+            if (TouchDot1 != null)
+            {
+                if (state.Touch1.Active)
+                {
+                    TouchDot1.Visibility = Visibility.Visible;
+                    Canvas.SetLeft(TouchDot1, 402 + (state.Touch1.X * 240.0 / 1919.0));
+                    Canvas.SetTop(TouchDot1, 268 + (state.Touch1.Y * 150.0 / 1079.0));
+                }
+                else
+                {
+                    TouchDot1.Visibility = Visibility.Hidden;
+                }
+            }
+
             MoveStickDot(LeftStickDot, LeftStickCenterX, LeftStickCenterY, state.LeftX, state.LeftY);
             MoveStickDot(RightStickDot, RightStickCenterX, RightStickCenterY, state.RightX, state.RightY);
 
-            if (_micTestActive && TesterMicLevelBar != null)
+            // PS Button Shortcut Handling:
+            // Press & hold 1.0s -> close game and navigate to Home/Library
+            // Tap PS button -> pause / resume emulator
+            bool psPressed = b.HasFlag(HostGamepadButtons.PlayStation);
+            if (psPressed)
             {
-                // RMS is small in practice; boost x3 and clamp for display.
-                TesterMicLevelBar.Value = Math.Min(1.0, DualSenseAudio.CurrentLevel * 3.0) * 100.0;
+                if (!_psDown)
+                {
+                    _psDown = true;
+                    _psDownAt = DateTime.UtcNow;
+                    _psHoldTriggered = false;
+                }
+                else if (!_psHoldTriggered && (DateTime.UtcNow - _psDownAt).TotalMilliseconds >= 1000.0)
+                {
+                    _psHoldTriggered = true;
+                    if (_coreRunning)
+                    {
+                        StopButton_Click(null, null);
+                    }
+                    ShowTab("Library");
+                    FooterStatus.Text = "PS Button Hold (1s): Returned to Home Library";
+                    LogConsole("PS Button hold 1s: Closed game and returned to Library.");
+                }
             }
-
-            UpdateTesterReadouts(state);
+            else if (_psDown)
+            {
+                _psDown = false;
+                if (!_psHoldTriggered && (DateTime.UtcNow - _psDownAt).TotalMilliseconds < 1000.0)
+                {
+                    _isEmulatorPaused = !_isEmulatorPaused;
+                    if (_isEmulatorPaused)
+                    {
+                        CoreBridge.pcsx5_pause();
+                        FooterStatus.Text = "Emulator Paused [PS Button Tap]";
+                        LogConsole("PS Button tap: Emulator PAUSED.");
+                    }
+                    else
+                    {
+                        CoreBridge.pcsx5_resume();
+                        FooterStatus.Text = _selectedGame != null ? $"Running: {_selectedGame.Title}" : "Ready";
+                        LogConsole("PS Button tap: Emulator RESUMED.");
+                    }
+                }
+                _psHoldTriggered = false;
+            }
         }
 
         private static bool TouchInZone(in HostGamepadState state, int minX, int maxX)
@@ -2091,6 +2267,76 @@ namespace Pcsx5Ui
             }
         }
 
+        private void TestRumbleBtn_Click(object sender, RoutedEventArgs e)
+        {
+            WindowsDualSenseReader.SetRumble(200, 160);
+            Task.Delay(500).ContinueWith(_ => WindowsDualSenseReader.SetRumble(0, 0));
+            LogConsole("Vibration Test: Haptic rumble pulse triggered.");
+            FooterStatus.Text = "Vibration Test Pulse Triggered";
+        }
+
+        private void ToggleMicBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _micLedToggledOn = !_micLedToggledOn;
+            WindowsDualSenseReader.SetMicLed(_micLedToggledOn ? (byte)1 : (byte)0);
+            LogConsole($"Microphone Mute LED: {(_micLedToggledOn ? "ON" : "OFF")}");
+            FooterStatus.Text = $"Microphone Mute LED: {(_micLedToggledOn ? "ON" : "OFF")}";
+        }
+
+        private void RestoreDefaultMappings_Click(object sender, RoutedEventArgs e)
+        {
+            _customMappings.Clear();
+            if (BtnMapUp != null) BtnMapUp.Content = "pad_up";
+            if (BtnMapLeft != null) BtnMapLeft.Content = "pad_left";
+            if (BtnMapRight != null) BtnMapRight.Content = "pad_right";
+            if (BtnMapDown != null) BtnMapDown.Content = "pad_down";
+            if (BtnMapL1 != null) BtnMapL1.Content = "l1";
+            if (BtnMapL2 != null) BtnMapL2.Content = "l2";
+            if (BtnMapTriangle != null) BtnMapTriangle.Content = "triangle";
+            if (BtnMapCircle != null) BtnMapCircle.Content = "circle";
+            if (BtnMapCross != null) BtnMapCross.Content = "cross";
+            if (BtnMapSquare != null) BtnMapSquare.Content = "square";
+            if (BtnMapR1 != null) BtnMapR1.Content = "r1";
+            if (BtnMapR2 != null) BtnMapR2.Content = "r2";
+            if (BtnMapL3 != null) BtnMapL3.Content = "l3";
+            if (BtnMapOptions != null) BtnMapOptions.Content = "options";
+            if (BtnMapR3 != null) BtnMapR3.Content = "r3";
+            if (BtnMapTouchpadCenter != null) BtnMapTouchpadCenter.Content = "back";
+            LogConsole("Input Mappings restored to default configuration.");
+            FooterStatus.Text = "Mappings Restored to Default";
+        }
+
+        private void CtrlActiveGamepadCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (CtrlActiveGamepadCombo == null) return;
+            int idx = CtrlActiveGamepadCombo.SelectedIndex;
+            byte r = 0, g = 0, b = 255;
+            byte playerLed = 0x04;
+
+            switch (idx)
+            {
+                case 0: // P1 Blue
+                    r = 0; g = 0; b = 255; playerLed = 0x04;
+                    break;
+                case 1: // P2 Red
+                    r = 255; g = 0; b = 0; playerLed = 0x0A;
+                    break;
+                case 2: // P3 Green
+                    r = 0; g = 255; b = 0; playerLed = 0x15;
+                    break;
+                case 3: // P4 Purple
+                    r = 180; g = 0; b = 255; playerLed = 0x1B;
+                    break;
+                default:
+                    r = 0; g = 153; b = 255; playerLed = 0x04;
+                    break;
+            }
+
+            WindowsDualSenseReader.SetLightbar(r, g, b);
+            WindowsDualSenseReader.SetPlayerLeds(playerLed);
+            LogConsole($"Active Gamepad Slot {idx + 1} selected (Player LED 0x{playerLed:X2}, Lightbar RGB #{r:X2}{g:X2}{b:X2}).");
+        }
+
         private void MoveStickDot(Ellipse dot, double centerX, double centerY, byte axisX, byte axisY)
         {
             double offsetX = ((axisX - 128) / 128.0) * StickDotRange;
@@ -2099,6 +2345,243 @@ namespace Pcsx5Ui
             Canvas.SetTop(dot, centerY - StickDotSize / 2 + offsetY);
         }
 
+
+        private List<Control> GetSettingsControls()
+        {
+            return new List<Control>
+            {
+                GameFoldersListBox,
+                BtnAddFolder,
+                BtnRemoveFolder,
+                GpuRendererCombo,
+                GpuFullscreenCheck,
+                GpuResScaleSlider,
+                GpuWidthText,
+                GpuHeightText,
+                SndBackendCombo,
+                SndVolumeSlider,
+                SndBufferSlider,
+                SndTitleMusicCheck,
+                InBackendCombo,
+                InDeadzoneSlider,
+                InRumbleCheck,
+                HleStrictCheck,
+                HleTraceCheck,
+                HleTraceCapSlider,
+                HleWriteDumpCheck,
+                LogMinLevelCombo,
+                LogFileAppendCheck,
+                LogJsonCheck,
+                UiLanguageCombo,
+                UiScaleCombo,
+                SaveSettingsBtn
+            };
+        }
+
+        private List<Control> GetControllerSetupControls()
+        {
+            return new List<Control>
+            {
+                CtrlConfigCombo,
+                CtrlUsePerGameConfigCheck,
+                CtrlActiveGamepadCombo,
+                BtnMapUp,
+                BtnMapLeft,
+                BtnMapRight,
+                BtnMapDown,
+                BtnMapL1,
+                BtnMapL2,
+                CtrlMinDeadzoneLSlider,
+                CtrlMaxDeadzoneLSlider,
+                BtnMapLeftStickUp,
+                BtnMapLeftStickLeft,
+                BtnMapLeftStickRight,
+                BtnMapLeftStickDown,
+                BtnMapTriangle,
+                BtnMapCircle,
+                BtnMapCross,
+                BtnMapSquare,
+                BtnMapR1,
+                BtnMapR2,
+                CtrlMinDeadzoneRSlider,
+                CtrlMaxDeadzoneRSlider,
+                BtnMapRightStickUp,
+                BtnMapRightStickLeft,
+                BtnMapRightStickRight,
+                BtnMapRightStickDown,
+                TestRumbleBtn,
+                ToggleMicBtn,
+                RestoreDefaultMappingsBtn,
+                SaveSettingsBtn
+            };
+        }
+
+        private void HandleSettingsGamepadNav(bool up, bool down, bool left, bool right, bool a, bool b)
+        {
+            var controls = GetSettingsControls().Where(c => c != null && c.IsVisible).ToList();
+            if (controls.Count == 0) return;
+
+            int focusedIdx = controls.FindIndex(c => c.IsKeyboardFocused);
+
+            if (up || down)
+            {
+                int newIdx = (focusedIdx == -1) ? 0 : (down ? (focusedIdx + 1) % controls.Count : (focusedIdx - 1 + controls.Count) % controls.Count);
+                controls[newIdx].Focus();
+                controls[newIdx].BringIntoView();
+                return;
+            }
+
+            if (focusedIdx >= 0 && focusedIdx < controls.Count)
+            {
+                var focused = controls[focusedIdx];
+                if (focused is ComboBox combo)
+                {
+                    if (left || right)
+                    {
+                        if (combo.Items.Count > 0)
+                        {
+                            int idx = combo.SelectedIndex;
+                            combo.SelectedIndex = left ? Math.Max(0, idx - 1) : Math.Min(combo.Items.Count - 1, idx + 1);
+                        }
+                    }
+                    else if (a)
+                    {
+                        combo.IsDropDownOpen = !combo.IsDropDownOpen;
+                    }
+                    else if (b && combo.IsDropDownOpen)
+                    {
+                        combo.IsDropDownOpen = false;
+                    }
+                }
+                else if (focused is Slider slider)
+                {
+                    if (left || right)
+                    {
+                        double step = slider.TickFrequency > 0 ? slider.TickFrequency : (slider.Maximum - slider.Minimum) / 10.0;
+                        if (step <= 0) step = 0.05;
+                        slider.Value = left ? Math.Max(slider.Minimum, slider.Value - step) : Math.Min(slider.Maximum, slider.Value + step);
+                    }
+                }
+                else if (focused is CheckBox cb)
+                {
+                    if (a)
+                    {
+                        cb.IsChecked = !(cb.IsChecked == true);
+                    }
+                }
+                else if (focused is Button btn)
+                {
+                    if (a)
+                    {
+                        btn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    }
+                }
+                else if (focused is TextBox tb)
+                {
+                    if (left || right)
+                    {
+                        if (int.TryParse(tb.Text, out var v))
+                        {
+                            int step = 50;
+                            tb.Text = (left ? Math.Max(100, v - step) : Math.Min(3840, v + step)).ToString();
+                        }
+                    }
+                }
+            }
+        }
+
+        private void HandleControllerSetupGamepadNav(bool up, bool down, bool left, bool right, bool a, bool b)
+        {
+            if (_activeRebindBtn != null && b)
+            {
+                ResetRebindBtnStyle(_activeRebindBtn);
+                _activeRebindBtn = null;
+                _activeRebindTag = null;
+                FooterStatus.Text = "Rebind cancelled.";
+                return;
+            }
+
+            var controls = GetControllerSetupControls().Where(c => c != null && c.IsVisible).ToList();
+            if (controls.Count == 0) return;
+
+            int focusedIdx = controls.FindIndex(c => c.IsKeyboardFocused);
+
+            if (up || down)
+            {
+                int newIdx = (focusedIdx == -1) ? 0 : (down ? (focusedIdx + 1) % controls.Count : (focusedIdx - 1 + controls.Count) % controls.Count);
+                controls[newIdx].Focus();
+                controls[newIdx].BringIntoView();
+                return;
+            }
+
+            if (focusedIdx >= 0 && focusedIdx < controls.Count)
+            {
+                var focused = controls[focusedIdx];
+                if (focused is ComboBox combo)
+                {
+                    if (left || right)
+                    {
+                        if (combo.Items.Count > 0)
+                        {
+                            int idx = combo.SelectedIndex;
+                            combo.SelectedIndex = left ? Math.Max(0, idx - 1) : Math.Min(combo.Items.Count - 1, idx + 1);
+                        }
+                    }
+                    else if (a)
+                    {
+                        combo.IsDropDownOpen = !combo.IsDropDownOpen;
+                    }
+                }
+                else if (focused is Slider slider)
+                {
+                    if (left || right)
+                    {
+                        double step = slider.TickFrequency > 0 ? slider.TickFrequency : 5;
+                        slider.Value = left ? Math.Max(slider.Minimum, slider.Value - step) : Math.Min(slider.Maximum, slider.Value + step);
+                    }
+                }
+                else if (focused is CheckBox cb)
+                {
+                    if (a) cb.IsChecked = !(cb.IsChecked == true);
+                }
+                else if (focused is Button btn)
+                {
+                    if (a) btn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }
+            }
+        }
+
+        private void HandleAnalyzerGamepadNav(bool up, bool down, bool a)
+        {
+            if (up || down)
+            {
+                if (AnalyzerListView.Items.Count > 0)
+                {
+                    int idx = AnalyzerListView.SelectedIndex;
+                    if (idx == -1) idx = 0;
+                    else idx = down ? Math.Min(AnalyzerListView.Items.Count - 1, idx + 1) : Math.Max(0, idx - 1);
+                    AnalyzerListView.SelectedIndex = idx;
+                    AnalyzerListView.ScrollIntoView(AnalyzerListView.SelectedItem);
+                }
+            }
+            else if (a)
+            {
+                AnalyzeAll_Click(this, null);
+            }
+        }
+
+        private void HandleLogsGamepadNav(bool up, bool down, bool a)
+        {
+            if (up || down)
+            {
+                if (up) ConsoleOutputTextBox.LineUp();
+                else ConsoleOutputTextBox.LineDown();
+            }
+            else if (a)
+            {
+                CopyConsole_Click(this, null);
+            }
+        }
 
         private void ControllerTimer_Tick(object sender, EventArgs e)
         {
@@ -2164,11 +2647,12 @@ namespace Pcsx5Ui
             bool psPressed = ((buttons & 0x0400) != 0) && ((prevButtons & 0x0400) == 0); // PS Button / Guide
             bool l1Pressed = ((buttons & 0x0100) != 0) && ((prevButtons & 0x0100) == 0); // L1 / Tab Left
             bool r1Pressed = ((buttons & 0x0200) != 0) && ((prevButtons & 0x0200) == 0); // R1 / Tab Right
+            bool yPressed = ((buttons & 0x8000) != 0) && ((prevButtons & 0x8000) == 0); // Triangle/Y
 
             // Map Left Thumbstick and D-Pad with a cooldown to support smooth continuous scrolling when held
             const int stickThreshold = 15000;
 
-            if ((DateTime.Now - _lastAnalogNav).TotalMilliseconds > 250)
+            if ((DateTime.Now - _lastAnalogNav).TotalMilliseconds > 220)
             {
                 if (lx < -stickThreshold || (buttons & 0x0004) != 0) { leftPressed = true; _lastAnalogNav = DateTime.Now; }
                 else if (lx > stickThreshold || (buttons & 0x0008) != 0) { rightPressed = true; _lastAnalogNav = DateTime.Now; }
@@ -2179,7 +2663,6 @@ namespace Pcsx5Ui
             // PS Button Action (Home Button)
             if (psPressed)
             {
-                // If game is running, ask the in-proc core to stop the guest
                 if (_coreRunning)
                 {
                     try
@@ -2191,7 +2674,6 @@ namespace Pcsx5Ui
                 }
                 else
                 {
-                    // If no game is running, bring the UI window to focus
                     Dispatcher.Invoke(() =>
                     {
                         if (this.WindowState == WindowState.Minimized)
@@ -2207,17 +2689,38 @@ namespace Pcsx5Ui
                 return;
             }
 
-            // If game is running, do not navigate UI (controller input is passed to the game backend)
+            // If game is running, do not navigate launcher UI
             if (_coreRunning)
             {
                 _prevInputState = state;
                 return;
             }
 
-            // Shoulder buttons tab cycling
-            if (l1Pressed || r1Pressed)
+            Dispatcher.Invoke(() =>
             {
-                Dispatcher.Invoke(() =>
+                // Overlay Dialog Traps
+                if (FirstRunOverlay != null && FirstRunOverlay.Visibility == Visibility.Visible)
+                {
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [D-Pad Left/Right] Move  •  [✕] Select";
+                    if (aPressed)
+                    {
+                        if (FirstRunContinueBtn.IsEnabled) FirstRunContinue_Click(this, null);
+                        else FirstRunBrowse_Click(this, null);
+                    }
+                    else if (bPressed) FirstRunSkip_Click(this, null);
+                    _prevInputState = state;
+                    return;
+                }
+                if (CrashDialogOverlay != null && CrashDialogOverlay.Visibility == Visibility.Visible)
+                {
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [✕] Dismiss  •  [◯] Close Overlay";
+                    if (aPressed || bPressed) DismissCrashDialog_Click(this, null);
+                    _prevInputState = state;
+                    return;
+                }
+
+                // Shoulder buttons tab cycling
+                if (l1Pressed || r1Pressed)
                 {
                     Button[] tabs = { TabLibraryBtn, TabAnalyzerBtn, TabControllerBtn, TabSettingsBtn, TabLogsBtn };
                     int activeIndexTab = 0;
@@ -2239,31 +2742,21 @@ namespace Pcsx5Ui
                         case 3: TabSettings_Click(this, null); break;
                         case 4: TabLogs_Click(this, null); break;
                     }
-                });
-            }
+                    _prevInputState = state;
+                    return;
+                }
 
-            // Navigate the UI if in Game Library
-            if (LibraryView.Visibility == Visibility.Visible && _games.Count > 0)
-            {
-                if (leftPressed || rightPressed)
+                // Navigation per Active Tab
+                if (LibraryView.Visibility == Visibility.Visible)
                 {
-                    int currentIndex = _selectedGame != null ? _games.IndexOf(_selectedGame) : -1;
-                    if (currentIndex != -1)
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad] Select Game  •  [✕] Play Game  •  [△] Analyzer  •  [◯] Stop";
+                    if (_games.Count > 0)
                     {
-                        int newIndex = currentIndex;
-                        if (leftPressed)
+                        if (leftPressed || rightPressed)
                         {
-                            newIndex = (currentIndex - 1 + _games.Count) % _games.Count;
-                        }
-                        else if (rightPressed)
-                        {
-                            newIndex = (currentIndex + 1) % _games.Count;
-                        }
-
-                        Dispatcher.Invoke(() =>
-                        {
+                            int currentIndex = _selectedGame != null ? _games.IndexOf(_selectedGame) : 0;
+                            int newIndex = leftPressed ? (currentIndex - 1 + _games.Count) % _games.Count : (currentIndex + 1) % _games.Count;
                             SelectGame(_games[newIndex]);
-                            // Scroll to selected game item
                             foreach (Border card in GamesWrapPanel.Children)
                             {
                                 if (card.Tag == _games[newIndex])
@@ -2272,32 +2765,45 @@ namespace Pcsx5Ui
                                     break;
                                 }
                             }
-                        });
-                    }
-                }
+                        }
 
-                if (aPressed)
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (LaunchButton.IsEnabled && _selectedGame != null)
+                        if (aPressed && LaunchButton.IsEnabled && _selectedGame != null)
                         {
                             LaunchButton_Click(this, null);
                         }
-                    });
-                }
 
-                if (bPressed)
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (StopButton.Visibility == Visibility.Visible)
+                        if (bPressed && StopButton.Visibility == Visibility.Visible)
                         {
                             StopButton_Click(this, null);
                         }
-                    });
+
+                        if (yPressed && _selectedGame != null)
+                        {
+                            TabAnalyzer_Click(this, null);
+                        }
+                    }
                 }
-            }
+                else if (SettingsView.Visibility == Visibility.Visible)
+                {
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad Up/Down] Change Setting  •  [D-Pad Left/Right] Adjust Value  •  [✕] Toggle/Select";
+                    HandleSettingsGamepadNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
+                }
+                else if (ControllerView.Visibility == Visibility.Visible)
+                {
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad] Navigate  •  [✕] Rebind / Action  •  [◯] Cancel";
+                    HandleControllerSetupGamepadNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
+                }
+                else if (AnalyzerView.Visibility == Visibility.Visible)
+                {
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad Up/Down] Select Executable  •  [✕] Analyze All";
+                    HandleAnalyzerGamepadNav(upPressed, downPressed, aPressed);
+                }
+                else if (LogsView.Visibility == Visibility.Visible)
+                {
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad Up/Down] Scroll Output  •  [✕] Copy Logs";
+                    HandleLogsGamepadNav(upPressed, downPressed, aPressed);
+                }
+            });
 
             _prevInputState = state;
         }
