@@ -194,6 +194,8 @@ add_library(pcsx5_core SHARED
     src/loader/param_json.cpp
     src/loader/pkg.h
     src/loader/pkg.cpp
+    src/loader/pkg_ps5.h
+    src/loader/pkg_ps5.cpp
     src/loader/pfs.h
     src/loader/pfs.cpp
     src/loader/module_graph.h
@@ -221,10 +223,19 @@ add_library(pcsx5_core SHARED
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/audio/audio_device.h
+    src/hle/audio/audio_device.cpp
+    src/hle/audio/waveout_device.cpp
+    src/hle/audio/wasapi_device.cpp
+    src/hle/audio/xa2_device.cpp
     src/common/nid.cpp
+    src/common/platform/platform_win32.cpp
     ${KERNEL_SRC}
     ${CPU_SRC}
     src/gpu/gpu.h
+    src/gpu/gal.h
+    src/gpu/gal.cpp
+    src/gpu/gal_backends.cpp
     src/gpu/vulkan_backend.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
