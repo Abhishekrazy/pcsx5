@@ -4,6 +4,7 @@
 #include "common/nid.h"
 #include "common/types.h"
 #include "loader/pkg.h"
+#include "loader/pkg_ps5.h"
 #include "config/config.h"
 #include "memory/memory.h"
 #include "kernel/kernel.h"
@@ -446,6 +447,32 @@ PCSX5_API void pcsx5_shutdown(void) {
 PCSX5_API int pcsx5_extract_pkg(const char* pkg_path, const char* out_dir) {
     if (!pkg_path || !out_dir) return 1;
 
+    // Auto-detect PS4 vs PS5 PKG by reading the magic.
+    {
+        std::ifstream probe(pkg_path, std::ios::binary);
+        if (!probe.is_open()) {
+            std::printf("error: cannot open PKG: %s\n", pkg_path);
+            return 1;
+        }
+        u8 magic[4] = {};
+        probe.read(reinterpret_cast<char*>(magic), sizeof(magic));
+        const u32 m = (static_cast<u32>(magic[0]) << 24) |
+                      (static_cast<u32>(magic[1]) << 16) |
+                      (static_cast<u32>(magic[2]) << 8) |
+                      static_cast<u32>(magic[3]);
+
+        // PS5 PKG (magic 0x7F464948): extract PFS image + eboot.bin.
+        if (m == 0x7F464948u) {
+            if (Loader::ExtractEbootFromPkgPs5(pkg_path, out_dir)) {
+                return 0;
+            }
+            std::printf("error: PS5 PKG extraction failed.\n");
+            return 1;
+        }
+        // Fall through to PS4 PKG extraction for other magics.
+    }
+
+    // PS4 PKG path (existing logic).
     Loader::PkgImage image;
     if (!Loader::ParsePkg(pkg_path, image)) {
         std::printf("error: failed to parse PKG: %s\n", pkg_path);
