@@ -139,7 +139,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### S2. Testing
 - [ ] **S2.1 Unit tests for GAL/AAL/IAL/PS5 PKG parsers**
-- [ ] **S2.2 Frame timing waterfall + per-subsystem CPU breakdown**
+- [x] S2.2 Frame timing waterfall + FPS overlay (256-entry ring + ImGui stacked bars)
 - [ ] **S2.3 Crash bundle: include config + trace ring + pipeline cache**
 
 ### S3. Documentation
