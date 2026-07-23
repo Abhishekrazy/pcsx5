@@ -81,7 +81,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ### P4. PkgToolBox
 - [ ] P4.1 Audit PkgToolBox PS5 logic for header correctness
-- [ ] P4.4 Document extraction workflow
+- [x] P4.4 Document extraction workflow (`wiki/pkg-extraction.md`)
 
 ---
 
