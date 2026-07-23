@@ -7,6 +7,7 @@
 InputBackend* CreateGlfwKeyboardBackend();
 InputBackend* CreateXInputBackend();
 InputBackend* CreateDualSenseInputBackend();
+InputBackend* CreateSdlGameControllerBackend();
 
 // ===========================================================================
 // InputBackend::Create — factory
@@ -21,10 +22,13 @@ InputBackend* InputBackend::Create(const std::string& backend_name) {
     if (backend_name == "dualsense" || backend_name == "ds" || backend_name == "hid") {
         return CreateDualSenseInputBackend();
     }
+    if (backend_name == "sdl" || backend_name == "sdl_gamecontroller") {
+        return CreateSdlGameControllerBackend();
+    }
     if (backend_name == "null") {
         return new NullInputBackend();
     }
-    // Auto-detect: prefer XInput, fall back to keyboard GLFW, then null.
+    // Auto-detect: prefer SDL, then XInput, then keyboard GLFW, then null.
     auto* xi = CreateXInputBackend();
     if (xi && xi->Initialize(0)) return xi;
     delete xi;

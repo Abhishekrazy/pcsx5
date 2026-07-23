@@ -249,6 +249,7 @@ add_library(pcsx5_core SHARED
     src/gpu/input/glfw_keyboard_backend.cpp
     src/gpu/input/xinput_backend.cpp
     src/gpu/input/dualsense_input_backend.cpp
+    src/gpu/input/sdl_gamecontroller_backend.cpp
     src/gpu/vulkan/vulkan_device.h
     src/gpu/vulkan/vulkan_device.cpp
     src/gpu/vulkan_backend.cpp
