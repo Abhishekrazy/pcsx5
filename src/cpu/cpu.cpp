@@ -10,6 +10,7 @@
 
 #include "cpu.h"
 #include "../common/log.h"
+#include "../common/platform/platform.h"
 #include "../config/config.h"
 #include "../hle/hle.h"
 #include "../kernel/syscalls.h"
@@ -290,6 +291,9 @@ u64 CreateThread(guest_addr_t entry_point, guest_addr_t stack_base, u64 stack_si
     if (affinity > 0) {
         SetThreadAffinityMask(handle, static_cast<DWORD_PTR>(affinity));
     }
+
+    // O3.1: name the thread for debugger/profiler visibility.
+    Platform::SetThreadName(raw->name.c_str());
 
     LOG_INFO(Cpu, "Created guest thread '%s' (id=%llu, entry=0x%llx, stack=0x%llx, tls=0x%llx)",
              raw->name.c_str(), raw->id, entry_point, stack_base, tls_base);

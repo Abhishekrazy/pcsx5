@@ -105,7 +105,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 ### O1. Memory
 - [x] O1.1 Large page support (MEM_LARGE_PAGES for ≥2 MB allocations)
 - [ ] **O1.2 Direct-mapped guest memory** (single large VirtualAlloc reservation)
-- [ ] **O1.3 Pre-commit commonly-used regions** (reduce demand-commit faults)
+- [x] O1.3 Pre-commit 256 MB at 0x800000000 on boot
 - [ ] **O1.4 Batch write-tracking protection changes**
 
 ### O2. GPU Pipeline
