@@ -47,7 +47,9 @@ bool Initialize(const char* map_name, const char* pipe_name) {
     }
 
     // Connect to the named pipe (the frontend creates it first).
-    g_pipe_handle = ::CreateFileA(pipe_name, GENERIC_READ | GENERIC_WRITE,
+    // CreateFileA expects the full NT path for named pipes.
+    std::string full_pipe_name = std::string("\\\\.\\pipe\\") + pipe_name;
+    g_pipe_handle = ::CreateFileA(full_pipe_name.c_str(), GENERIC_READ | GENERIC_WRITE,
                                   0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (g_pipe_handle == INVALID_HANDLE_VALUE) {
         LOG_WARN(General, "IPC: CreateFile(%s) failed (err=%lu) — commands disabled",
