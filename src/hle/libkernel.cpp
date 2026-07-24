@@ -1745,8 +1745,13 @@ namespace HLE {
         RegisterSymbol("libkernel", "strcmp#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t a = args.arg1, b = args.arg2;
             if (!a || !b) return (u64)(s64)-1;
-            int cmp = strcmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
-            return (u64)(s64)cmp;
+            __try {
+                int cmp = strcmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
+                return (u64)(s64)cmp;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                LOG_WARN(HLE, "strcmp: AV (a=0x%llx, b=0x%llx)", a, b);
+                return (u64)(s64)-1;
+            }
         });
 
         // strncmp (aesyjrHVWy4#T#T)
@@ -1754,8 +1759,13 @@ namespace HLE {
             guest_addr_t a = args.arg1, b = args.arg2;
             u64 n = args.arg3;
             if (!a || !b || n == 0 || n > 0x10000000ULL) return (u64)(s64)-1;
-            int cmp = strncmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b), n);
-            return (u64)(s64)cmp;
+            __try {
+                int cmp = strncmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b), n);
+                return (u64)(s64)cmp;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                LOG_WARN(HLE, "strncmp: AV (a=0x%llx, b=0x%llx, n=%llu)", a, b, n);
+                return (u64)(s64)-1;
+            }
         };
         RegisterSymbol("libkernel", "strncmp#T#T", StrncmpImpl);
         RegisterSymbol("libkernel", "aesyjrHVWy4#T#T", StrncmpImpl);
@@ -1764,8 +1774,13 @@ namespace HLE {
         RegisterSymbol("libkernel", "AV6ipCNa4Rw#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t a = args.arg1, b = args.arg2;
             if (!a || !b) return (u64)(s64)-1;
-            int cmp = _stricmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
-            return (u64)(s64)cmp;
+            __try {
+                int cmp = _stricmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
+                return (u64)(s64)cmp;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                LOG_WARN(HLE, "strcasecmp: AV (a=0x%llx, b=0x%llx)", a, b);
+                return (u64)(s64)-1;
+            }
         });
 
         // sprintf (g7zzzLDYGw0#T#T) — real implementation (SysV varargs via
