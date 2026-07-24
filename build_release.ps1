@@ -168,16 +168,71 @@ if (Test-Path $wpfExe) {
 }
 Stage-File (Join-Path $cppBinDir "pcsx5_cli.exe")  (Join-Path $distDir "pcsx5_cli.exe")
 
-# Core DLL + FFmpeg → plugins/ (SetDllDirectory added by main.cpp/WPF at startup).
+# Core DLL + FFmpeg → plugins/ (SetDllDirectory added by EXEs at startup).
 $distPlugins = Join-Path $distDir "plugins"
 New-Item $distPlugins -Force -Type Directory | Out-Null
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distPlugins "pcsx5_core.dll")
-foreach ($pDir in @("I:\InstalledGames\sharpemu-win64-fbf2c2d\plugins",".\sharpemu_plugins","..\sharpemu_plugins")) {
-    if (Test-Path $pDir) {
-        foreach ($dll in @("avformat-61.dll","avcodec-61.dll","avutil-59.dll","swscale-8.dll","swresample-5.dll")) {
-            $src = Join-Path $pDir $dll
-            if (Test-Path $src) { Stage-File $src (Join-Path $distPlugins $dll) }
+
+# FFmpeg DLLs — download official Windows builds if not already cached.
+$ffmpegCache = Join-Path $repoRoot "cache\ffmpeg"
+$ffmpegDlls = @("avformat-61.dll","avcodec-61.dll","avutil-59.dll","swscale-8.dll","swresample-5.dll")
+$ffmpegFound = $false
+
+# Check cache first.
+if (-not $ffmpegFound) {
+    $allCached = $true
+    foreach ($dll in $ffmpegDlls) {
+        if (-not (Test-Path (Join-Path $ffmpegCache $dll))) { $allCached = $false }
+    }
+    if ($allCached) {
+        foreach ($dll in $ffmpegDlls) { Stage-File (Join-Path $ffmpegCache $dll) (Join-Path $distPlugins $dll) }
+        $ffmpegFound = $true
+        Log "  (FFmpeg: from cache)"
+    }
+}
+
+# If not cached, try SharpEmu as fallback.
+if (-not $ffmpegFound) {
+    foreach ($pDir in @("I:\InstalledGames\sharpemu-win64-fbf2c2d\plugins",".\sharpemu_plugins","..\sharpemu_plugins")) {
+        if (Test-Path $pDir) {
+            $found = 0
+            foreach ($dll in $ffmpegDlls) {
+                $src = Join-Path $pDir $dll
+                if (Test-Path $src) { Stage-File $src (Join-Path $distPlugins $dll); $found++ }
+            }
+            if ($found -gt 0) { $ffmpegFound = $true; break }
         }
+    }
+}
+
+# Auto-download FFmpeg DLLs from official gyan.dev builds.
+if (-not $ffmpegFound) {
+    $ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-7.0.2-full_build-shared.zip"
+    $zipPath = Join-Path $ffmpegCache "ffmpeg.zip"
+    Log "  FFmpeg: downloading $ffmpegUrl ..."
+    New-Item $ffmpegCache -Force -Type Directory | Out-Null
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zipPath -UseBasicParsing
+        Log "  FFmpeg: extracting..."
+        Expand-Archive -Path $zipPath -DestinationPath $ffmpegCache -Force
+        # Find the DLLs in the extracted folder structure and copy to cache root.
+        $extracted = Join-Path $ffmpegCache "ffmpeg-7.0.2-full_build-shared\bin"
+        if (Test-Path $extracted) {
+            foreach ($dll in $ffmpegDlls) {
+                $src = Join-Path $extracted $dll
+                if (Test-Path $src) { Copy-Item $src (Join-Path $ffmpegCache $dll) -Force }
+            }
+            foreach ($dll in $ffmpegDlls) {
+                Stage-File (Join-Path $ffmpegCache $dll) (Join-Path $distPlugins $dll)
+            }
+            $ffmpegFound = $true
+            Log "  (FFmpeg: downloaded and staged)"
+        }
+    } catch {
+        Log "  FFmpeg download failed: $_"
+        Log "  Video decode will be unavailable. Manual download:"
+        Log "  $ffmpegUrl"
     }
 }
 
