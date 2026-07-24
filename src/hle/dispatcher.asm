@@ -189,7 +189,18 @@ StartGuest proc
     ; call sites; without it, SSE spills (movdqa) in downstream code fault.
     sub  rsp, 8
 
-    ; Zero other registers (but NOT rdi or rsp which we just set)
+    ; PS5 _start receives TWO arguments (KytyPS5 ABI):
+    ;   rdi = pointer to EntryParams { argc, argv[0], argv[1], ... }
+    ;   rsi = pointer to atexit function (called on guest exit)
+    ; A NULL atexit pointer would crash games that dereference it.
+    ; Use CALL to get the stub address into rsi (MASM-compatible).
+    call get_stub_addr
+guest_atexit_stub:
+    ret
+get_stub_addr:
+    pop  rsi                ; rsi = guest_atexit_stub address
+
+    ; Zero other registers (but NOT rdi, rsi, or rsp which we just set)
     xor  r12, r12
     xor  r13, r13
     xor  r14, r14
@@ -198,7 +209,6 @@ StartGuest proc
     xor  rax, rax
     xor  rcx, rcx
     xor  rdx, rdx
-    xor  rsi, rsi
     xor  r8,  r8
     xor  r9,  r9
     xor  r10, r10
