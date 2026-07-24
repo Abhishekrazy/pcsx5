@@ -197,7 +197,16 @@ namespace Pcsx5Ui
             _session.Stopped += OnGameStopped;
             _session.Crashed += OnGameCrashed;
             _session.Hanging += OnGameHanging;
-            _session.LogLine += line => _consoleLineQueue.Enqueue(new ConsoleLine { Text = line, Level = 2 });
+            _session.LogLine += line => {
+                int lvl = 2; // default Info
+                string u = line.ToUpperInvariant();
+                if (u.Contains("[ERROR]") || u.Contains("[ERR]")) lvl = 4;
+                else if (u.Contains("[WARN]")) lvl = 3;
+                else if (u.Contains("[CRITICAL]")) lvl = 5;
+                else if (u.Contains("[DEBUG]")) lvl = 1;
+                else if (u.Contains("[TRACE]")) lvl = 0;
+                _consoleLineQueue.Enqueue(new ConsoleLine { Text = line, Level = lvl });
+            };
 
             _consoleDrainTimer = new System.Windows.Threading.DispatcherTimer();
             _consoleDrainTimer.Interval = TimeSpan.FromMilliseconds(150);
@@ -374,28 +383,6 @@ namespace Pcsx5Ui
                 _config = new EmulatorConfig();
                 _gameFolders.Add("Games");
             }
-        }
-
-        private void ShowToast(string message, string icon = "✓")
-        {
-            try
-            {
-                ToastIcon.Text = icon;
-                ToastMessage.Text = message;
-                ToastNotification.Visibility = Visibility.Visible;
-                ToastNotification.Opacity = 1.0;
-
-                var timer = new System.Windows.Threading.DispatcherTimer();
-                timer.Interval = TimeSpan.FromSeconds(3);
-                timer.Tick += (s, e) =>
-                {
-                    timer.Stop();
-                    ToastNotification.Opacity = 0;
-                    ToastNotification.Visibility = Visibility.Collapsed;
-                };
-                timer.Start();
-            }
-            catch { }
         }
 
         private void SaveConfig()
