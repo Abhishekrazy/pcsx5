@@ -134,14 +134,23 @@ namespace Pcsx5Ui
                 psi.RedirectStandardError = true;
                 psi.RedirectStandardOutput = true;
                 _process = Process.Start(psi);
-                // Forward child's stderr (log output) to the UI console.
-                _process.ErrorDataReceived += (s, e) =>
+                // Forward child output (log lines) to the UI console.
+                Action<string> forwardLine = (data) =>
                 {
-                    if (string.IsNullOrEmpty(e.Data)) return;
-                    string line = StripAnsi(e.Data);
-                    _dispatcher.BeginInvoke(() => LogLine?.Invoke(line));
+                    if (string.IsNullOrEmpty(data)) return;
+                    _dispatcher.BeginInvoke(() => LogLine?.Invoke(StripAnsi(data)));
                 };
+                // Log when child exits unexpectedly (DLL not found, etc.).
+                _process.EnableRaisingEvents = true;
+                _process.Exited += (s, e) =>
+                {
+                    if (_process != null && _process.HasExited && _process.ExitCode != 0)
+                        forwardLine($"[Core] Process exited with code 0x{_process.ExitCode:X8}");
+                };
+                _process.ErrorDataReceived += (s, e) => forwardLine(e.Data);
+                _process.OutputDataReceived += (s, e) => forwardLine(e.Data);
                 _process.BeginErrorReadLine();
+                _process.BeginOutputReadLine();
             }
             catch (Exception ex)
             {
