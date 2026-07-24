@@ -234,6 +234,22 @@ namespace HLE {
     // is no armed buffer, so it falls back to std::exit() (legacy behaviour).
     [[noreturn]] void ExitGuestProcess(u32 exit_code);
 
+    // Guest crash tracking -------------------------------------------------------
+    // Called by the VEH handler when a guest crash is detected (RIP in guest
+    // code range).  Instead of killing the process, the VEH sets this flag and
+    // returns so the SEH handler in TryStartGuest can clean up.
+    void SetGuestCrashed(u32 exception_code, guest_addr_t rip);
+
+    // True when the guest has crashed since the last ResetRunStatistics().
+    bool IsGuestCrashed();
+
+    // Retrieves the last guest crash info.  Returns true if a crash is recorded.
+    // `out_buf` is filled with a human-readable description (NUL-terminated).
+    // Pass buf_size=0 to ignore the string; returns true even then if crash data
+    // exists.
+    bool GetLastGuestCrashInfo(u32* out_exception_code, guest_addr_t* out_rip,
+                               char* out_buf, int buf_size);
+
     // Dynamic dispatcher callback (called by assembly bridge).
     // guest_rsp is the guest stack pointer at thunk entry (points at the guest
     // return address; the first SysV stack argument is at guest_rsp + 8).

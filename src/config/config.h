@@ -63,6 +63,7 @@ struct GraphicsConfig {
     bool  vrr              = false;            // Variable Refresh Rate (VRR/FreeSync/G-SYNC)
     int   vrr_min_fps      = 40;               // VRR floor (0 = use display's min)
     int   present_mode     = -1;               // -1=auto, 0=FIFO, 1=RELAXED, 2=IMMEDIATE, 3=MAILBOX
+    bool  headless         = false;            // true = no window, no GLFW, no Vulkan. Override via PCSX5_HEADLESS env var.
 };
 
 struct AudioConfig {

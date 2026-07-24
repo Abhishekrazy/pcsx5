@@ -3,6 +3,7 @@
 #include "gpu/gpu.h"
 #include "gpu/input/input_backend.h"
 #include "ui/button_layout.h"
+#include "ipc/ipc_server.h"
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -35,6 +36,8 @@ void PrintUsage() {
     std::printf("  --embed                      Create the render window hidden so the launcher UI can\n");
     std::printf("                               embed it (the window handle is always printed to stdout\n");
     std::printf("                               as PCSX5_WINDOW_HANDLE=<decimal HWND>).\n");
+    std::printf("  --ipc-map=<name>             Shared memory file mapping name (IPC mode).\n");
+    std::printf("  --ipc-pipe=<name>            Named pipe name (IPC mode).\n");
 }
 
 } // namespace
@@ -58,6 +61,8 @@ int main(int argc, char* argv[]) {
     std::string crash_dir;
     std::string extract_pkg_path;
     std::string extract_pkg_outdir;
+    std::string ipc_map_name;
+    std::string ipc_pipe_name;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--extract-pkg") {
@@ -83,9 +88,11 @@ int main(int argc, char* argv[]) {
         } else if (a.rfind("--title-id=", 0) == 0) {
             options.title_id = argv[i] + 11;
         } else if (a == "--embed") {
-            // Launcher UI embedding mode: the GPU window starts hidden; the UI
-            // reparents it into its own window using the printed HWND.
             options.embed = 1;
+        } else if (a.rfind("--ipc-map=", 0) == 0) {
+            ipc_map_name = a.substr(10);
+        } else if (a.rfind("--ipc-pipe=", 0) == 0) {
+            ipc_pipe_name = a.substr(11);
         } else if (a == "-h" || a == "--help") {
             PrintUsage();
             return 0;
@@ -135,11 +142,21 @@ int main(int argc, char* argv[]) {
     int rc = pcsx5_init(&options, nullptr, nullptr);
     if (rc != 0) return rc;
 
+    // IPC mode: connect to the frontend's shared memory + pipe.
+    if (!ipc_map_name.empty() && !ipc_pipe_name.empty()) {
+        if (!IPC::Initialize(ipc_map_name.c_str(), ipc_pipe_name.c_str())) {
+            std::fprintf(stderr, "IPC initialization failed.\n");
+            pcsx5_shutdown();
+            return 1;
+        }
+    }
+
     rc = pcsx5_load(target_path.c_str());
     if (rc == 0) {
         rc = pcsx5_run(nullptr, nullptr);
     }
 
+    IPC::Shutdown();
     pcsx5_shutdown();
     return rc;
 }

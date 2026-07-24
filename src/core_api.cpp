@@ -8,6 +8,7 @@
 #include "config/config.h"
 #include "memory/memory.h"
 #include "kernel/kernel.h"
+#include "loader/param_json.h"
 #include "hle/hle.h"
 #include "hle/keystone.h"
 #include "gpu/gpu.h"
@@ -53,6 +54,9 @@ struct CoreState {
     bool run_success = false;
     u32 guest_exit_code = 0;
     int  run_result = -1;
+
+    // Guest thread handle (for force-stop termination)
+    HANDLE guest_thread_handle = nullptr;
 
     // Window-handle reporting (in-proc mode)
     pcsx5_window_cb window_cb = nullptr;
@@ -257,6 +261,27 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     std::string init_error;
     if (!LuaInit::RunDefaultInit(&init_error)) {
         LOG_CRITICAL(General, "FATAL: Failed to initialize subsystems: %s", init_error.c_str());
+
+        // Diagnostic summary: print every subsystem's status to help debug
+        // which init step failed and why.
+        const char* vulkan_status = "unknown";
+#ifdef _WIN32
+        vulkan_status = (GetModuleHandleA("vulkan-1.dll") != nullptr) ? "yes" : "no";
+#endif
+        LOG_CRITICAL(General, "========== BOOT DIAGNOSTICS ==========");
+        LOG_CRITICAL(General, "Config dir: %s", g_state.config_dir.c_str());
+        LOG_CRITICAL(General, "Crash dir:  %s", g_state.crash_dir.c_str());
+        LOG_CRITICAL(General, "Title ID:   %s", g_state.title_id.empty() ? "(empty)" : g_state.title_id.c_str());
+        LOG_CRITICAL(General, "GPU headless: %s", ConfigService::Global().graphics.headless ? "yes" : "no");
+        LOG_CRITICAL(General, "Vulkan available: %s", vulkan_status);
+        LOG_CRITICAL(General, "Subsystem init error: %s", init_error.c_str());
+        LOG_CRITICAL(General, "Suggestion: Check log above for subsystem that failed to initialize.");
+        LOG_CRITICAL(General, "  - If 'GPU' failed: try setting graphics.headless=true or PCSX5_HEADLESS=1");
+        LOG_CRITICAL(General, "  - If 'Memory' failed: check system memory availability");
+        LOG_CRITICAL(General, "  - If 'HLE' failed: check thunk page allocation (config may need adjustment)");
+        LOG_CRITICAL(General, "  - If 'Kernel' failed: check that no other emulator is running (VEH conflict)");
+        LOG_CRITICAL(General, "======================================");
+
         return -1;
     }
 
@@ -282,6 +307,30 @@ PCSX5_API int pcsx5_load(const char* eboot_path) {
 
     g_state.summary = BuildSummary(target_path, g_state.title_id, "fail", "load", 0.0);
     g_state.t0 = std::chrono::steady_clock::now();
+
+    // Auto-detect title_id from param.json if not already set.  This must
+    // happen before ConfigService::EffectiveFor below so per-title config
+    // overrides take effect from the load stage onward.
+    if (g_state.title_id.empty()) {
+        const std::string game_dir =
+            std::filesystem::path(target_path).parent_path().string();
+        const std::filesystem::path param_path =
+            std::filesystem::path(game_dir) / "sce_sys" / "param.json";
+        std::error_code pj_ec;
+        if (std::filesystem::exists(param_path, pj_ec)) {
+            Loader::ParamJson pj;
+            if (Loader::ParseParamJson(param_path, pj)) {
+                g_state.title_id = pj.titleId;
+                LOG_INFO(General, "Auto-detected title_id from param.json: %s",
+                         g_state.title_id.c_str());
+            }
+        }
+        if (g_state.title_id.empty()) {
+            g_state.title_id = "UNKNOWN";
+            LOG_WARN(General, "No param.json found; using title_id='%s'. Per-title config disabled.",
+                     g_state.title_id.c_str());
+        }
+    }
 
     // Configure PRX module resolution: the game's own sce_module/ directory
     // first, then the user-supplied firmware modules directory from config.
@@ -324,6 +373,22 @@ PCSX5_API int pcsx5_load(const char* eboot_path) {
     }
     if (!Kernel::LoadModule(target_path, g_state.main_module)) {
         LOG_ERROR(General, "Failed to load target module: %s", target_path.c_str());
+
+        // Diagnostics: help the user understand why loading failed
+        {
+            std::error_code ec;
+            const bool file_exists = std::filesystem::exists(target_path, ec);
+            std::error_code ec2;
+            const uintmax_t file_size = file_exists ? std::filesystem::file_size(target_path, ec2) : 0;
+            LOG_ERROR(General, "  File exists: %s  Size: %llu bytes",
+                      file_exists ? "YES" : "NO",
+                      static_cast<unsigned long long>(file_size));
+            LOG_ERROR(General, "  Suggestion:");
+            LOG_ERROR(General, "    - If file is missing: check the path is correct");
+            LOG_ERROR(General, "    - If it's a retail SELF (encrypted): only fake-signed fPKG dumps work");
+            LOG_ERROR(General, "    - If it's a valid fPKG: try --log-level=debug for more details");
+        }
+
         g_state.summary.status = "fail";
         g_state.summary.stage  = "load";
         auto t1 = std::chrono::steady_clock::now();
@@ -370,7 +435,20 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
         g_state.run_success = Kernel::Execute(g_state.main_module, &g_state.guest_exit_code);
         guest_done.store(true, std::memory_order_release);
     });
+    // Store a duplicate handle with TERMINATE access so pcsx5_force_stop works.
+    {
+        HANDLE raw = guest_thread.native_handle();
+        ::DuplicateHandle(::GetCurrentProcess(), raw,
+                          ::GetCurrentProcess(), &g_state.guest_thread_handle,
+                          THREAD_TERMINATE, FALSE, 0);
+    }
 
+    // How long to wait for the guest to notice a stop request before
+    // resorting to forced termination.  5 seconds gives a well-behaved
+    // guest time to unwind through its exit path; a hung guest gets cut.
+    constexpr auto kForceStopTimeout = std::chrono::seconds(5);
+
+    bool stop_initiated = false;
     while (!guest_done.load(std::memory_order_acquire)) {
         if (g_paused.load(std::memory_order_acquire)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -378,14 +456,59 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
         }
         GPU::PumpWindowEvents();
         GPU::PollEvents();
+
+        // Window close → request guest stop.
         if (GPU::HasWindow() && GPU::ShouldCloseWindow()) {
-            // The guest observes the stop flag on its next HLE dispatch and
-            // unwinds back into Kernel::Execute.
             HLE::RequestStop();
         }
+
+        // When stop is requested (by the frontend or window close):
+        // 1. The stop flag is already set — the guest will see it on its
+        //    next HLE dispatch (HleDispatch checks StopRequested()).
+        // 2. If the guest doesn't finish within kForceStopTimeout, it is
+        //    likely spinning in guest code without making HLE calls;
+        //    force-kill the thread as a last resort.
+        if (HLE::StopRequested()) {
+            if (!stop_initiated) {
+                stop_initiated = true;
+                LOG_INFO(General, "Stop requested; waiting for guest to unwind (%ds max)...",
+                         static_cast<int>(kForceStopTimeout.count()));
+            }
+            auto wait_start = std::chrono::steady_clock::now();
+            while (!guest_done.load(std::memory_order_acquire)) {
+                const auto elapsed = std::chrono::steady_clock::now() - wait_start;
+                if (elapsed >= kForceStopTimeout) {
+                    LOG_WARN(General, "Guest did not respond to stop request after %ds — "
+                             "terminating guest thread.", static_cast<int>(kForceStopTimeout.count()));
+                    ::TerminateThread(g_state.guest_thread_handle, 1);
+                    g_state.run_success = false;
+                    g_state.guest_exit_code = 0xFFFFFFFFu;
+                    guest_done.store(true, std::memory_order_release);
+                    break;
+                }
+                // Keep the window responsive while waiting.
+                GPU::PumpWindowEvents();
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            break;
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 Hz
     }
     guest_thread.join();
+
+    // Check if the guest crashed (rather than exited cleanly).
+    // The VEH set the crash flag instead of calling ExitProcess, so the
+    // emulator process survives and the frontend can display the error.
+    if (HLE::IsGuestCrashed()) {
+        g_state.run_success = false;
+        g_state.summary.status = "crashed";
+        u32 crash_code = 0;
+        guest_addr_t crash_rip = 0;
+        HLE::GetLastGuestCrashInfo(&crash_code, &crash_rip, nullptr, 0);
+        LOG_ERROR(General, "Guest crashed: code=0x%08X at RIP=0x%llx",
+                  crash_code, static_cast<unsigned long long>(crash_rip));
+    }
 
     auto t1 = std::chrono::steady_clock::now();
 
@@ -432,12 +555,32 @@ PCSX5_API void pcsx5_stop(void) {
     HLE::RequestStop();
 }
 
+PCSX5_API void pcsx5_force_stop(void) {
+    HLE::RequestStop();
+    // Terminate the guest thread immediately if still running.
+    HANDLE h = g_state.guest_thread_handle;
+    if (h && h != INVALID_HANDLE_VALUE) {
+        ::TerminateThread(h, 1);
+        LOG_WARN(General, "Force-stop: guest thread terminated.");
+    }
+}
+
 PCSX5_API void pcsx5_pause(void) {
     g_paused.store(true, std::memory_order_release);
 }
 
 PCSX5_API void pcsx5_resume(void) {
     g_paused.store(false, std::memory_order_release);
+}
+
+PCSX5_API int pcsx5_get_last_error(char* buf, int buf_size) {
+    u32 code = 0;
+    guest_addr_t rip = 0;
+    if (HLE::GetLastGuestCrashInfo(&code, &rip, buf, buf_size)) {
+        return 0; // crash info available
+    }
+    if (buf && buf_size > 0) buf[0] = '\0';
+    return -1; // no crash
 }
 
 // ---------------------------------------------------------------------------

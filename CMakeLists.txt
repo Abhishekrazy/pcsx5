@@ -225,6 +225,20 @@ add_library(pcsx5_core SHARED
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
+    # Boot-gap HLE modules — mandatory for games to reach main()
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
+
     src/hle/audio/audio_device.h
     src/hle/audio/audio_device.cpp
     src/hle/audio/waveout_device.cpp
@@ -263,6 +277,8 @@ add_library(pcsx5_core SHARED
     src/diagnostics/diagnostics.h
     src/diagnostics/diagnostics.cpp
     src/diagnostics/frame_timing.h
+    src/ipc/ipc_shared.h
+    src/ipc/ipc_server.cpp
     src/diagnostics/frame_timing.cpp
     src/config/config.h
     src/config/config.cpp
@@ -301,6 +317,7 @@ if(BUILD_TESTING)
         tests/vk_present_smoke.cpp
         src/common/log.cpp
         src/memory/memory.cpp
+        src/config/config.cpp
         src/gpu/vulkan_backend.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
@@ -309,7 +326,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(vk_present_smoke PRIVATE src)
     target_compile_options(vk_present_smoke PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
-    target_link_libraries(vk_present_smoke PRIVATE glfw Vulkan::Headers)
+    target_link_libraries(vk_present_smoke PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json)
 
     # Present-path format helper unit tests (SharpEmu #448 port) — no GPU
     # required: exercises VkPresentSrgbCounterpart / VkPresentIsLinearFloatSource.
@@ -485,6 +502,12 @@ if(BUILD_TESTING)
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_import_report_tests PRIVATE src)
@@ -537,6 +560,12 @@ if(BUILD_TESTING)
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         src/reports/reports.cpp
         ${DISPATCHER_SRC}
     )
@@ -603,6 +632,12 @@ if(BUILD_TESTING)
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         src/diagnostics/diagnostics.cpp
         ${DISPATCHER_SRC}
     )
@@ -661,7 +696,7 @@ if(BUILD_TESTING)
         )
         # ALL: ctest does not build targets — the ELFs must be produced by the
         # default build or the smoke tests fail with missing files (CI bug).
-        add_custom_target(guest_test_elfs ALL
+        add_custom_target(guest_test_elfs
             DEPENDS ${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
                     ${CMAKE_BINARY_DIR}/test_elf/tls_guest.elf
         )
@@ -1088,6 +1123,12 @@ add_executable(dump_imports
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(syscall_validation_tests PRIVATE src)
@@ -1141,6 +1182,12 @@ add_executable(dump_imports
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(kernel_sync_tests PRIVATE src)
@@ -1194,6 +1241,12 @@ add_executable(dump_imports
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(libkernel_file_tests PRIVATE src)
@@ -1248,6 +1301,12 @@ add_executable(dump_imports
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_phase3_tests PRIVATE src)
@@ -1302,6 +1361,12 @@ add_executable(dump_imports
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_audio_pad_tests PRIVATE src)
@@ -1356,6 +1421,12 @@ add_executable(dump_imports
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(hle_agc_tests PRIVATE src)
@@ -1410,6 +1481,12 @@ add_executable(dump_imports
     src/hle/libjson.h
     src/hle/libjson.cpp
     src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(guest_printf_tests PRIVATE src)
@@ -1459,6 +1536,12 @@ add_executable(dump_imports
         src/hle/libjson.h
         src/hle/libjson.cpp
         src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(libcxxabi_tests PRIVATE src)
@@ -1558,6 +1641,12 @@ add_executable(dump_imports
         src/hle/libjson.h
         src/hle/libjson.cpp
         src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
         ${DISPATCHER_SRC}
     )
     target_include_directories(pm4_replay PRIVATE src)
