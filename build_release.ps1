@@ -154,7 +154,11 @@ function Stage-Dir {
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll")         (Join-Path $distDir "pcsx5_core.dll")
 Stage-File (Join-Path $cppBinDir "pcsx5_cli.exe")          (Join-Path $distDir "pcsx5_cli.exe")
 Stage-File (Join-Path $cppBinDir "pcsx5_snd_decode.exe")   (Join-Path $distDir "pcsx5_snd_decode.exe")
-Stage-File (Join-Path $cppBinDir "pcsx5_boot_parser.exe")  (Join-Path $distDir "pcsx5_boot_parser.exe")
+# boot_parser has no RUNTIME_OUTPUT_DIRECTORY, goes to build/Release/
+$bp = Join-Path $buildDir "Release\pcsx5_boot_parser.exe"
+if (-not (Test-Path $bp)) { $bp = Join-Path $cppBinDir "pcsx5_boot_parser.exe" }
+if (-not (Test-Path $bp)) { $bp = Join-Path $buildDir "pcsx5_boot_parser.exe" }
+Stage-File $bp (Join-Path $distDir "pcsx5_boot_parser.exe")
 
 # WPF frontend
 $wpfExe = Join-Path $publishDir "pcsx5.exe"

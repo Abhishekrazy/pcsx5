@@ -407,6 +407,8 @@ namespace Pcsx5Ui
         {
             if (State != GameSessionState.Stopped && State != GameSessionState.Crashed && State != GameSessionState.Idle)
                 throw new InvalidOperationException("Cannot reset while game is still running.");
+            // Dispose the old IPC session (shared memory, pipe, child process).
+            if (_ipc != null) { try { _ipc.Dispose(); } catch { } _ipc = null; }
             _gameThread = null;
             CurrentGame = null;
             _stopRequested = false;
