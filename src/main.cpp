@@ -94,6 +94,8 @@ int main(int argc, char* argv[]) {
             options.report_path = argv[i] + 9;
         } else if (a.rfind("--regression-report=", 0) == 0) {
             options.regression_report_path = argv[i] + 20;
+        } else if (a.rfind("--log-level=", 0) == 0) {
+            // log level is set via config; ignore here to avoid 'unknown arg' error
         } else if (a.rfind("--log-file=", 0) == 0) {
             options.log_file = argv[i] + 11;
         } else if (a.rfind("--crash-dir=", 0) == 0) {
