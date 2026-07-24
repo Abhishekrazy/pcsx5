@@ -168,7 +168,7 @@ if (Test-Path $wpfExe) {
 }
 Stage-File (Join-Path $cppBinDir "pcsx5_cli.exe")  (Join-Path $distDir "pcsx5_cli.exe")
 
-# Plugins — core DLL + FFmpeg
+# Core DLL + FFmpeg → plugins/ (SetDllDirectory added by main.cpp/WPF at startup).
 $distPlugins = Join-Path $distDir "plugins"
 New-Item $distPlugins -Force -Type Directory | Out-Null
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distPlugins "pcsx5_core.dll")
@@ -217,7 +217,7 @@ foreach ($d in @("pcsx5_crash","pcsx5_savedata","Cache")) { New-Item (Join-Path 
 # ---------------------------------------------------------------------------
 Log "=== Step 4: Validating dist\ ==="
 $missing = @()
-$mandatory = @("pcsx5_core.dll", "pcsx5_cli.exe", "assets\nid_db.txt")
+$mandatory = @("plugins\pcsx5_core.dll", "pcsx5_cli.exe", "assets\nid_db.txt")
 if (-not $SkipDotnet) { $mandatory += "pcsx5.exe" }
 foreach ($f in $mandatory) {
     if (-not (Test-Path (Join-Path $distDir $f))) { $missing += $f }

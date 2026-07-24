@@ -71,6 +71,9 @@ namespace Pcsx5Ui
         public const long WS_MAXIMIZEBOX = 0x00010000;
         public const long WS_SYSMENU = 0x00080000;
         public const int SW_SHOW = 5;
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern bool SetDllDirectoryW(string lpPathName);
     }
 
     // Hosts a plain Win32 child window inside the WPF layout; the emulator's
@@ -172,6 +175,16 @@ namespace Pcsx5Ui
 
         public MainWindow()
         {
+            // Add plugins/ to DLL search path so pcsx5_core.dll in plugins/ is found.
+            try
+            {
+                string dir = AppDomain.CurrentDomain.BaseDirectory;
+                string plugins = Path.Combine(dir, "plugins");
+                if (System.IO.Directory.Exists(plugins))
+                    NativeMethods.SetDllDirectoryW(plugins);
+            }
+            catch { }
+
             InitializeComponent();
             InitializeAudioPlayer();
             this.Closed += MainWindow_Closed;
