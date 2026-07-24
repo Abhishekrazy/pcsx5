@@ -40,6 +40,7 @@ namespace Pcsx5Ui
         private Thread _pipeWriterThread;
         private Thread _framePollerThread;
         private CancellationTokenSource _cts;
+        private volatile bool _cleanedUp;
 
         private const int IpcMagic = 0x50504353;  // "PCSX"
         private const int IpcVersion = 1;
@@ -140,12 +141,24 @@ namespace Pcsx5Ui
                     if (string.IsNullOrEmpty(data)) return;
                     _dispatcher.BeginInvoke(() => LogLine?.Invoke(StripAnsi(data)));
                 };
-                // Log when child exits unexpectedly (DLL not found, etc.).
+                // Auto-cleanup when child exits (crash, stop, or error).
                 _process.EnableRaisingEvents = true;
                 _process.Exited += (s, e) =>
                 {
-                    if (_process != null && _process.HasExited && _process.ExitCode != 0)
-                        forwardLine($"[Core] Process exited with code 0x{_process.ExitCode:X8}");
+                    if (_process == null) return;
+                    int code = _process.HasExited ? _process.ExitCode : -1;
+                    string msg = $"[Core] Process exited with code 0x{code:X8}";
+                    forwardLine(msg);
+                    // Cleanup and fire events on the UI thread.
+                    int capturedCode = code;
+                    _dispatcher.BeginInvoke(() =>
+                    {
+                        Cleanup();
+                        if (capturedCode == 0)
+                            Stopped?.Invoke(capturedCode);
+                        else
+                            Crashed?.Invoke(capturedCode, msg);
+                    });
                 };
                 _process.ErrorDataReceived += (s, e) => forwardLine(e.Data);
                 _process.OutputDataReceived += (s, e) => forwardLine(e.Data);
@@ -352,6 +365,8 @@ namespace Pcsx5Ui
 
         private void Cleanup()
         {
+            if (_cleanedUp) return;
+            _cleanedUp = true;
             _cts?.Cancel();
             _view?.Dispose();
             _mmf?.Dispose();
