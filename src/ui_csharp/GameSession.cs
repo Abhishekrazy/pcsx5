@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -84,6 +85,7 @@ namespace Pcsx5Ui
         private Thread _gameThread;
         private volatile bool _stopRequested;
         private readonly Dispatcher _dispatcher;
+        private IpcSession _ipc;
 
         // Watchdog: tracks the last time we received a log line (proxy for
         // "game is alive"). If more than WatchdogTimeoutSeconds elapse without
@@ -132,6 +134,47 @@ namespace Pcsx5Ui
 
             StartWatchdog();
         }
+
+        /// <summary>Launch the game via IPC (out-of-process core).</summary>
+        internal void LaunchIpc(GameEntry game)
+        {
+            if (State != GameSessionState.Idle)
+                throw new InvalidOperationException("A session is already running.");
+
+            CurrentGame = game ?? throw new ArgumentNullException(nameof(game));
+            _stopRequested = false;
+            _hangingRaised = false;
+            _lastHeartbeat = DateTime.UtcNow;
+            State = GameSessionState.Booting;
+            _dispatcher.BeginInvoke(() => Started?.Invoke(game));
+
+            _ipc = new IpcSession(_dispatcher);
+            _ipc.LogLine += line => Log(line);
+            _ipc.Crashed += (code, msg) =>
+                _dispatcher.BeginInvoke(() => Crashed?.Invoke(code, msg));
+            _ipc.Stopped += code =>
+                _dispatcher.BeginInvoke(() => Stopped?.Invoke(code));
+            _ipc.FrameReady += () => { }; // signal for frame display
+
+            // Run IPC connect on background thread so the UI stays responsive.
+            Task.Run(() =>
+            {
+                if (_ipc.Launch(game.EbootPath, game.TitleId))
+                {
+                    State = GameSessionState.Running;
+                }
+                else
+                {
+                    _dispatcher.BeginInvoke(() =>
+                        Crashed?.Invoke(-1, _ipc.LastError ?? "IPC launch failed"));
+                }
+            });
+
+            StartWatchdog();
+        }
+
+        /// <summary>Access the IPC session for frame display binding.</summary>
+        internal IpcSession IpcSession => _ipc;
 
         /// <summary>
         /// Request the game to stop gracefully. Non-blocking; wait for Stopped/Crashed event.

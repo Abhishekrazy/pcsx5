@@ -4,8 +4,9 @@
 #include "vk_draw.h"
 #include "dualsense_hid.h"
 #include "../config/config.h"
-#include "../ipc/ipc_server.h"
 #include "../common/log.h"
+
+#include "../ipc/ipc_gpu_bridge.h"
 #include "../memory/memory.h"
 #include <windows.h>
 #include <xinput.h>
@@ -785,14 +786,14 @@ namespace GPU {
 
         PresentDIB();
         LOG_DEBUG(GPU, "RenderFrame: Presented guest framebuffer 0x%llx.", framebuffer_addr);
-    }
 
-    // IPC: share the rendered frame with the frontend process.
-    if (IPC::IsConnected() && !g_dib_buffer.empty()) {
-        IPC::WriteFrame(g_dib_buffer.data(),
-                        static_cast<uint32_t>(g_width),
-                        static_cast<uint32_t>(g_height),
-                        static_cast<uint32_t>(g_width) * 4);
+        // IPC: share the rendered frame with the frontend process.
+        if (g_ipc_is_connected && g_ipc_is_connected() && !g_dib_buffer.empty()) {
+            g_ipc_write_frame(g_dib_buffer.data(),
+                              static_cast<uint32_t>(g_width),
+                              static_cast<uint32_t>(g_height),
+                              static_cast<uint32_t>(g_width) * 4);
+        }
     }
 
     void SetFramebufferConfig(u32 width, u32 height, u32 format) {
