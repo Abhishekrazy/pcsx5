@@ -145,22 +145,21 @@ namespace Pcsx5Ui
                 return false;
             }
 
-            // Wait for the core to connect to the pipe (async with timeout).
+            // Wait for the core to connect to the pipe (10s timeout).
             try
             {
                 var connectTask = Task.Run(() => _pipe.WaitForConnection(), _cts.Token);
-                // Also check if the child process exits early.
-                while (!connectTask.IsCompleted && !_process.HasExited)
+                if (connectTask.Wait(10000, _cts.Token))
                 {
-                    if (connectTask.Wait(500, _cts.Token)) break;
+                    // Connected successfully.
                 }
-                if (_process.HasExited && !_pipe.IsConnected)
+                else if (_process.HasExited)
                 {
                     LastError = $"Core process exited (code {_process.ExitCode}) before connecting";
                     Kill(); Cleanup();
                     return false;
                 }
-                if (!_pipe.IsConnected)
+                else
                 {
                     LastError = "Pipe connection timeout (10s)";
                     Kill(); Cleanup();
