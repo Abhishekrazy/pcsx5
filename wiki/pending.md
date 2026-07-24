@@ -1,52 +1,76 @@
-# PCSX5 Boot Blocker Priorities (KytyPS5 Comparison)
+# PCSX5 Status & Pending Work
 
-> Kyty source cloned from https://github.com/InoriRus/Kyty
-> Last updated: 2026-07-24
+> Last updated: 2026-07-25
 
-## PRIORITY 1 — Fixed This Sprint
-- ✅ **XKRegsFpEpk** — Now calls main(argc, argv, envp) instead of ExitGuestProcess(argc)
-- ✅ **Atexit stub (rsi)** — _start now receives valid atexit callback in rsi (was NULL)
-- ✅ **GPU headless mode** — Boots without GLFW window via PCSX5_HEADLESS=1
-- ✅ **Thread isolation** — Guest crash no longer kills the emulator process
-- ✅ **Build script** — VS auto-detect, FFmpeg DLL staging, organized dist
+## ✅ Working
 
-## PRIORITY 2 — HLE Gaps vs Kyty (Need to Port)
+### Core Emulation
+- ✅ Subsystem init (Config, Memory, HLE, Kernel, GPU)
+- ✅ ELF/SELF loading, module linking, PRX resolution
+- ✅ TLS patching (fs: segment access emulation)
+- ✅ Thread creation (scePthreadCreate via Windows threads)
+- ✅ Synchronization (mutex, condvar, event flags, semaphores)
+- ✅ VideoOut (flip/queue model, VRR, vblank pump)
+- ✅ AGC/GnmDriver (M3 draw execution, shader translation)
+- ✅ AudioOut (WASAPI/XAudio2/SDL backends)
+- ✅ File I/O (guest path translation, open/read/write/stat)
 
-### Missing Thread Atexit Tracking (Kyty: Pthread.cpp lines 380-414)
-Kyty has `KernelSetThreadAtexitCount`, `KernelSetThreadAtexitReport`, `KernelRtldThreadAtexitIncrement/Decrement`. These track the number of atexit handlers per thread. We don't have these — if the game's libc calls them during thread creation/exit, our stubs return 0 which may cause incorrect cleanup.
+### Boot Sequence
+- ✅ XKRegsFpEpk → calls main(argc, argv, envp)
+- ✅ Atexit stub in rsi (was NULL, causes crash)
+- ✅ DT_INIT runs before main (global constructors)
+- ✅ GPU headless mode (PCSX5_HEADLESS=1)
+- ✅ Thread isolation (guest crash doesn't kill emulator)
 
-**Action**: Port from `/tmp/kyty-check/source/emulator/src/Libs/LibKernel.cpp:382-414`
+### HLE Coverage
+- ✅ Thread atexit tracking (ported from Kyty)
+- ✅ ~20 boot-critical HLE stubs (KernelGetProcParam, tls_get_addr, etc.)
+- ✅ SEH-guarded strcmp/strncmp/strcasecmp
 
-### Missing Thread-Specific Data TLS Initialization  
-Kyty initializes TLS with a specific layout matching PS5's libc expectations. Our `Kernel::Initialize` sets up a basic TLS block (self-pointer at tp[0], canary at tp[40]) but it may not match PS5's exact layout. The Kyty approach uses `RuntimeLinker::TlsGetAddr` and proper thread-local image initialization.
+### WPF Frontend
+- ✅ IPC mode (out-of-process core via shared memory + pipe)
+- ✅ Console logs with line numbers, colors, dedup, auto-scroll
+- ✅ Boot overlay / pause menu (visible inside emulator area only)
+- ✅ Kill/Stop/Cancel buttons work (child process termination)
+- ✅ Session restart after crash/stop
+- ✅ SetDllDirectory for plugins/ folder
 
-**Action**: Compare `RuntimeLinker.cpp:503-550` TLS init with our `kernel.cpp:358-398`
+### Build System
+- ✅ build_release.ps1 stages dist/ with plugins/ + tools/ layout
+- ✅ FFmpeg DLL staging from SharpEmu or auto-download
+- ✅ VS version auto-detection
 
-### Missing Full PRX Module Loading from System Memory
-Kyty's `RuntimeLinker` handles `sceKernelLoadStartModule` by loading real PRX files from firmware directories. Our implementation at `libkernel.cpp:743` tries this but falls back to HLE. Kyty ships stub PRX files that provide proper export tables — this makes the game's loader happy even when the actual implementation is HLE.
+## 🔴 Current Issues
 
-**Action**: Either ship stub PRX files or ensure our HLE covers every NID the PRX would export
+### 1. Game Crashes with 0xC0000005 in VCRUNTIME140.dll
+- Happens during strcmp calls with bad guest pointers
+- SEH handler catches AV and returns -1, but process still dies
+- **Fix attempted**: 4MB stack, SEH guard — still crashing
+- **Root cause**: Unknown — might need to investigate further
 
-### Missing sceKernelGetProcessType with Correct Semantics
-We return 1 for main process. Kyty likely returns the correct Orbis value. Check if games check specific bits.
+### 2. IPC Frame Display
+- ✅ RenderFrame now writes to IPC in headless mode (was skipping due to g_window check)
+- 🟡 Need to verify frames appear in WPF UI
 
-### Missing Proper Module Init/Fini Callbacks
-Kyty's `RuntimeLinker::Start()` calls DT_INIT and DT_FINI through the PS5's `module_ini_fini_func_t` protocol. Our `XKRegsFpEpk` handler now calls `InvokeGuestFunction(dt_init, 0, 0, 0)` but the PS5 protocol expects specific arguments (args count + argp + func pointer).
+### 3. Boot overlay hides console in left/bottom dock modes
+- ✅ Fixed with Panel.ZIndex and RowSpan=1
 
-**Action**: Check Kyty's `run_ini_fini()` at `RuntimeLinker.cpp:92-95`
+## 🟡 Medium Priority (Next Sprint)
 
-## PRIORITY 3 — Performance / Correctness
+### HLE Gaps vs Kyty
+- TLS initialization comparison with Kyty's RuntimeLinker
+- PRX stub files / full HLE coverage for remaining NIDs
+- Module init/fini callback protocol (DT_INIT args)
 
-- **Thread creation rate** — Many games create 30+ threads at boot. Our `scePthreadCreate` handler allocates TLS/stack for each thread via VirtualAlloc. This is slow but correct.
-- **Synchronization performance** — Our mutex/condvar/event flag implementations use real Windows sync primitives. Performance should be good.
-- **File I/O path translation** — Guest paths like /app0/... need proper resolution. Our `TranslateGuestPath` handles this.
+### Performance
+- Thread creation rate (30+ threads at boot)
+- File I/O path caching
 
-## How to Debug Next Boot Attempt
-
-Run with:
+## Build & Test
 ```powershell
+.\build_release.ps1
 $env:PCSX5_HEADLESS=1
-.\build\bin\Release\pcsx5_cli.exe --boot "D:\Games\YourGame\eboot.bin" --log-level=debug 2> boot.log
+.\dist\pcsx5_cli.exe --title-id=PPSA02929 "Games\PPSA02929-app01\eboot.bin"
 ```
 
 Check `boot.log` for:
