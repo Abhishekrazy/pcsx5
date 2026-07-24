@@ -185,7 +185,14 @@ namespace Pcsx5Ui
                 return;
 
             _stopRequested = true;
-            try { CoreBridge.pcsx5_stop(); } catch { /* DLL may not be loaded */ }
+            if (_ipc != null)
+            {
+                try { _ipc.RequestStop(); } catch { }
+            }
+            else
+            {
+                try { CoreBridge.pcsx5_stop(); } catch { }
+            }
         }
 
         /// <summary>
@@ -198,7 +205,16 @@ namespace Pcsx5Ui
                 return;
 
             _stopRequested = true;
-            try { CoreBridge.pcsx5_force_stop(); } catch { }
+            if (_ipc != null)
+            {
+                // IPC: kill the child process directly + dispose session.
+                try { _ipc.Kill(); _ipc.Dispose(); _ipc = null; } catch { }
+                _dispatcher.BeginInvoke(() => Stopped?.Invoke(-1));
+            }
+            else
+            {
+                try { CoreBridge.pcsx5_force_stop(); } catch { }
+            }
         }
 
         /// <summary>Pause the running game (no-op if not running).</summary>
