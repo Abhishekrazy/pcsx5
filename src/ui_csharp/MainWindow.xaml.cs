@@ -2010,7 +2010,7 @@ namespace Pcsx5Ui
             while (doc.Blocks.Count > MaxConsoleLines)
                 doc.Blocks.Remove(doc.Blocks.FirstBlock);
 
-            ConsoleOutputBox.ScrollToEnd();
+            if (AutoScrollCheck?.IsChecked != false) ConsoleOutputBox.ScrollToEnd();
         }
 
         private static System.Windows.Media.Color ConsoleLevelToColor(int level)
@@ -2044,7 +2044,7 @@ namespace Pcsx5Ui
 
         private void ConsoleOutputBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            ConsoleOutputBox.ScrollToEnd();
+            if (AutoScrollCheck?.IsChecked != false) ConsoleOutputBox.ScrollToEnd();
         }
 
         private void ClearConsole_Click(object sender, RoutedEventArgs e)
