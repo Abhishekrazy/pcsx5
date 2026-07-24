@@ -934,8 +934,18 @@ namespace Kernel {
 #pragma warning(pop)
 
     bool Execute(const Loader::LoadedModule& main_module, u32* out_guest_exit_code) {
-        LOG_INFO(Kernel, "Starting execution of %s at Entry Point: 0x%llx", 
+        LOG_INFO(Kernel, "Starting execution of %s at Entry Point: 0x%llx",
                  main_module.name.c_str(), main_module.entry_point);
+
+        // Dump first 32 bytes at the entry point for boot diagnostics.
+        {
+            u8 entry_code[32] = {};
+            Memory::ReadBuffer(main_module.entry_point, entry_code, sizeof(entry_code));
+            char hex[96] = {};
+            for (int i = 0; i < 32; ++i)
+                sprintf_s(hex + i * 2, sizeof(hex) - i * 2, "%02X", entry_code[i]);
+            LOG_INFO(Kernel, "Entry point code: %s", hex);
+        }
 
         // Guest runs on this thread (the dedicated guest worker).  Remember
         // its OS thread id so the HLE exit path knows which thread carries
