@@ -126,7 +126,16 @@ namespace Pcsx5Ui
 
             try
             {
+                psi.RedirectStandardError = true;
+                psi.RedirectStandardOutput = true;
                 _process = Process.Start(psi);
+                // Read child's stderr in background for diagnostics.
+                _process.ErrorDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        System.Diagnostics.Debug.WriteLine($"[IPC-CHILD] {e.Data}");
+                };
+                _process.BeginErrorReadLine();
             }
             catch (Exception ex)
             {
@@ -139,7 +148,18 @@ namespace Pcsx5Ui
             try
             {
                 var connectTask = Task.Run(() => _pipe.WaitForConnection(), _cts.Token);
-                if (!connectTask.Wait(10000, _cts.Token))
+                // Also check if the child process exits early.
+                while (!connectTask.IsCompleted && !_process.HasExited)
+                {
+                    if (connectTask.Wait(500, _cts.Token)) break;
+                }
+                if (_process.HasExited && !_pipe.IsConnected)
+                {
+                    LastError = $"Core process exited (code {_process.ExitCode}) before connecting";
+                    Kill(); Cleanup();
+                    return false;
+                }
+                if (!_pipe.IsConnected)
                 {
                     LastError = "Pipe connection timeout (10s)";
                     Kill(); Cleanup();
