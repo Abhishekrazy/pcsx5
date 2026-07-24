@@ -210,7 +210,9 @@ namespace Pcsx5Ui
                 // IPC: kill child process on bg thread so UI doesn't block.
                 var ipc = _ipc; _ipc = null;
                 Task.Run(() => { try { ipc.Kill(); ipc.Dispose(); } catch { } });
-                _dispatcher.BeginInvoke(() => Stopped?.Invoke(-1));
+                // Don't fire Stopped here — it races asynchronously with the next
+                // LaunchButton_Click and would undo the new session's UI setup.
+                State = GameSessionState.Stopped;
             }
             else
             {
