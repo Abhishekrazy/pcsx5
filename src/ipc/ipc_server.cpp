@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 // Core-side IPC server — connects to shared memory + named pipe created by
 // the frontend, writes frames to shared memory, reads input from shared
 // memory, and listens for commands on the pipe.
@@ -8,6 +9,8 @@
 #include <cstring>
 #include <thread>
 #include <atomic>
+
+#include "ipc_gpu_bridge.h"
 
 namespace IPC {
 

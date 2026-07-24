@@ -1021,43 +1021,49 @@ namespace Pcsx5Ui
             StopButton.Visibility = Visibility.Visible;
             ConsoleOutputBox.Document.Blocks.Clear();
 
-            LogConsole($"Launching in-process: \"{game.EbootPath}\"");
+            LogConsole($"Launching via IPC: \"{game.EbootPath}\"");
             FooterStatus.Text = $"Booting: {game.Title}";
 
             // Stop title music when game launches
             _mediaPlayer.Stop();
 
-            // Switch from the library to the embedded game view; the emulator's
-            // window gets reparented into EmulatorHostPresenter once the core
-            // reports its HWND through the WindowReady event.
+            // Switch to game view — no HwndHost needed (IPC renders via WriteableBitmap).
             GameBarTitle.Text = game.Title;
             if (GameBarPhase != null) GameBarPhase.Text = "Initializing...";
-            _emuHost = new EmulatorWindowHost();
-            EmulatorHostPresenter.Content = _emuHost;
-            EmulatorHostPresenter.SizeChanged += EmulatorHostPresenter_SizeChanged;
+
+            // Prepare the frame display Image (replaces HwndHost entirely).
+            var frameImage = new System.Windows.Controls.Image
+            {
+                Stretch = System.Windows.Media.Stretch.Uniform,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
+                VerticalAlignment = System.Windows.VerticalAlignment.Stretch,
+            };
+            EmulatorHostPresenter.Content = frameImage;
+
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Collapsed;
-            // LogsView removed
             GameView.Visibility = Visibility.Visible;
 
             // Show boot overlay
             ShowBootOverlay(game, BootPhase.Initializing, "Initializing emulator core...");
 
-            string appDir = AppDomain.CurrentDomain.BaseDirectory;
-            var options = new CoreBridge.Pcsx5Options
-            {
-                ConfigDir = Path.Combine(appDir, "pcsx5_config"),
-                CrashDir = Path.Combine(appDir, "pcsx5_crash"),
-                TitleId = game.TitleId,
-                Embed = 1,
-                InProc = 1,
-            };
-
-            // The session owns the game thread; the WPF dispatcher is never blocked.
+            // Launch via IPC (out-of-process core).
             _session.Reset();
-            _session.Launch(game, options);
+            _session.LaunchIpc(game);
+
+            // Subscribe to IPC frame events for display.
+            var ipc = _session.IpcSession;
+            if (ipc != null)
+            {
+                ipc.FrameReady += () =>
+                {
+                    var bmp = ipc.FrameBitmap;
+                    if (bmp != null && frameImage.Source != bmp)
+                        frameImage.Source = bmp;
+                };
+            }
         }
 
         // ── GameSession event handlers ──────────────────────────────────────────

@@ -1,6 +1,12 @@
 #pragma once
 #include "../common/types.h"
 
+#ifdef _WIN32
+#define GPU_API __declspec(dllexport)
+#else
+#define GPU_API
+#endif
+
 namespace GPU {
 
     // One touch-pad finger sample (ScePadTouch semantics).
@@ -106,5 +112,9 @@ namespace GPU {
 
     // R1: VRR / vsync configuration.  Wires into the Vulkan present layer.
     void SetVrrConfig(bool vsync, bool vrr);
+
+    // Wire up IPC frame-write callbacks (set from main.cpp when --ipc is used).
+    void IPC_SetWriteFrame(void (*write_fn)(const void*, uint32_t, uint32_t, uint32_t),
+                           bool (*conn_fn)());
 }
 // namespace GPU

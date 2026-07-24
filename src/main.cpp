@@ -4,6 +4,7 @@
 #include "gpu/input/input_backend.h"
 #include "ui/button_layout.h"
 #include "ipc/ipc_server.h"
+#include "ipc/ipc_gpu_bridge.h"
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -149,6 +150,8 @@ int main(int argc, char* argv[]) {
             pcsx5_shutdown();
             return 1;
         }
+        // Wire up GPU frame write to shared memory.
+        GPU::IPC_SetWriteFrame(IPC::WriteFrame, IPC::IsConnected);
     }
 
     rc = pcsx5_load(target_path.c_str());
