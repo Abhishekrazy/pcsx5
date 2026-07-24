@@ -207,8 +207,9 @@ namespace Pcsx5Ui
             _stopRequested = true;
             if (_ipc != null)
             {
-                // IPC: kill the child process directly + dispose session.
-                try { _ipc.Kill(); _ipc.Dispose(); _ipc = null; } catch { }
+                // IPC: kill child process on bg thread so UI doesn't block.
+                var ipc = _ipc; _ipc = null;
+                Task.Run(() => { try { ipc.Kill(); ipc.Dispose(); } catch { } });
                 _dispatcher.BeginInvoke(() => Stopped?.Invoke(-1));
             }
             else

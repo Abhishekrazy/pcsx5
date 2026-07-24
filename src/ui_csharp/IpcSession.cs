@@ -185,27 +185,37 @@ namespace Pcsx5Ui
         // ── Stop / Kill ────────────────────────────────────────────────────
         public void RequestStop()
         {
-            SendPipeCmd(CmdStop);
+            if (!SendPipeCmd(CmdStop))
+            {
+                // Pipe not connected yet (still booting) — kill directly.
+                KillProcess();
+            }
         }
 
         public void Kill()
         {
             SendPipeCmd(CmdKill);
+            KillProcess();
+        }
+
+        private void KillProcess()
+        {
             if (_process != null && !_process.HasExited)
             {
                 try { _process.Kill(); } catch { }
             }
         }
 
-        private void SendPipeCmd(uint cmd)
+        private bool SendPipeCmd(uint cmd)
         {
-            if (_pipe == null || !_pipe.IsConnected) return;
+            if (_pipe == null || !_pipe.IsConnected) return false;
             try
             {
                 var buf = BitConverter.GetBytes(cmd);
                 _pipe.Write(buf, 0, 4);
+                return true;
             }
-            catch { }
+            catch { return false; }
         }
 
         // ── Input write ────────────────────────────────────────────────────
