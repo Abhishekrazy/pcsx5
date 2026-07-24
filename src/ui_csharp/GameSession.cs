@@ -401,12 +401,11 @@ namespace Pcsx5Ui
 
         /// <summary>
         /// Resets the session to Idle so a new game can be launched.
-        /// Must only be called after Stopped or Crashed has fired.
+        /// Force-cleans any stale IPC session even if the state machine
+        /// still shows the previous session as running.
         /// </summary>
         public void Reset()
         {
-            if (State != GameSessionState.Stopped && State != GameSessionState.Crashed && State != GameSessionState.Idle)
-                throw new InvalidOperationException("Cannot reset while game is still running.");
             // Dispose the old IPC session (shared memory, pipe, child process).
             if (_ipc != null) { try { _ipc.Dispose(); } catch { } _ipc = null; }
             _gameThread = null;
