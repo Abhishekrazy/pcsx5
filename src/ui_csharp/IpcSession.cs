@@ -129,11 +129,12 @@ namespace Pcsx5Ui
                 psi.RedirectStandardError = true;
                 psi.RedirectStandardOutput = true;
                 _process = Process.Start(psi);
-                // Read child's stderr in background for diagnostics.
+                // Forward child's stderr (log output) to the UI console.
                 _process.ErrorDataReceived += (s, e) =>
                 {
-                    if (!string.IsNullOrEmpty(e.Data))
-                        System.Diagnostics.Debug.WriteLine($"[IPC-CHILD] {e.Data}");
+                    if (string.IsNullOrEmpty(e.Data)) return;
+                    string line = StripAnsi(e.Data);
+                    _dispatcher.BeginInvoke(() => LogLine?.Invoke(line));
                 };
                 _process.BeginErrorReadLine();
             }
@@ -294,6 +295,19 @@ namespace Pcsx5Ui
                 _dispatcher.BeginInvoke(() => Crashed?.Invoke((int)code, msg));
                 _cts.Cancel();
             }
+        }
+
+        // ── ANSI escape code stripper ────────────────────────────────────
+        private static string StripAnsi(string raw)
+        {
+            int idx;
+            while ((idx = raw.IndexOf('\x1b')) >= 0)
+            {
+                int end = raw.IndexOf('m', idx);
+                if (end < 0) { raw = raw.Substring(0, idx); break; }
+                raw = raw.Substring(0, idx) + raw.Substring(end + 1);
+            }
+            return raw;
         }
 
         // ── Cleanup ────────────────────────────────────────────────────────
