@@ -166,6 +166,10 @@ namespace Pcsx5Ui
         private readonly ConcurrentQueue<ConsoleLine> _consoleLineQueue = new ConcurrentQueue<ConsoleLine>();
         private System.Windows.Threading.DispatcherTimer _consoleDrainTimer;
         private const int MaxConsoleLines = 5000; // cap on the console RichTextBox
+        private int _consoleLineNum = 0; // line number counter
+        private string _lastDedupLine = null; // dedup: last line text
+        private int _lastDedupCount = 0; // dedup: repeat count
+        private System.Windows.Media.Color _lastDedupColor; // dedup: line color
 
         // Embedded emulator window state (game renders inside the launcher window)
         private EmulatorWindowHost _emuHost = null;
@@ -1944,25 +1948,62 @@ namespace Pcsx5Ui
 
         private void DrainConsoleQueue()
         {
-            if (_consoleLineQueue.IsEmpty) return;
-
             var doc = ConsoleOutputBox.Document;
             int drained = 0;
             const int maxLinesPerDrain = 500;
 
-            while (drained < maxLinesPerDrain && _consoleLineQueue.TryDequeue(out var cl))
+            // First, flush any buffered dedup line from the previous drain.
+            if (_lastDedupLine != null && _lastDedupCount > 0)
             {
-                // Map log level to color.
-                var color = ConsoleLevelToColor(cl.Level);
-                var run = new System.Windows.Documents.Run(cl.Text + "\n")
+                _consoleLineNum++;
+                string text = _lastDedupLine;
+                if (_lastDedupCount > 1)
+                    text += $" (x{_lastDedupCount})";
+                var run = new System.Windows.Documents.Run($"{_consoleLineNum,5}: {text}\n")
                 {
-                    Foreground = new SolidColorBrush(color),
+                    Foreground = new SolidColorBrush(_lastDedupColor),
                     FontFamily = new System.Windows.Media.FontFamily("Consolas, Courier New"),
                     FontSize = 11
                 };
-                var para = new System.Windows.Documents.Paragraph(run) { Margin = new Thickness(0) };
-                doc.Blocks.Add(para);
+                doc.Blocks.Add(new System.Windows.Documents.Paragraph(run) { Margin = new Thickness(0) });
+                _lastDedupLine = null;
+                _lastDedupCount = 0;
                 drained++;
+            }
+
+            while (drained < maxLinesPerDrain && _consoleLineQueue.TryDequeue(out var cl))
+            {
+                string lineText = cl.Text;
+                var color = ConsoleLevelToColor(cl.Level);
+
+                // Dedup: if same as previous line, just increment count.
+                if (_lastDedupLine != null && _lastDedupLine == lineText && _lastDedupColor == color)
+                {
+                    _lastDedupCount++;
+                    continue;
+                }
+
+                // If different from previous, flush previous first.
+                if (_lastDedupLine != null && _lastDedupCount > 0)
+                {
+                    _consoleLineNum++;
+                    string t = _lastDedupLine;
+                    if (_lastDedupCount > 1)
+                        t += $" (x{_lastDedupCount})";
+                    var run = new System.Windows.Documents.Run($"{_consoleLineNum,5}: {t}\n")
+                    {
+                        Foreground = new SolidColorBrush(_lastDedupColor),
+                        FontFamily = new System.Windows.Media.FontFamily("Consolas, Courier New"),
+                        FontSize = 11
+                    };
+                    doc.Blocks.Add(new System.Windows.Documents.Paragraph(run) { Margin = new Thickness(0) });
+                    drained++;
+                }
+
+                // Start tracking new line.
+                _lastDedupLine = lineText;
+                _lastDedupColor = color;
+                _lastDedupCount = 1;
             }
 
             // Cap at MaxConsoleLines.
