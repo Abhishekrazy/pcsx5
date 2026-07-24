@@ -119,6 +119,7 @@ namespace Pcsx5Ui
                 Arguments = $"--ipc-map={mapName} --ipc-pipe={pipeName} --headless \"{ebootPath}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                EnvironmentVariables = { ["PCSX5_HEADLESS"] = "1" },
             };
             if (!string.IsNullOrEmpty(titleId))
                 psi.Arguments = $"--title-id={titleId} " + psi.Arguments;

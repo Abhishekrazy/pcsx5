@@ -78,6 +78,7 @@ int main(int argc, char* argv[]) {
     std::string extract_pkg_outdir;
     std::string ipc_map_name;
     std::string ipc_pipe_name;
+    int headless_mode = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--extract-pkg") {
@@ -106,6 +107,8 @@ int main(int argc, char* argv[]) {
             options.title_id = argv[i] + 11;
         } else if (a == "--embed") {
             options.embed = 1;
+        } else if (a == "--headless") {
+            headless_mode = 1;
         } else if (a.rfind("--ipc-map=", 0) == 0) {
             ipc_map_name = a.substr(10);
         } else if (a.rfind("--ipc-pipe=", 0) == 0) {
@@ -124,6 +127,11 @@ int main(int argc, char* argv[]) {
         }
     }
     if (!crash_dir.empty()) options.crash_dir = crash_dir.c_str();
+
+    // --headless overrides the config via env var (GPU::Initialize checks this).
+    if (headless_mode) {
+        ::_putenv("PCSX5_HEADLESS=1");
+    }
 
     // PKG-extraction mode: run standalone and exit (no emulator startup).
     if (!extract_pkg_path.empty()) {
