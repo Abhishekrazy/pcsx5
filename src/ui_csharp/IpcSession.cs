@@ -113,12 +113,17 @@ namespace Pcsx5Ui
                 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
 
             // Launch child process.
+            string coreExe = LocateCoreExe();
             var psi = new ProcessStartInfo
             {
-                FileName = LocateCoreExe(),
+                FileName = coreExe,
                 Arguments = $"--ipc-map={mapName} --ipc-pipe={pipeName} --headless \"{ebootPath}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                // Working directory must contain plugins/ folder with pcsx5_core.dll.
+                // The Windows loader needs to find the DLL before main() runs, so
+                // SetDllDirectoryW in the CLI's main() is too late for implicit linking.
+                WorkingDirectory = Path.GetDirectoryName(coreExe),
                 EnvironmentVariables = { ["PCSX5_HEADLESS"] = "1" },
             };
             if (!string.IsNullOrEmpty(titleId))
