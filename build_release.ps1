@@ -150,113 +150,67 @@ function Stage-Dir {
     }
 }
 
-# C++ core DLL + CLI tools
-Stage-File (Join-Path $cppBinDir "pcsx5_core.dll")         (Join-Path $distDir "pcsx5_core.dll")
-Stage-File (Join-Path $cppBinDir "pcsx5_cli.exe")          (Join-Path $distDir "pcsx5_cli.exe")
-Stage-File (Join-Path $cppBinDir "pcsx5_snd_decode.exe")   (Join-Path $distDir "pcsx5_snd_decode.exe")
-# boot_parser has no RUNTIME_OUTPUT_DIRECTORY, goes to build/Release/
-$bp = Join-Path $buildDir "Release\pcsx5_boot_parser.exe"
-if (-not (Test-Path $bp)) { $bp = Join-Path $cppBinDir "pcsx5_boot_parser.exe" }
-if (-not (Test-Path $bp)) { $bp = Join-Path $buildDir "pcsx5_boot_parser.exe" }
-Stage-File $bp (Join-Path $distDir "pcsx5_boot_parser.exe")
+# --- dist layout:
+#   pcsx5.exe          — WPF launcher (root)
+#   pcsx5_cli.exe      — CLI runner (root)
+#   plugins/pcsx5_core.dll, av*.dll
+#   tools/pcsx5_snd_decode.exe, pcsx5_boot_parser.exe
+#   assets/nid_db.txt, lang/
+#   pcsx5_config/global.json
+#   pcsx5_crash/, pcsx5_savedata/, Cache/
 
-# WPF frontend
+# Root — launchers
 $wpfExe = Join-Path $publishDir "pcsx5.exe"
 if (Test-Path $wpfExe) {
     Stage-File $wpfExe (Join-Path $distDir "pcsx5.exe")
 } elseif (-not $SkipDotnet) {
-    Fatal "pcsx5.exe not found in $publishDir - dotnet publish may have failed"
+    Fatal "pcsx5.exe not found in $publishDir"
+}
+Stage-File (Join-Path $cppBinDir "pcsx5_cli.exe")  (Join-Path $distDir "pcsx5_cli.exe")
+
+# Plugins — core DLL + FFmpeg
+$distPlugins = Join-Path $distDir "plugins"
+New-Item $distPlugins -Force -Type Directory | Out-Null
+Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distPlugins "pcsx5_core.dll")
+foreach ($pDir in @("I:\InstalledGames\sharpemu-win64-fbf2c2d\plugins",".\sharpemu_plugins","..\sharpemu_plugins")) {
+    if (Test-Path $pDir) {
+        foreach ($dll in @("avformat-61.dll","avcodec-61.dll","avutil-59.dll","swscale-8.dll","swresample-5.dll")) {
+            $src = Join-Path $pDir $dll
+            if (Test-Path $src) { Stage-File $src (Join-Path $distPlugins $dll) }
+        }
+    }
 }
 
-# Assets: NID name database, translation files
+# Tools
+$distTools = Join-Path $distDir "tools"
+New-Item $distTools -Force -Type Directory | Out-Null
+Stage-File (Join-Path $cppBinDir "pcsx5_snd_decode.exe") (Join-Path $distTools "pcsx5_snd_decode.exe")
+$bp = Join-Path $buildDir "Release\pcsx5_boot_parser.exe"
+if (-not (Test-Path $bp)) { $bp = Join-Path $cppBinDir "pcsx5_boot_parser.exe" }
+if (-not (Test-Path $bp)) { $bp = Join-Path $buildDir "pcsx5_boot_parser.exe" }
+Stage-File $bp (Join-Path $distTools "pcsx5_boot_parser.exe")
+
+# Assets
 $distAssets = Join-Path $distDir "assets"
-New-Item -ItemType Directory $distAssets -Force | Out-Null
-Stage-File (Join-Path $assetsDir "nid_db.txt")   (Join-Path $distAssets "nid_db.txt")
-Stage-Dir  (Join-Path $assetsDir "lang")          (Join-Path $distDir "lang")
+New-Item $distAssets -Force -Type Directory | Out-Null
+Stage-File (Join-Path $assetsDir "nid_db.txt") (Join-Path $distAssets "nid_db.txt")
+Stage-Dir (Join-Path $assetsDir "lang")        (Join-Path $distDir "lang")
+$lua = Join-Path $assetsDir "pcsx5_init.lua"
+if (Test-Path $lua) { Stage-File $lua (Join-Path $distAssets "pcsx5_init.lua") }
 
-# Optional external Lua init script (otherwise the embedded one in pcsx5_core.dll is used)
-$externalLua = Join-Path $assetsDir "pcsx5_init.lua"
-if (Test-Path $externalLua) {
-    Stage-File $externalLua (Join-Path $distAssets "pcsx5_init.lua")
-} else {
-    Log "  (no external pcsx5_init.lua - using embedded script in pcsx5_core.dll)"
-}
-
-# Default config
+# Config
 $distConfigDir = Join-Path $distDir "pcsx5_config"
 $srcGlobal = Join-Path $repoRoot "pcsx5_config\global.json"
 if (Test-Path $srcGlobal) {
     Stage-File $srcGlobal (Join-Path $distConfigDir "global.json")
 } else {
-    New-Item -ItemType Directory $distConfigDir -Force | Out-Null
-    $jsonLines = @(
-        '{',
-        '    "schema_version": 3,',
-        '    "logging": { "min_level": "Info" },',
-        '    "crash": { "bundle_dir": "pcsx5_crash" },',
-        '    "graphics": { "headless": false, "vsync": true, "vrr": false },',
-        '    "audio": { "backend": 2, "volume": 1.0 },',
-        '    "input": { "backend": 0 },',
-        '    "loader": { "firmware_modules_dir": "" }',
-        '}'
-    )
-    $defaultConfig = $jsonLines -join "`r`n"
-    Set-Content -Path (Join-Path $distConfigDir "global.json") -Value $defaultConfig -Encoding UTF8
-    Log "  + global.json (default)"
+    New-Item $distConfigDir -Force -Type Directory | Out-Null
+    $json = @('{','  "schema_version": 3,','  "logging": { "min_level": "Info" },','  "crash": { "bundle_dir": "pcsx5_crash" },','  "graphics": { "headless": false, "vsync": true },','  "audio": { "backend": 2, "volume": 1.0 },','  "input": { "backend": 0 },','  "loader": { "firmware_modules_dir": "" }','}') -join "`n"
+    Set-Content (Join-Path $distConfigDir "global.json") $json -Encoding UTF8
 }
 
-# SharpEmu FFmpeg plugins - video decoder runtime DLLs.
-# These are probed dynamically by pcsx5_core.dll at runtime;
-# place them next to the exe or in a subdirectory.
-$sharpemuPluginDirs = @(
-    "I:\InstalledGames\sharpemu-win64-fbf2c2d\plugins",
-    ".\sharpemu_plugins",
-    "..\sharpemu_plugins"
-)
-$ffmpegDlls = @("avformat-61.dll", "avcodec-61.dll", "avutil-59.dll",
-                 "swscale-8.dll", "swresample-5.dll")
-$ffmpegFound = $false
-foreach ($pDir in $sharpemuPluginDirs) {
-    if (Test-Path $pDir) {
-        $foundCount = 0
-        foreach ($dll in $ffmpegDlls) {
-            $src = Join-Path $pDir $dll
-            if (Test-Path $src) {
-                Stage-File $src (Join-Path $distDir $dll)
-                $foundCount++
-            }
-        }
-        if ($foundCount -gt 0) {
-            Log "  (FFmpeg: $foundCount DLL(s) staged from $pDir)"
-            $ffmpegFound = $true
-            break
-        }
-    }
-}
-if (-not $ffmpegFound) {
-    Log "  (no FFmpeg DLLs found - video decoding unavailable)"
-}
-
-# Runtime directories
-foreach ($d in @("pcsx5_crash", "pcsx5_savedata", "Cache")) {
-    New-Item -ItemType Directory (Join-Path $distDir $d) -Force | Out-Null
-}
-
-# Launcher batch file
-$batLines = @(
-    '@echo off',
-    'cd /d "%~dp0"',
-    'start "" "pcsx5.exe" %*'
-)
-Set-Content -Path (Join-Path $distDir "PCSX5.bat") -Value ($batLines -join "`r`n") -Encoding ASCII
-
-# CLI launcher batch
-$cliLines = @(
-    '@echo off',
-    'cd /d "%~dp0"',
-    'pcsx5_cli.exe %*'
-)
-Set-Content -Path (Join-Path $distDir "run.bat") -Value ($cliLines -join "`r`n") -Encoding ASCII
+# Runtime dirs
+foreach ($d in @("pcsx5_crash","pcsx5_savedata","Cache")) { New-Item (Join-Path $distDir $d) -Force -Type Directory | Out-Null }
 
 # ---------------------------------------------------------------------------
 # Step 4 - Validation
