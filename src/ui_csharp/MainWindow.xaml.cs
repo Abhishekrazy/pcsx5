@@ -376,6 +376,28 @@ namespace Pcsx5Ui
             }
         }
 
+        private void ShowToast(string message, string icon = "✓")
+        {
+            try
+            {
+                ToastIcon.Text = icon;
+                ToastMessage.Text = message;
+                ToastNotification.Visibility = Visibility.Visible;
+                ToastNotification.Opacity = 1.0;
+
+                var timer = new System.Windows.Threading.DispatcherTimer();
+                timer.Interval = TimeSpan.FromSeconds(3);
+                timer.Tick += (s, e) =>
+                {
+                    timer.Stop();
+                    ToastNotification.Opacity = 0;
+                    ToastNotification.Visibility = Visibility.Collapsed;
+                };
+                timer.Start();
+            }
+            catch { }
+        }
+
         private void SaveConfig()
         {
             try
@@ -483,6 +505,10 @@ namespace Pcsx5Ui
             }
 
             FooterGamesCount.Text = $"Games Loaded: {_games.Count}";
+            LibraryGameCount.Text = $"{_games.Count} games";
+            FullLibraryCount.Text = $"{_games.Count} games";
+            FullLibraryListView.ItemsSource = null;
+            FullLibraryListView.ItemsSource = _games;
 
             if (_games.Count > 0)
             {
@@ -1894,6 +1920,7 @@ namespace Pcsx5Ui
             string uiDir = AppDomain.CurrentDomain.BaseDirectory;
             string[] locations = {
                 Path.Combine(uiDir, "pcsx5_boot_parser.exe"),
+                Path.Combine(uiDir, "tools", "pcsx5_boot_parser.exe"),
                 Path.Combine(uiDir, "bin", "Release", "pcsx5_boot_parser.exe"),
                 Path.Combine(uiDir, "bin", "Debug", "pcsx5_boot_parser.exe"),
                 Path.Combine(uiDir, "..", "bin", "Release", "pcsx5_boot_parser.exe"),
@@ -2040,13 +2067,46 @@ namespace Pcsx5Ui
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             StopControllerVizPolling();
-            
+
             LibraryView.Visibility = Visibility.Visible;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Collapsed;
             // LogsView removed
             UpdateTabHighlight(TabLibraryBtn);
+        }
+
+        private void ToggleFullLibrary_Click(object sender, RoutedEventArgs e)
+        {
+            bool showFull = FullLibraryGrid.Visibility != Visibility.Visible;
+            FullLibraryGrid.Visibility = showFull ? Visibility.Visible : Visibility.Collapsed;
+            LibraryCarousel.Visibility = showFull ? Visibility.Collapsed : Visibility.Visible;
+            FullLibraryToggleBtn.Content = showFull ? "◀ Carousel" : "View All ▸";
+        }
+
+        private void LibraryScrollLeft_Click(object sender, RoutedEventArgs e)
+        {
+            // Find the ScrollViewer in the carousel and scroll left
+            var sv = FindVisualChild<ScrollViewer>(LibraryCarousel);
+            if (sv != null) sv.ScrollToHorizontalOffset(sv.HorizontalOffset - 200);
+        }
+
+        private void LibraryScrollRight_Click(object sender, RoutedEventArgs e)
+        {
+            var sv = FindVisualChild<ScrollViewer>(LibraryCarousel);
+            if (sv != null) sv.ScrollToHorizontalOffset(sv.HorizontalOffset + 200);
+        }
+
+        private static T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+        {
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is T t) return t;
+                var found = FindVisualChild<T>(child);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         private void TabAnalyzer_Click(object sender, RoutedEventArgs e)
@@ -3656,6 +3716,17 @@ namespace Pcsx5Ui
         public string MusicPath { get; set; }
         public long SizeBytes { get; set; }
         public string CompatStatus { get; set; }
+        public string SizeStr
+        {
+            get
+            {
+                string[] suffix = { "B", "KB", "MB", "GB", "TB" };
+                double d = SizeBytes;
+                int i = 0;
+                while (d >= 1024 && i < suffix.Length - 1) { i++; d /= 1024; }
+                return $"{d:F2} {suffix[i]}";
+            }
+        }
     }
 
     public class BootAnalysisResult
