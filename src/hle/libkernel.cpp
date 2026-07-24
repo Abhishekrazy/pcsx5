@@ -534,6 +534,140 @@ namespace HLE {
         });
 
         // =====================================================================
+        // Kyty-port: thread atexit tracking — counters for per-thread cleanup.
+        // Games call these during thread creation/exit.  Missing implementations
+        // cause the game's libc to hang waiting for atexit counts to match.
+        // =====================================================================
+        // KernelSetThreadAtexitCount (pB-yGZ2nQ9o) — store the count-getter fn.
+        {
+            static void* s_get_count = nullptr;
+            RegisterSymbol("libkernel", "pB-yGZ2nQ9o#T#T", [](const GuestArgs& a) -> u64 {
+                s_get_count = reinterpret_cast<void*>(static_cast<uintptr_t>(a.arg1));
+                LOG_DEBUG(HLE, "KernelSetThreadAtexitCount(func=0x%llx) -> 0", a.arg1);
+                return 0;
+            });
+        }
+        // KernelSetThreadAtexitReport (WhCc1w3EhSI) — store the report fn.
+        {
+            static void* s_report = nullptr;
+            RegisterSymbol("libkernel", "WhCc1w3EhSI#T#T", [](const GuestArgs& a) -> u64 {
+                s_report = reinterpret_cast<void*>(static_cast<uintptr_t>(a.arg1));
+                LOG_DEBUG(HLE, "KernelSetThreadAtexitReport(func=0x%llx) -> 0", a.arg1);
+                return 0;
+            });
+        }
+        // KernelRtldThreadAtexitIncrement (Tz4RNUCBbGI)
+        RegisterSymbol("libkernel", "Tz4RNUCBbGI#T#T", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "KernelRtldThreadAtexitIncrement() -> 0");
+            return 0;
+        });
+        // KernelRtldThreadAtexitDecrement (8OnWXlgQlvo)
+        RegisterSymbol("libkernel", "8OnWXlgQlvo#T#T", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "KernelRtldThreadAtexitDecrement() -> 0");
+            return 0;
+        });
+        // KernelSetThreadDtors (rNhWz+lvOMU) — set thread destructors.
+        RegisterSymbol("libkernel", "rNhWz+lvOMU#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "KernelSetThreadDtors(0x%llx) -> 0", a.arg1);
+            return 0;
+        });
+        // pthread_cxa_finalize (kbw4UHHSYy0) — finalize cleanup on thread exit.
+        RegisterSymbol("libkernel", "kbw4UHHSYy0#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "pthread_cxa_finalize(0x%llx) -> 0", a.arg1);
+            return 0;
+        });
+
+        // =====================================================================
+        // Kyty-port: boot-critical stubs — games call these during _start / CRT init.
+        // =====================================================================
+        // elf_phdr_match_addr (Fjc4-n1+y2g) — check if addr falls in a module's phdr.
+        RegisterSymbol("libkernel", "Fjc4-n1+y2g#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "elf_phdr_match_addr(addr=0x%llx) -> 0", a.arg1);
+            return 0;
+        });
+        // KernelGetProcParam (959qrazPIrg) — return the process parameter (procParam).
+        // Used by the loader to get system info.  Return 0 to indicate none available.
+        RegisterSymbol("libkernel", "959qrazPIrg#T#T", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "KernelGetProcParam() -> 0");
+            return 0;
+        });
+        // tls_get_addr (vNe1w4diLCs) — return TLS block address for a module.
+        // Used by the libc TLS access path.  Return a dummy address to prevent crash.
+        RegisterSymbol("libkernel", "vNe1w4diLCs#T#T", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "tls_get_addr() -> 0 (stub)");
+            return 0;
+        });
+        // KernelGetModuleInfoFromAddr (f7KBOafysXo) — lookup module by code address.
+        RegisterSymbol("libkernel", "f7KBOafysXo#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "KernelGetModuleInfoFromAddr(addr=0x%llx) -> ENOSYS", a.arg1);
+            return 0x8002002D; // SCE_KERNEL_ERROR_ENOSYS
+        });
+        // KernelIsNeoMode (WslcK1FQcGI) — is this a PS4 Pro?  PS5 always false.
+        RegisterSymbol("libkernel", "WslcK1FQcGI#T#T", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "KernelIsNeoMode() -> false");
+            return 0;
+        });
+        // KernelUuidCreate (Xjoosiw+XPI) — generate a UUID.
+        RegisterSymbol("libkernel", "Xjoosiw+XPI#T#T", [](const GuestArgs& a) -> u64 {
+            // Write zeroed UUID (16 bytes) if a valid pointer was provided.
+            if (a.arg1) {
+                for (int i = 0; i < 16; ++i) Memory::Write<u8>(a.arg1 + i, 0);
+            }
+            LOG_DEBUG(HLE, "KernelUuidCreate(0x%llx) -> all-zeros", a.arg1);
+            return 0;
+        });
+        // KernelSetGPO (ca7v6Cxulzs) — set general-purpose output (HW control).
+        RegisterSymbol("libkernel", "ca7v6Cxulzs#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "KernelSetGPO(val=0x%llx) -> 0", a.arg1);
+            return 0;
+        });
+        // KernelRtldSetApplicationHeapAPI (p5EcQeEeJAE) — register heap allocators.
+        RegisterSymbol("libkernel", "p5EcQeEeJAE#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "KernelRtldSetApplicationHeapAPI(0x%llx) -> 0", a.arg1);
+            return 0;
+        });
+        // KernelGetSanitizerMallocReplaceExternal (py6L8jiVAN8) — ASan support.
+        RegisterSymbol("libkernel", "py6L8jiVAN8#T#T", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "KernelGetSanitizerMallocReplaceExternal() -> 0");
+            return 0;
+        });
+        // KernelGetSanitizerNewReplaceExternal (bnZxYgAFeA0) — ASan support.
+        RegisterSymbol("libkernel", "bnZxYgAFeA0#T#T", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "KernelGetSanitizerNewReplaceExternal() -> 0");
+            return 0;
+        });
+        // PthreadEqual (3PtV6p3QNX4) — compare two thread IDs.
+        RegisterSymbol("libkernel", "3PtV6p3QNX4#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "PthreadEqual(t1=%llu, t2=%llu) -> %d", a.arg1, a.arg2, a.arg1 == a.arg2 ? 1 : 0);
+            return (a.arg1 == a.arg2) ? 1 : 0;
+        });
+        // PthreadGetthreadid (EI-5-jlq2dE) — get OS thread id for a pthread.
+        RegisterSymbol("libkernel", "EI-5-jlq2dE#T#T", [](const GuestArgs& a) -> u64 {
+            if (a.arg2) Memory::Write<u64>(a.arg2, a.arg1); // return thread id
+            LOG_DEBUG(HLE, "PthreadGetthreadid(%llu) -> 0", a.arg1);
+            return 0;
+        });
+        // PthreadGetname (How7B8Oet6k) — get thread name.
+        RegisterSymbol("libkernel", "How7B8Oet6k#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "PthreadGetname(thread=%llu) -> 0", a.arg1);
+            return 0;
+        });
+        // PthreadAttrSetaffinity / PthreadSetaffinity — CPU affinity (no-op).
+        RegisterSymbol("libkernel", "3qxgM4ezETA#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "PthreadAttrSetaffinity(attr=0x%llx) -> 0", a.arg1);
+            return 0;
+        });
+        RegisterSymbol("libkernel", "bt3CTBKmGyI#T#T", [](const GuestArgs& a) -> u64 {
+            LOG_DEBUG(HLE, "PthreadSetaffinity(thread=%llu) -> 0", a.arg1);
+            return 0;
+        });
+        // PthreadAttrGetaffinity (8+s5BzZjxSg) — get CPU affinity mask.
+        RegisterSymbol("libkernel", "8+s5BzZjxSg#T#T", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "PthreadAttrGetaffinity() -> 0");
+            return 0;
+        });
+
+        // =====================================================================
         // XwLA5cTHjt4#T#T  ===  sceKernelGetProcessType
         // Returns the process type (1 = SceKernelMainProc for the main process).
         // Called at startup to determine execution context.

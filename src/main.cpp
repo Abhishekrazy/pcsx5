@@ -51,6 +51,20 @@ int main(int argc, char* argv[]) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
 
+    // Add plugins/ to the DLL search path so pcsx5_core.dll can be found
+    // when it lives next to the exe in a plugins subdirectory.
+    {
+        char exe_dir[MAX_PATH] = {};
+        DWORD len = GetModuleFileNameA(nullptr, exe_dir, MAX_PATH);
+        if (len > 0 && len < MAX_PATH) {
+            std::string dir = std::filesystem::path(exe_dir).parent_path().string();
+            std::string plugins = dir + "\\plugins";
+            if (std::filesystem::exists(plugins)) {
+                SetDllDirectoryW(std::wstring(plugins.begin(), plugins.end()).c_str());
+            }
+        }
+    }
+
     // Print emulator banner
     std::printf("\033[95m==================================================\n");
     std::printf("  pcsx5 - PlayStation 5 Emulator & Compatibility Layer\n");
