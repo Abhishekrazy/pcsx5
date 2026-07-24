@@ -63,9 +63,14 @@ PCSX5_API int  pcsx5_load(const char* eboot_path);
 // the guest exit code (>= 0), 3 on strict-import failure, or -1 on error.
 PCSX5_API int  pcsx5_run(pcsx5_window_cb window_cb, void* window_user);
 
-// Ask the running guest to stop.  Safe to call from any thread; the guest
-// observes the flag on its next HLE dispatch and pcsx5_run() returns.
+// Ask the running guest to stop gracefully.  Safe to call from any thread;
+// the guest observes the flag on its next HLE dispatch and pcsx5_run()
+// returns after the 5-second force-stop timeout.
 PCSX5_API void pcsx5_stop(void);
+
+// Immediately terminate the guest thread (hard kill).  The guest does not
+// get a chance to clean up.  Use only when pcsx5_stop() does not respond.
+PCSX5_API void pcsx5_force_stop(void);
 
 // Pause / resume emulator execution loop. Safe to call from any thread.
 PCSX5_API void pcsx5_pause(void);
@@ -79,5 +84,10 @@ PCSX5_API void pcsx5_shutdown(void);
 // Standalone PKG extraction (no emulator startup).  Returns 0 on success,
 // non-zero on failure.
 PCSX5_API int  pcsx5_extract_pkg(const char* pkg_path, const char* out_dir);
+
+// Retrieve the last guest-crash error string for display in the frontend.
+// Returns 0 on success (crash info written into `buf`), -1 if no crash
+// has occurred.  `buf` is always NUL-terminated when buf_size > 0.
+PCSX5_API int  pcsx5_get_last_error(char* buf, int buf_size);
 
 }

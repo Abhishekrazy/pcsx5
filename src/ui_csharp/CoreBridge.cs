@@ -46,6 +46,9 @@ namespace Pcsx5Ui
         internal static extern void pcsx5_stop();
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_force_stop();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern void pcsx5_pause();
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -58,6 +61,11 @@ namespace Pcsx5Ui
         internal static extern int pcsx5_extract_pkg(
             [MarshalAs(UnmanagedType.LPStr)] string pkgPath,
             [MarshalAs(UnmanagedType.LPStr)] string outDir);
+
+        // Retrieve the last guest-crash error string.  Returns 0 on success
+        // (crash info written into buf), -1 if no crash has occurred.
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int pcsx5_get_last_error(IntPtr buf, int bufSize);
 
         // LogCategory / LogLevel names, mirroring src/common/log.cpp so the
         // console panel shows the same [Category][Level] prefix the CLI prints.

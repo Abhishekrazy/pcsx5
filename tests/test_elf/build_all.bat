@@ -13,6 +13,19 @@ if "%~1"=="" (
     set "OUTDIR=%~1\"
 )
 
+REM Add common LLVM install paths so MSBuild custom steps find clang.
+set "LLVM_DIRS=C:\Program Files\LLVM\bin;C:\Program Files (x86)\LLVM\bin"
+for %%d in (%LLVM_DIRS%) do (
+    if exist "%%d\clang.exe" set "PATH=%%d;%PATH%"
+)
+
+where clang >nul 2>&1
+if errorlevel 1 (
+    echo [SKIP] clang not found on PATH - test ELFs not built.
+    endlocal
+    exit /b 0
+)
+
 pushd "%~dp0"
 
 for %%F in (%ELFS%) do (

@@ -8,6 +8,7 @@
 #include "../memory/memory.h"
 #include "../hle/hle.h"
 #include "../loader/module_graph.h"
+#include "../config/config.h"
 #include "../common/log.h"
 #include "../gpu/gpu.h"
 #include <windows.h>
@@ -207,8 +208,45 @@ namespace Kernel {
         if (!game_dir.empty()) {
             dirs.emplace_back(std::filesystem::path(game_dir) / "sce_module");
         }
+        // User-configured firmware directory (explicit override).
         if (!firmware_modules_dir.empty()) {
             dirs.emplace_back(firmware_modules_dir);
+        } else {
+            // Auto-detect: check common locations for firmware PRX modules.
+            // 1. Next to the executable: <exe_dir>/firmware_modules/
+            {
+                char module_path[MAX_PATH] = {};
+                const DWORD len = GetModuleFileNameA(nullptr, module_path, MAX_PATH);
+                if (len > 0 && len < MAX_PATH) {
+                    const auto exe_dir = std::filesystem::path(module_path).parent_path();
+                    const auto fw_dir = exe_dir / "firmware_modules";
+                    std::error_code ec;
+                    if (std::filesystem::exists(fw_dir, ec)) {
+                        dirs.emplace_back(fw_dir);
+                    }
+                }
+            }
+            // 2. Config directory: <config_dir>/firmware_modules/
+            {
+                const auto cfg_dir =
+                    std::filesystem::path(ConfigService::Directory()) / "firmware_modules";
+                std::error_code ec;
+                if (std::filesystem::exists(cfg_dir, ec)) {
+                    // Avoid duplicate if exe_dir == config_dir and both paths
+                    // resolved to the same directory.
+                    if (dirs.empty() || dirs.back() != cfg_dir) {
+                        dirs.emplace_back(cfg_dir);
+                    }
+                }
+            }
+            // Log a suggestion if still no firmware dir was found.
+            if (dirs.size() <= 1) { // only game sce_module/ or nothing at all
+                LOG_WARN(Kernel, "No firmware_modules_dir configured and none found "
+                         "auto-detected. PRX resolution falls back to HLE stubs. "
+                         "Place firmware PRX files in 'firmware_modules/' next to "
+                         "the emulator executable or set loader.firmware_modules_dir "
+                         "in the config.");
+            }
         }
         g_module_resolver.SetSearchDirectories(std::move(dirs));
         for (const auto& dir : g_module_resolver.SearchDirectories()) {
@@ -1232,9 +1270,9 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 for (int i = 0; i < 16; ++i) {
                     sprintf_s(instr_hex + i * 3, sizeof(instr_hex) - i * 3, "%02X ", instr[i]);
                 }
-                LOG_INFO(Kernel, "  Instruction bytes at crash RIP 0x%llx: %s", context->Rip, instr_hex);
+                LOG_DEBUG(Kernel, "  Instruction bytes at crash RIP 0x%llx: %s", context->Rip, instr_hex);
             }
-            LOG_INFO(Kernel, "  Access violation details: Type: %s, Address: 0x%llx",
+            LOG_DEBUG(Kernel, "  Access violation details: Type: %s, Address: 0x%llx",
                      exception_record->ExceptionInformation[0] == 0 ? "Read" :
                      exception_record->ExceptionInformation[0] == 1 ? "Write" : "Execute",
                      exception_record->ExceptionInformation[1]);
@@ -1261,7 +1299,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         }
 
         if (exception_record->ExceptionCode == STATUS_ACCESS_VIOLATION || exception_record->ExceptionCode == 0xC0000005) {
-            LOG_INFO(Kernel, "Parsing instruction for TLS emulation at RIP=0x%llx", context->Rip);
+            LOG_DEBUG(Kernel, "Parsing instruction for TLS emulation at RIP=0x%llx", context->Rip);
             TlsPatch::NoteTrap();
             u8* rip = reinterpret_cast<u8*>(context->Rip);
             u8* instr = rip;
@@ -1281,7 +1319,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                     is_64bit = (b & 0x08) != 0;
                     instr++;
                 } else {
-                    LOG_INFO(Kernel, "  No REX prefix, b=0x%x", b);
+                    LOG_DEBUG(Kernel, "  No REX prefix, b=0x%x", b);
                 }
                 
                 u8 opcode = 0;
@@ -1310,7 +1348,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     instr += 4;
                                     patchable_form = true;
                                 } else {
-                                    LOG_INFO(Kernel, "  SIB base is %d (expected 5)", base);
+                                    LOG_DEBUG(Kernel, "  SIB base is %d (expected 5)", base);
                                     parse_success = false;
                                 }
                             } else {
@@ -1344,7 +1382,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                 parse_success = false;
                             }
                         } else {
-                            LOG_INFO(Kernel, "  Unsupported mod=%d, rm=%d", mod, rm);
+                            LOG_DEBUG(Kernel, "  Unsupported mod=%d, rm=%d", mod, rm);
                             parse_success = false;
                         }
                         
@@ -1385,7 +1423,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                             
                             if (opcode == 0x8B) {
                                 const u64 access_size = is_64bit ? 8 : 4;
-                                LOG_INFO(Kernel, "Emulating TLS read: RIP=0x%llx, displacement=%d, reg=%d, is_64bit=%d, tp=0x%llx",
+                                LOG_DEBUG(Kernel, "Emulating TLS read: RIP=0x%llx, displacement=%d, reg=%d, is_64bit=%d, tp=0x%llx",
                                          context->Rip, displacement, reg, is_64bit, tp);
                                 if (tp == 0) {
                                     LOG_ERROR(Kernel, "Guest TLS read but no thread pointer configured.");
@@ -1427,7 +1465,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
                                     try_patch_site(old_rip);
-                                    LOG_INFO(Kernel, "TLS read emulated: RIP 0x%llx -> 0x%llx (len=%d), reg val = 0x%llx, OS Thread: %lu", old_rip, context->Rip, instr_len, *reg_ptr, ::GetCurrentThreadId());
+                                    LOG_DEBUG(Kernel, "TLS read emulated: RIP 0x%llx -> 0x%llx (len=%d), reg val = 0x%llx, OS Thread: %lu", old_rip, context->Rip, instr_len, *reg_ptr, ::GetCurrentThreadId());
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
                             }
@@ -1467,7 +1505,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
                                     try_patch_site(old_rip);
-                                    LOG_INFO(Kernel, "TLS write emulated: RIP 0x%llx -> 0x%llx (len=%d), val = 0x%llx", old_rip, context->Rip, instr_len, tls_value);
+                                    LOG_DEBUG(Kernel, "TLS write emulated: RIP 0x%llx -> 0x%llx (len=%d), val = 0x%llx", old_rip, context->Rip, instr_len, tls_value);
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
                             }
@@ -1489,7 +1527,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
                                     try_patch_site(old_rip, imm_value);
-                                    LOG_INFO(Kernel, "TLS imm write emulated: RIP 0x%llx -> 0x%llx (len=%d), val = 0x%llx", old_rip, context->Rip, instr_len, tls_val);
+                                    LOG_DEBUG(Kernel, "TLS imm write emulated: RIP 0x%llx -> 0x%llx (len=%d), val = 0x%llx", old_rip, context->Rip, instr_len, tls_val);
                                     return EXCEPTION_CONTINUE_EXECUTION;
                                 }
                             }
@@ -1510,7 +1548,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             if (SafeRead(&first_byte, reinterpret_cast<void*>(context->Rip), 1) && first_byte == 0xE8) {
                 u64 rip = context->Rip;
                 if (rip >= 0x800000000 && rip < 0x900000000) {
-                    LOG_INFO(Kernel, "TlsPatch: retrying patched site at 0x%llx after TLS decode miss", rip);
+                    LOG_DEBUG(Kernel, "TlsPatch: retrying patched site at 0x%llx after TLS decode miss", rip);
                     return EXCEPTION_CONTINUE_EXECUTION;
                 }
             }
@@ -1577,9 +1615,11 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 LOG_ERROR(Kernel, "  [RDI+0x%02llx] = 0x%016llx", off, val);
             }
 
-            // The main thread's window loop is still pumping; terminate the
-            // process directly (crash report already written above).
-            ExitProcess(1);
+            // Record the crash and let the SEH handler in TryStartGuest catch
+            // it cleanly instead of killing the emulator process.
+            HLE::SetGuestCrashed(exception_record->ExceptionCode,
+                                 static_cast<guest_addr_t>(context->Rip));
+            return EXCEPTION_CONTINUE_SEARCH;
         }
 
         if (exception_record->ExceptionCode != 0xE06D7363 && 

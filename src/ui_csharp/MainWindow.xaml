@@ -1,6 +1,7 @@
 <Window x:Class="Pcsx5Ui.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Pcsx5Ui"
         Title="PCSX5 - PlayStation 5 Emulator" Height="780" Width="1200"
         MinWidth="1050" MinHeight="680"
         WindowStartupLocation="CenterScreen"
@@ -158,6 +159,13 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <!-- Animated spinner keyframe -->
+        <Style x:Key="SpinnerStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="22"/>
+            <Setter Property="Foreground" Value="#0099FF"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -193,7 +201,7 @@
             </Grid.RowDefinitions>
 
             <!-- Title Bar & Navigation Grid -->
-            <Border Grid.Row="0" Background="#4F05060A" BorderBrush="#15FFFFFF" BorderThickness="0,0,0,1">
+            <Border x:Name="TitleBarBorder" Grid.Row="0" Background="#4F05060A" BorderBrush="#15FFFFFF" BorderThickness="0,0,0,1">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="200"/>
@@ -213,7 +221,6 @@
                         <Button x:Name="TabAnalyzerBtn" Content="BOOT ANALYZER" Style="{StaticResource NavTabButtonStyle}" Click="TabAnalyzer_Click"/>
                         <Button x:Name="TabControllerBtn" Content="CONTROLLER SETUP" Style="{StaticResource NavTabButtonStyle}" Click="TabController_Click"/>
                         <Button x:Name="TabSettingsBtn" Content="SYSTEM SETTINGS" Style="{StaticResource NavTabButtonStyle}" Click="TabSettings_Click"/>
-                        <Button x:Name="TabLogsBtn" Content="CONSOLE LOGS" Style="{StaticResource NavTabButtonStyle}" Click="TabLogs_Click"/>
                     </StackPanel>
 
                     <!-- Top-Right Controls & Search Box -->
@@ -1219,32 +1226,6 @@
                     <Button x:Name="SaveSettingsBtn" Grid.Row="1" Content="Save Configuration" Width="180" Height="36" Style="{StaticResource ModernButtonStyle}" HorizontalAlignment="Right" Margin="0,10,15,0" Click="SaveSettingsBtn_Click"/>
                 </Grid>
 
-                <!-- 3. CONSOLE LOGS VIEW (GRID) -->
-                <Grid x:Name="LogsView" Visibility="Collapsed" Margin="40,20,40,20">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <Grid Grid.Row="0" Margin="0,0,0,10">
-                        <TextBlock x:Name="LogsHeaderTextBlock" Text="Emulator Console Output Log" FontSize="14" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
-                        
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Copy Output" Style="{StaticResource ModernButtonStyle}" Click="CopyConsole_Click"/>
-                            <Button Content="Clear Logs" Style="{StaticResource ModernButtonStyle}" Margin="10,0,0,0" Click="ClearConsole_Click"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <Border x:Name="LogsConsoleSlot" Grid.Row="1">
-                        <Border x:Name="ConsoleBorder" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="8" Padding="12">
-                            <TextBox x:Name="ConsoleOutputTextBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
-                                     BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
-                                     HorizontalScrollBarVisibility="Disabled" Foreground="#FFCC66"
-                                     AcceptsReturn="True" TextWrapping="Wrap" />
-                        </Border>
-                    </Border>
-                </Grid>
-
                 <!-- 4. EMBEDDED GAME VIEW (game renders inside the launcher window) -->
                 <Grid x:Name="GameView" Visibility="Collapsed">
                     <Grid.RowDefinitions>
@@ -1252,38 +1233,234 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0">
+                    <!-- Main content area: game + console -->
+                    <Grid x:Name="GameContentGrid" Grid.Row="0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition x:Name="GameContentLeftCol" Width="*"/>
+                            <ColumnDefinition x:Name="GameContentRightCol" Width="Auto"/>
                         </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition x:Name="GameContentTopRow" Height="*"/>
+                            <RowDefinition x:Name="GameContentBottomRow" Height="Auto"/>
+                        </Grid.RowDefinitions>
 
                         <!-- Emulator window is reparented into this area (HwndHost) -->
-                        <Border Grid.Column="0" Background="Black">
+                        <Border Grid.Row="0" Grid.Column="0" Background="Black">
                             <ContentControl x:Name="EmulatorHostPresenter"/>
                         </Border>
 
-                        <!-- Console side panel (toggled from the game bar) -->
-                        <Border x:Name="GameConsolePanel" Grid.Column="1" Width="380" Visibility="Collapsed"
+                        <!-- Console panel — changes position based on dock mode -->
+                        <Border x:Name="GameConsolePanel" Grid.Row="0" Grid.Column="1" Width="380" Visibility="Collapsed"
                                 Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1,0,0,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <TextBlock Grid.Row="0" Text="Console Output" FontSize="12" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="14,12,14,6"/>
-                                <Border x:Name="GameConsoleSlot" Grid.Row="1" Margin="6,0,6,6"/>
+                                <!-- Header with dock buttons -->
+                                <Grid Grid.Row="0" Margin="10,10,10,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Console" FontSize="12" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Button x:Name="ConsoleDockBottomBtn" Width="24" Height="24" FontSize="10" Padding="0" ToolTip="Dock bottom"
+                                                Click="ConsoleDockMode_Click" Tag="Bottom" Style="{StaticResource ModernButtonStyle}">⬇</Button>
+                                        <Button x:Name="ConsoleDockRightBtn" Width="24" Height="24" FontSize="10" Padding="0" Margin="2,0,0,0" ToolTip="Dock right"
+                                                Click="ConsoleDockMode_Click" Tag="Right" Style="{StaticResource ModernButtonStyle}">➡</Button>
+                                        <Button x:Name="ConsoleDockLeftBtn" Width="24" Height="24" FontSize="10" Padding="0" Margin="2,0,0,0" ToolTip="Dock left"
+                                                Click="ConsoleDockMode_Click" Tag="Left" Style="{StaticResource ModernButtonStyle}">⬅</Button>
+                                        <Button x:Name="ConsoleDockFloatBtn" Width="24" Height="24" FontSize="10" Padding="0" Margin="2,0,0,0" ToolTip="Undock (floating)"
+                                                Click="ConsoleDockMode_Click" Tag="Float" Style="{StaticResource ModernButtonStyle}">⬜</Button>
+                                    </StackPanel>
+                                </Grid>
+                                <Border x:Name="GameConsoleSlot" Grid.Row="1" Margin="6,0,6,6">
+                                    <Border x:Name="ConsoleBorder" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="6" Padding="8">
+                                        <RichTextBox x:Name="ConsoleOutputBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
+                                                     BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+                                                     HorizontalScrollBarVisibility="Disabled" IsDocumentEnabled="True">
+                                            <RichTextBox.Resources>
+                                                <Style TargetType="Paragraph"><Setter Property="Margin" Value="0,0,0,1"/></Style>
+                                            </RichTextBox.Resources>
+                                        </RichTextBox>
+                                    </Border>
+                                </Border>
+                                <!-- Console action buttons -->
+                                <Grid Grid.Row="2" Margin="10,4,10,8">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Copy" Width="50" Height="22" FontSize="9" Padding="0" Style="{StaticResource ModernButtonStyle}" Click="CopyConsole_Click"/>
+                                        <Button Content="Clear" Width="50" Height="22" FontSize="9" Padding="0" Margin="4,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="ClearConsole_Click"/>
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
                         </Border>
+
+
+                        <!-- BOOT PHASE OVERLAY -->
+                        <Grid x:Name="GameBootOverlay" Grid.ColumnSpan="2" Grid.RowSpan="2" Visibility="Collapsed" Background="#D905060A">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="400">
+                                <!-- PS5 logo area -->
+                                <Border Background="#1A0099FF" CornerRadius="50" Width="80" Height="80"
+                                        HorizontalAlignment="Center" Margin="0,0,0,24">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="#0099FF" BlurRadius="30" Opacity="0.6" ShadowDepth="0"/>
+                                    </Border.Effect>
+                                    <TextBlock x:Name="BootSpinnerText" Text="⟳" FontSize="42" Foreground="#0099FF"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+
+                                <!-- Phase title -->
+                                <TextBlock x:Name="BootPhaseTitle" Text="Initializing..." FontSize="22" FontWeight="Bold"
+                                           Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+
+                                <!-- Phase detail -->
+                                <TextBlock x:Name="BootPhaseDetail" Text="Starting emulator core" FontSize="13"
+                                           Foreground="#FFA0A0A5" HorizontalAlignment="Center" TextWrapping="Wrap"
+                                           TextAlignment="Center" Margin="0,0,0,28"/>
+
+                                <!-- Progress bar -->
+                                <Border CornerRadius="4" Background="#20FFFFFF" Height="6" Margin="0,0,0,24">
+                                    <ProgressBar x:Name="BootProgressBar" Minimum="0" Maximum="100" Value="10"
+                                                 Background="Transparent" BorderThickness="0" Height="6"
+                                                 Foreground="#0099FF"/>
+                                </Border>
+
+                                <!-- Game title -->
+                                <TextBlock x:Name="BootGameTitle" Text="" FontSize="11" Foreground="#6FA0A0A5"
+                                           HorizontalAlignment="Center" Margin="0,0,0,20"/>
+
+                                <!-- Cancel button -->
+                                <Button x:Name="BootCancelBtn" Content="✕  Cancel Boot" Width="160" Height="36"
+                                        Style="{StaticResource ModernButtonStyle}" HorizontalAlignment="Center"
+                                        Click="BootCancelBtn_Click" Focusable="True"
+                                        Background="#20FF2200" BorderBrush="#40FF2200"/>
+                                <TextBlock Text="[◯] Cancel" FontSize="10" Foreground="#4DFFFFFF"
+                                           HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- IN-GAME PAUSE MENU OVERLAY -->
+                        <Grid x:Name="PauseMenuOverlay" Grid.ColumnSpan="2" Grid.RowSpan="2" Visibility="Collapsed" Background="#BF000000">
+                            <Border Background="#1C1F28" BorderBrush="#400099FF" BorderThickness="1.5"
+                                    CornerRadius="16" Width="340" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Padding="0,28,0,28">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#0099FF" BlurRadius="40" Opacity="0.4" ShadowDepth="0"/>
+                                </Border.Effect>
+                                <StackPanel>
+                                    <!-- Header -->
+                                    <TextBlock Text="P A U S E D" FontSize="11" FontWeight="Bold" Foreground="#6FA0A0A5"
+                                               HorizontalAlignment="Center" Margin="0,0,0,4"/>
+
+                                    <TextBlock x:Name="PauseMenuGameTitle" Text="" FontSize="18" FontWeight="ExtraBold"
+                                               Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,24"
+                                               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="280"/>
+
+                                    <!-- Menu Items -->
+                                    <Button x:Name="PauseResumeBtn" Focusable="True" Height="52" Margin="24,0,24,8"
+                                            Click="PauseResume_Click">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Background" Value="#200099FF"/>
+                                                <Setter Property="Foreground" Value="White"/>
+                                                <Setter Property="BorderBrush" Value="#400099FF"/>
+                                                <Setter Property="BorderThickness" Value="1"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Padding="16,0">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsKeyboardFocused" Value="True">
+                                                        <Setter Property="Background" Value="#3F0099FF"/>
+                                                        <Setter Property="BorderBrush" Value="#0099FF"/>
+                                                        <Setter Property="BorderThickness" Value="2"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#2A0099FF"/>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="▶" FontSize="14" Foreground="#0099FF" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                            <TextBlock Text="Resume Game" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <TextBlock Text="  [✕]" FontSize="11" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Button x:Name="PauseConsoleBtn" Focusable="True" Height="48" Margin="24,0,24,8"
+                                            Click="PauseConsole_Click" Style="{StaticResource ModernButtonStyle}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="⌨" FontSize="13" Foreground="#FFA0A0A5" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                            <TextBlock Text="Console Logs" FontSize="14" VerticalAlignment="Center"/>
+                                            <TextBlock Text="  [△]" FontSize="11" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Button x:Name="PauseStopBtn" Focusable="True" Height="48" Margin="24,0,24,0"
+                                            Click="PauseStop_Click">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Background" Value="#15FF2200"/>
+                                                <Setter Property="Foreground" Value="White"/>
+                                                <Setter Property="BorderBrush" Value="#30FF2200"/>
+                                                <Setter Property="BorderThickness" Value="1"/>
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Padding="16,0">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsKeyboardFocused" Value="True">
+                                                        <Setter Property="Background" Value="#30FF2200"/>
+                                                        <Setter Property="BorderBrush" Value="#FF2200"/>
+                                                        <Setter Property="BorderThickness" Value="2"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#25FF2200"/>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="⏹" FontSize="13" Foreground="#FF6644" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                            <TextBlock Text="Stop Game" FontSize="14" VerticalAlignment="Center"/>
+                                            <TextBlock Text="  [◯]" FontSize="11" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <TextBlock Text="[D-Pad ↑↓] Navigate" FontSize="10" Foreground="#30FFFFFF"
+                                               HorizontalAlignment="Center" Margin="0,16,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                     </Grid>
 
-                    <!-- Bottom game bar: title + Console toggle + Stop -->
+                    <!-- Bottom game bar: title + phase status + Console toggle + Stop -->
                     <Border Grid.Row="1" Background="#A0050508" BorderBrush="#15FFFFFF" BorderThickness="0,1,0,0" Height="52">
                         <Grid Margin="20,0">
-                            <TextBlock x:Name="GameBarTitle" Text="Running" FontSize="14" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="GameBarTitle" Text="Running" FontSize="14" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="GameBarPhase" Text="" FontSize="11" Foreground="#6FA0A0A5" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <Button x:Name="GameConsoleButton" Content="Console" Width="110" Height="32" Style="{StaticResource ModernButtonStyle}" Margin="0,0,10,0" Click="GameConsoleButton_Click"/>
-                                <Button x:Name="GameStopButton" Content="Stop" Width="110" Height="32" Style="{StaticResource ModernButtonStyle}" Click="StopButton_Click"/>
+                                <Button x:Name="GameKillButton" Content="✕ Force Kill" Width="110" Height="32"
+                                        Background="#CC2200" BorderBrush="#FF4400" Foreground="White"
+                                        FontWeight="Bold" Style="{StaticResource ModernButtonStyle}" Margin="0,0,10,0"
+                                        Click="KillButton_Click"/>
+                                <Button x:Name="GameStopButton" Content="Stop" Width="80" Height="32" Style="{StaticResource ModernButtonStyle}" Click="StopButton_Click"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -1311,6 +1488,34 @@
                 </Grid>
             </Border>
 
+            <!-- WATCHDOG TOAST — non-blocking "Game may be hung" warning -->
+            <Border x:Name="WatchdogToast" Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                    Background="#CC1A0D00" BorderBrush="#60FF6600" BorderThickness="1" CornerRadius="10"
+                    Padding="20,12" Margin="0,0,0,80" Visibility="Collapsed" Opacity="0"
+                    IsHitTestVisible="True">
+                <Border.Effect>
+                    <DropShadowEffect Color="#FF6600" BlurRadius="20" Opacity="0.4" ShadowDepth="0"/>
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="⚠" Foreground="#FF8800" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="Game may be unresponsive" Foreground="#E0FFFFFF" FontSize="12" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <Button x:Name="WatchdogWaitBtn" Content="Wait" Width="70" Height="28" Style="{StaticResource ModernButtonStyle}"
+                            FontSize="11" Margin="0,0,6,0" Click="WatchdogWait_Click" Focusable="True"/>
+                    <Button x:Name="WatchdogForceStopBtn" Content="Force Stop" Width="90" Height="28"
+                            Background="#CC2200" BorderBrush="#FF2200" Foreground="White" FontSize="11" FontWeight="Bold"
+                            Focusable="True" Click="WatchdogForceStop_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <TextBlock Text="  [✕] Wait  [◯] Stop" FontSize="10" Foreground="#4DFFFFFF" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+            </Border>
+
             <!-- TOAST NOTIFICATION OVERLAY -->
             <Border x:Name="ToastNotification" Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Bottom"
                     Background="#CC1A1D24" BorderBrush="#3300FF99" BorderThickness="1" CornerRadius="10"
@@ -1324,6 +1529,7 @@
                     <TextBlock x:Name="ToastMessage" Text="Configuration saved successfully" Foreground="#E0FFFFFF" FontSize="12" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
+
 
             <!-- CRASH DIAGNOSTICS OVERLAY DIALOG -->
             <Grid x:Name="CrashDialogOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
@@ -1417,9 +1623,49 @@
                             <Button Grid.Column="1" Content="Browse..." Width="100" Height="32" Margin="10,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="FirstRunBrowse_Click"/>
                         </Grid>
 
+                        <!-- Controller hint -->
+                        <TextBlock Text="🎮 [✕] Browse Folder  •  [◯] Skip  •  [△] Continue" FontSize="11" Foreground="#4D0099FF"
+                                   HorizontalAlignment="Center" Margin="0,0,0,14"/>
+
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Skip for Now" Width="120" Height="34" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Click="FirstRunSkip_Click"/>
-                            <Button x:Name="FirstRunContinueBtn" Content="Continue" Width="140" Height="34" Style="{StaticResource ModernButtonStyle}" IsEnabled="False" Click="FirstRunContinue_Click"/>
+                            <Button x:Name="FirstRunSkipBtn" Content="Skip for Now" Width="120" Height="34" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Click="FirstRunSkip_Click" Focusable="True"/>
+                            <Button x:Name="FirstRunContinueBtn" Content="Continue" Width="140" Height="34" Style="{StaticResource ModernButtonStyle}" IsEnabled="False" Click="FirstRunContinue_Click" Focusable="True"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- CONTROLLER FOLDER PICKER OVERLAY
+                 Shows before opening the system folder browser dialog. -->
+
+            <Grid x:Name="FolderPickerOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
+                <Border Background="#1C1F26" BorderBrush="#0099FF" BorderThickness="1.5" CornerRadius="12"
+                        Width="480" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>
+                    </Border.Effect>
+                    <StackPanel>
+                        <TextBlock Text="📁" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                        <TextBlock Text="SELECT GAME FOLDER" FontSize="16" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock Text="A folder browser will open. Select the folder containing your PS5 game dumps."
+                                   Foreground="#FFA0A0A5" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"
+                                   Margin="0,0,0,24" LineHeight="18"/>
+
+                        <TextBlock x:Name="FolderPickerCurrentPath" Text="" FontSize="11" Foreground="#0099FF"
+                                   TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,20"
+                                   MaxHeight="40" TextTrimming="CharacterEllipsis"/>
+
+                        <TextBlock Text="🎮 [✕] Open Folder Browser  •  [◯] Cancel" FontSize="11"
+                                   Foreground="#4D0099FF" HorizontalAlignment="Center" Margin="0,0,0,18"/>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Button x:Name="FolderPickerOpenBtn" Content="Open Browser" Width="150" Height="36"
+                                    Style="{StaticResource ModernButtonStyle}" Margin="0,0,10,0"
+                                    Click="FolderPickerOpen_Click" Focusable="True"/>
+                            <Button x:Name="FolderPickerCancelBtn" Content="Cancel" Width="100" Height="36"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="FolderPickerCancel_Click" Focusable="True"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>

@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "hle.h"
 #include "../memory/memory.h"
 #include "../common/log.h"
@@ -78,6 +79,13 @@ namespace HLE {
     void RegisterLibAudioOut();
     void RegisterLibAtrac9();
     void RegisterLibJson();
+    // Boot-gap modules — mandatory for games to reach main()
+    void RegisterLibAppContent();
+    void RegisterLibRtc();
+    void RegisterLibFiber();
+    void RegisterLibRegMgr();
+    void RegisterLibNotification();
+    void RegisterLibNet();
 
     static std::unordered_map<std::string, HleSymbol> g_symbol_registry;
     static std::unordered_map<u64, HleSymbol>         g_id_index;       // fast O(1) dispatch
@@ -101,6 +109,41 @@ namespace HLE {
     static jmp_buf                    g_guest_exit_env;
     static std::atomic<bool>          g_guest_exit_env_armed{false};
     static u32                        g_guest_exit_code = 0;
+
+    // Guest crash tracking --------------------------------------------------
+    // Set by the VEH when a guest crash is detected.  The emulator process
+    // survives and the SEH handler in TryStartGuest catches the exception.
+    static std::atomic<bool>          g_guest_crashed{false};
+    static u32                        g_crash_exception_code = 0;
+    static u64                        g_crash_rip = 0;
+    static std::mutex                 g_crash_mutex;
+    static char                       g_crash_message[256] = {};
+
+    void SetGuestCrashed(u32 exception_code, guest_addr_t rip) {
+        std::lock_guard<std::mutex> lk(g_crash_mutex);
+        g_guest_crashed.store(true, std::memory_order_release);
+        g_crash_exception_code = exception_code;
+        g_crash_rip = rip;
+        std::snprintf(g_crash_message, sizeof(g_crash_message),
+                      "GUEST_CRASH: code=0x%08X at RIP=0x%llx",
+                      exception_code, static_cast<unsigned long long>(rip));
+    }
+
+    bool IsGuestCrashed() {
+        return g_guest_crashed.load(std::memory_order_acquire);
+    }
+
+    bool GetLastGuestCrashInfo(u32* out_exception_code, guest_addr_t* out_rip,
+                                char* out_buf, int buf_size) {
+        std::lock_guard<std::mutex> lk(g_crash_mutex);
+        if (!g_guest_crashed.load(std::memory_order_acquire)) return false;
+        if (out_exception_code) *out_exception_code = g_crash_exception_code;
+        if (out_rip) *out_rip = g_crash_rip;
+        if (out_buf && buf_size > 0) {
+            strncpy_s(out_buf, static_cast<size_t>(buf_size), g_crash_message, _TRUNCATE);
+        }
+        return true;
+    }
 
     void SetMainGuestThreadId(unsigned long thread_id) {
         g_main_guest_thread_id.store(thread_id, std::memory_order_release);
@@ -306,6 +349,14 @@ namespace HLE {
         RegisterLibAudioOut();
         RegisterLibAtrac9();
         RegisterLibJson();
+        // Boot-gap modules — registered last so they can overwrite any
+        // legacy stub that landed via the NID-database filler above.
+        RegisterLibAppContent();
+        RegisterLibRtc();
+        RegisterLibFiber();
+        RegisterLibRegMgr();
+        RegisterLibNotification();
+        RegisterLibNet();
 
         // Gap filler: log-and-return-0 stubs under their real names for every
         // NID-database entry no module implemented.  Must run LAST so it
@@ -468,6 +519,13 @@ namespace HLE {
         {
             std::lock_guard<std::mutex> ll(g_stub_log_mutex);
             g_stub_log_keys.clear();
+        }
+        {
+            std::lock_guard<std::mutex> lk(g_crash_mutex);
+            g_guest_crashed.store(false, std::memory_order_release);
+            g_crash_exception_code = 0;
+            g_crash_rip = 0;
+            g_crash_message[0] = '\0';
         }
     }
 

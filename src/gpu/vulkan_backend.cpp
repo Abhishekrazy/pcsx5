@@ -3,6 +3,8 @@
 #include "vk_present.h"
 #include "vk_draw.h"
 #include "dualsense_hid.h"
+#include "../config/config.h"
+#include "../ipc/ipc_server.h"
 #include "../common/log.h"
 #include "../memory/memory.h"
 #include <windows.h>
@@ -24,6 +26,12 @@
 #include <cstdio>
 
 namespace GPU {
+
+    // Headless mode: when true, no GLFW window is created and the GPU backend
+    // stays on the Null device.  Set via config (graphics.headless) or the
+    // PCSX5_HEADLESS environment variable.  Allows CLI/ctest boot of games
+    // without any display hardware.
+    static bool g_headless = false;
 
     static GLFWwindow* g_window  = nullptr;
     static HWND        g_hwnd    = nullptr;
@@ -507,9 +515,26 @@ namespace GPU {
     bool Initialize() {
         LOG_INFO(GPU, "Initializing GPU subsystem (GLFW + Vulkan Backend)...");
 
+        // Headless mode check: config -> env var override -> off by default.
+        // When headless, we skip GLFW entirely and run on the Null backend.
+        {
+            g_headless = ConfigService::Global().graphics.headless;
+            char env_buf[4] = {};
+            if (GetEnvironmentVariableA("PCSX5_HEADLESS", env_buf, sizeof(env_buf)) > 0) {
+                const int val = atoi(env_buf);
+                if (val > 0) g_headless = true;
+            }
+        }
+        if (g_headless) {
+            LOG_INFO(GPU, "Headless mode: GLFW/Vulkan window disabled. "
+                     "Running on Null backend. Guest execution continues normally.");
+            return true;
+        }
+
         if (!glfwInit()) {
-            LOG_ERROR(GPU, "Failed to initialize GLFW.");
-            return false;
+            LOG_ERROR(GPU, "Failed to initialize GLFW — falling back to headless mode.");
+            g_headless = true;
+            return true;
         }
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -522,9 +547,10 @@ namespace GPU {
 
         g_window = glfwCreateWindow(g_width, g_height, "pcsx5 - PlayStation 5 Emulator", nullptr, nullptr);
         if (!g_window) {
-            LOG_ERROR(GPU, "Failed to create GLFW window.");
+            LOG_ERROR(GPU, "Failed to create GLFW window — falling back to headless mode.");
             glfwTerminate();
-            return false;
+            g_headless = true;
+            return true;
         }
         g_hwnd = glfwGetWin32Window(g_window);
         glfwSetKeyCallback(g_window, KeyCallback);
@@ -761,6 +787,14 @@ namespace GPU {
         LOG_DEBUG(GPU, "RenderFrame: Presented guest framebuffer 0x%llx.", framebuffer_addr);
     }
 
+    // IPC: share the rendered frame with the frontend process.
+    if (IPC::IsConnected() && !g_dib_buffer.empty()) {
+        IPC::WriteFrame(g_dib_buffer.data(),
+                        static_cast<uint32_t>(g_width),
+                        static_cast<uint32_t>(g_height),
+                        static_cast<uint32_t>(g_width) * 4);
+    }
+
     void SetFramebufferConfig(u32 width, u32 height, u32 format) {
         g_fb_width = width > 0 ? width : 1920;
         g_fb_height = height > 0 ? height : 1080;
@@ -772,7 +806,7 @@ namespace GPU {
         if (g_window) {
             return glfwWindowShouldClose(g_window) != 0;
         }
-        return true;
+        return g_headless ? false : true;
     }
 
     bool HasWindow() {

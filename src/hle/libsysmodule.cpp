@@ -28,14 +28,78 @@ std::unordered_set<u32>    g_loaded_sysmodules;
 // KernelModuleRegistry table.
 const std::unordered_map<u32, const char*>& KnownSysmoduleNames() {
     static const std::unordered_map<u32, const char*> kNames = {
+        // Core runtime
+        {0x0001, "libSceAppContent.sprx"},
+        {0x0002, "libSceNpManager.sprx"},
+        {0x0003, "libSceNpTrophy.sprx"},
+        {0x0004, "libSceAudioOut.sprx"},
+        {0x0005, "libSceVideoOut.sprx"},
         {0x0006, "libSceFiber.sprx"},
+        {0x0007, "libSceNet.sprx"},
+        {0x0008, "libSceNetCtl.sprx"},
+        {0x0009, "libSceHttp.sprx"},
+        {0x000A, "libSceSsl.sprx"},
+        {0x000B, "libSceRtc.sprx"},
+        {0x000C, "libSceRegMgr.sprx"},
+        {0x000D, "libSceSystemService.sprx"},
+        {0x000E, "libSceNpScore.sprx"},
+        {0x000F, "libSceNpSignaling.sprx"},
+        {0x0010, "libSceScreenShot.sprx"},
+        {0x0011, "libSceNpCommerce.sprx"},
+        {0x0012, "libSceVoice.sprx"},
+        {0x0013, "libSceVoiceQoS.sprx"},
+        {0x0014, "libSceGameCustomDataDialog.sprx"},
+        {0x0015, "libSceErrorDialog.sprx"},
+        {0x0016, "libSceNpEntitlementAccess.sprx"},
+        {0x0017, "libSceUserService.sprx"},
+        {0x0018, "libSceMessageDialog.sprx"},
+        {0x0019, "libSceAvSetting.sprx"},
+        {0x001A, "libSceUsbd.sprx"},
+        {0x001B, "libSceRemotePlay.sprx"},
+        {0x001C, "libSceRudp.sprx"},
+        {0x001D, "libSceMl.sprx"},
+        {0x001E, "libSceHidControl.sprx"},
+        {0x001F, "libSceHmd.sprx"},
+        {0x0020, "libSceNpUtility.sprx"},
         {0x0021, "libSceRudp.sprx"},
+        {0x0022, "libScePlayerInvitation.sprx"},
+        {0x0023, "libSceNpGameIntent.sprx"},
+        {0x0024, "libSceMouse.sprx"},
+        // Dialog / UI
+        {0x005A, "libSceAvSetting.sprx"},
+        {0x0060, "libSceCompositeExt.sprx"},
+        {0x0065, "libSceLibcInternal.sprx"},
+        {0x0080, "libSceDiscMap.sprx"},
+        {0x0090, "libSceCommonDialog.sprx"},
         {0x0095, "libSceIme.sprx"},
         {0x0096, "libSceImeDialog.sprx"},
+        {0x00A0, "libSceSocialScreen.sprx"},
         {0x00A9, "libSceMouse.sprx"},
+        {0x00B0, "libSceNotification.sprx"},
+        {0x00C0, "libSceWebBrowserDialog.sprx"},
+        {0x00D0, "libSceContentSearch.sprx"},
+        {0x00E0, "libScePlayGo.sprx"},
+        {0x00F0, "libSceCommonDialog.sprx"},
+        {0x0100, "libSceFace.sprx"},
+        // GPU/Graphics
+        {0x0120, "libSceGnm.sprx"},
+        {0x0130, "libSceGnmDriver.sprx"},
+        {0x0140, "libSceAgc.sprx"},
+        {0x0150, "libSceVideoRecording.sprx"},
+        // Audio
+        {0x0200, "libSceAudioOut.sprx"},
+        {0x0201, "libSceNgs2.sprx"},
+        {0x0202, "libSceAtrac.sprx"},
+        // Input
+        {0x0300, "libScePad.sprx"},
+        {0x0301, "libSceMove.sprx"},
+        {0x0302, "libSceCamera.sprx"},
+        {0x0303, "libSceGyrometer.sprx"},
+        {0x0304, "libScePlayStation4Link.sprx"},
     };
     return kNames;
 }
+
 
 std::string SysmoduleName(u32 id) {
     const auto& known = KnownSysmoduleNames();

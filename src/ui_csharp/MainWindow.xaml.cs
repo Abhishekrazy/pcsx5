@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -137,25 +137,38 @@ namespace Pcsx5Ui
         private List<BootAnalysisResult> _analysisResults = new List<BootAnalysisResult>();
         private DiscordRpc _discordRpc = new DiscordRpc();
 
-        // In-process emulator core (pcsx5_core.dll via CoreBridge).  A single
-        // dedicated thread owns the whole session (GLFW window + message loop
-        // must stay on one thread); the WPF thread only talks to it through
-        // the log/window callbacks and pcsx5_stop().
-        private Thread _coreThread = null;
-        private volatile bool _coreRunning = false;
-        private readonly CoreBridge.LogCallback _coreLogCallback;
-        private readonly CoreBridge.WindowCallback _coreWindowCallback;
+        // ── Game session (replaces _coreThread + raw callbacks) ─────────────
+        // The game runs on GameSession's dedicated background thread.
+        // The WPF Dispatcher thread is never blocked by game activity.
+        private GameSession _session;
+        // Expose for backward-compat with controller code that checks _coreRunning.
+        private bool _coreRunning => _session?.State == GameSessionState.Running ||
+                                     _session?.State == GameSessionState.Booting ||
+                                     _session?.State == GameSessionState.Extracting;
+
+        // Pause menu state
+        private bool _isPaused = false;
+        private bool _pauseMenuVisible = false;
+        private int _pauseMenuIndex = 0; // 0=Resume 1=Console 2=Stop
+
+        // Watchdog toast visibility
+        private bool _watchdogToastVisible = false;
+
+        // Folder picker callback target ("firstrun" or "settings")
+        private string _folderPickerTarget = null;
 
         // Console output batching: reader threads enqueue lines, a DispatcherTimer drains
         // them in batches so floods of stdout lines never saturate the dispatcher queue.
-        private readonly ConcurrentQueue<string> _consoleLineQueue = new ConcurrentQueue<string>();
+        private struct ConsoleLine { public string Text; public int Level; } // Level: 0=Trace..5=Critical
+        private readonly ConcurrentQueue<ConsoleLine> _consoleLineQueue = new ConcurrentQueue<ConsoleLine>();
         private System.Windows.Threading.DispatcherTimer _consoleDrainTimer;
-        private const int MaxConsoleChars = 256 * 1024; // ~256KB cap on the console TextBox
+        private const int MaxConsoleLines = 5000; // cap on the console RichTextBox
 
         // Embedded emulator window state (game renders inside the launcher window)
         private EmulatorWindowHost _emuHost = null;
         private IntPtr _embeddedEmuHwnd = IntPtr.Zero;
         private bool _gameConsoleVisible = false;
+
 
         public MainWindow()
         {
@@ -163,10 +176,15 @@ namespace Pcsx5Ui
             InitializeAudioPlayer();
             this.Closed += MainWindow_Closed;
 
-            // Keep the callback delegates referenced for the process lifetime
-            // so native code never calls into collected delegates.
-            _coreLogCallback = OnCoreLog;
-            _coreWindowCallback = OnCoreWindow;
+            // Create the session — it owns its own thread; WPF dispatcher is never blocked.
+            _session = new GameSession(Dispatcher);
+            _session.Started += OnGameStarted;
+            _session.BootPhaseChanged += OnBootPhaseChanged;
+            _session.WindowReady += OnGameWindowReady;
+            _session.Stopped += OnGameStopped;
+            _session.Crashed += OnGameCrashed;
+            _session.Hanging += OnGameHanging;
+            _session.LogLine += line => _consoleLineQueue.Enqueue(new ConsoleLine { Text = line, Level = 2 });
 
             _consoleDrainTimer = new System.Windows.Threading.DispatcherTimer();
             _consoleDrainTimer.Interval = TimeSpan.FromMilliseconds(150);
@@ -178,7 +196,7 @@ namespace Pcsx5Ui
         {
             if (_coreRunning)
             {
-                try { CoreBridge.pcsx5_stop(); } catch { }
+                try { _session?.RequestStop(); } catch { }
             }
             StopControllerVizPolling();
             _discordRpc.Stop();
@@ -995,24 +1013,25 @@ namespace Pcsx5Ui
         private void LaunchButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedGame == null) return;
-            if (_coreRunning) return; // single game at a time (core globals are one-shot)
+            if (_coreRunning) return; // single game at a time
 
             var game = _selectedGame;
 
             LaunchButton.IsEnabled = false;
             StopButton.Visibility = Visibility.Visible;
-            ConsoleOutputTextBox.Clear();
+            ConsoleOutputBox.Document.Blocks.Clear();
 
             LogConsole($"Launching in-process: \"{game.EbootPath}\"");
-            FooterStatus.Text = $"Running: {game.Title}";
+            FooterStatus.Text = $"Booting: {game.Title}";
 
             // Stop title music when game launches
-            Dispatcher.Invoke(() => _mediaPlayer.Stop());
+            _mediaPlayer.Stop();
 
             // Switch from the library to the embedded game view; the emulator's
             // window gets reparented into EmulatorHostPresenter once the core
-            // reports its HWND through the window callback.
+            // reports its HWND through the WindowReady event.
             GameBarTitle.Text = game.Title;
+            if (GameBarPhase != null) GameBarPhase.Text = "Initializing...";
             _emuHost = new EmulatorWindowHost();
             EmulatorHostPresenter.Content = _emuHost;
             EmulatorHostPresenter.SizeChanged += EmulatorHostPresenter_SizeChanged;
@@ -1020,8 +1039,11 @@ namespace Pcsx5Ui
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Collapsed;
-            LogsView.Visibility = Visibility.Collapsed;
+            // LogsView removed
             GameView.Visibility = Visibility.Visible;
+
+            // Show boot overlay
+            ShowBootOverlay(game, BootPhase.Initializing, "Initializing emulator core...");
 
             string appDir = AppDomain.CurrentDomain.BaseDirectory;
             var options = new CoreBridge.Pcsx5Options
@@ -1033,146 +1055,355 @@ namespace Pcsx5Ui
                 InProc = 1,
             };
 
-            // The core owns its GLFW window on this thread for the whole run;
-            // UI updates flow back through the log/window callbacks only.
-            _coreRunning = true;
-            _coreThread = new Thread(() => CoreRunThread(options, game));
-            _coreThread.IsBackground = true;
-            _coreThread.Name = "pcsx5-core";
-            _coreThread.Start();
+            // The session owns the game thread; the WPF dispatcher is never blocked.
+            _session.Reset();
+            _session.Launch(game, options);
         }
 
-        // Runs entirely on the dedicated core thread: init -> load -> run
-        // (blocking) -> shutdown, then posts UI teardown back to the WPF thread.
-        private void CoreRunThread(CoreBridge.Pcsx5Options options, GameEntry game)
+        // ── GameSession event handlers ──────────────────────────────────────────
+        // All fire on the WPF Dispatcher — safe to touch UI directly.
+
+        private void OnGameStarted(GameEntry game)
         {
-            int rc = -1;
-            try
+            // Boot overlay was already shown in LaunchButton_Click; nothing more here.
+            LogConsole($"[Session] Game session started: {game.Title}");
+        }
+
+        private void OnBootPhaseChanged(BootPhase phase, string message)
+        {
+            ShowBootOverlay(_session?.CurrentGame, phase, message);
+            if (GameBarPhase != null) GameBarPhase.Text = message;
+        }
+
+        private void OnGameWindowReady(IntPtr hwnd)
+        {
+            // Embed the native render window; hide the boot overlay once the window is live.
+            EmbedEmulatorWindow(hwnd);
+            HideBootOverlay();
+            FooterStatus.Text = _selectedGame != null ? $"Running: {_selectedGame.Title}" : "Running";
+            if (GameBarPhase != null) GameBarPhase.Text = "Running";
+
+            if (_discordRpc != null && _selectedGame != null)
+                _discordRpc.UpdatePresence($"Playing {_selectedGame.Title}", "In-Game");
+        }
+
+        private void OnGameStopped(int exitCode)
+        {
+            HideBootOverlay();
+            HidePauseMenu();
+            HideWatchdogToast();
+
+            LaunchButton.IsEnabled = true;
+            StopButton.Visibility = Visibility.Collapsed;
+            LogConsole($"Game session ended (exit code {exitCode}).");
+            FooterStatus.Text = "Ready";
+
+            TeardownGameView();
+
+            if (_discordRpc != null)
             {
-                rc = CoreBridge.pcsx5_init(ref options, _coreLogCallback, IntPtr.Zero);
-                if (rc != 0)
-                {
-                    LogConsole($"Error: pcsx5_init failed (code {rc}).");
-                }
+                if (_selectedGame != null)
+                    _discordRpc.UpdatePresence($"Browsing {_selectedGame.Title}", $"ID: {_selectedGame.TitleId}");
                 else
+                    _discordRpc.UpdatePresence("Idle", "Main Menu");
+            }
+
+            if (_selectedGame != null) TriggerTitleMusic(_selectedGame);
+        }
+
+        private void OnGameCrashed(int exitCode, string message)
+        {
+            HideBootOverlay();
+            HidePauseMenu();
+            HideWatchdogToast();
+
+            LaunchButton.IsEnabled = true;
+            StopButton.Visibility = Visibility.Collapsed;
+            LogConsole($"[CRASH] {message}");
+            FooterStatus.Text = "Game Crashed";
+
+            // Show crash dialog
+            CrashExcCodeText.Text = $"0x{exitCode:X8} (Guest Exception)";
+            CrashRipText.Text = _session?.CurrentGame?.EbootPath ?? "Unknown";
+            CrashAnalysisText.Text = message;
+            CrashRawText.Text = $"Title: {_session?.CurrentGame?.Title}\nTitleId: {_session?.CurrentGame?.TitleId}\nExit Code: 0x{exitCode:X8}\n\n{message}";
+            CrashDialogOverlay.Visibility = Visibility.Visible;
+
+            // Haptic feedback: brief rumble so the player feels the crash
+            if (_config?.input?.rumble == true)
+            {
+                try
                 {
-                    string ebootToRun = game.EbootPath;
+                    WindowsDualSenseReader.SetRumble(255, 255);
+                    Task.Delay(400).ContinueWith(_ => WindowsDualSenseReader.SetRumble(0, 0));
+                }
+                catch { }
+            }
 
-                    // PKG Auto-Boot Pipeline
-                    if (!string.IsNullOrEmpty(ebootToRun) && ebootToRun.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase))
+            TeardownGameView();
+
+            if (_selectedGame != null) TriggerTitleMusic(_selectedGame);
+        }
+
+        private void OnGameHanging()
+        {
+            LogConsole("[Watchdog] Game appears unresponsive (no heartbeat for 15s).");
+            ShowWatchdogToast();
+        }
+
+        // ── Boot overlay helpers ────────────────────────────────────────────
+
+        private static readonly string[] _spinnerFrames = { "❠", "❡", "❢", "❣", "❤", "❥", "❦", "❧" };
+        private int _spinnerFrame = 0;
+        private System.Windows.Threading.DispatcherTimer _spinnerTimer;
+
+        private void ShowBootOverlay(GameEntry game, BootPhase phase, string detail)
+        {
+            if (GameBootOverlay == null) return;
+            GameBootOverlay.Visibility = Visibility.Visible;
+
+            if (BootGameTitle != null && game != null)
+                BootGameTitle.Text = game.Title?.ToUpperInvariant() ?? "";
+
+            UpdateBootPhaseUI(phase, detail);
+
+            // Start spinner animation
+            if (_spinnerTimer == null)
+            {
+                _spinnerTimer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(120)
+                };
+                _spinnerTimer.Tick += (s, ev) =>
+                {
+                    if (BootSpinnerText != null)
                     {
-                        LogConsole($"[PKG Auto-Boot] Processing PKG archive: \"{ebootToRun}\"");
-                        Dispatcher.Invoke(() => FooterStatus.Text = $"Extracting PKG: {game.Title}...");
-
-                        string cacheExtractDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Cache", "PKG_Extracted", game.TitleId);
-                        Directory.CreateDirectory(cacheExtractDir);
-
-                        int extractRc = CoreBridge.pcsx5_extract_pkg(ebootToRun, cacheExtractDir);
-                        if (extractRc == 0)
-                        {
-                            LogConsole($"[PKG Auto-Boot] PKG extracted to {cacheExtractDir}");
-                            string candidate = Path.Combine(cacheExtractDir, "eboot.bin");
-                            if (!File.Exists(candidate))
-                            {
-                                var foundFiles = Directory.GetFiles(cacheExtractDir, "eboot.bin", SearchOption.AllDirectories);
-                                if (foundFiles.Length > 0) candidate = foundFiles[0];
-                            }
-                            if (File.Exists(candidate))
-                            {
-                                ebootToRun = candidate;
-                                LogConsole($"[PKG Auto-Boot] Resolved executable: {ebootToRun}");
-                            }
-                        }
-                        else
-                        {
-                            LogConsole($"[PKG Auto-Boot] PKG extraction notice (code {extractRc}). Attempting direct load...");
-                        }
+                        _spinnerFrame = (_spinnerFrame + 1) % _spinnerFrames.Length;
+                        BootSpinnerText.Text = _spinnerFrames[_spinnerFrame];
                     }
+                };
+            }
+            _spinnerTimer.Start();
+        }
 
-                    rc = CoreBridge.pcsx5_load(ebootToRun);
-                    if (rc != 0)
-                    {
-                        LogConsole($"Error: pcsx5_load failed (code {rc}).");
-                        Dispatcher.BeginInvoke(() =>
-                        {
-                            CrashExcCodeText.Text = $"0x{rc:X8} (Boot Load Failure)";
-                            CrashRipText.Text = ebootToRun;
-                            CrashAnalysisText.Text = $"Failed to load binary at '{ebootToRun}'. The file may be encrypted or corrupted.";
-                            CrashRawText.Text = $"Path: {ebootToRun}\nTitleId: {game.TitleId}\nError Code: {rc}";
-                            CrashDialogOverlay.Visibility = Visibility.Visible;
-                        });
-                    }
-                    else
-                    {
-                        if (_discordRpc != null)
-                        {
-                            _discordRpc.UpdatePresence($"Playing {game.Title}", "In-Game");
-                        }
-                        rc = CoreBridge.pcsx5_run(_coreWindowCallback, IntPtr.Zero);
-                    }
-                    CoreBridge.pcsx5_shutdown();
+        private void UpdateBootPhaseUI(BootPhase phase, string detail)
+        {
+            if (BootPhaseTitle == null) return;
+            switch (phase)
+            {
+                case BootPhase.Initializing:
+                    BootPhaseTitle.Text = "Initializing";
+                    BootProgressBar.Value = 10;
+                    break;
+                case BootPhase.ExtractingPkg:
+                    BootPhaseTitle.Text = "Extracting PKG";
+                    BootProgressBar.Value = 25;
+                    break;
+                case BootPhase.LoadingElf:
+                    BootPhaseTitle.Text = "Loading Executable";
+                    BootProgressBar.Value = 45;
+                    break;
+                case BootPhase.LinkingModules:
+                    BootPhaseTitle.Text = "Linking Modules";
+                    BootProgressBar.Value = 65;
+                    break;
+                case BootPhase.StartingCpu:
+                    BootPhaseTitle.Text = "Starting CPU";
+                    BootProgressBar.Value = 85;
+                    break;
+                case BootPhase.Running:
+                    BootPhaseTitle.Text = "Starting Game";
+                    BootProgressBar.Value = 100;
+                    break;
+            }
+            if (BootPhaseDetail != null) BootPhaseDetail.Text = detail;
+        }
+
+        private void HideBootOverlay()
+        {
+            _spinnerTimer?.Stop();
+            if (GameBootOverlay != null) GameBootOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void BootCancelBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _session?.RequestStop();
+            LogConsole("Boot cancelled by user.");
+        }
+
+        // ── Pause menu helpers ────────────────────────────────────────────
+
+        private void ShowPauseMenu()
+        {
+            if (PauseMenuOverlay == null) return;
+            _isPaused = true;
+            _pauseMenuVisible = true;
+            _pauseMenuIndex = 0;
+            _session?.Pause();
+
+            if (PauseMenuGameTitle != null && _selectedGame != null)
+                PauseMenuGameTitle.Text = _selectedGame.Title;
+
+            PauseMenuOverlay.Visibility = Visibility.Visible;
+            // Focus the first item for controller nav
+            PauseResumeBtn?.Focus();
+
+            FooterStatus.Text = "Paused — [D-Pad ↑↓] Navigate  [✕] Select  [PS] Resume";
+        }
+
+        private void HidePauseMenu()
+        {
+            _pauseMenuVisible = false;
+            if (PauseMenuOverlay != null) PauseMenuOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void ResumeFromPause()
+        {
+            _isPaused = false;
+            HidePauseMenu();
+            _session?.Resume();
+            FooterStatus.Text = _selectedGame != null ? $"Running: {_selectedGame.Title}" : "Running";
+        }
+
+        private void HandlePauseMenuNav(bool up, bool down, bool cross, bool circle, bool triangle)
+        {
+            // Circle = stop, Triangle = console, Cross = resume/select
+            if (circle) { HidePauseMenu(); _session?.RequestStop(); return; }
+            if (triangle) { ResumeFromPause(); PauseConsole_Click(this, null); return; }
+
+            if (up || down)
+            {
+                int count = 3; // Resume, Console, Stop
+                _pauseMenuIndex = down
+                    ? (_pauseMenuIndex + 1) % count
+                    : (_pauseMenuIndex - 1 + count) % count;
+
+                switch (_pauseMenuIndex)
+                {
+                    case 0: PauseResumeBtn?.Focus(); break;
+                    case 1: PauseConsoleBtn?.Focus(); break;
+                    case 2: PauseStopBtn?.Focus(); break;
                 }
             }
-            catch (Exception ex)
+
+            if (cross)
             {
-                LogConsole("Launch Error: " + ex.Message);
-            }
-            finally
-            {
-                int exitCode = rc;
-                // Must be asynchronous (BeginInvoke, not Invoke): the emulator
-                // window is a child of a WPF-owned HWND, so the two threads'
-                // input queues are attached.  A synchronous Invoke makes the
-                // core thread wait on the UI thread while the UI thread may be
-                // blocked in a synchronous cross-thread window operation
-                // (SetParent/teardown/focus) that needs the core thread to
-                // pump — a mutual wait that hangs the launcher
-                // ("Not Responding").  Nothing in the teardown feeds a result
-                // back to this thread, so fire-and-forget is safe.
-                Dispatcher.BeginInvoke(() =>
+                switch (_pauseMenuIndex)
                 {
-                    _coreRunning = false;
-                    _coreThread = null;
-                    LaunchButton.IsEnabled = true;
-                    StopButton.Visibility = Visibility.Collapsed;
-                    LogConsole($"Emulator core terminated (exit code {exitCode}).");
-                    FooterStatus.Text = "Ready";
-
-                    // Unhost the emulator window and restore the library
-                    TeardownGameView();
-
-                    // Restore Discord status
-                    if (_discordRpc != null)
-                    {
-                        if (_selectedGame != null)
-                            _discordRpc.UpdatePresence($"Browsing {_selectedGame.Title}", $"ID: {_selectedGame.TitleId}");
-                        else
-                            _discordRpc.UpdatePresence("Idle", "Main Menu");
-                    }
-
-                    // Restart title music when game exits
-                    if (_selectedGame != null)
-                    {
-                        TriggerTitleMusic(_selectedGame);
-                    }
-                });
+                    case 0: ResumeFromPause(); break;
+                    case 1: ResumeFromPause(); PauseConsole_Click(this, null); break;
+                    case 2: HidePauseMenu(); _session?.RequestStop(); break;
+                }
             }
         }
 
-        // Core log callback (fires on any core thread): format like the CLI's
-        // [Category][Level] prefix and enqueue for the console panel.
-        private void OnCoreLog(int level, int category, IntPtr msg, IntPtr user)
+        private void PauseResume_Click(object sender, RoutedEventArgs e) => ResumeFromPause();
+
+        private void PauseConsole_Click(object sender, RoutedEventArgs e)
         {
-            string text = Marshal.PtrToStringAnsi(msg) ?? "";
-            LogConsole($"[{CoreBridge.CategoryName(category)}][{CoreBridge.LevelName(level)}] {text}");
+            HidePauseMenu();
+            SetGameConsoleVisible(true);
         }
 
-        // Core window callback: the presentation HWND, reparented into the
-        // embedded game view on the UI thread.
-        private void OnCoreWindow(ulong hwnd, IntPtr user)
+        private void PauseStop_Click(object sender, RoutedEventArgs e)
         {
-            IntPtr handle = new IntPtr((long)hwnd);
-            Dispatcher.InvokeAsync(() => EmbedEmulatorWindow(handle));
+            HidePauseMenu();
+            _session?.RequestStop();
+        }
+
+        // ── Watchdog toast helpers ─────────────────────────────────────────
+
+        private void ShowWatchdogToast()
+        {
+            if (WatchdogToast == null) return;
+            _watchdogToastVisible = true;
+            WatchdogToast.Visibility = Visibility.Visible;
+            WatchdogToast.Opacity = 1;
+            WatchdogWaitBtn?.Focus();
+        }
+
+        private void HideWatchdogToast()
+        {
+            _watchdogToastVisible = false;
+            if (WatchdogToast != null) { WatchdogToast.Opacity = 0; WatchdogToast.Visibility = Visibility.Collapsed; }
+        }
+
+        private void WatchdogWait_Click(object sender, RoutedEventArgs e)
+        {
+            HideWatchdogToast();
+            LogConsole("[Watchdog] User chose to wait. Monitoring...");
+        }
+
+        private void WatchdogForceStop_Click(object sender, RoutedEventArgs e)
+        {
+            HideWatchdogToast();
+            LogConsole("[Watchdog] User forced stop.");
+            _session?.RequestStop();
+        }
+
+        private void HandleWatchdogToastNav(bool cross, bool circle)
+        {
+            if (cross) WatchdogWait_Click(this, null);
+            else if (circle) WatchdogForceStop_Click(this, null);
+        }
+
+        // ── Folder picker overlay helpers ─────────────────────────────────
+
+        private void ShowFolderPickerOverlay(string target, string currentPath = null)
+        {
+            _folderPickerTarget = target;
+            if (FolderPickerCurrentPath != null)
+                FolderPickerCurrentPath.Text = string.IsNullOrEmpty(currentPath) ? "" : $"Current: {currentPath}";
+            if (FolderPickerOverlay != null) FolderPickerOverlay.Visibility = Visibility.Visible;
+            FolderPickerOpenBtn?.Focus();
+        }
+
+        private void HideFolderPickerOverlay()
+        {
+            _folderPickerTarget = null;
+            if (FolderPickerOverlay != null) FolderPickerOverlay.Visibility = Visibility.Collapsed;
+        }
+
+        private void FolderPickerOpen_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Select PS5 Games Folder" };
+            if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.FolderName))
+            {
+                string path = dialog.FolderName;
+                HideFolderPickerOverlay();
+
+                if (_folderPickerTarget == "firstrun")
+                {
+                    _firstRunSelectedFolder = path;
+                    FirstRunFolderText.Text = path;
+                    FirstRunContinueBtn.IsEnabled = true;
+                }
+                else if (_folderPickerTarget == "settings")
+                {
+                    if (!_gameFolders.Contains(path))
+                    {
+                        _gameFolders.Add(path);
+                        RefreshGameFoldersList();
+                        LoadGames();
+                        SaveConfig();
+                        LogConsole($"Folder added: {path}");
+                        FooterStatus.Text = $"Folder added: {System.IO.Path.GetFileName(path)}";
+
+                    }
+                }
+            }
+            else
+            {
+                HideFolderPickerOverlay();
+            }
+        }
+
+        private void FolderPickerCancel_Click(object sender, RoutedEventArgs e) => HideFolderPickerOverlay();
+
+        private void HandleFolderPickerNav(bool cross, bool circle)
+        {
+            if (cross) FolderPickerOpen_Click(this, null);
+            else if (circle) HideFolderPickerOverlay();
         }
 
         private void StopButton_Click(object sender, RoutedEventArgs e)
@@ -1181,10 +1412,75 @@ namespace Pcsx5Ui
             {
                 try
                 {
-                    CoreBridge.pcsx5_stop();
+                    _session?.RequestStop();
                     LogConsole("Stop requested; waiting for the guest to unwind...");
                 }
                 catch { }
+            }
+        }
+
+        private void KillButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_coreRunning)
+            {
+                try
+                {
+                    _session?.Kill();
+                    LogConsole("Force kill: guest thread terminated.");
+                }
+                catch { }
+            }
+        }
+
+        private enum ConsoleDock { Right, Bottom, Left, Float }
+        private ConsoleDock _consoleDock = ConsoleDock.Right;
+
+        private void ConsoleDockMode_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.Button btn && btn.Tag is string tag)
+            {
+                var col = (int)GameConsolePanel.GetValue(Grid.ColumnProperty);
+                var row = (int)GameConsolePanel.GetValue(Grid.RowProperty);
+                switch (tag)
+                {
+                    case "Bottom":
+                        _consoleDock = ConsoleDock.Bottom;
+                        GameConsolePanel.SetValue(Grid.RowProperty, 1);
+                        GameConsolePanel.SetValue(Grid.ColumnProperty, 0);
+                        GameConsolePanel.Width = double.NaN;
+                        GameConsolePanel.Height = 200;
+                        GameContentBottomRow.Height = new GridLength(200);
+                        GameContentRightCol.Width = new GridLength(0);
+                        LogConsole("Console docked to bottom.");
+                        break;
+                    case "Right":
+                        _consoleDock = ConsoleDock.Right;
+                        GameConsolePanel.SetValue(Grid.RowProperty, 0);
+                        GameConsolePanel.SetValue(Grid.ColumnProperty, 1);
+                        GameConsolePanel.Width = 380;
+                        GameConsolePanel.Height = double.NaN;
+                        GameContentBottomRow.Height = new GridLength(0);
+                        GameContentRightCol.Width = new GridLength(380);
+                        LogConsole("Console docked to right.");
+                        break;
+                    case "Left":
+                        _consoleDock = ConsoleDock.Left;
+                        GameConsolePanel.SetValue(Grid.RowProperty, 0);
+                        GameConsolePanel.SetValue(Grid.ColumnProperty, 0);
+                        GameConsolePanel.Width = 380;
+                        GameConsolePanel.Height = double.NaN;
+                        GameContentBottomRow.Height = new GridLength(0);
+                        GameContentRightCol.Width = new GridLength(0);
+                        LogConsole("Console docked to left.");
+                        break;
+                    case "Float":
+                        _consoleDock = ConsoleDock.Float;
+                        GameConsolePanel.Visibility = Visibility.Collapsed;
+                        LogConsole("Console undocked (floating).");
+                        break;
+                }
+                if (_consoleDock != ConsoleDock.Float)
+                    GameConsolePanel.Visibility = Visibility.Visible;
             }
         }
 
@@ -1286,20 +1582,8 @@ namespace Pcsx5Ui
         private void SetGameConsoleVisible(bool visible)
         {
             _gameConsoleVisible = visible;
-            if (visible)
-            {
-                LogsConsoleSlot.Child = null;
-                GameConsoleSlot.Child = ConsoleBorder;
-                GameConsolePanel.Visibility = Visibility.Visible;
-                GameConsoleButton.Content = "Hide Console";
-            }
-            else
-            {
-                GameConsoleSlot.Child = null;
-                LogsConsoleSlot.Child = ConsoleBorder;
-                GameConsolePanel.Visibility = Visibility.Collapsed;
-                GameConsoleButton.Content = "Console";
-            }
+            GameConsolePanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            GameConsoleButton.Content = visible ? "Hide Console" : "Console";
         }
 
         private void ShowTab(string tabName)
@@ -1308,7 +1592,6 @@ namespace Pcsx5Ui
             if (AnalyzerView != null) AnalyzerView.Visibility = tabName == "Analyzer" ? Visibility.Visible : Visibility.Collapsed;
             if (ControllerView != null) ControllerView.Visibility = (tabName == "Controller" || tabName == "Input") ? Visibility.Visible : Visibility.Collapsed;
             if (SettingsView != null) SettingsView.Visibility = tabName == "Settings" ? Visibility.Visible : Visibility.Collapsed;
-            if (LogsView != null) LogsView.Visibility = tabName == "Logs" ? Visibility.Visible : Visibility.Collapsed;
             if (GameView != null) GameView.Visibility = tabName == "Game" ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -1621,58 +1904,80 @@ namespace Pcsx5Ui
             return null;
         }
 
-        private void LogConsole(string message)
+        private void LogConsole(string message, int level = 2) // default level = Info
         {
-            // Non-blocking: just enqueue; the drain timer appends batches on the UI thread.
-            _consoleLineQueue.Enqueue(message);
+            _consoleLineQueue.Enqueue(new ConsoleLine { Text = message, Level = level });
         }
 
         private void DrainConsoleQueue()
         {
             if (_consoleLineQueue.IsEmpty) return;
 
-            var sb = new StringBuilder();
-            string line;
+            var doc = ConsoleOutputBox.Document;
             int drained = 0;
-            const int maxLinesPerDrain = 2000; // bounded work per tick; leftovers drain next tick
-            while (drained < maxLinesPerDrain && _consoleLineQueue.TryDequeue(out line))
+            const int maxLinesPerDrain = 500;
+
+            while (drained < maxLinesPerDrain && _consoleLineQueue.TryDequeue(out var cl))
             {
-                sb.AppendLine(line);
+                // Map log level to color.
+                var color = ConsoleLevelToColor(cl.Level);
+                var run = new System.Windows.Documents.Run(cl.Text + "\n")
+                {
+                    Foreground = new SolidColorBrush(color),
+                    FontFamily = new System.Windows.Media.FontFamily("Consolas, Courier New"),
+                    FontSize = 11
+                };
+                var para = new System.Windows.Documents.Paragraph(run) { Margin = new Thickness(0) };
+                doc.Blocks.Add(para);
                 drained++;
             }
 
-            ConsoleOutputTextBox.AppendText(sb.ToString());
+            // Cap at MaxConsoleLines.
+            while (doc.Blocks.Count > MaxConsoleLines)
+                doc.Blocks.Remove(doc.Blocks.FirstBlock);
 
-            // Cap the TextBox size: trim from the top when exceeded (checked per batch, not per line)
-            int len = ConsoleOutputTextBox.Text.Length;
-            if (len > MaxConsoleChars)
+            ConsoleOutputBox.ScrollToEnd();
+        }
+
+        private static System.Windows.Media.Color ConsoleLevelToColor(int level)
+        {
+            switch (level)
             {
-                string text = ConsoleOutputTextBox.Text;
-                int start = text.IndexOf('\n', len - MaxConsoleChars);
-                ConsoleOutputTextBox.Text = start >= 0 ? text.Substring(start + 1) : text.Substring(len - MaxConsoleChars);
+                case 0: return System.Windows.Media.Color.FromRgb(0xCC, 0xCC, 0xCC); // Trace: gray
+                case 1: return System.Windows.Media.Color.FromRgb(0x88, 0xCC, 0xFF); // Debug: light blue
+                case 2: return System.Windows.Media.Color.FromRgb(0x66, 0xDD, 0x66); // Info: green
+                case 3: return System.Windows.Media.Color.FromRgb(0xFF, 0xCC, 0x44); // Warn: yellow
+                case 4: return System.Windows.Media.Color.FromRgb(0xFF, 0x55, 0x55); // Error: red
+                case 5: return System.Windows.Media.Color.FromRgb(0x44, 0x99, 0xFF); // Critical: blue
+                default: return System.Windows.Media.Color.FromRgb(0xFF, 0xCC, 0x66); // fallback: orange
             }
+        }
 
-            ConsoleOutputTextBox.ScrollToEnd();
+        private string GetConsoleText()
+        {
+            var range = new System.Windows.Documents.TextRange(ConsoleOutputBox.Document.ContentStart, ConsoleOutputBox.Document.ContentEnd);
+            return range.Text;
         }
 
         private void CopyConsole_Click(object sender, RoutedEventArgs e)
         {
-            if (!string.IsNullOrEmpty(ConsoleOutputTextBox.Text))
+            string text = GetConsoleText();
+            if (!string.IsNullOrEmpty(text))
             {
-                Clipboard.SetText(ConsoleOutputTextBox.Text);
+                Clipboard.SetText(text);
             }
         }
 
-        private void ConsoleOutputTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        private void ConsoleOutputBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            ConsoleOutputTextBox.ScrollToEnd();
+            ConsoleOutputBox.ScrollToEnd();
         }
 
         private void ClearConsole_Click(object sender, RoutedEventArgs e)
         {
             // Drop pending queued lines too so cleared output doesn't reappear on next drain
             while (_consoleLineQueue.TryDequeue(out _)) { }
-            ConsoleOutputTextBox.Clear();
+            ConsoleOutputBox.Document.Blocks.Clear();
         }
 
         private string FormatBytes(long bytes)
@@ -1716,11 +2021,12 @@ namespace Pcsx5Ui
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             StopControllerVizPolling();
+            
             LibraryView.Visibility = Visibility.Visible;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Collapsed;
-            LogsView.Visibility = Visibility.Collapsed;
+            // LogsView removed
             UpdateTabHighlight(TabLibraryBtn);
         }
 
@@ -1728,11 +2034,13 @@ namespace Pcsx5Ui
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             StopControllerVizPolling();
+            MainLayoutRoot.Visibility = Visibility.Visible;
+            TitleBarBorder.Visibility = Visibility.Visible;
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Visible;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Collapsed;
-            LogsView.Visibility = Visibility.Collapsed;
+            // LogsView removed
             UpdateTabHighlight(TabAnalyzerBtn);
 
             // Auto run analyzer on first opening if empty
@@ -1745,11 +2053,13 @@ namespace Pcsx5Ui
         private void TabController_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            MainLayoutRoot.Visibility = Visibility.Visible;
+            TitleBarBorder.Visibility = Visibility.Visible;
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Visible;
             SettingsView.Visibility = Visibility.Collapsed;
-            LogsView.Visibility = Visibility.Collapsed;
+            // LogsView removed
             UpdateTabHighlight(TabControllerBtn);
 
             StartControllerVizPolling();
@@ -1759,26 +2069,18 @@ namespace Pcsx5Ui
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
             StopControllerVizPolling();
+            MainLayoutRoot.Visibility = Visibility.Visible;
+            TitleBarBorder.Visibility = Visibility.Visible;
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Visible;
-            LogsView.Visibility = Visibility.Collapsed;
+            // LogsView removed
             UpdateTabHighlight(TabSettingsBtn);
             UpdateSettingsUiFromConfig();
         }
 
-        private void TabLogs_Click(object sender, RoutedEventArgs e)
-        {
-            if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
-            StopControllerVizPolling();
-            LibraryView.Visibility = Visibility.Collapsed;
-            AnalyzerView.Visibility = Visibility.Collapsed;
-            ControllerView.Visibility = Visibility.Collapsed;
-            SettingsView.Visibility = Visibility.Collapsed;
-            LogsView.Visibility = Visibility.Visible;
-            UpdateTabHighlight(TabLogsBtn);
-        }
+        
 
         private void UpdateTabHighlight(Button activeBtn)
         {
@@ -1797,9 +2099,7 @@ namespace Pcsx5Ui
             TabSettingsBtn.Foreground = activeBtn == TabSettingsBtn ? Brushes.White : inactiveBrush;
             TabSettingsBtn.BorderBrush = activeBtn == TabSettingsBtn ? activeBrush : Brushes.Transparent;
 
-            TabLogsBtn.Foreground = activeBtn == TabLogsBtn ? Brushes.White : inactiveBrush;
-            TabLogsBtn.BorderBrush = activeBtn == TabLogsBtn ? activeBrush : Brushes.Transparent;
-        }
+            }
 
 
         private void TestVibration_Click(object sender, RoutedEventArgs e)
@@ -2045,8 +2345,8 @@ namespace Pcsx5Ui
         private bool _psDown = false;
         private bool _psHoldTriggered = false;
         private DateTime _psDownAt = DateTime.MinValue;
-        private bool _isEmulatorPaused = false;
         private System.Collections.Generic.Dictionary<string, string> _customMappings = new System.Collections.Generic.Dictionary<string, string>();
+
 
         private void BtnMap_Click(object sender, RoutedEventArgs e)
         {
@@ -2180,7 +2480,7 @@ namespace Pcsx5Ui
 
             // PS Button Shortcut Handling:
             // Press & hold 1.0s -> close game and navigate to Home/Library
-            // Tap PS button -> pause / resume emulator
+            // Tap PS button -> show/dismiss pause menu overlay
             bool psPressed = b.HasFlag(HostGamepadButtons.PlayStation);
             if (psPressed)
             {
@@ -2195,7 +2495,8 @@ namespace Pcsx5Ui
                     _psHoldTriggered = true;
                     if (_coreRunning)
                     {
-                        StopButton_Click(null, null);
+                        HidePauseMenu();
+                        _session?.RequestStop();
                     }
                     ShowTab("Library");
                     FooterStatus.Text = "PS Button Hold (1s): Returned to Home Library";
@@ -2207,18 +2508,15 @@ namespace Pcsx5Ui
                 _psDown = false;
                 if (!_psHoldTriggered && (DateTime.UtcNow - _psDownAt).TotalMilliseconds < 1000.0)
                 {
-                    _isEmulatorPaused = !_isEmulatorPaused;
-                    if (_isEmulatorPaused)
+                    if (_pauseMenuVisible)
                     {
-                        CoreBridge.pcsx5_pause();
-                        FooterStatus.Text = "Emulator Paused [PS Button Tap]";
-                        LogConsole("PS Button tap: Emulator PAUSED.");
+                        ResumeFromPause();
+                        LogConsole("PS Button tap: Pause menu dismissed, game resumed.");
                     }
-                    else
+                    else if (_coreRunning)
                     {
-                        CoreBridge.pcsx5_resume();
-                        FooterStatus.Text = _selectedGame != null ? $"Running: {_selectedGame.Title}" : "Ready";
-                        LogConsole("PS Button tap: Emulator RESUMED.");
+                        ShowPauseMenu();
+                        LogConsole("PS Button tap: Pause menu shown.");
                     }
                 }
                 _psHoldTriggered = false;
@@ -2574,8 +2872,8 @@ namespace Pcsx5Ui
         {
             if (up || down)
             {
-                if (up) ConsoleOutputTextBox.LineUp();
-                else ConsoleOutputTextBox.LineDown();
+                if (up) ConsoleOutputBox.LineUp();
+                else ConsoleOutputBox.LineDown();
             }
             else if (a)
             {
@@ -2689,23 +2987,55 @@ namespace Pcsx5Ui
                 return;
             }
 
-            // If game is running, do not navigate launcher UI
+            // If game is running, only route to in-game overlays
             if (_coreRunning)
             {
+                Dispatcher.Invoke(() =>
+                {
+                    // Pause menu navigation when game is running
+                    if (_pauseMenuVisible)
+                    {
+                        if (FooterGamepadHints != null)
+                            FooterGamepadHints.Text = "🎮 [D-Pad ↑↓] Navigate  •  [✕] Select  •  [◯] Stop Game  •  [△] Console";
+                        HandlePauseMenuNav(upPressed, downPressed, aPressed, bPressed, yPressed);
+                    }
+                    else if (_watchdogToastVisible)
+                    {
+                        if (FooterGamepadHints != null)
+                            FooterGamepadHints.Text = "🎮 [✕] Wait  •  [◯] Force Stop";
+                        HandleWatchdogToastNav(aPressed, bPressed);
+                    }
+                    else if (GameView.Visibility == Visibility.Visible)
+                    {
+                        // Boot overlay cancel: circle during booting
+                        if (bPressed && _session?.State != GameSessionState.Running)
+                        {
+                            BootCancelBtn_Click(this, null);
+                        }
+                    }
+                });
                 _prevInputState = state;
                 return;
             }
 
             Dispatcher.Invoke(() =>
             {
-                // Overlay Dialog Traps
+                // Overlay Dialog Traps — priority order matters
+                if (FolderPickerOverlay != null && FolderPickerOverlay.Visibility == Visibility.Visible)
+                {
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [✕] Open Folder Browser  •  [◯] Cancel";
+                    HandleFolderPickerNav(aPressed, bPressed);
+                    _prevInputState = state;
+                    return;
+                }
                 if (FirstRunOverlay != null && FirstRunOverlay.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [D-Pad Left/Right] Move  •  [✕] Select";
-                    if (aPressed)
+                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [✕] Browse Folder  •  [◯] Skip  •  [△] Continue";
+                    if (yPressed && FirstRunContinueBtn.IsEnabled) FirstRunContinue_Click(this, null);
+                    else if (aPressed)
                     {
                         if (FirstRunContinueBtn.IsEnabled) FirstRunContinue_Click(this, null);
-                        else FirstRunBrowse_Click(this, null);
+                        else ShowFolderPickerOverlay("firstrun");
                     }
                     else if (bPressed) FirstRunSkip_Click(this, null);
                     _prevInputState = state;
@@ -2722,13 +3052,13 @@ namespace Pcsx5Ui
                 // Shoulder buttons tab cycling
                 if (l1Pressed || r1Pressed)
                 {
-                    Button[] tabs = { TabLibraryBtn, TabAnalyzerBtn, TabControllerBtn, TabSettingsBtn, TabLogsBtn };
+                    Button[] tabs = { TabLibraryBtn, TabAnalyzerBtn, TabControllerBtn, TabSettingsBtn };
                     int activeIndexTab = 0;
                     if (LibraryView.Visibility == Visibility.Visible) activeIndexTab = 0;
                     else if (AnalyzerView.Visibility == Visibility.Visible) activeIndexTab = 1;
                     else if (ControllerView.Visibility == Visibility.Visible) activeIndexTab = 2;
                     else if (SettingsView.Visibility == Visibility.Visible) activeIndexTab = 3;
-                    else if (LogsView.Visibility == Visibility.Visible) activeIndexTab = 4;
+                    // tab removed activeIndexTab = 4;
 
                     int nextIndex = activeIndexTab;
                     if (l1Pressed) nextIndex = (activeIndexTab - 1 + tabs.Length) % tabs.Length;
@@ -2740,7 +3070,7 @@ namespace Pcsx5Ui
                         case 1: TabAnalyzer_Click(this, null); break;
                         case 2: TabController_Click(this, null); break;
                         case 3: TabSettings_Click(this, null); break;
-                        case 4: TabLogs_Click(this, null); break;
+                        
                     }
                     _prevInputState = state;
                     return;
@@ -2798,7 +3128,7 @@ namespace Pcsx5Ui
                     if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad Up/Down] Select Executable  •  [✕] Analyze All";
                     HandleAnalyzerGamepadNav(upPressed, downPressed, aPressed);
                 }
-                else if (LogsView.Visibility == Visibility.Visible)
+                // tab removed
                 {
                     if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad Up/Down] Scroll Output  •  [✕] Copy Logs";
                     HandleLogsGamepadNav(upPressed, downPressed, aPressed);
@@ -2872,7 +3202,7 @@ namespace Pcsx5Ui
                 TabAnalyzerBtn.Content = I18n.Tr("sidebar.tools");
                 TabControllerBtn.Content = I18n.Tr("sidebar.input");
                 TabSettingsBtn.Content = I18n.Tr("system.header");
-                TabLogsBtn.Content = I18n.Tr("sidebar.console");
+                
 
                 // Game library shelf header
                 if (LibraryHeaderTextBlock != null)
@@ -2883,8 +3213,7 @@ namespace Pcsx5Ui
                     SearchPlaceholder.Text = I18n.Tr("library.search_hint");
 
                 // Logs header
-                if (LogsHeaderTextBlock != null)
-                    LogsHeaderTextBlock.Text = I18n.Tr("console.title");
+                // LogsHeader removed
 
                 // Language / localization settings section keeps the sidebar.language label
                 if (UiLocalizationHeaderTextBlock != null)

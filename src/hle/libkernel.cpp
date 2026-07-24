@@ -497,21 +497,40 @@ namespace HLE {
         // by scanning the symbol table for "main"), then call it via InvokeGuestFunction.
         // =====================================================================
         RegisterSymbol("libkernel", "XKRegsFpEpk#T#T", [](const GuestArgs& args) -> u64 {
-            // XKRegsFpEpk is "catchReturnFromMain" — the PS5 libc calls this to wrap
-            // a call to main() and catch its return value. The CPU dispatcher already
-            // calls main() directly from Execute(); by the time XKRegsFpEpk is hit from
-            // inside _start, main() has returned and this should just log the exit status
-            // and signal a clean process exit. Calling InvokeGuestFunction(main_va) here
-            // would cause stack corruption on secondary guest threads (SharpEmu insight).
-            u64 exit_status = args.arg1;  // rdi = exit status from main()
+            // XKRegsFpEpk is the PS5's __libc_start_main.  It is called from
+            // _start with (argc, argv, envp) and must:
+            //   1. Run DT_INIT (global constructors)
+            //   2. Call main(argc, argv, envp)
+            //   3. Call exit() with main's return value
+            //
+            // The CPU dispatcher (Kernel::Execute) starts at the ELF entry
+            // point (_start), NOT at main.  The previous implementation treated
+            // arg1 as an exit status and immediately called ExitGuestProcess,
+            // which meant main() never ran — this was the primary boot blocker.
+            guest_addr_t main_va = GetGuestMainAddress();
+            if (!main_va) {
+                LOG_ERROR(HLE, "XKRegsFpEpk: main() not found — cannot boot.");
+                HLE::ExitGuestProcess(1);
+                // unreachable
+            }
 
-            LOG_INFO(HLE, "XKRegsFpEpk (catchReturnFromMain): exit_status=%llu — signalling process exit", exit_status);
+            // Step 1: run DT_INIT (global constructors).
+            guest_addr_t dt_init = GetDtInitAddress();
+            if (dt_init) {
+                LOG_INFO(HLE, "XKRegsFpEpk: running DT_INIT at 0x%llx", dt_init);
+                InvokeGuestFunction(dt_init, 0, 0, 0);
+            }
 
-            // Signal the guest dispatch loop to terminate cleanly by jumping
-            // back into Kernel::Execute (HLE::ExitGuestProcess longjmps to the
-            // armed setjmp buffer); the main thread's window loop then
-            // proceeds through the normal shutdown path.
-            HLE::ExitGuestProcess(static_cast<u32>(exit_status));
+            // Step 2: call main(argc, argv, envp).
+            // InvokeGuestFunction maps (rdi, rsi, rdx) → (arg1, arg2, arg3)
+            // which matches the SysV ABI for main(int argc, char** argv, char** envp).
+            LOG_INFO(HLE, "XKRegsFpEpk: calling main(argc=%llu, argv=0x%llx)", args.arg1, args.arg2);
+            u64 result = InvokeGuestFunction(main_va, args.arg1, args.arg2, args.arg3);
+            LOG_INFO(HLE, "main() returned with status %llu", result);
+
+            // Step 3: exit with main's return value.
+            HLE::ExitGuestProcess(static_cast<u32>(result));
+            // unreachable — ExitGuestProcess is [[noreturn]]
         });
 
         // =====================================================================
