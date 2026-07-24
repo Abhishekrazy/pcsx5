@@ -295,6 +295,7 @@ add_library(pcsx5_core SHARED
 # the WPF single-file app).
 add_executable(pcsx5_cli
     src/main.cpp
+    src/ipc/ipc_server.cpp
     src/pcsx5.rc
     src/common/log.cpp
     src/common/nid.cpp
