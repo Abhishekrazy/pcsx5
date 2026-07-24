@@ -728,7 +728,19 @@ namespace GPU {
     }
 
     void RenderFrame(guest_addr_t framebuffer_addr) {
-        if (!g_window || !g_hwnd) return;
+        // In headless mode (IPC) there is no GLFW window, but we still need
+        // to write frames to shared memory.  Skip the window-only paths and
+        // jump straight to the IPC write at the bottom.
+        if (!g_window || !g_hwnd) {
+            // IPC: share the boot screen / current DIB buffer with frontend.
+            if (g_ipc_is_connected && g_ipc_is_connected() && !g_dib_buffer.empty()) {
+                g_ipc_write_frame(g_dib_buffer.data(),
+                                  static_cast<uint32_t>(g_width),
+                                  static_cast<uint32_t>(g_height),
+                                  static_cast<uint32_t>(g_width) * 4);
+            }
+            return;
+        }
 
         if (framebuffer_addr == 0) {
             // No framebuffer yet - redraw the boot screen (only while the
@@ -736,6 +748,13 @@ namespace GPU {
             if (g_boot_active.load(std::memory_order_acquire)) {
                 RenderBootScreenNow();
                 LOG_DEBUG(GPU, "RenderFrame: No guest framebuffer, re-presenting boot screen.");
+            }
+            // IPC: share boot screen with frontend (even before first guest frame).
+            if (g_ipc_is_connected && g_ipc_is_connected() && !g_dib_buffer.empty()) {
+                g_ipc_write_frame(g_dib_buffer.data(),
+                                  static_cast<uint32_t>(g_width),
+                                  static_cast<uint32_t>(g_height),
+                                  static_cast<uint32_t>(g_width) * 4);
             }
             return;
         }

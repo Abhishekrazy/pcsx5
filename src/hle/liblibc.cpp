@@ -2247,13 +2247,36 @@ void RegisterLibLibc() {
 
     // strstr() — plain libc semantics; the auto-stub returned NULL for every
     // query which silently breaks config/string parsing.
+    //
+    // H4.4: validate both pointers before calling std::strstr — a leaked host
+    // pointer (0x7ff...) is writable and null-terminated in host DLL ranges but
+    // returning it back to the guest leaks the host address into the guest's
+    // pointer graph.  A crash in std::strstr (invalid memory) would take down
+    // the thread; SEH-guard the call and return 0 for any fault.
     auto StrstrImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1 || !args.arg2) return 0;
+        // Reject non-guest pointers: the guest must only pass strings that
+        // live in tracked guest memory; host-region strings are always bugs.
+        if (!Memory::IsValidGuestPointer(args.arg1) ||
+            !Memory::IsValidGuestPointer(args.arg2)) {
+            LOG_WARN(HLE, "strstr: rejected non-guest pointer "
+                     "(haystack=0x%llx, needle=0x%llx)", args.arg1, args.arg2);
+            return 0;
+        }
         const char* haystack = reinterpret_cast<const char*>(args.arg1);
         const char* needle   = reinterpret_cast<const char*>(args.arg2);
-        const char* hit = std::strstr(haystack, needle);
+        const char* hit = nullptr;
+        __try {
+            hit = std::strstr(haystack, needle);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            LOG_WARN(HLE, "strstr: AV during search (haystack=0x%llx, needle=0x%llx)",
+                     args.arg1, args.arg2);
+            return 0;
+        }
         LOG_DEBUG(HLE, "strstr(0x%llx, 0x%llx) -> 0x%llx", args.arg1, args.arg2,
                   reinterpret_cast<u64>(hit));
+        // hit points within guest memory (we validated args.arg1 above), so
+        // the address IS the correct guest address (direct-mapped model).
         return hit ? reinterpret_cast<u64>(hit) : 0;
     };
 
