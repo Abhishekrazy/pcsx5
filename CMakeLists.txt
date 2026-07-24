@@ -736,6 +736,7 @@ target_link_libraries(pcsx5_core PRIVATE glfw Vulkan::Headers lua ws2_32 nlohman
 target_include_directories(pcsx5_core PRIVATE src)
 
 target_link_libraries(pcsx5_cli PRIVATE pcsx5_core glfw Vulkan::Headers)
+target_link_options(pcsx5_cli PRIVATE /STACK:4194304)
 target_include_directories(pcsx5_cli PRIVATE src)
 
 # Add Windows SDK include path for resource compiler (RC) to find windows.h
