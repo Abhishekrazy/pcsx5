@@ -1734,8 +1734,16 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
 
                 fclose(f);
             }
-            LOG_ERROR(Kernel, "VEH Unhandled Exception: Code: 0x%X, RIP: 0x%llx, Module: %s, Offset: 0x%llx", 
+            LOG_ERROR(Kernel, "VEH Unhandled Exception: Code: 0x%X, RIP: 0x%llx, Module: %s, Offset: 0x%llx",
                       exception_record->ExceptionCode, context->Rip, module_name, offset);
+
+            // I6.1: Boot-status timeline — stages recorded via SetBootStatus.
+            auto boot_timeline = GPU::GetBootTimeline();
+            if (!boot_timeline.empty()) {
+                LOG_ERROR(Kernel, "  Boot timeline:");
+                for (const auto& stage : boot_timeline)
+                    LOG_ERROR(Kernel, "    %s", stage.c_str());
+            }
 
             // Also log recent HLE import calls so the crash can be correlated
             // with the last guest->host transitions.
