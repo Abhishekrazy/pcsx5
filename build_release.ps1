@@ -168,10 +168,13 @@ if (Test-Path $wpfExe) {
 }
 Stage-File (Join-Path $cppBinDir "pcsx5_cli.exe")  (Join-Path $distDir "pcsx5_cli.exe")
 
-# Core DLL + FFmpeg → plugins/ (SetDllDirectory added by EXEs at startup).
+# Core DLL → plugins/ (SetDllDirectory added by EXEs at runtime) AND root
+# (the EXEs implicitly link against pcsx5_core.dll — it must be resolvable
+# by the Windows loader at process start, before main() / SetDllDirectoryW).
 $distPlugins = Join-Path $distDir "plugins"
 New-Item $distPlugins -Force -Type Directory | Out-Null
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distPlugins "pcsx5_core.dll")
+Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distDir     "pcsx5_core.dll")
 
 # FFmpeg DLLs — download official Windows builds if not already cached.
 $ffmpegCache = Join-Path $repoRoot "cache\ffmpeg"

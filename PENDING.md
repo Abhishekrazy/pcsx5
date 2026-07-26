@@ -1,158 +1,185 @@
-# Pending — prioritized work queue
+# Pending — Boot & Playability Sprint
 
-Low/medium priority first; high-priority items broken into small,
-independently verifiable pieces.
+All work targets a single cycle: boot a game → auto-test with controller
+inputs → detect crash/hang → fix the blocking issue → rerun.
 
 Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase H — H4 Menu Blocker Resolution (High Priority)
+## B1 — Content-Load / Menu Blocker (Highest Priority)
 
-- [x] H4.1 Construct runtime null variants — HeapAllocLocked zeroes allocations, Value ctors write type
-- [x] H4.2 VCRUNTIME140 AV — IsValidGuestPointer + AGC paths validated + SEH guards
-- [x] H4.3 VEH recursion guard (max depth 8) + heartbeat diagnostics
-- [x] H4.4 Golden frame infrastructure: PM4 capture/replay + readback + PNG compare exists in `tools/pm4_replay.cpp` and `vk_present.cpp`.  Actual golden capture requires running a game title to produce reference frames.
-
----
-
-## Phase A — Hardware Abstraction Layers
-
-### A1. Graphics Abstraction Layer (GAL)
-- [x] A1.1 Define `GpuDevice` interface (`src/gpu/gal.h`) with Null backend + factory
-- [x] A1.5 Runtime backend selection (Vulkan / GDI / Null with auto-probe)
-- [ ] **A1.2 Refactor Vulkan backend into `VulkanDevice : GpuDevice`** — wire vk_context/vk_present/vk_draw through the interface
-- [ ] **A1.3 GDI/Software fallback** as `GdiDevice : GpuDevice`
-- [ ] **A1.4 D3D12 backend** (stretch)
-
-### A2. Audio Abstraction Layer (AAL)
-- [x] A2.1 Define `AudioDevice` interface (`src/hle/audio/audio_device.h`)
-- [x] A2.2-A2.4 Concrete backends: WaveOutDevice, WasapiDevice, Xa2Device
-- [x] A2.7 Backend factory + PacingAudioDevice null backend
-- [x] A2.5 SDL Audio backend (`SdlAudioDevice : AudioDevice`, dynamically loads SDL2.dll)
-
-### A3. Input Abstraction Layer (IAL)
-- [x] A3.1 Define `InputBackend` interface (`src/gpu/input/input_backend.h`)
-- [x] A3.2-A3.3 GlfwKeyboardBackend + XInputBackend
-- [x] A3.5-A3.6 DualSenseInputBackend + InputMultiplexer
-- [x] A3.4 SDL GameController backend (SdlGameControllerBackend, dynamically loads SDL2.dll)
-
-### A4. Platform Abstraction Layer (PAL)
-- [x] A4.1-A4.6 Define `Platform::*` API + full Windows implementation
+- [x] **B1.1 Diagnose content-load stall** — Confirmed: crash is `0xC0000005` in
+      `VCRUNTIME140.dll!memmove` during AGC indirect-patch operations. Root cause:
+      `__try/__except` SEH handlers in MemcpyImpl are non-functional on the guest
+      stack (x64 unwinder can't cross primary-stack boundary).
+- [x] **B1.2 Fix the first blocker** — Added Memory::IsReadable/IsWritable
+      validation before every memcpy/memmove call in libkernel. This prevents the
+      AV without relying on SEH (which is broken on the guest stack).
+- [x] **B1.2b Fix DLL staging** — `build_release.ps1` now copies `pcsx5_core.dll`
+      to both `plugins/` and `dist/` root. Without this the CLI (which links
+      implicitly) fails at process start before `SetDllDirectoryW` runs.
+- [ ] **B1.3 Verify menu renders** — After B1.2, Dreaming Sarah runs crash-free for
+      45+ seconds with consistent draws+flips at 2160x1080. Next: long-duration
+      run (`>5 min`) to confirm it reaches the menu. Also verify with other titles
+      (LOST EPIC, Jusant).
 
 ---
 
-## Phase D — DualSense HID Fixes & Improvements
+## B2 — GPU Pipeline Completeness for Gameplay
 
-- [x] D1 BT output report format (report[2] 0x10→0x00) + mic audio extraction from input reports
-- [x] D2 Lightbar RGB — fixed enable flag bits and byte positions per SDL spec
-- [x] D3 ButtonLayout shared component (ImGui renderer + battery status + "tested" checklist)
-- [x] D4 Player LEDs wired (scePadSetPlayerIndicator → SetPlayerLeds) + battery in overlay + scePadSetLightBar → SetLightBar
-- [x] D3.3 WPF ControllerVisualizer UserControl (animated buttons, sticks, triggers, touchpad, battery)
-- [x] D3.4 Replace standalone tester tools (redirect to unified `--test-input` CLI)
-
----
-
-## Phase I — Advanced DualSense Integration & Modern UI Redesign
-
-- [x] **I1. Input Screen UI Redesign & Live Highlighting** — integrated live button/stick highlighting into central controller SVG, removed bottom test panel
-- [x] **I2. Custom Controller Mapping & Key Rebinding** — interactive click-to-bind UI with custom profile saving/loading
-- [x] **I3. DualSense Deep HID Integration (`ds5w.h` spec)** — multi-touch touchpad tracking, haptics, mic mute LED, lightbar color, player LEDs, gyro/accel
-- [x] **I4. Multi-Controller / Multi-Input Support** — concurrent Player 1..5 gamepad tracking with automatic player LED and lightbar assignment
-- [x] **I5. Thread Isolation & Non-blocking Emulator Loop** — async non-blocking game execution thread with queue-drained console log streaming
-- [x] **I6. System-Wide Controller Navigation & PS/Mute Shortcuts** — controller focus navigation across all tabs, PS button 1s hold (home), PS tap (pause/resume), Mic tap (mute toggle)
-
----
-
-## Phase R — Rendering Enhancements
-
-### R1. VRR
-- [x] R1.1 Vulkan swapchain present mode selection (FIFO_RELAXED / IMMEDIATE for VRR)
-- [x] R1.2 Config-driven (`video.vrr`) via `VkPresentSetVrrConfig()`
-- [ ] **R1.3 Frame pacing for VRR** (remove fixed 60 Hz vblank throttle)
-
-### R2. FidelityFX Super Resolution
-- [x] R2.1 FsrUpscale class with DLL detection + quality presets + resolution helpers
-- [ ] **R2.1-R2.5 Full FSR integration** (needs AMD FidelityFX SDK headers for Fsr2CreateContext/Dispatch)
-
-### R3. HDR
-- [ ] R3.1-R3.3 HDR swapchain, metadata passthrough, PQ→SDR tonemapping
+- [ ] **B2.1 PM4 draw gaps** — as the game progresses past the splash, new PM4
+      command sequences (different Cx/Sh/Uc register combinations, blended
+      draws, depth-only passes, unbounded color targets) will be encountered.
+      Add handlers for each missing case; log and snapshot the failing draw
+      for offline replay via `tools/pm4_replay.cpp`.
+- [ ] **B2.2 Shader corpus expansion** — menu/level shaders may differ from the
+      splash corpus.  Capture newly encountered shaders at draw time, add to
+      the test corpus (`tests/golden/`), and fix any translator failures.
+- [ ] **B2.3 Scalar-evaluator edge cases** — vertex/texture/constant-buffer
+      SGPRs encountered during gameplay that the scalar evaluator doesn't
+      handle.  Add decode patterns as they appear.
+- [ ] **B2.4 GDI fallback for in-game** — ensure the GDI DIB path renders
+      game frames (not just the boot screen) when Vulkan is unavailable.
+- [ ] **B2.5 IPC frame sharing for gameplay** — verify the IPC shared-memory
+      path passes game frames (not just boot-screen frames) to the UI
+      frontend at playable framerate.
 
 ---
 
-## Phase P — PS5 PKG Extraction & ELF Loading
+## B3 — HLE Stubs & Module Gaps Hit During Gameplay
 
-### P1-P2 PS5 PKG + PFS
-- [x] P1.1 PS5 PKG parser (magic 0x7F464948, entry table, PFS layout)
-- [x] P1.2 fPKG AES-128-CBC entry decryption
-- [x] P1.3 Auto-detect PS4 vs PS5 PKG by magic in CLI `--extract-pkg`
-- [x] P2.2 `ExtractEbootFromPkgPs5`: PKG→PFS→mount→eboot.bin end-to-end
-- [ ] **P2.1 PFS reader: compressed block support**
-- [x] P3 SELF→ELF extraction (already implemented in elf.cpp: LoadSelf + ExtractInnerElf, works for fPKG; rejects encrypted retail SELFs)
-
-### P4. PkgToolBox
-- [x] P4.1 Audit PkgToolBox PS5 logic — entry table format matches ({u32 id, u32 type, u64 offset, u64 size, u64 pad}).  Layout table at 0x400 matches (8 × u64).  Minor: Python reads u64 for file count, C++ reads u32 — acceptable.
-- [x] P4.4 Document extraction workflow (`wiki/pkg-extraction.md`)
-
----
-
-## Phase V — Video Decoder Support
-
-### V1. VDAL Interface
-- [x] V1.1 `VideoDecoder` interface (open/seek/decode/audio tracks)
-- [x] V1.2 `VideoFrame` structure (RGBA8/YUV420/NV12 + timing)
-- [x] V1.3 Backend factory with Bink2/CRI/FFmpeg/Null + format auto-detection by magic bytes
-
-### V2-V5 Full Decoder Implementation
-- [ ] **V2.1 Bink2Decoder** (needs Bink SDK headers for bink2w64.dll exports)
-- [ ] **V3.1 CriUsmDecoder** (needs FFmpeg or H.264/H.265 decoder backend)
-- [ ] **V4.1 FFmpegDecoder** (needs FFmpeg headers + avformat/avcodec DLL linking)
-- [ ] V5.1-V5.3 GPU texture upload, overlay compositing, A/V sync
+- [ ] **B3.1 Gameplay-exercise stub sweep** — use the auto-bot (I1) to push
+      through menus and into gameplay.  Every time an unimplemented stub is
+      called (`LogStubCallOnce`), triage it:
+      - Return-0 acceptable? → mark as green-lit.
+      - Causes crash/logic failure? → implement the real behaviour.
+- [ ] **B3.2 New module registrations** — if the game imports functions from a
+      module with no HLE file at all, add the skeleton module, register its
+      known symbols, and iterate into B3.1.
+- [ ] **B3.3 Atomics/ordering correctness** — weak-memory-order patterns in
+      game code (e.g. `atomic_signal_fence`, `atomic_thread_fence`,
+      `__c11_atomic_compare_exchange_strong` with relaxed ordering) that work
+      on real PS5 Zen2 hardware but break on x64 TSO host.  Fix where
+      divergence causes hangs or missed progress.
 
 ---
 
-## Phase O — Performance Optimization
+## I1 — Input Bot / Auto-Testing Infrastructure
 
-### O1. Memory
-- [x] O1.1 Large page support (MEM_LARGE_PAGES for ≥2 MB allocations)
-- [ ] **O1.2 Direct-mapped guest memory** (single large VirtualAlloc reservation)
-- [x] O1.3 Pre-commit 256 MB at 0x800000000 on boot
-- [x] O1.4 Write-tracking coalescing (merge adjacent ranges → fewer VirtualProtect calls)
-
-### O2. GPU Pipeline
-- [x] O2.1 Command batching (256 draws/batch, submitted once per flip)
-- [x] O2.2 Persistent VkPipelineCache (disk cache between runs)
-- [ ] **O2.3 Descriptor pool pre-allocation + reuse**
-- [ ] **O2.5 Shader cache format optimization** (versioned, incremental)
-
-### O3. CPU/Threading
-- [x] O3.3 VEH TLS cache (thread_local t_tls_base, no mutex contention)
-- [x] O3.1 Thread affinity + naming (affinity_mask config + SetThreadName)
-- [ ] **O3.2 Guest thread scheduling** (reduce mutex contention in sync primitives)
-
-### O4. Audio Buffers
-- [ ] **O4.1 Shared ring buffer across backends** (reduce lock contention)
-- [ ] **O4.2 Zero-copy guest audio read**
-
-### O5. Boot Time
-- [ ] **O5.1 Parallel module loading** (thread pool for PRX relocation)
-- [ ] **O5.2 Shader warmup from disk cache** (background compilation)
+- [ ] **I1.1 Input replay format** — define a simple JSON or binary format for
+      recording controller state snapshots (buttons, sticks, triggers,
+      touch) with frame-count delays between events.
+- [ ] **I1.2 Bot input backend** — add an `InputBotBackend : InputBackend` that
+      reads a replay script and feeds synthetic PadButtonState into the
+      InputMultiplexer on a timer or frame counter.  Must produce identical
+      state to a real DualSense/XInput feed so the game code path is the
+      same.
+- [ ] **I1.3 Record/replay tool** — CLI tool (`--record-input=<path>` /
+      `--play-input=<path>`) that records real controller inputs to a file
+      and replays them.  `--play-input=<path>` drives the bot backend;
+      `--record-input=<path>` captures from the live multiplexer.
+- [ ] **I1.4 Session recording for regression** — when a bot session triggers a
+      crash, automatically save the input replay + emulator log + compat
+      report to a timestamped bundle so the exact sequence can be replayed
+      after a fix.
 
 ---
 
-## Phase S — System & Quality
+## I2 — Find-Issue → Fix → Rerun Pipeline
 
-### S1. Build
-- [ ] **S1.1 Split CMakeLists per subdirectory** (faster incremental builds)
-- [ ] **S1.2 Clang-CL build** (validate with both MSVC and Clang)
-- [ ] **S1.3 Headless CI test runs** (GPU-less)
-- [ ] **S1.4 PKG extraction CI test**
+- [ ] **I2.1 Headless crash-detect loop** — shell script or CLI mode that:
+      1. Boots the game in headless mode with `--play-input=<replay>`.
+      2. Waits for one of: a) guest exit, b) no flip for N seconds (hang
+         detection), c) known crash signature in the log.
+      3. Captures the compat report, log tail, and any crash dump.
+      4. Exits with a distinct return code per failure mode.
+- [ ] **I2.2 Regression test suite** — a `ctest` target (or set of targets)
+      that runs the full bot-input replay for each title and fails on any
+      crash, hang, or regression.  Track pass/fail history in a JSON
+      manifest.
+- [ ] **I2.3 Crash bundle improvements (S2.3)** — ensure crash bundles include:
+      config, boot-status timeline, last N log lines, last rendered frame
+      (DIB/VkImage readback), pipeline cache, and the active input replay.
+- [ ] **I2.4 Compat report dashboard** — aggregate `--report=<path>` output
+      across multiple bot-run iterations into a markdown table showing which
+      stage each title reaches (boot / menu / gameplay / crash-at-stage-X).
+      Track per-commit so regressions are visible.
 
-### S2. Testing
-- [x] S2.1 PS5 PKG parser unit test (synthetic valid PKG, all assertions pass)
-- [x] S2.2 Frame timing waterfall + FPS overlay (256-entry ring + ImGui stacked bars)
-- [ ] **S2.3 Crash bundle: include config + trace ring + pipeline cache**
+---
 
-### S3. Documentation
-- [x] S3.1 Architecture docs: README + PROGRESS updated with all abstraction layers
-- [ ] **S3.2 Developer guide**: how to add backends, platform porting guide, testing guide
+## I3 — Performance for Playable Framerate
+
+- [ ] **I3.1 Frame timing & pacing** — verify the vblank pump + flip model
+      produces consistent 30/60 fps.  Add timing waterfall from
+      `tests/frame_timing.cpp` to the bot-run log so frame-time variance is
+      visible per session.
+- [x] **I3.2 Direct-mapped guest memory** — 1 GB pool at 0x4000000000, sub-allocates for `Memory::Map(hint=0)`. Replaces per-call VirtualAlloc for guest heap allocations.
+- [x] **I3.3 Descriptor pool pre-allocation (O2.3)** — Already implemented in vk_draw.cpp: pre-allocated pool with 2048+ storage/image descriptors, recycled per batch via RotateBatch/ResetDescriptorPool.
+- [ ] **I3.4 Guest thread scheduling (O3.2)** — reduce mutex contention in the
+      guest sync primitives (equeue, semaphore, mutex, condvar).  Use
+      wait-free queues where possible.
+- [ ] **I3.5 VRR frame pacing (R1.3)** — remove the fixed 60 Hz vblank throttle
+      when `video.vrr` is enabled; let the swapchain's present mode pace
+      frames.
+- [ ] **I3.6 Shader warmup (O5.2)** — pre-compile known shaders from the disk
+      cache during the boot screen so they're ready when gameplay calls them.
+
+---
+
+## I4 — Video Decoder for In-Game Cutscenes
+
+- [ ] **I4.1 Bink2 decoder (V2.1)** — wire `Bink2Decoder` against
+      `bink2w64.dll`.  Ship the decoder DLL integration so games using Bink2
+      video can play cutscenes.
+- [ ] **I4.2 CRI USM decoder (V3.1)** — implement `CriUsmDecoder` using a
+      system H.264/H.265 decoder (MFX or FFmpeg).
+- [ ] **I4.3 GPU texture upload + overlay (V5.x)** — pipe decoded video frames
+      into Vulkan texture upload and composite over the game framebuffer at
+      the correct Z-order.  A/V sync via the guest clock.
+- [ ] **I4.4 FFmpeg fallback (V4.1)** — `FFmpegDecoder` for MP4/WebM movies
+      when the game has a generic video fallback.
+
+---
+
+## I5 — Audio Polish for Gameplay
+
+- [ ] **I5.1 Audio timing correctness** — verify the guest audio-out ring buffer
+      (libaudioout) matches the host audio backend clock.  Fix underrun/overrun
+      that causes audible pops or silence.
+- [ ] **I5.2 Shared ring buffer (O4.1)** — single lock-free ring across all
+      audio backends eliminates per-backend lock contention during
+      high-throughput game audio.
+- [ ] **I5.3 Zero-copy guest audio (O4.2)** — avoid the extra heap copy between
+      the guest audio buffer and the host playback buffer.  Map guest memory
+      directly for the audio backend where possible.
+
+---
+
+## I6 — Diagnostics for Fast Iteration
+
+- [ ] **I6.1 Boot-status timeline in crash bundle** — the `SetBootStatus` calls
+      already trace the boot path.  Export the full timeline (stage + time)
+      on crash so we can see the last milestone reached.
+- [ ] **I6.2 Guest-stub heat map** — `--report` already exports stub-call counts.
+      Add a per-run heat map (top-N most-frequently-called stubs) so the next
+      target for real implementation is data-driven.
+- [ ] **I6.3 Golden frame capture on menu-screen** — once B1 lands, capture a
+      reference frame of the title/menu screen via the existing PM4 capture
+      tool (`tools/pm4_replay.cpp`).  Future runs compare against this golden
+      frame to detect regressions.
+- [ ] **I6.4 Snapshot-on-hang** — when the hang detector (I2.1) fires, take a
+      full diagnostic snapshot: guest register state, call stack via the VEH
+      context, open file handles, thread list, and the last N flips.
+
+---
+
+## Milestone Tracking
+
+| Milestone | Target | How to verify |
+|-----------|--------|---------------|
+| Boot → splash | ✅ VERIFIED 2026-07-26 | Runs crash-free 45+ s with draws + flips at 2160x1080. Memcpy AV in AGC patch chain fixed via memory validation. |
+| Boot → menu | Game-dependent | Menu screen renders with correct GPU output, responds to controller inputs |
+| Boot → gameplay | Game-dependent | Player can move, interact, game logic progresses past character-select/title |
+| Playable | Game-dependent | 30+ fps sustained, no crashes in first 15 min of bot-run gameplay, audio works, cutscenes play |
+| Regression-safe | Ongoing | All bot replays pass in CI; golden-frame comparison detects GPU regressions |
