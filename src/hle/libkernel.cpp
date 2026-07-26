@@ -1342,7 +1342,7 @@ namespace HLE {
                     Memory::Write<u16>(table_addr + i * 2, v);
                 }
             });
-            LOG_INFO(HLE, "_Getptolower() -> 0x%llx", table_addr);
+            LOG_DEBUG(HLE, "_Getptolower() -> 0x%llx", table_addr);
             return table_addr;
         });
 
