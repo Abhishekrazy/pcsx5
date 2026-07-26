@@ -151,7 +151,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] **I6.1 Boot-status timeline in crash bundle** — the `SetBootStatus` calls
       already trace the boot path.  Export the full timeline (stage + time)
       on crash so we can see the last milestone reached.
-- [ ] **I6.2 Guest-stub heat map** — `--report` already exports stub-call counts.
+- [x] **I6.2 Guest-stub heat map** — `--report` already exports stub-call counts.
       Add a per-run heat map (top-N most-frequently-called stubs) so the next
       target for real implementation is data-driven.
 - [ ] **I6.3 Golden frame capture on menu-screen** — once B1 lands, capture a
