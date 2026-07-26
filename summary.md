@@ -2,29 +2,23 @@
 
 ## 2026-07-26
 
-### Performance fix
-**Root cause**: `_Getptolower` logged `LOG_INFO` on every call — 141,750/min.
+### What shipped (18 commits)
+- **Boot crash fixed**: memcpy AV in VCRUNTIME140.dll — `IsReadable/IsWritable` validation
+- **Intermittent boot fixed**: pool base address race — let kernel choose address
+- **4x perf improvement**: `_Getptolower` LOG_INFO→LOG_DEBUG — eliminated 141,750 console writes/min
+- **UI crash fixed**: `eboot.bin.esbak` preferred over `eboot.bin` — swapped priority
+- **DLL staging fixed**: `pcsx5_core.dll` in both `dist/` root and `dist/plugins/`
+- **Per-title configs staged**: `build_release.ps1` now copies `titles/` to dist
+- **input_bot.cpp**: added to all 14 test targets that compile vulkan_backend.cpp
 
-**Fix**: `LOG_INFO` → `LOG_DEBUG` in `src/hle/libkernel.cpp:1345`.
+### New features built
+- **InputBotBackend + InputRecorder** — `--play-input` / `--record-input`
+- **Shared mutex** for HLE dispatch (concurrent reads)
+- **SPSC lock-free ring buffer** for WASAPI audio
+- **Crash bundle** — auto-saves log + info on crash
+- **Boot timeline** — `SetBootStatus` stages in VEH crash dump
+- **Stub heat map** — top-10 in `--report` JSON
+- **Crash-detect loop** — `tools/run_bot_test.sh`
 
-**Result**: 97% fewer log lines, **4x content-load speed** (6.5 → 26 walks/min).
-
-### Current content-load speed
-Remaining 0.43 fps (~2.3s/frame) is the PS5 game code running natively on the host CPU during asset decompression/parsing. Expected for early emulation — comparable to other PS4/PS5 emulators at similar stages.
-
-### All pushes today
-```
-b8ffeae progress: update summary with perf fix
-cee62af perf: _Getptolower LOG_INFO->LOG_DEBUG, 4x content-load speed
-62aff2d progress: update summary with latest fixes
-3c88276 fix: copy per-title configs to dist
-a1566c3 fix: B1.3 intermittent boot — pool base address race
-2ea6b4d fix: input_bot.cpp in all targets + dist build
-92813ce progress: final summary
-6bfe30a feat: I5.2 lock-free SPSC ring buffer
-e114283 feat: I2.1 headless crash-detect loop script
-025a652 feat: I1.4 crash bundle on guest crash
-... (9 more)
-```
-
-**17 commits total today**.
+### dist/ ready
+`I:\Personal\Windows\pcsx5\dist\pcsx5.exe` — all fixes included.
