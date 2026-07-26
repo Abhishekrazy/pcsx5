@@ -7,8 +7,10 @@
 - **Memory pool** — 1 GB pre-reserved at `0x4000000000`, sub-allocates for `Memory::Map(hint=0)` (`memory.cpp`). Fixed: was 4GB at `0x5000000000` which broke rendering.
 - **DLL staging** — `build_release.ps1` copies `pcsx5_core.dll` to both `plugins/` and `dist/` root.
 - **Crash dialog buttons** — "Copy to Clipboard" + "View Raw Logs" added to the WPF crash overlay.
-- **InputBotBackend (I1)** — `src/gpu/input/input_bot.{h,cpp}` implements a replay-based input backend. JSON format with frame-keyed controller state. `--play-input=<path>` / `--record-input=<path>` CLI args.
-- **Descriptor pool (I3.3)** — Already implemented in `vk_draw.cpp`, confirmed + marked done.
+- **InputBotBackend (I1.1/I1.2)** — `src/gpu/input/input_bot.{h,cpp}` implements replay-based input backend. JSON frame-keyed format. `--play-input=<path>` / `--record-input=<path>` CLI args.
+- **Descriptor pool (I3.3)** — Confirmed already implemented in vk_draw.cpp.
+- **Shared mutex for HLE dispatch (I3.4)** — `g_hle_mutex` changed from `std::mutex` to `std::shared_mutex`. Dispatch uses shared_lock for concurrent reads; registration uses exclusive locks.
+- **Audio timing (I5.1)** — Confirmed correct via kMaxBuffersInFlight pacing.
 
 ### Modified files
 | File | Change |

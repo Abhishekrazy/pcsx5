@@ -55,6 +55,34 @@ bool LoadInputBotReplay(const std::string& path, std::vector<InputBotEvent>& out
                         uint64_t* out_total_frames = nullptr);
 
 // ---------------------------------------------------------------------------
+// Recording utility: writes live controller state to a JSON file.
+// Appends one JSON object per line (newline-delimited JSON) so the recording
+// can be safely truncated on crash and post-processed into a proper array.
+// ---------------------------------------------------------------------------
+class InputRecorder {
+public:
+    InputRecorder() = default;
+    ~InputRecorder();
+
+    // Open a file for recording.  Returns false on I/O error.
+    bool Start(const std::string& path, const std::string& title_id);
+
+    // Record one frame's worth of controller state.  Call once per vblank.
+    void RecordFrame(uint64_t frame, const ControllerState& state);
+
+    // Close the recording file and write the JSON trailer.
+    void Stop();
+
+    bool IsRecording() const { return m_file.is_open(); }
+
+private:
+    std::ofstream m_file;
+    uint64_t      m_first_frame = 0;
+    uint64_t      m_last_frame  = 0;
+    bool          m_has_events  = false;
+};
+
+// ---------------------------------------------------------------------------
 // InputBotBackend — reads a replay file and synthesizes controller state.
 // ---------------------------------------------------------------------------
 class InputBotBackend : public InputBackend {
