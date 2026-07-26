@@ -141,9 +141,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ## I5 — Audio Polish for Gameplay
 
-- [ ] **I5.1 Audio timing correctness** — verify the guest audio-out ring buffer
-      (libaudioout) matches the host audio backend clock.  Fix underrun/overrun
-      that causes audible pops or silence.
+- [x] **I5.1 Audio timing correctness** — Already correct via kMaxBuffersInFlight=8 blocking queue. Silent null backend paces via PaceSilence wall-clock timing.
 - [ ] **I5.2 Shared ring buffer (O4.1)** — single lock-free ring across all
       audio backends eliminates per-backend lock contention during
       high-throughput game audio.
