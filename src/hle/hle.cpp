@@ -756,6 +756,17 @@ namespace HLE {
     }
 
     static bool SafeRead(void* dest, const void* src, size_t size) {
+        if (size == 0) return true;
+        if (!dest || !src) return false;
+        // Primary: page-table query (safe on any stack).
+        const guest_addr_t s = reinterpret_cast<guest_addr_t>(src);
+        const guest_addr_t d = reinterpret_cast<guest_addr_t>(dest);
+        if (Memory::IsReadable(s, size) && Memory::IsWritable(d, size)) {
+            std::memcpy(dest, src, size);
+            return true;
+        }
+        // Fallback: SEH-guarded raw copy (may not fire on guest stack,
+        // but kept for host-stack callers where it does work).
         __try {
             std::memcpy(dest, src, size);
             return true;
