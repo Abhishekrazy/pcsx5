@@ -513,6 +513,16 @@ namespace GPU {
         return g_boot_active.load(std::memory_order_acquire);
     }
 
+    std::vector<std::string> GetBootTimeline() {
+        std::lock_guard<std::mutex> lock(Boot().mutex);
+        std::vector<std::string> result;
+        for (const auto& s : Boot().status.log)
+            result.push_back(s);
+        if (!Boot().status.stage.empty())
+            result.push_back(Boot().status.stage);
+        return result;
+    }
+
     bool Initialize() {
         LOG_INFO(GPU, "Initializing GPU subsystem (GLFW + Vulkan Backend)...");
 

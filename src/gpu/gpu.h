@@ -92,6 +92,11 @@ namespace GPU {
     // first presented guest frame (the game takes over the window).
     bool IsBootScreenActive();
 
+    // I6.1: Boot-status timeline.  Returns all stages logged via SetBootStatus
+    // (the current stage plus up to kBootLogMax completed stages).  Safe to
+    // call from any thread.  Empty vector when no stages have been recorded.
+    std::vector<std::string> GetBootTimeline();
+
     // Embedded mode (--embed): the presentation window is created hidden so
     // the launcher UI can reparent it into its own window.  Must be called
     // before Initialize().  The window handle is always printed to stdout as

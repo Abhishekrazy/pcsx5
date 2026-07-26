@@ -113,9 +113,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
       visible per session.
 - [x] **I3.2 Direct-mapped guest memory** — 1 GB pool at 0x4000000000, sub-allocates for `Memory::Map(hint=0)`. Replaces per-call VirtualAlloc for guest heap allocations.
 - [x] **I3.3 Descriptor pool pre-allocation (O2.3)** — Already implemented in vk_draw.cpp: pre-allocated pool with 2048+ storage/image descriptors, recycled per batch via RotateBatch/ResetDescriptorPool.
-- [x] **I3.4 Guest thread scheduling (O3.2)** — reduce mutex contention in the
-      guest sync primitives (equeue, semaphore, mutex, condvar).  Use
-      wait-free queues where possible.
+- [x] **I3.4 Guest thread scheduling (O3.2)** — `g_hle_mutex` changed from `std::mutex` to `std::shared_mutex`. Dispatch uses `std::shared_lock` (concurrent reads); registration uses exclusive locks.
 - [ ] **I3.5 VRR frame pacing (R1.3)** — remove the fixed 60 Hz vblank throttle
       when `video.vrr` is enabled; let the swapchain's present mode pace
       frames.
