@@ -514,6 +514,15 @@ const char* Pm4CaptureDir() {
 
 // Guarded guest->host copy; isolated from C++ object unwinding (__try rule).
 bool Pm4CaptureCopy(void* dst, const void* src, size_t n) {
+    if (n == 0) return true;
+    if (dst && src) {
+        const guest_addr_t s = reinterpret_cast<guest_addr_t>(src);
+        const guest_addr_t d = reinterpret_cast<guest_addr_t>(dst);
+        if (Memory::IsReadable(s, n) && Memory::IsWritable(d, n)) {
+            std::memcpy(dst, src, n);
+            return true;
+        }
+    }
     __try {
         std::memcpy(dst, src, n);
         return true;

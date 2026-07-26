@@ -39,6 +39,12 @@ double GetNextVaListDouble(SysVAmd64VaList& valist) {
 }
 
 bool SafeReadCharacter(u64 addr, u8& out_ch) {
+    // Primary: page-table query (safe on any stack).
+    if (Memory::IsReadable(addr, 1)) {
+        out_ch = *reinterpret_cast<const u8*>(addr);
+        return true;
+    }
+    // Fallback: SEH (for host-stack callers).
     __try {
         out_ch = *reinterpret_cast<const u8*>(addr);
         return true;
@@ -117,6 +123,10 @@ void AppendInteger(std::string& out, char type, const std::string& flags,
 // Writes a 32-bit value to guest memory with SEH fault recovery (%n support).
 // Separate function: __try cannot live in a function requiring unwinding.
 void SafeWriteS32(u64 addr, s32 value) {
+    if (Memory::IsWritable(addr, 4)) {
+        Memory::Write<s32>(addr, value);
+        return;
+    }
     __try {
         Memory::Write<s32>(addr, value);
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
