@@ -47,6 +47,52 @@ constexpr u64 kErrorMemoryFault     = 0x8002000E; // SCE_KERNEL_ERROR_EFAULT
 constexpr int kMaxPorts       = 8;
 constexpr int kMaxBuffersInFlight = 8; // ~40 ms of queue at 256f/48k, paces the guest
 
+// I5.2: Lock-free single-producer single-consumer ring buffer.
+// Replaces std::deque + std::mutex in the WASAPI audio path.
+// Fixed-size with one empty slot to distinguish full from empty.
+template<typename T, size_t N>
+struct SpscRingBuffer {
+    static_assert(N > 1, "ring buffer must have at least 2 slots");
+
+    bool push(T&& item) {
+        size_t tail = m_tail.load(std::memory_order_relaxed);
+        size_t next = (tail + 1) % N;
+        if (next == m_head.load(std::memory_order_acquire))
+            return false;  // full
+        m_data[tail] = std::move(item);
+        m_tail.store(next, std::memory_order_release);
+        return true;
+    }
+
+    bool pop(T& item) {
+        size_t head = m_head.load(std::memory_order_relaxed);
+        if (head == m_tail.load(std::memory_order_acquire))
+            return false;  // empty
+        item = std::move(m_data[head]);
+        m_head.store((head + 1) % N, std::memory_order_release);
+        return true;
+    }
+
+    bool empty() const {
+        return m_head.load(std::memory_order_acquire) == m_tail.load(std::memory_order_acquire);
+    }
+
+    bool full() const {
+        size_t t = m_tail.load(std::memory_order_relaxed);
+        return (t + 1) % N == m_head.load(std::memory_order_acquire);
+    }
+
+    void clear() {
+        m_head.store(0, std::memory_order_relaxed);
+        m_tail.store(0, std::memory_order_relaxed);
+    }
+
+private:
+    T m_data[N]{};
+    std::atomic<size_t> m_head{0};
+    std::atomic<size_t> m_tail{0};
+};
+
 struct AudioOutPort;
 
 struct OutBuffer {
@@ -70,7 +116,7 @@ struct WasapiState {
     bool                 own_com    = false; // we called CoInitializeEx
     bool                 mix_float  = false; // host mix is float32 (else s16)
     u32                  buffer_frames = 0;  // device buffer capacity
-    std::deque<std::vector<s16>> queue;      // stereo s16 blocks, under port.mu
+    SpscRingBuffer<std::vector<s16>, kMaxBuffersInFlight> ring; // lock-free SPSC
 };
 
 // XAudio2 2.9 state (one per open port when backend == 2).  A fixed pool of
@@ -336,10 +382,8 @@ void WasapiThreadMain(AudioOutPort* port) {
                     offset = 0;
                     current.clear();
                     {
-                        std::lock_guard<std::mutex> lock(port->mu);
-                        if (!ws.queue.empty()) {
-                            current = std::move(ws.queue.front());
-                            ws.queue.pop_front();
+                        // I5.2: lock-free ring buffer — no mutex needed.
+                        if (ws.ring.pop(current)) {
                         }
                     }
                     port->cv.notify_all();
@@ -476,7 +520,7 @@ void CloseWasapiBackend(AudioOutPort& port) {
     ws.buffer_frames = 0;
     {
         std::lock_guard<std::mutex> lock(port.mu);
-        ws.queue.clear();
+        ws.ring.clear();
     }
     if (ws.own_com) {
         ws.own_com = false;
@@ -490,11 +534,11 @@ void CloseWasapiBackend(AudioOutPort& port) {
 void SubmitToWasapi(AudioOutPort& port, const u8* src) {
     std::vector<s16> block(static_cast<size_t>(port.buffer_length) * 2);
     ConvertToStereoS16(port, src, block.data());
-    std::unique_lock<std::mutex> lock(port.mu);
-    port.cv.wait(lock, [&] {
-        return port.wasapi.queue.size() < static_cast<size_t>(kMaxBuffersInFlight);
-    });
-    port.wasapi.queue.push_back(std::move(block));
+    // I5.2: lock-free ring buffer push — spin-wait when full (pacing).
+    // No mutex needed; the ring buffer is SPSC and lock-free.
+    while (port.wasapi.ring.full())
+        std::this_thread::yield();
+    port.wasapi.ring.push(std::move(block));
 }
 
 // ---------------------------------------------------------------------------
