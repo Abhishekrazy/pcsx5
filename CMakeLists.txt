@@ -271,6 +271,8 @@ add_library(pcsx5_core SHARED
     src/gpu/vulkan/vulkan_device.h
     src/gpu/vulkan/vulkan_device.cpp
     src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
     src/gpu/vk_context.cpp
     src/gpu/vk_present.cpp
     src/gpu/gfx10_state.cpp
@@ -324,6 +326,8 @@ if(BUILD_TESTING)
         src/memory/memory.cpp
         src/config/config.cpp
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -479,6 +483,8 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -537,6 +543,8 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -609,6 +617,8 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1101,6 +1111,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1160,6 +1172,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1219,6 +1233,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1279,6 +1295,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1339,6 +1357,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1399,6 +1419,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1459,6 +1481,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1518,6 +1542,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
@@ -1623,6 +1649,8 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
         src/gpu/gfx10_state.cpp
