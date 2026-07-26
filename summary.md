@@ -1,29 +1,22 @@
 # PCSX5 — Session Summary
 
-## 2026-07-26 — final
+## 2026-07-26
 
-### 19 commits today — all fixes verified
+### 21 commits today
 
-**Crash fixes:**
-- `0xC0000005` memcpy AV → `IsReadable/IsWritable` validation
-- Intermittent boot → pool address race fixed (let kernel choose)
-- UI eboot priority → `eboot.bin` before `eboot.bin.esbak`
+**Bink2 decoder (I4.1) — new:**
+- Full implementation in `src/media/bink2_decoder.cpp`
+- Dynamic loading of `bink2w64.dll` via `LoadLibrary`/`GetProcAddress` (no SDK headers)
+- Bink2Open/Bink2GetInfo/Bink2DecodeFrame/Bink2GetFrameData/Bink2Close
+- Converts to VideoFrame (BGRA8/YUV420)
+- `build_release.ps1` stages DLL to `dist/plugins/`
 
-**Performance:**
-- `_Getptolower` `LOG_INFO→LOG_DEBUG` → **4x content-load speed** (6.5→26 walks/min)
-- Remaining 0.43 fps is guest CPU-bound (native PS5 code speed)
+**Performance fix:**
+- 4x content-load from `_Getptolower` LOG_INFO→LOG_DEBUG
 
-**Infrastructure:**
-- DLL staged to both `dist/` root and `dist/plugins/`
-- Per-title configs copied to `dist/pcsx5_config/titles/`
-- `input_bot.cpp` added to all 14 test targets
-
-**New features:**
-- InputBotBackend + InputRecorder, shared_mutex HLE dispatch
-- SPSC lock-free ring buffer (WASAPI audio), crash bundles
-- Boot timeline + stub heat map in diagnostics
-- Crash-detect loop (`tools/run_bot_test.sh`)
-
-**LOST EPIC status:** Boots but `main() not located` — Unity IL2CPP needs 36+ modules. Not a quick fix.
-
-**`dist/` ready** at `I:\Personal\Windows\pcsx5\dist\pcsx5.exe`
+**Infrastructure fixes:**
+- DLL staging (root + plugins/), per-title configs in dist
+- input_bot.cpp in all test targets
+- eboot.bin priority over eboot.bin.esbak
+- Pool address race → kernel-chosen address
+- Bink2 GetCurrentTime macro collision with Windows SDK
