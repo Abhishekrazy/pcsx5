@@ -516,8 +516,8 @@ namespace Pcsx5Ui
             string ebootPath = null;
             string[] preferredEboots = {
                 Path.Combine(dir, "decrypted", "eboot.bin"),
-                Path.Combine(dir, "eboot.bin.esbak"),
                 Path.Combine(dir, "eboot.bin"),
+                Path.Combine(dir, "eboot.bin.esbak"),
                 Path.Combine(dir, "eboot.elf")
             };
             foreach (var p in preferredEboots)
