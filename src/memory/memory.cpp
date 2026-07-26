@@ -47,7 +47,6 @@ void*                   g_fault_veh     = nullptr; // AddVectoredExceptionHandle
 // reuse rather than being returned to the OS.
 // ---------------------------------------------------------------------------
 constexpr u64 kPoolSize    = 1ULL * 1024 * 1024 * 1024;  // 1 GB — enough for content-load + heap
-constexpr u64 kPoolBaseTry = 0x4000000000ULL;             // 256 GB — avoids guest space
 
 void*  g_pool_base    = nullptr;  // VirtualAlloc base (page-aligned)
 u64    g_pool_used    = 0;        // bytes consumed so far (bump allocator)
@@ -57,6 +56,12 @@ bool   g_pool_ok      = false;    // set after successful pool reservation
 // failure (pool exhausted or not initialized).
 guest_addr_t PoolAlloc(u64 aligned_size) {
     if (!g_pool_ok) return 0;
+    // PCSX5_DISABLE_POOL=1 bypasses the pool for testing intermittency.
+    {
+        char buf[4] = {};
+        if (GetEnvironmentVariableA("PCSX5_DISABLE_POOL", buf, sizeof(buf)) > 0 && atoi(buf) == 1)
+            return 0;
+    }
     std::lock_guard<std::mutex> lock(g_regions_mutex);
     if (g_pool_used + aligned_size > kPoolSize) return 0;  // OOM
     guest_addr_t addr = reinterpret_cast<guest_addr_t>(g_pool_base) + g_pool_used;
@@ -269,15 +274,12 @@ bool Initialize() {
     }
 
     // O1.2 / I3.2: pre-reserve a large VA pool for fast sub-allocation.
+    // Let the kernel choose the base — forcing a specific address (0x4000000000)
+    // caused intermittent boot hangs because it shifted the subsequent VA layout
+    // in a way that triggered a guest-initialization race (B1.3 investigation).
     {
-        void* pool = VirtualAlloc(
-            reinterpret_cast<void*>(kPoolBaseTry), kPoolSize,
-            MEM_RESERVE, PAGE_NOACCESS);
-        if (!pool) {
-            // The hint address may be taken; let the kernel choose.
-            pool = VirtualAlloc(nullptr, kPoolSize,
-                               MEM_RESERVE, PAGE_NOACCESS);
-        }
+        void* pool = VirtualAlloc(nullptr, kPoolSize,
+                                   MEM_RESERVE, PAGE_NOACCESS);
         if (pool) {
             g_pool_base = pool;
             g_pool_ok = true;
