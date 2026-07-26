@@ -39,7 +39,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [ ] **B2.3 Scalar-evaluator edge cases** — vertex/texture/constant-buffer
       SGPRs encountered during gameplay that the scalar evaluator doesn't
       handle.  Add decode patterns as they appear.
-- [ ] **B2.4 GDI fallback for in-game** — ensure the GDI DIB path renders
+- [x] **B2.4 GDI fallback for in-game** — ensure the GDI DIB path renders
       game frames (not just the boot screen) when Vulkan is unavailable.
 - [ ] **B2.5 IPC frame sharing for gameplay** — verify the IPC shared-memory
       path passes game frames (not just boot-screen frames) to the UI
@@ -76,7 +76,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
       `--play-input=<path>`) that records real controller inputs to a file
       and replays them.  `--play-input=<path>` drives the bot backend;
       `--record-input=<path>` captures from the live multiplexer.
-- [ ] **I1.4 Session recording for regression** — when a bot session triggers a
+- [x] **I1.4 Session recording for regression** — when a bot session triggers a
       crash, automatically save the input replay + emulator log + compat
       report to a timestamped bundle so the exact sequence can be replayed
       after a fix.

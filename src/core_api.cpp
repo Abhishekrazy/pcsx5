@@ -510,9 +510,37 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
         g_state.summary.status = "crashed";
         u32 crash_code = 0;
         guest_addr_t crash_rip = 0;
-        HLE::GetLastGuestCrashInfo(&crash_code, &crash_rip, nullptr, 0);
-        LOG_ERROR(General, "Guest crashed: code=0x%08X at RIP=0x%llx",
-                  crash_code, static_cast<unsigned long long>(crash_rip));
+        char crash_msg[256] = {};
+        HLE::GetLastGuestCrashInfo(&crash_code, &crash_rip, crash_msg, sizeof(crash_msg));
+        LOG_ERROR(General, "Guest crashed: code=0x%08X at RIP=0x%llx (%s)",
+                  crash_code, static_cast<unsigned long long>(crash_rip), crash_msg);
+
+        // I1.4: save a crash bundle — timestamped directory with crash info.
+        if (!g_state.crash_dir.empty()) {
+            auto now = std::chrono::system_clock::now();
+            auto t = std::chrono::system_clock::to_time_t(now);
+            char ts[64];
+            struct tm utc;
+            gmtime_s(&utc, &t);
+            std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &utc);
+            std::string bundle = g_state.crash_dir + "/" + ts + "_" + g_state.title_id;
+            std::filesystem::create_directories(bundle);
+
+            // Write crash-info.json.
+            {
+                std::ofstream info(bundle + "/crash_info.json");
+                if (info) {
+                    info << "{\n"
+                         << "  \"title_id\": \"" << g_state.title_id << "\",\n"
+                         << "  \"title\": \"" << g_state.main_module.name << "\",\n"
+                         << "  \"exit_code\": \"0x" << std::hex << crash_code << std::dec << "\",\n"
+                         << "  \"crash_rip\": \"0x" << std::hex << crash_rip << std::dec << "\",\n"
+                         << "  \"crash_message\": \"" << crash_msg << "\",\n"
+                         << "  \"timestamp\": \"" << ts << "\"\n}\n";
+                }
+            }
+            LOG_INFO(General, "Crash bundle saved: %s", bundle.c_str());
+        }
     }
 
     auto t1 = std::chrono::steady_clock::now();
