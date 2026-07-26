@@ -130,10 +130,11 @@ u64 HeapAlloc(u64 size, u64 align) {
 bool HeapValidate(u64 ptr, u64* out_user_size) {
     if (ptr < kHeaderSize) return false;
     u64 magic = 0;
-    __try {
+    if (Memory::IsReadable(ptr - kHeaderSize, sizeof(u64))) {
         magic = Memory::Read<u64>(ptr - kHeaderSize);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
+    } else {
+        __try { magic = Memory::Read<u64>(ptr - kHeaderSize); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
     }
     if (magic != kHeaderMagic) return false;
     *out_user_size = Memory::Read<u64>(ptr - kHeaderSize + 8);
@@ -195,6 +196,11 @@ guest_addr_t g_cur_eh_base = 0;
 // SEH-safe guest memory readers.  Kept as tiny POD-only functions so __try is
 // legal (no C++ objects with destructors in scope).  Return false on fault.
 bool SafeReadMem(u64 addr, void* dst, size_t n) {
+    if (n == 0) return true;
+    if (Memory::IsReadable(addr, n) && Memory::IsWritable(reinterpret_cast<guest_addr_t>(dst), n)) {
+        std::memcpy(dst, reinterpret_cast<const void*>(addr), n);
+        return true;
+    }
     __try {
         std::memcpy(dst, reinterpret_cast<const void*>(addr), n);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1391,24 +1397,14 @@ u64 CxaAllocateException(u64 size) {
         return 0;
     }
     // Zero the 120-byte header + 32-byte unwind header.
-    bool ok = true;
-    for (u64 off = 8; off < kAllocPrefix; off += 8) {
-        __try {
-            *reinterpret_cast<u64*>(base + off) = 0;
-        } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; break; }
-    }
-    if (!ok) {
+    if (Memory::IsWritable(base + 8, kAllocPrefix - 8)) {
+        std::memset(reinterpret_cast<void*>(base + 8), 0, kAllocPrefix - 8);
+        *reinterpret_cast<u64*>(base + 8) = 1; // referenceCount = 1
+    } else {
         HeapFree(base);
         return 0;
     }
     const u64 user = base + kAllocPrefix;
-    // referenceCount (offset 0) = 1, matching libc++abi for a fresh exception.
-    __try {
-        *reinterpret_cast<u64*>(base + 8) = 1;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        HeapFree(base);
-        return 0;
-    }
     LOG_DEBUG(HLE, "__cxa_allocate_exception(%llu) -> 0x%llx", size, user);
     return user;
 }

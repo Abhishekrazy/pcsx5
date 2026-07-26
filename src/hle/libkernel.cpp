@@ -962,23 +962,24 @@ namespace HLE {
             if (!str) return 0;
 
             u64 len = 0;
-            // Stop scanning at page boundaries to avoid host crashes from
-            // unmapped pages.  A zero-length string at page-start is OK: the
-            // first read inside a live page is always valid; if the page itself
-            // is unmapped the VEH fault handler takes over.
-            u64 page_start = str & ~(static_cast<u64>(0xFFF));
-            u64 page_end   = page_start + 0x1000;
-            while (str + len < page_end) {
-                bool ok = true;
-                u8 c = 0;
-                __try {
-                    c = Memory::Read<u8>(str + len);
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    ok = false;
+            // Check the full page upfront (safe on any stack).
+            const u64 page_start = str & ~(static_cast<u64>(0xFFF));
+            const u64 page_end   = page_start + 0x1000;
+            if (Memory::IsReadable(str, 1)) {
+                while (str + len < page_end) {
+                    u8 c = Memory::Read<u8>(str + len);
+                    if (c == 0) break;    // found terminator
+                    len++;
                 }
-                if (!ok) break;           // unmapped — stop
-                if (c == 0) break;        // found terminator
-                len++;
+            } else {
+                // Page not mapped — single-byte SEH fallback.
+                while (str + len < page_end) {
+                    u8 c = 0;
+                    __try { c = Memory::Read<u8>(str + len); }
+                    __except (EXCEPTION_EXECUTE_HANDLER) { break; }
+                    if (c == 0) break;
+                    len++;
+                }
             }
             // If the string crossed into an unmapped page, report length up to
             // the fault boundary (the caller may still read within the mapped
@@ -1707,10 +1708,13 @@ namespace HLE {
             guest_addr_t dst = args.arg1, src = args.arg2;
             u64 n = args.arg3;
             if (dst && src && n > 0 && n < 0x10000000ULL) {
-                __try {
+                if (Memory::IsReadable(src, 1) && Memory::IsWritable(dst, 1)) {
                     strncpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src), n);
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    LOG_WARN(HLE, "libkernel::strncpy: AV (dst: 0x%llx, src: 0x%llx, n: %llu)", dst, src, n);
+                } else {
+                    __try { strncpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src), n); }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        LOG_WARN(HLE, "libkernel::strncpy: AV (dst: 0x%llx, src: 0x%llx, n: %llu)", dst, src, n);
+                    }
                 }
             }
             return dst;
@@ -1720,10 +1724,13 @@ namespace HLE {
         auto StrcpyImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
             if (dst && src) {
-                __try {
+                if (Memory::IsReadable(src, 1) && Memory::IsWritable(dst, 1)) {
                     strcpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    LOG_WARN(HLE, "libkernel::strcpy: AV (dst: 0x%llx, src: 0x%llx)", dst, src);
+                } else {
+                    __try { strcpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src)); }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        LOG_WARN(HLE, "libkernel::strcpy: AV (dst: 0x%llx, src: 0x%llx)", dst, src);
+                    }
                 }
             }
             return dst;
@@ -1735,10 +1742,13 @@ namespace HLE {
         auto StrcatImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
             if (dst && src) {
-                __try {
+                if (Memory::IsReadable(src, 1) && Memory::IsWritable(dst, 1)) {
                     strcat(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    LOG_WARN(HLE, "libkernel::strcat: AV (dst: 0x%llx, src: 0x%llx)", dst, src);
+                } else {
+                    __try { strcat(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src)); }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        LOG_WARN(HLE, "libkernel::strcat: AV (dst: 0x%llx, src: 0x%llx)", dst, src);
+                    }
                 }
             }
             return dst;
@@ -1765,11 +1775,13 @@ namespace HLE {
             u32 ch = static_cast<u32>(args.arg2);
             u64 n = args.arg3;
             if (dst && n > 0 && n < 0x10000000ULL) {
-                __try {
+                if (Memory::IsWritable(dst, n)) {
                     std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n);
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    LOG_WARN(HLE, "libkernel::memset: AV during memset "
-                             "(dest: 0x%llx, count: %llu) — skipped", dst, n);
+                } else {
+                    __try { std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n); }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        LOG_WARN(HLE, "libkernel::memset: AV (dest: 0x%llx, count: %llu) — skipped", dst, n);
+                    }
                 }
             }
             return dst;
@@ -1779,6 +1791,10 @@ namespace HLE {
         RegisterSymbol("libkernel", "strcmp#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t a = args.arg1, b = args.arg2;
             if (!a || !b) return (u64)(s64)-1;
+            if (Memory::IsReadable(a, 1) && Memory::IsReadable(b, 1)) {
+                int cmp = strcmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
+                return (u64)(s64)cmp;
+            }
             __try {
                 int cmp = strcmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
                 return (u64)(s64)cmp;
@@ -1793,6 +1809,10 @@ namespace HLE {
             guest_addr_t a = args.arg1, b = args.arg2;
             u64 n = args.arg3;
             if (!a || !b || n == 0 || n > 0x10000000ULL) return (u64)(s64)-1;
+            if (Memory::IsReadable(a, n > 0 ? 1 : 0) && Memory::IsReadable(b, n > 0 ? 1 : 0)) {
+                int cmp = strncmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b), n);
+                return (u64)(s64)cmp;
+            }
             __try {
                 int cmp = strncmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b), n);
                 return (u64)(s64)cmp;
@@ -1808,6 +1828,10 @@ namespace HLE {
         RegisterSymbol("libkernel", "AV6ipCNa4Rw#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t a = args.arg1, b = args.arg2;
             if (!a || !b) return (u64)(s64)-1;
+            if (Memory::IsReadable(a, 1) && Memory::IsReadable(b, 1)) {
+                int cmp = _stricmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
+                return (u64)(s64)cmp;
+            }
             __try {
                 int cmp = _stricmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
                 return (u64)(s64)cmp;

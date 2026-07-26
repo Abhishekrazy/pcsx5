@@ -59,6 +59,10 @@ constexpr u64 kSemTokenTag    = 0x534D000000000000ULL; // 'SM'
 constexpr u64 kTokenTagMask   = 0xFFFF000000000000ULL;
 
 bool SafeReadU64(guest_addr_t addr, u64& out) {
+    if (Memory::IsReadable(addr, sizeof(u64))) {
+        out = Memory::Read<u64>(addr);
+        return true;
+    }
     __try {
         out = Memory::Read<u64>(addr);
         return true;
@@ -69,6 +73,10 @@ bool SafeReadU64(guest_addr_t addr, u64& out) {
 }
 
 bool SafeWriteU64(guest_addr_t addr, u64 value) {
+    if (Memory::IsWritable(addr, sizeof(u64))) {
+        Memory::Write<u64>(addr, value);
+        return true;
+    }
     __try {
         Memory::Write<u64>(addr, value);
         return true;
@@ -78,6 +86,10 @@ bool SafeWriteU64(guest_addr_t addr, u64 value) {
 }
 
 bool SafeReadU32(guest_addr_t addr, u32& out) {
+    if (Memory::IsReadable(addr, sizeof(u32))) {
+        out = Memory::Read<u32>(addr);
+        return true;
+    }
     __try {
         out = Memory::Read<u32>(addr);
         return true;
@@ -88,6 +100,10 @@ bool SafeReadU32(guest_addr_t addr, u32& out) {
 }
 
 bool TryReadU8(guest_addr_t addr, u8& out) {
+    if (Memory::IsReadable(addr, sizeof(u8))) {
+        out = Memory::Read<u8>(addr);
+        return true;
+    }
     __try {
         out = Memory::Read<u8>(addr);
         return true;
@@ -98,6 +114,10 @@ bool TryReadU8(guest_addr_t addr, u8& out) {
 }
 
 bool TryWriteS32(guest_addr_t addr, s32 value) {
+    if (Memory::IsWritable(addr, sizeof(s32))) {
+        Memory::Write<s32>(addr, value);
+        return true;
+    }
     __try {
         Memory::Write<s32>(addr, value);
         return true;
@@ -482,6 +502,15 @@ std::atomic<u32> g_next_equeue{0x6000};
 
 // Writes one pending event to the guest kevent array; returns false on fault.
 bool WriteKevent(guest_addr_t addr, const EqueueEvent& ev) {
+    if (Memory::IsWritable(addr, 0x20)) {
+        Memory::Write<u64>(addr + 0x00, ev.ident);
+        Memory::Write<s16>(addr + 0x08, ev.filter);
+        Memory::Write<u16>(addr + 0x0A, ev.flags);
+        Memory::Write<u32>(addr + 0x0C, ev.fflags);
+        Memory::Write<u64>(addr + 0x10, static_cast<u64>(ev.data));
+        Memory::Write<u64>(addr + 0x18, ev.udata);
+        return true;
+    }
     __try {
         Memory::Write<u64>(addr + 0x00, ev.ident);
         Memory::Write<s16>(addr + 0x08, ev.filter);
