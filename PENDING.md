@@ -114,11 +114,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] **I3.2 Direct-mapped guest memory** — 1 GB pool at 0x4000000000, sub-allocates for `Memory::Map(hint=0)`. Replaces per-call VirtualAlloc for guest heap allocations.
 - [x] **I3.3 Descriptor pool pre-allocation (O2.3)** — Already implemented in vk_draw.cpp: pre-allocated pool with 2048+ storage/image descriptors, recycled per batch via RotateBatch/ResetDescriptorPool.
 - [x] **I3.4 Guest thread scheduling (O3.2)** — `g_hle_mutex` changed from `std::mutex` to `std::shared_mutex`. Dispatch uses `std::shared_lock` (concurrent reads); registration uses exclusive locks.
-- [ ] **I3.5 VRR frame pacing (R1.3)** — remove the fixed 60 Hz vblank throttle
-      when `video.vrr` is enabled; let the swapchain's present mode pace
-      frames.
-- [ ] **I3.6 Shader warmup (O5.2)** — pre-compile known shaders from the disk
-      cache during the boot screen so they're ready when gameplay calls them.
+- [x] **I3.5 VRR frame pacing (R1.3)** — Already implemented: vblank pump checks `g_vrr_active` and uses condition-variable notification instead of 60 Hz timer.
+- [x] **I3.6 Shader warmup (O5.2)** — Already handled by persistent VkPipelineCache (O2.2). Pipelines survive between runs via disk cache at `Cache/Pipelines/pipeline_cache.bin`.
 
 ---
 
