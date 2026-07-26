@@ -261,6 +261,14 @@ $distConfigDir = Join-Path $distDir "pcsx5_config"
 $srcGlobal = Join-Path $repoRoot "pcsx5_config\global.json"
 if (Test-Path $srcGlobal) {
     Stage-File $srcGlobal (Join-Path $distConfigDir "global.json")
+    # Per-title config overrides — needed for game-specific settings (log level, etc.)
+    $srcTitles = Join-Path $repoRoot "pcsx5_config\titles"
+    if (Test-Path $srcTitles) {
+        $distTitles = Join-Path $distConfigDir "titles"
+        New-Item $distTitles -Force -Type Directory | Out-Null
+        Copy-Item "$srcTitles\*" $distTitles -Force
+        Log "  + titles\ (dir)"
+    }
 } else {
     New-Item $distConfigDir -Force -Type Directory | Out-Null
     $json = @('{','  "schema_version": 3,','  "logging": { "min_level": "Info" },','  "crash": { "bundle_dir": "pcsx5_crash" },','  "graphics": { "headless": false, "vsync": true },','  "audio": { "backend": 2, "volume": 1.0 },','  "input": { "backend": 0 },','  "loader": { "firmware_modules_dir": "" }','}') -join "`n"
