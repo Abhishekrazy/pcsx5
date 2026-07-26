@@ -39,6 +39,8 @@ void PrintUsage() {
     std::printf("                               as PCSX5_WINDOW_HANDLE=<decimal HWND>).\n");
     std::printf("  --ipc-map=<name>             Shared memory file mapping name (IPC mode).\n");
     std::printf("  --ipc-pipe=<name>            Named pipe name (IPC mode).\n");
+    std::printf("  --play-input=<path>          Play back a recorded input replay (JSON).\n");
+    std::printf("  --record-input=<path>        Record controller input to file (JSON).\n");
 }
 
 } // namespace
@@ -113,6 +115,10 @@ int main(int argc, char* argv[]) {
             ipc_map_name = a.substr(10);
         } else if (a.rfind("--ipc-pipe=", 0) == 0) {
             ipc_pipe_name = a.substr(11);
+        } else if (a.rfind("--play-input=", 0) == 0) {
+            options.play_input_path = argv[i] + 13;
+        } else if (a.rfind("--record-input=", 0) == 0) {
+            options.record_input_path = argv[i] + 15;
         } else if (a == "-h" || a == "--help") {
             PrintUsage();
             return 0;

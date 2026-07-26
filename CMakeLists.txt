@@ -266,6 +266,8 @@ add_library(pcsx5_core SHARED
     src/gpu/input/xinput_backend.cpp
     src/gpu/input/dualsense_input_backend.cpp
     src/gpu/input/sdl_gamecontroller_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
     src/gpu/vulkan/vulkan_device.h
     src/gpu/vulkan/vulkan_device.cpp
     src/gpu/vulkan_backend.cpp
@@ -305,6 +307,8 @@ add_executable(pcsx5_cli
     src/gpu/input/xinput_backend.cpp
     src/gpu/input/dualsense_input_backend.cpp
     src/gpu/input/sdl_gamecontroller_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
     src/gpu/dualsense_hid.h
 )
 target_include_directories(pcsx5_cli PRIVATE src ${GLFW3_INCLUDE_DIR})
@@ -735,7 +739,7 @@ target_compile_definitions(pcsx5_core PRIVATE PCSX5_HAS_LUA PCSX5_TLS_PATCH_FULL
 target_link_libraries(pcsx5_core PRIVATE glfw Vulkan::Headers lua ws2_32 nlohmann_json::nlohmann_json atrac9)
 target_include_directories(pcsx5_core PRIVATE src)
 
-target_link_libraries(pcsx5_cli PRIVATE pcsx5_core glfw Vulkan::Headers)
+target_link_libraries(pcsx5_cli PRIVATE pcsx5_core glfw Vulkan::Headers nlohmann_json::nlohmann_json)
 target_link_options(pcsx5_cli PRIVATE /STACK:4194304)
 target_include_directories(pcsx5_cli PRIVATE src)
 

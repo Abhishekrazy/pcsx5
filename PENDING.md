@@ -67,14 +67,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ## I1 — Input Bot / Auto-Testing Infrastructure
 
-- [ ] **I1.1 Input replay format** — define a simple JSON or binary format for
-      recording controller state snapshots (buttons, sticks, triggers,
-      touch) with frame-count delays between events.
-- [ ] **I1.2 Bot input backend** — add an `InputBotBackend : InputBackend` that
-      reads a replay script and feeds synthetic PadButtonState into the
-      InputMultiplexer on a timer or frame counter.  Must produce identical
-      state to a real DualSense/XInput feed so the game code path is the
-      same.
+- [x] **I1.1 Input replay format** — JSON format defined: `{"version":1,"events":[{"frame":N,"buttons":M,...}]}`.
+      Events hold full controller state (buttons, sticks, triggers, touch). Frame-based timing.
+- [x] **I1.2 Bot input backend** — `InputBotBackend : InputBackend` implemented in
+      `src/gpu/input/input_bot.{h,cpp}`. Reads JSON replay, synthesises ControllerState.
+      Registered via `--play-input=<path>` CLI arg. `--record-input=<path>` also parsed.
 - [ ] **I1.3 Record/replay tool** — CLI tool (`--record-input=<path>` /
       `--play-input=<path>`) that records real controller inputs to a file
       and replays them.  `--play-input=<path>` drives the bot backend;

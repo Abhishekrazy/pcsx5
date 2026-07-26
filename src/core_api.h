@@ -38,6 +38,8 @@ struct pcsx5_options {
     int in_proc;                        // non-zero: hosted inside another process
                                         // (skip process-wide crash/SEH hooks,
                                         //  report the HWND via callback)
+    const char* play_input_path;        // NULL/"" -> no input replay
+    const char* record_input_path;      // NULL/"" -> no input recording
 };
 
 // Log record forwarded from the core.  `level` and `category` are the
