@@ -1667,6 +1667,8 @@
 
                         <!-- Buttons -->
                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Copy to Clipboard" Width="130" Height="32" Style="{StaticResource SecondaryButtonStyle}" Click="CopyCrashToClipboard_Click" Margin="0,0,8,0"/>
+                            <Button Content="View Raw Logs" Width="120" Height="32" Style="{StaticResource SecondaryButtonStyle}" Click="ViewCrashRawLogs_Click" Margin="0,0,8,0"/>
                             <Button Content="Dismiss" Width="100" Height="32" Style="{StaticResource SecondaryButtonStyle}" Click="DismissCrashDialog_Click" Margin="0,0,10,0"/>
                             <Button Content="Run Boot Analyzer" Width="180" Height="32" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeCrashedGame_Click"/>
                         </StackPanel>

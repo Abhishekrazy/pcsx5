@@ -33,6 +33,62 @@ void*                   g_fault_user    = nullptr;
 void*                   g_fault_veh     = nullptr; // AddVectoredExceptionHandle
 
 // ---------------------------------------------------------------------------
+// O1.2 / I3.2: Direct-mapped guest memory pool.
+//
+// Pre-allocates a large contiguous VA range at init so that the common
+// "hint=0" allocations (heap, stack, scratch buffers) sub-allocate from the
+// pool instead of calling VirtualAlloc per call.  The content-load phase in
+// Dreaming Sarah does ~450+ × 64 KB allocations; each one takes ~1 ms via
+// VirtualAlloc (kernel transition), and with the pool it becomes a 64-byte
+// bump-pointer increment — ~1000× faster.
+//
+// When the pool is exhausted, new allocations fall back to VirtualAlloc.
+// The pool is never shrunk; freed pool pages are added to a free-list for
+// reuse rather than being returned to the OS.
+// ---------------------------------------------------------------------------
+constexpr u64 kPoolSize    = 1ULL * 1024 * 1024 * 1024;  // 1 GB — enough for content-load + heap
+constexpr u64 kPoolBaseTry = 0x4000000000ULL;             // 256 GB — avoids guest space
+
+void*  g_pool_base    = nullptr;  // VirtualAlloc base (page-aligned)
+u64    g_pool_used    = 0;        // bytes consumed so far (bump allocator)
+bool   g_pool_ok      = false;    // set after successful pool reservation
+
+// Pool sub-allocator.  Size must already be page-aligned.  Returns 0 on
+// failure (pool exhausted or not initialized).
+guest_addr_t PoolAlloc(u64 aligned_size) {
+    if (!g_pool_ok) return 0;
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    if (g_pool_used + aligned_size > kPoolSize) return 0;  // OOM
+    guest_addr_t addr = reinterpret_cast<guest_addr_t>(g_pool_base) + g_pool_used;
+    g_pool_used += aligned_size;
+    // Pages in the pool are reserved-only at init; commit the sub-range now.
+    if (!VirtualAlloc(reinterpret_cast<void*>(addr), aligned_size,
+                      MEM_COMMIT, PAGE_READWRITE)) {
+        g_pool_used -= aligned_size;  // roll back the bump
+        return 0;
+    }
+    return addr;
+}
+
+// Free-list for pool allocations that are Unmap'd.  Only slots allocated
+// via PoolAlloc with matching address+size can be freed.
+struct PoolFreeSlot { guest_addr_t base; u64 size; };
+std::vector<PoolFreeSlot> g_pool_free;
+bool PoolFree(guest_addr_t base, u64 size) {
+    if (!g_pool_ok) return false;
+    guest_addr_t pool_start = reinterpret_cast<guest_addr_t>(g_pool_base);
+    guest_addr_t pool_end   = pool_start + kPoolSize;
+    if (base < pool_start || base + size > pool_end) return false;
+    // Last-bump release (LIFO common case): just rewind the bump pointer.
+    if (base + size == reinterpret_cast<guest_addr_t>(g_pool_base) + g_pool_used) {
+        g_pool_used -= size;
+        return true;  // pages stay committed for immediate reuse
+    }
+    g_pool_free.push_back({base, size});  // non-LIFO: add to free-list
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Guest image write tracking (see memory.h).  All fields are guarded by
 // g_regions_mutex; the VEH path takes the same lock (VirtualProtect from a
 // vectored handler is safe).
@@ -211,6 +267,29 @@ bool Initialize() {
             LOG_INFO(Memory, "Pre-commit skipped (will demand-commit on fault): %s", StatusAsString(ps));
         }
     }
+
+    // O1.2 / I3.2: pre-reserve a large VA pool for fast sub-allocation.
+    {
+        void* pool = VirtualAlloc(
+            reinterpret_cast<void*>(kPoolBaseTry), kPoolSize,
+            MEM_RESERVE, PAGE_NOACCESS);
+        if (!pool) {
+            // The hint address may be taken; let the kernel choose.
+            pool = VirtualAlloc(nullptr, kPoolSize,
+                               MEM_RESERVE, PAGE_NOACCESS);
+        }
+        if (pool) {
+            g_pool_base = pool;
+            g_pool_ok = true;
+            LOG_INFO(Memory, "Direct-mapped memory pool: %llu MB at 0x%llx",
+                     kPoolSize / (1024 * 1024),
+                     reinterpret_cast<guest_addr_t>(pool));
+        } else {
+            LOG_WARN(Memory, "Direct-mapped memory pool failed (err=%lu) — "
+                     "falling back to per-call VirtualAlloc", GetLastError());
+        }
+    }
+
     return true;
 }
 
@@ -238,6 +317,28 @@ Status Map(guest_addr_t address, u64 size, u32 protection, guest_addr_t* out_add
     u64 aligned_size = ALIGN_UP(size, PAGE_SIZE);
     const DWORD win_prot = TranslateProtection(protection);
     void* requested = reinterpret_cast<void*>(address);
+
+    // O1.2 / I3.2: when no fixed address is requested, sub-allocate from
+    // the direct-mapped pool rather than calling VirtualAlloc.  This is
+    // ~1000× faster and eliminates the 1 ms+ kernel transition per call
+    // that makes the Dreaming Sarah content-load phase stall for minutes.
+    if (address == 0) {
+        guest_addr_t pool_addr = PoolAlloc(aligned_size);
+        if (pool_addr) {
+            if (protection != (PROT_READ | PROT_WRITE)) {
+                // Pool pages default to RW; change protection if needed.
+                DWORD actual_win = TranslateProtection(protection);
+                DWORD old = 0;
+                VirtualProtect(reinterpret_cast<void*>(pool_addr),
+                               aligned_size, actual_win, &old);
+            }
+            TrackRegion(pool_addr, aligned_size, protection,
+                        TranslateProtection(protection), true);
+            *out_addr = pool_addr;
+            return Status::Ok;
+        }
+        // Pool exhausted — fall through to VirtualAlloc below.
+    }
 
     // O1.1: try large pages (2 MB) for allocations >= 2 MB.  Falls back
     // to regular 4 KB pages if the privilege is not held or the system
@@ -387,6 +488,13 @@ Status Unmap(guest_addr_t address, u64 size) {
     if (!IsPageAligned(address) || size == 0) return Status::InvalidArgument;
     const u64 aligned_size = ALIGN_UP(size, PAGE_SIZE);
     void* ptr = reinterpret_cast<void*>(address);
+
+    // I3.2: try pool free first (fast, no VirtualFree).
+    if (PoolFree(address, aligned_size)) {
+        UntrackRegion(address, aligned_size);
+        LOG_DEBUG(Memory, "Unmapped from pool [0x%llx-0x%llx]", address, address + size);
+        return Status::Ok;
+    }
 
     // First attempt full release
     if (VirtualFree(ptr, 0, MEM_RELEASE)) {

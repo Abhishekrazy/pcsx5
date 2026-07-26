@@ -3357,6 +3357,55 @@ namespace Pcsx5Ui
             catch { }
         }
 
+        private void CopyCrashToClipboard_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string rawLog = GetConsoleText();
+                string crashInfo = CrashRawText.Text;
+                string full = $"{crashInfo}\n\n--- Raw Console Log ---\n{rawLog}";
+                Clipboard.SetText(full);
+                LogConsole("Crash info copied to clipboard.");
+            }
+            catch (Exception ex)
+            {
+                LogConsole($"Failed to copy: {ex.Message}");
+            }
+        }
+
+        private void ViewCrashRawLogs_Click(object sender, RoutedEventArgs e)
+        {
+            string rawLog = GetConsoleText();
+            if (string.IsNullOrEmpty(rawLog)) rawLog = "(no log output)";
+
+            var window = new Window
+            {
+                Title = "Raw Crash Log - PCSX5",
+                Width = 900,
+                Height = 600,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                Background = new SolidColorBrush(Color.FromRgb(0x12, 0x14, 0x1A)),
+                Foreground = Brushes.White,
+                ResizeMode = ResizeMode.CanResize,
+                Content = new System.Windows.Controls.TextBox
+                {
+                    Text = rawLog,
+                    IsReadOnly = true,
+                    TextWrapping = TextWrapping.Wrap,
+                    FontFamily = new System.Windows.Media.FontFamily("Consolas, Courier New"),
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xD0, 0xD0, 0xD5)),
+                    Background = new SolidColorBrush(Color.FromRgb(0x0D, 0x0F, 0x14)),
+                    BorderThickness = new Thickness(0),
+                    Padding = new Thickness(12),
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+                }
+            };
+            window.ShowDialog();
+        }
+
         private void AnalyzeCrashedGame_Click(object sender, RoutedEventArgs e)
         {
             CrashDialogOverlay.Visibility = Visibility.Collapsed;

@@ -1202,10 +1202,19 @@ namespace HLE {
 
         // memmove (+P6FRGH4LfA#T#T) / memcpy (Q3VBxCXhUHs#T#T) and their
         // plain-name aliases share these impls.  Games occasionally call
-        // them with not-yet-mapped or bogus guest pointers; SEH-guard the
-        // actual move so a TOCTOU race between the IsWritable/IsReadable
-        // check and the CRT call (common with 31-thread worker pools) does
-        // not crash inside VCRUNTIME140.dll (the host memcpy/memmove).
+        // them with not-yet-mapped or bogus guest pointers.
+        //
+        // SEH-guard the actual move as a TOCTOU race backstop: the
+        // IsWritable/IsReadable check below runs BEFORE the CRT call,
+        // and a concurrent thread could commit the page, pass the check,
+        // then another thread munmaps it before memmove completes.
+        //
+        // IMPORTANT: __try/__except is NOT functional on the guest stack
+        // because the x64 Windows unwinder validates the stack frame
+        // against the TIB StackLimit/StackBase and skips SEH handlers
+        // on non-primary stacks.  The explicit memory validation below
+        // is the PRIMARY defence; the SEH is a best-effort fallback for
+        // the narrow TOCTOU race window where it does work.
         auto MemmoveImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             guest_addr_t src  = args.arg2;
@@ -1218,11 +1227,25 @@ namespace HLE {
             }
             LOG_DEBUG(HLE, "libkernel::memmove(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                __try {
-                    std::memmove(reinterpret_cast<void*>(dest), reinterpret_cast<const void*>(src), count);
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    LOG_WARN(HLE, "libkernel::memmove: AV during copy "
-                             "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped", dest, src, count);
+                // Primary defence: validate memory before touching it.
+                // Guest page-table queries (Query/IsReadable/IsWritable)
+                // use VirtualQuery on the host — no memory access, safe
+                // on the guest stack.
+                if (!Memory::IsReadable(src, count)) {
+                    LOG_WARN(HLE, "libkernel::memmove: src 0x%llx not readable "
+                             "(size %llu) — skipped", src, count);
+                } else if (!Memory::IsWritable(dest, count)) {
+                    LOG_WARN(HLE, "libkernel::memmove: dest 0x%llx not writable "
+                             "(size %llu) — skipped", dest, count);
+                } else {
+                    __try {
+                        std::memmove(reinterpret_cast<void*>(dest),
+                                     reinterpret_cast<const void*>(src), count);
+                    } __except (EXCEPTION_EXECUTE_HANDLER) {
+                        LOG_WARN(HLE, "libkernel::memmove: AV during copy "
+                                 "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped",
+                                 dest, src, count);
+                    }
                 }
             }
             return dest;
@@ -1256,11 +1279,22 @@ namespace HLE {
 
             LOG_DEBUG(HLE, "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                __try {
-                    std::memmove(reinterpret_cast<void*>(dest), reinterpret_cast<const void*>(src), count);
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    LOG_WARN(HLE, "libkernel::memcpy: AV during copy "
-                             "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped", dest, src, count);
+                // Primary defence via page-table query (no memory access).
+                if (!Memory::IsReadable(src, count)) {
+                    LOG_WARN(HLE, "libkernel::memcpy: src 0x%llx not readable "
+                             "(size %llu) — skipped", src, count);
+                } else if (!Memory::IsWritable(dest, count)) {
+                    LOG_WARN(HLE, "libkernel::memcpy: dest 0x%llx not writable "
+                             "(size %llu) — skipped", dest, count);
+                } else {
+                    __try {
+                        std::memmove(reinterpret_cast<void*>(dest),
+                                     reinterpret_cast<const void*>(src), count);
+                    } __except (EXCEPTION_EXECUTE_HANDLER) {
+                        LOG_WARN(HLE, "libkernel::memcpy: AV during copy "
+                                 "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped",
+                                 dest, src, count);
+                    }
                 }
             }
             return dest;
