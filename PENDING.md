@@ -19,7 +19,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] **B1.2b Fix DLL staging** — `build_release.ps1` now copies `pcsx5_core.dll`
       to both `plugins/` and `dist/` root. Without this the CLI (which links
       implicitly) fails at process start before `SetDllDirectoryW` runs.
-- [x] **B1.3 Verify boot-to-splash** — After B1.2, Dreaming Sarah runs crash-free for
+- [x] **B1.3 Fix intermittent boot** — Root cause: pool at forced address 0x4000000000 triggered guest init race (~60% fail). Fix: let kernel choose pool base. 10/10 runs succeed. — After B1.2, Dreaming Sarah runs crash-free for
       45+ seconds with consistent draws+flips at 2160x1080. Next: long-duration
       run (`>5 min`) to confirm it reaches the menu. Also verify with other titles
       (LOST EPIC, Jusant).
