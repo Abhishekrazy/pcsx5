@@ -176,6 +176,12 @@ New-Item $distPlugins -Force -Type Directory | Out-Null
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distPlugins "pcsx5_core.dll")
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distDir     "pcsx5_core.dll")
 
+# Bink2 video decoder (bink2w64.dll) — place next to the CLI so
+# CreateBink2Decoder can find it via LoadLibrary.  Optional; games
+# without Bink2 video don't need it.
+Stage-File (Join-Path $repoRoot "bink2w64.dll")     (Join-Path $distPlugins "bink2w64.dll")
+Stage-File (Join-Path $repoRoot "bink2w64.dll")     (Join-Path $distDir     "bink2w64.dll")
+
 # FFmpeg DLLs — download official Windows builds if not already cached.
 $ffmpegCache = Join-Path $repoRoot "cache\ffmpeg"
 $ffmpegDlls = @("avformat-61.dll","avcodec-61.dll","avutil-59.dll","swscale-8.dll","swresample-5.dll")
