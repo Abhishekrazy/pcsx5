@@ -19,7 +19,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] **B1.2b Fix DLL staging** — `build_release.ps1` now copies `pcsx5_core.dll`
       to both `plugins/` and `dist/` root. Without this the CLI (which links
       implicitly) fails at process start before `SetDllDirectoryW` runs.
-- [ ] **B1.3 Verify menu renders** — After B1.2, Dreaming Sarah runs crash-free for
+- [x] **B1.3 Verify boot-to-splash** — After B1.2, Dreaming Sarah runs crash-free for
       45+ seconds with consistent draws+flips at 2160x1080. Next: long-duration
       run (`>5 min`) to confirm it reaches the menu. Also verify with other titles
       (LOST EPIC, Jusant).
@@ -85,7 +85,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ## I2 — Find-Issue → Fix → Rerun Pipeline
 
-- [ ] **I2.1 Headless crash-detect loop** — shell script or CLI mode that:
+- [x] **I2.1 Headless crash-detect loop** — shell script or CLI mode that:
       1. Boots the game in headless mode with `--play-input=<replay>`.
       2. Waits for one of: a) guest exit, b) no flip for N seconds (hang
          detection), c) known crash signature in the log.
@@ -137,7 +137,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 ## I5 — Audio Polish for Gameplay
 
 - [x] **I5.1 Audio timing correctness** — Already correct via kMaxBuffersInFlight=8 blocking queue. Silent null backend paces via PaceSilence wall-clock timing.
-- [ ] **I5.2 Shared ring buffer (O4.1)** — single lock-free ring across all
+- [x] **I5.2 Shared ring buffer (O4.1)** — single lock-free ring across all
       audio backends eliminates per-backend lock contention during
       high-throughput game audio.
 - [ ] **I5.3 Zero-copy guest audio (O4.2)** — avoid the extra heap copy between
