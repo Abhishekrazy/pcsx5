@@ -1,5 +1,7 @@
 #pragma once
 #include "../common/types.h"
+#include <string>
+#include <vector>
 
 #ifdef _WIN32
 #define GPU_API __declspec(dllexport)
@@ -66,6 +68,11 @@ namespace GPU {
 
     // Retrieve current keyboard-mapped controller state
     PadButtonState GetCurrentPadState();
+
+    // I1.3: Input recording — writes live controller state to a file.
+    // path is the JSON output file path; title_id used for metadata.
+    void StartInputRecording(const char* path, const char* title_id);
+    void StopInputRecording();
 
     // Drive the primary XInput controller's rumble motors (0..255 each).
     // When a DualSense is connected via the native HID path, its motors are

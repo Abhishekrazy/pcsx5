@@ -3,6 +3,7 @@
 #include "vk_present.h"
 #include "vk_draw.h"
 #include "dualsense_hid.h"
+#include "input/input_bot.h"
 #include "../config/config.h"
 #include "../common/log.h"
 
@@ -139,6 +140,10 @@ namespace GPU {
 
     typedef HRESULT(WINAPI* PFN_DwmFlush)();
     static PFN_DwmFlush pfn_DwmFlush = nullptr;
+
+    // I1.3: Input recorder — global instance for live recording of controller state.
+    static InputRecorder g_input_recorder;
+    static std::atomic<uint64_t> g_recorder_frame{0};
 
     // ─────────────────────────────────────────────────────────────────────────
     // Boot status state (SetBootStatus / first-flip handover)
@@ -974,6 +979,22 @@ namespace GPU {
 
         std::lock_guard<std::mutex> lock(g_pad_mutex);
         g_pad_state = new_state;
+
+        // I1.3: record current frame if recorder is active.
+        if (g_input_recorder.IsRecording()) {
+            uint64_t f = g_recorder_frame.fetch_add(1, std::memory_order_relaxed);
+            ControllerState cs;
+            cs.buttons     = new_state.buttons;
+            cs.left_x      = new_state.left_analog_x;
+            cs.left_y      = new_state.left_analog_y;
+            cs.right_x     = new_state.right_analog_x;
+            cs.right_y     = new_state.right_analog_y;
+            cs.l2          = new_state.l2_trigger;
+            cs.r2          = new_state.r2_trigger;
+            cs.touch_count = new_state.touch_count;
+            cs.connected   = true;
+            g_input_recorder.RecordFrame(f, cs);
+        }
     }
 
     // Spin the GLFW event loop until the window is closed.
@@ -994,6 +1015,24 @@ namespace GPU {
     PadButtonState GetCurrentPadState() {
         std::lock_guard<std::mutex> lock(g_pad_mutex);
         return g_pad_state;
+    }
+
+    // I1.3: Input recording — start/stop functions.  The global instance
+    // (g_input_recorder) lives at file scope above.
+    void StartInputRecording(const char* path, const char* title_id) {
+        std::string tid = title_id ? title_id : "";
+        if (!g_input_recorder.Start(path, tid)) {
+            LOG_WARN(GPU, "StartInputRecording: failed to start recorder");
+        }
+        g_recorder_frame.store(0, std::memory_order_relaxed);
+    }
+
+    void StopInputRecording() {
+        if (g_input_recorder.IsRecording()) {
+            LOG_INFO(GPU, "Input recording stopped at frame %llu",
+                     (unsigned long long)g_recorder_frame.load());
+            g_input_recorder.Stop();
+        }
     }
 
     void SetPadVibration(u8 large_motor, u8 small_motor) {

@@ -293,6 +293,11 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     // uses (creates the dir if needed).
     Kernel::SetSaveDataDirectory(HLE::GetSaveDataDir());
 
+    // I1.3: start input recording if the user supplied --record-input.
+    if (options && options->record_input_path && options->record_input_path[0]) {
+        GPU::StartInputRecording(options->record_input_path, options->title_id);
+    }
+
     LOG_INFO(General, "All subsystems initialized successfully.");
     g_state.initialized = true;
     return 0;
@@ -588,6 +593,9 @@ PCSX5_API int pcsx5_get_last_error(char* buf, int buf_size) {
 // ---------------------------------------------------------------------------
 PCSX5_API void pcsx5_shutdown(void) {
     if (!g_state.initialized) return;
+
+    // I1.3: stop input recording before tearing down subsystems.
+    GPU::StopInputRecording();
 
     LuaInit::SubsystemRegistry::Instance().TeardownAll();
 

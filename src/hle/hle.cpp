@@ -471,6 +471,7 @@ namespace HLE {
         std::sort(report.begin(), report.end(),
                   [](const ImportStats& a, const ImportStats& b) { return a.call_count > b.call_count; });
 
+        // Full sorted list of all stubs.
         nlohmann::json arr = nlohmann::json::array();
         for (const auto& s : report) {
             char rip[32];
@@ -484,7 +485,25 @@ namespace HLE {
                 {"last_caller_rip", rip},
             });
         }
-        return arr.dump(2);
+
+        // I6.2: top-10 heat map — the most-frequently called stubs.
+        nlohmann::json heat = nlohmann::json::array();
+        for (size_t i = 0; i < report.size() && i < 10; ++i) {
+            const auto& s = report[i];
+            heat.push_back({
+                {"rank",        i + 1},
+                {"module",      s.module_name},
+                {"nid",         s.name},
+                {"name",        s.resolved_name},
+                {"call_count",  s.call_count},
+            });
+        }
+
+        nlohmann::json root;
+        root["total_stubs"] = report.size();
+        root["top_10_heat_map"] = heat;
+        root["all_stubs"] = arr;
+        return root.dump(2);
     }
 
     bool WriteImportReportJson(const std::string& path) {

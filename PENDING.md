@@ -72,7 +72,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] **I1.2 Bot input backend** — `InputBotBackend : InputBackend` implemented in
       `src/gpu/input/input_bot.{h,cpp}`. Reads JSON replay, synthesises ControllerState.
       Registered via `--play-input=<path>` CLI arg. `--record-input=<path>` also parsed.
-- [ ] **I1.3 Record/replay tool** — CLI tool (`--record-input=<path>` /
+- [x] **I1.3 Record/replay tool** — CLI tool (`--record-input=<path>` /
       `--play-input=<path>`) that records real controller inputs to a file
       and replays them.  `--play-input=<path>` drives the bot backend;
       `--record-input=<path>` captures from the live multiplexer.
@@ -148,7 +148,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ## I6 — Diagnostics for Fast Iteration
 
-- [ ] **I6.1 Boot-status timeline in crash bundle** — the `SetBootStatus` calls
+- [x] **I6.1 Boot-status timeline in crash bundle** — the `SetBootStatus` calls
       already trace the boot path.  Export the full timeline (stage + time)
       on crash so we can see the last milestone reached.
 - [ ] **I6.2 Guest-stub heat map** — `--report` already exports stub-call counts.
