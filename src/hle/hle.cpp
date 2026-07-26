@@ -13,6 +13,7 @@
 #include <cstring>
 #include <fstream>
 #include <mutex>
+#include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
@@ -96,7 +97,7 @@ namespace HLE {
     static u64          g_thunk_page_offset = 0;
     static constexpr u64 THUNK_SIZE         = 32;
     static constexpr u64 THUNK_PAGE_SIZE    = 1 * 1024 * 1024; // 1MB = 32768 slots
-    static std::mutex g_hle_mutex;
+    static std::shared_mutex g_hle_mutex;  // I3.4: shared_lock for dispatch, exclusive for registration
     static bool        g_strict_import_mode = false;  // Phase-0 test mode toggle
 
     // Cooperative guest shutdown state (see hle.h).  Written by the main
@@ -297,7 +298,7 @@ namespace HLE {
             // bridge (both base names would match).
             if (_stricmp(module.c_str(), "libKernel") == 0) module = "libkernel";
             {
-                std::lock_guard<std::mutex> lock(g_hle_mutex);
+                std::lock_guard<std::shared_mutex> lock(g_hle_mutex);
                 if (g_symbol_registry.count(module + "::" + e.name)) continue;
                 // A registration under the NID itself also counts as implemented.
                 if (g_symbol_registry.count(module + "::" + e.nid)) continue;
@@ -372,7 +373,7 @@ namespace HLE {
             Memory::Unmap(g_thunk_page_base, THUNK_PAGE_SIZE);
             g_thunk_page_base = 0;
         }
-        std::lock_guard<std::mutex> lock(g_hle_mutex);
+        std::lock_guard<std::shared_mutex> lock(g_hle_mutex);
         g_symbol_registry.clear();
         g_id_index.clear();
         {
@@ -567,7 +568,7 @@ namespace HLE {
     }
 
     void RegisterSymbol(const std::string& module_name, const std::string& name, HleHandler handler) {
-        std::lock_guard<std::mutex> lock(g_hle_mutex);
+        std::lock_guard<std::shared_mutex> lock(g_hle_mutex);
 
         std::string key = module_name + "::" + name;
 
@@ -605,7 +606,7 @@ namespace HLE {
     }
 
     guest_addr_t Resolve(const std::string& module_name, const std::string& name) {
-        std::unique_lock<std::mutex> lock(g_hle_mutex);
+        std::unique_lock<std::shared_mutex> lock(g_hle_mutex);
 
         // 1. Exact key match
         std::string key = module_name + "::" + name;
@@ -663,7 +664,7 @@ namespace HLE {
     // Search ALL registered modules for a matching NID (exact or base match).
     // Used by LinkModule when the true owning module is unknown.
     guest_addr_t ResolveAny(const std::string& name) {
-        std::unique_lock<std::mutex> lock(g_hle_mutex);
+        std::unique_lock<std::shared_mutex> lock(g_hle_mutex);
 
         // 1. Scan every registered symbol for an exact, base-NID, or
         //    friendly-name match.  Exact matches win first, then base-NID
@@ -800,7 +801,7 @@ namespace HLE {
         HleSymbol target_sym;
         bool found = false;
         {
-            std::lock_guard<std::mutex> lock(g_hle_mutex);
+            std::shared_lock<std::shared_mutex> lock(g_hle_mutex);
             auto it = g_id_index.find(symbol_id);
             if (it != g_id_index.end()) {
                 target_sym = it->second;

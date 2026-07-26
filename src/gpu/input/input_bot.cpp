@@ -84,6 +84,55 @@ bool LoadInputBotReplay(const std::string& path,
 }
 
 // ---------------------------------------------------------------------------
+// InputRecorder — writes live controller state to newline-delimited JSON.
+// ---------------------------------------------------------------------------
+InputRecorder::~InputRecorder() {
+    if (m_file.is_open()) Stop();
+}
+
+bool InputRecorder::Start(const std::string& path, const std::string& title_id) {
+    m_file.open(path);
+    if (!m_file.is_open()) {
+        LOG_ERROR(General, "InputRecorder: cannot open %s", path.c_str());
+        return false;
+    }
+    // Write the JSON preamble (open array).
+    m_file << "{\n  \"version\": 1";
+    if (!title_id.empty())
+        m_file << ",\n  \"title_id\": \"" << title_id << "\"";
+    m_file << ",\n  \"events\": [\n";
+    m_first_frame = 0;
+    m_last_frame = 0;
+    m_has_events = false;
+    LOG_INFO(General, "InputRecorder: recording to %s", path.c_str());
+    return true;
+}
+
+void InputRecorder::RecordFrame(uint64_t frame, const ControllerState& state) {
+    if (!m_file.is_open()) return;
+
+    // Comma separator between events.
+    if (m_has_events) m_file << ",\n";
+    m_has_events = true;
+
+    m_file << "    "
+           << FormatInputBotEvent(frame, state);
+    m_last_frame = frame;
+    if (m_first_frame == 0) m_first_frame = frame;
+}
+
+void InputRecorder::Stop() {
+    if (!m_file.is_open()) return;
+    m_file << "\n  ],\n";
+    m_file << "  \"total_frames\": " << (m_last_frame - m_first_frame + 1) << "\n}\n";
+    m_file.close();
+    LOG_INFO(General, "InputRecorder: stopped (%llu frames, %llu..%llu)",
+             (unsigned long long)(m_last_frame - m_first_frame + 1),
+             (unsigned long long)m_first_frame,
+             (unsigned long long)m_last_frame);
+}
+
+// ---------------------------------------------------------------------------
 // InputBotBackend
 // ---------------------------------------------------------------------------
 InputBotBackend::InputBotBackend(const std::string& replay_path)
