@@ -14,6 +14,7 @@
 #include "../common/types.h"
 #include <chrono>
 #include <cstdint>
+#include <string>
 
 namespace Diagnostics {
 
@@ -51,6 +52,11 @@ const FrameTiming* GetTimingRing(int* out_count);
 
 // Current instantaneous FPS (smoothed over the last 16 frames).
 double GetFps();
+
+// Return a formatted string with FPS and min/max/avg frame times over the
+// valid entries in the timing ring buffer.  Useful for periodic logging in
+// headless/bot-run mode where the ImGui overlay is not visible.
+std::string LogFrameTimingStats();
 
 // Steady clock microsecond helper.
 inline u64 NowUs() {

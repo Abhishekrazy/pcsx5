@@ -98,6 +98,52 @@ double GetFps() {
     return g_fps;
 }
 
+std::string LogFrameTimingStats() {
+    const double fps = GetFps();
+    const int count = g_count.load(std::memory_order_acquire);
+
+    if (count == 0) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+                      "[FrameTiming] FPS: %.1f | No frame timing data", fps);
+        return std::string(buf);
+    }
+
+    const int head = g_head.load(std::memory_order_acquire);
+    u64 min_dur = 0;
+    u64 max_dur = 0;
+    u64 sum_dur = 0;
+    int valid = 0;
+
+    for (int i = 0; i < count; ++i) {
+        const int idx = (head - 1 - i + kTimingRingCapacity) % kTimingRingCapacity;
+        const auto& e = g_ring[idx];
+        if (e.total_duration_us == 0) continue;
+        if (valid == 0) {
+            min_dur = max_dur = e.total_duration_us;
+        } else {
+            if (e.total_duration_us < min_dur) min_dur = e.total_duration_us;
+            if (e.total_duration_us > max_dur) max_dur = e.total_duration_us;
+        }
+        sum_dur += e.total_duration_us;
+        ++valid;
+    }
+
+    char buf[256];
+    if (valid > 0) {
+        const double avg_ms = static_cast<double>(sum_dur / valid) / 1000.0;
+        const double min_ms = static_cast<double>(min_dur) / 1000.0;
+        const double max_ms = static_cast<double>(max_dur) / 1000.0;
+        std::snprintf(buf, sizeof(buf),
+                      "[FrameTiming] FPS: %.1f | min=%.2fms avg=%.2fms max=%.2fms (%d frames)",
+                      fps, min_ms, avg_ms, max_ms, valid);
+    } else {
+        std::snprintf(buf, sizeof(buf),
+                      "[FrameTiming] FPS: %.1f | No frame timing data", fps);
+    }
+    return std::string(buf);
+}
+
 void RenderTimingOverlay(bool* p_open) {
 #ifdef IMGUI_VERSION
     if (!ImGui::Begin("Frame Timing", p_open,

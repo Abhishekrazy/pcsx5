@@ -1,0 +1,13 @@
+{
+    "version": 1,
+    "schema": "regression-manifest",
+    "description": "I2.2: Regression test manifest — tracks pass/fail history per title across bot replay runs.",
+    "last_run": "",
+    "git_revision": "",
+    "summary": {
+        "passed": 0,
+        "failed": 0,
+        "total": 0
+    },
+    "runs": []
+}

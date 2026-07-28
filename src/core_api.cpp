@@ -13,6 +13,7 @@
 #include "hle/keystone.h"
 #include "gpu/gpu.h"
 #include "diagnostics/diagnostics.h"
+#include "diagnostics/frame_timing.h"
 #include "reports/reports.h"
 #include "lua/lua_init.h"
 
@@ -454,6 +455,7 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
     constexpr auto kForceStopTimeout = std::chrono::seconds(5);
 
     bool stop_initiated = false;
+    int frame_count = 0;
     while (!guest_done.load(std::memory_order_acquire)) {
         if (g_paused.load(std::memory_order_acquire)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -461,6 +463,11 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
         }
         GPU::PumpWindowEvents();
         GPU::PollEvents();
+
+        // Log frame timing stats every ~60 frames (~1s at 60 Hz).
+        if (++frame_count % 60 == 0) {
+            LOG_INFO(General, "%s", Diagnostics::LogFrameTimingStats().c_str());
+        }
 
         // Window close → request guest stop.
         if (GPU::HasWindow() && GPU::ShouldCloseWindow()) {

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "title_id": "TEST",
+  "description": "Basic replay for guest smoke test ELF (test_guest.elf) — performs a short button sequence across 2 seconds at 60 fps.",
+  "events": [
+    { "frame": 0,   "buttons": 0,    "lx": 128, "ly": 128, "rx": 128, "ry": 128, "l2": 0, "r2": 0 },
+    { "frame": 60,  "buttons": 1,    "lx": 128, "ly": 128, "rx": 128, "ry": 128, "l2": 0, "r2": 0 },
+    { "frame": 120, "buttons": 0x40, "lx": 255, "ly": 128, "rx": 128, "ry": 128, "l2": 0, "r2": 0 }
+  ]
+}
