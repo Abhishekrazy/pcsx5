@@ -6,6 +6,7 @@
 
 #include "audio_device.h"
 #include "../../common/log.h"
+#include "../../memory/memory.h"
 
 #include <chrono>
 #include <cstring>
@@ -87,6 +88,20 @@ AudioDevice* AudioDevice::Create(AalBackendType type) {
                       static_cast<int>(type));
             return new PacingAudioDevice();
     }
+}
+
+// ---------------------------------------------------------------------------
+// AudioDevice::OutputDirect — default implementation (heap-copy fallback).
+// Reads from guest memory and delegates to Output().  Backends that support
+// zero-copy guest-memory access override this.
+// ---------------------------------------------------------------------------
+uint32_t AudioDevice::OutputDirect(u64 guest_addr, uint32_t frame_count) {
+    if (guest_addr == 0 || frame_count == 0) return 0;
+    const size_t byte_count = static_cast<size_t>(frame_count) * 2 * sizeof(s16);
+    auto buf = std::make_unique<u8[]>(byte_count);
+    Memory::ReadBuffer(guest_addr, buf.get(), byte_count);
+    Output(buf.get(), frame_count);
+    return frame_count;
 }
 
 // ===========================================================================

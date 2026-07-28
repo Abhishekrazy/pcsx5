@@ -827,8 +827,20 @@ void RegisterLibAudioOut() {
 
         const size_t byte_len = static_cast<size_t>(port->buffer_length) *
                                 port->channels * port->bytes_per_sample;
-        std::vector<u8> guest_buf(byte_len);
-        Memory::ReadBuffer(src, guest_buf.data(), byte_len);
+
+        // I5.3: Zero-copy — use Memory::Translate to get a direct pointer to
+        // guest memory instead of heap-copying through an intermediate vector.
+        // This is safe because guest RAM is mapped into the host address space
+        // at the same address (Translate just reinterprets the address).
+        // For waveOut (SubmitToBackend), we still need a copy because the
+        // buffer must persist until WOM_DONE; for WASAPI and XA2 the data is
+        // consumed synchronously within the submit call.
+        const u8* guest_ptr = static_cast<const u8*>(Memory::Translate(src));
+        if (!guest_ptr) {
+            LOG_ERROR(HLE, "sceAudioOutOutput: Translate failed for guest addr 0x%llx",
+                     static_cast<unsigned long long>(src));
+            return kErrorMemoryFault;
+        }
 
         const u64 n = g_output_count.fetch_add(1, std::memory_order_relaxed) + 1;
         if (n <= 4 || (n % 500) == 0) {
@@ -841,11 +853,14 @@ void RegisterLibAudioOut() {
             return 0;
         }
         if (port->xa2.voice) {
-            SubmitToXAudio2(*port, guest_buf.data());
+            SubmitToXAudio2(*port, guest_ptr);
         } else if (port->wasapi.client) {
-            SubmitToWasapi(*port, guest_buf.data());
+            SubmitToWasapi(*port, guest_ptr);
         } else {
-            SubmitToBackend(*port, guest_buf.data());
+            // waveOut backend: need a persistent copy (async WOM_DONE).
+            std::vector<u8> wave_buf(byte_len);
+            std::memcpy(wave_buf.data(), guest_ptr, byte_len);
+            SubmitToBackend(*port, wave_buf.data());
         }
         return 0;
     };

@@ -1690,4 +1690,40 @@ add_executable(dump_imports
         COMMAND pm4_replay replay ${CMAKE_SOURCE_DIR}/tests/golden/pm4_synth
                 --golden ${CMAKE_SOURCE_DIR}/tests/golden/pm4_synth)
 
+    # ------------------------------------------------------------------------
+    # golden_capture — I6.3: Standalone frame comparison tool (PNG diff).
+    # Self-contained: stb_image is compiled directly into the tool.
+    # ------------------------------------------------------------------------
+    add_executable(golden_capture
+        tools/golden_capture.cpp
+    )
+    target_include_directories(golden_capture PRIVATE third_party)
+    target_compile_options(golden_capture PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+
+    # ------------------------------------------------------------------------
+    # compat_dashboard — I2.4: Aggregates bot-run compat reports into markdown.
+    # ------------------------------------------------------------------------
+    add_executable(compat_dashboard
+        tools/compat_dashboard.cpp
+    )
+    target_compile_options(compat_dashboard PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+
+    # ------------------------------------------------------------------------
+    # headless_bot_test — I2.2: Regression test that runs the CLI with
+    # --headless and --play-input, then checks for crash signatures.
+    # Uses the test replay in tests/golden/ if it exists.
+    # ------------------------------------------------------------------------
+    if(EXISTS ${CMAKE_SOURCE_DIR}/tests/golden/bot_replay.json)
+        add_test(NAME headless_bot_test
+            COMMAND ${CMAKE_SOURCE_DIR}/tools/run_bot_test.sh
+                    --play-input=${CMAKE_SOURCE_DIR}/tests/golden/bot_replay.json
+                    ${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
+        )
+        set_tests_properties(headless_bot_test PROPERTIES
+            WILL_FAIL FALSE
+            TIMEOUT 120
+            DEPENDS guest_test_elfs
+        )
+    endif()
+
 endif()

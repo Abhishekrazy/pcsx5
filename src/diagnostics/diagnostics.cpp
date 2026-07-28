@@ -6,6 +6,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <dbghelp.h>
+#include <psapi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -20,9 +21,11 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 // Link against dbghelp for MiniDumpWriteDump
 #pragma comment(lib, "dbghelp.lib")
+#pragma comment(lib, "psapi.lib")
 
 namespace Diagnostics {
 namespace {
@@ -38,6 +41,31 @@ std::atomic<bool>      g_crash_present{false};
 std::atomic<bool>      g_handler_installed{false};
 std::string            g_bundle_dir;     // root directory for the bundle
 LONG WINAPI            CrashFilter(EXCEPTION_POINTERS* ep);
+
+// I6.4: Hang snapshot state / callbacks.
+HangSnapshotCallback   g_hang_callback{nullptr};
+void*                  g_hang_callback_user = nullptr;
+BootTimelineCallback  g_boot_timeline_callback{nullptr};
+ConfigSnapshotCallback g_config_snapshot_callback{nullptr};
+std::atomic<uint64_t>  g_last_flip_frame{0};
+std::atomic<uint64_t>  g_last_flip_timestamp_us{0};
+
+// Visual C++ runtime error handler (I6.4).
+void __cdecl InvalidParameterHandler(const wchar_t* expr, const wchar_t* func,
+                                      const wchar_t* file, unsigned int line,
+                                      uintptr_t /*reserved*/) {
+    LOG_ERROR(Diagnostics, "CRT invalid parameter: expr='%ls' func='%ls' file='%ls' line=%u",
+              expr ? expr : L"", func ? func : L"", file ? file : L"", line);
+}
+
+int __cdecl CrtReportHook(int report_type, char* msg, int* /*retval*/) {
+    if (report_type == _CRT_ASSERT) {
+        LOG_ERROR(Diagnostics, "CRT ASSERT: %s", msg ? msg : "");
+    } else if (report_type == _CRT_ERROR) {
+        LOG_ERROR(Diagnostics, "CRT ERROR: %s", msg ? msg : "");
+    }
+    return 1; // Suppress default dialog; we handle it ourselves.
+}
 
 } // namespace
 
@@ -72,7 +100,119 @@ void InstallCrashHandler(const std::string& bundle_dir) {
     // stash the context, write the bundle, and let the OS proceed with
     // default termination.
     SetUnhandledExceptionFilter(CrashFilter);
+
+    // I6.4: Install CRT validation hooks to catch abort/assert without popup.
+    _set_invalid_parameter_handler(InvalidParameterHandler);
+    _CrtSetReportHook2(_CRT_RPTHOOK_INSTALL, CrtReportHook);
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+
     LOG_INFO(General, "Crash-report bundle directory: %s", g_bundle_dir.c_str());
+}
+
+// I6.4: Set callbacks for additional diagnostic data.
+void SetHangSnapshotCallback(HangSnapshotCallback cb, void* user) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_hang_callback = cb;
+    g_hang_callback_user = user;
+}
+
+void SetBootTimelineCallback(BootTimelineCallback cb) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_boot_timeline_callback = cb;
+}
+
+void SetConfigSnapshotCallback(ConfigSnapshotCallback cb) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_config_snapshot_callback = cb;
+}
+
+// I6.4: Record flip timestamps.
+void RecordFlipTimestamp(uint64_t frame_counter) {
+    g_last_flip_frame.store(frame_counter, std::memory_order_release);
+    g_last_flip_timestamp_us.store(NowUs(), std::memory_order_release);
+}
+
+uint64_t GetLastFlipFrame() {
+    return g_last_flip_frame.load(std::memory_order_acquire);
+}
+
+uint64_t GetLastFlipTimestampUs() {
+    return g_last_flip_timestamp_us.load(std::memory_order_acquire);
+}
+
+// I6.4: Capture thread list from toolhelp snapshot.
+std::vector<std::string> CaptureThreadSnapshot() {
+    std::vector<std::string> out;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return out;
+
+    DWORD current_pid = GetCurrentProcessId();
+    THREADENTRY32 te = { sizeof(THREADENTRY32) };
+    if (Thread32First(snapshot, &te)) {
+        do {
+            if (te.th32OwnerProcessID == current_pid) {
+                char buf[128];
+                std::snprintf(buf, sizeof(buf), "Thread TID=%lu", te.th32ThreadID);
+                out.push_back(buf);
+            }
+        } while (Thread32Next(snapshot, &te));
+    }
+    CloseHandle(snapshot);
+    return out;
+}
+
+// I6.4: Write a hang snapshot bundle.
+std::string WriteHangSnapshotBundle(const std::string& label) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    std::string dir;
+    if (g_bundle_dir.empty()) {
+        dir = "pcsx5_hang";
+    } else {
+        dir = g_bundle_dir + "/hang_snapshots";
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return {};
+
+    std::string timestamp = NowIso8601();
+    for (auto& c : timestamp) if (c == ':' || c == '.') c = '-';
+
+    std::wstring wdir = Wide(dir + "/" + label + "_" + timestamp);
+    CreateDirectoryW(wdir.c_str(), nullptr);
+
+    // Write hang manifest.
+    WriteHangManifest(wdir, label);
+
+    // Write thread snapshot.
+    WriteHangThreadList(wdir);
+
+    // Write recent logs.
+    WriteRecentLogs(wdir);
+
+    // I2.3: Write boot timeline via callback.
+    if (g_boot_timeline_callback) {
+        std::string timeline = g_boot_timeline_callback();
+        WriteTextFile(wdir + L"\\boot_timeline.json",
+                      "{\n  \"boot_timeline\": " + timeline + "\n}\n");
+    }
+
+    // I2.3: Write config snapshot via callback.
+    if (g_config_snapshot_callback) {
+        std::string cfg = g_config_snapshot_callback();
+        WriteTextFile(wdir + L"\\config_snapshot.json", cfg);
+    }
+
+    // I6.4: Invoke hang callback for last-frame capture if registered.
+    if (g_hang_callback) {
+        g_hang_callback(wdir, g_hang_callback_user);
+    }
+
+    LOG_INFO(Diagnostics, "Hang snapshot written to %ls", wdir.c_str());
+    return WideToUtf8(wdir);
 }
 
 // ---------------------------------------------------------------------------
@@ -111,8 +251,7 @@ LONG WINAPI CrashFilter(EXCEPTION_POINTERS* ep) {
         g_crash_present.store(true, std::memory_order_release);
     }
 
-    // Best-effort: write the bundle and a minidump.  We can't safely use the
-    // C++ runtime here (the heap may be corrupted) so we use Win32 file I/O.
+    // Best-effort write the bundle.  Win32 file I/O only (heap may be corrupt).
     WriteCrashReportBundle(false);
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -146,6 +285,17 @@ std::wstring Wide(const std::string& s) {
     return std::wstring(s.begin(), s.end());
 }
 
+std::string WideToUtf8(const std::wstring& ws) {
+    if (ws.empty()) return {};
+    int len = WideCharToMultiByte(CP_UTF8, 0, ws.data(), static_cast<int>(ws.size()),
+                                  nullptr, 0, nullptr, nullptr);
+    if (len <= 0) return {};
+    std::string out(static_cast<size_t>(len), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, ws.data(), static_cast<int>(ws.size()),
+                        out.data(), len, nullptr, nullptr);
+    return out;
+}
+
 std::string Hex(u64 v, int width = 0) {
     std::ostringstream os;
     os << "0x" << std::uppercase << std::hex << std::setw(width) << std::setfill('0') << v;
@@ -163,7 +313,6 @@ std::string NowIso8601() {
     return buf;
 }
 
-// JSON-escape (same policy as log.cpp)
 std::string JsonEscape(const std::string& s) {
     std::string out;
     out.reserve(s.size() + 2);
@@ -192,6 +341,36 @@ std::string JsonEscape(const std::string& s) {
 // ---------------------------------------------------------------------------
 // Bundle writers.  Each populates one artifact file.
 // ---------------------------------------------------------------------------
+bool WriteHangManifest(const std::wstring& dir, const std::string& label) {
+    std::ostringstream os;
+    os << "{\n"
+       << "  \"timestamp_iso\": \"" << NowIso8601() << "\",\n"
+       << "  \"snapshot_type\": \"hang\",\n"
+       << "  \"label\": \"" << JsonEscape(label) << "\",\n"
+       << "  \"uptime_us\": " << ProcessUptimeMicros() << ",\n"
+       << "  \"last_flip_frame\": " << g_last_flip_frame.load(std::memory_order_acquire) << ",\n"
+       << "  \"last_flip_age_us\": " << (g_last_flip_timestamp_us.load(std::memory_order_acquire) > 0
+                                         ? NowUs() - g_last_flip_timestamp_us.load(std::memory_order_acquire)
+                                         : 0) << ",\n"
+       << "  \"artifacts\": [\n"
+       << "    \"hang.json\",\n"
+       << "    \"threads.txt\",\n"
+       << "    \"recent.log\"\n"
+       << "  ]\n"
+       << "}\n";
+    return WriteTextFile(dir + L"\\hang.json", os.str());
+}
+
+bool WriteHangThreadList(const std::wstring& dir) {
+    auto threads = CaptureThreadSnapshot();
+    std::ostringstream os;
+    os << "Thread snapshot (process " << GetCurrentProcessId() << "):\n";
+    for (const auto& t : threads) {
+        os << "  " << t << "\n";
+    }
+    return WriteTextFile(dir + L"\\threads.txt", os.str());
+}
+
 bool WriteCrashManifest(const std::wstring& dir) {
     std::ostringstream os;
     os << "{\n"
@@ -274,7 +453,7 @@ bool WriteSystemInfo(const std::wstring& dir) {
     OSVERSIONINFOW vi{};
     vi.dwOSVersionInfoSize = sizeof(vi);
 #pragma warning(push)
-#pragma warning(disable : 4996) // GetVersionEx is deprecated but still works for diagnostics
+#pragma warning(disable : 4996)
     GetVersionExW(&vi);
 #pragma warning(pop)
 
@@ -293,6 +472,13 @@ bool WriteSystemInfo(const std::wstring& dir) {
         default: os << " unknown(" << si.wProcessorArchitecture << ")"; break;
     }
     os << "\n";
+
+    PROCESS_MEMORY_COUNTERS pmc = { sizeof(PROCESS_MEMORY_COUNTERS) };
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        os << "working_set_kb: " << (pmc.WorkingSetSize / 1024) << "\n"
+           << "pagefile_kb:    " << (pmc.PagefileUsage / 1024) << "\n";
+    }
+
     return WriteTextFile(dir + L"\\system.txt", os.str());
 }
 
@@ -304,7 +490,7 @@ bool WriteMiniDump(const std::wstring& dir) {
 
     MINIDUMP_EXCEPTION_INFORMATION mei{};
     mei.ThreadId = GetCurrentThreadId();
-    mei.ExceptionPointers = nullptr; // can be left null; we already have the data in crash.json
+    mei.ExceptionPointers = nullptr;
     mei.ClientPointers = FALSE;
 
     HANDLE process = GetCurrentProcess();
@@ -343,7 +529,61 @@ std::string WriteCrashReportBundle(bool force) {
     WriteSystemInfo(wdir);
     WriteMiniDump(wdir);
 
+    // I2.3: Additional sidecar artifacts via callbacks.
+    if (g_boot_timeline_callback) {
+        std::string timeline = g_boot_timeline_callback();
+        WriteTextFile(wdir + L"\\boot_timeline.json",
+                      "{\n  \"boot_timeline\": " + timeline + "\n}\n");
+    }
+    if (g_config_snapshot_callback) {
+        std::string cfg = g_config_snapshot_callback();
+        WriteTextFile(wdir + L"\\config_snapshot.json", cfg);
+    }
+
     return g_bundle_dir;
+}
+
+// I2.3: Write a diagnostic snapshot (not crash-triggered).
+std::string WriteDiagnosticSnapshot(const std::string& label) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    std::string dir = "pcsx5_snapshot";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return {};
+
+    std::string now = NowIso8601();
+    for (auto& c : now) if (c == ':' || c == '.') c = '-';
+    std::string subdir = dir + "/" + label + "_" + now;
+    std::filesystem::create_directories(subdir, ec);
+    if (ec) return {};
+
+    std::wstring wdir = Wide(subdir);
+
+    WriteTextFile(wdir + L"\\snapshot.json",
+                  "{\"label\":\"" + JsonEscape(label) + "\",\"timestamp\":\"" + NowIso8601() + "\",\"uptime_us\":" + std::to_string(ProcessUptimeMicros()) + "}");
+    WriteRecentLogs(wdir);
+    WriteSystemInfo(wdir);
+
+    if (g_boot_timeline_callback) {
+        std::string timeline = g_boot_timeline_callback();
+        WriteTextFile(wdir + L"\\boot_timeline.json",
+                      "{\n  \"boot_timeline\": " + timeline + "\n}\n");
+    }
+    if (g_config_snapshot_callback) {
+        std::string cfg = g_config_snapshot_callback();
+        WriteTextFile(wdir + L"\\config_snapshot.json", cfg);
+    }
+
+    LOG_INFO(Diagnostics, "Diagnostic snapshot written: %s", subdir.c_str());
+    return subdir;
+}
+
+// Process uptime in microseconds.
+uint64_t ProcessUptimeMicros() {
+    static const auto start = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count();
 }
 
 } // namespace Diagnostics

@@ -85,6 +85,14 @@ public:
     // May block for pacing (real-time rate when the buffer is full).
     virtual void Output(const u8* data, uint32_t frame_count) = 0;
 
+    // I5.3: Zero-copy output — read `frame_count` frames of PCM audio directly
+    // from guest memory at `guest_addr` instead of going through an intermediate
+    // heap copy.  The default implementation falls back to Output() with a
+    // heap-read; backends override to map guest memory in place.
+    // Returns the number of frames actually consumed (may be 0 if the guest
+    // address is invalid).
+    virtual uint32_t OutputDirect(u64 guest_addr, uint32_t frame_count);
+
     // Immediately discard any buffered audio and reset the device.
     virtual void Reset() = 0;
 
