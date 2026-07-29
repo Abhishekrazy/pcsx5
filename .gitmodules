@@ -1,3 +1,7 @@
 [submodule "third_party/LibAtrac9"]
 	path = third_party/LibAtrac9
 	url = https://github.com/RPCSX/LibAtrac9.git
+
+[submodule "tools/PkgToolBox"]
+	path = tools/PkgToolBox
+	url = https://github.com/seregonwar/PkgToolBox.git

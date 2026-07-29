@@ -13,6 +13,7 @@ enum class LogCategory {
     GPU,
     Cpu,
     Media,
+    Diagnostics,
     General
 };
 
