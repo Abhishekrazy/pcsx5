@@ -4,6 +4,7 @@
 
 #include "audio_device.h"
 #include "../../common/log.h"
+#include "../../memory/memory.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -31,6 +32,7 @@ public:
     bool IsOpen() const override { return m_open; }
     AalCaps GetCaps() const override;
     void Output(const u8* data, uint32_t frame_count) override;
+    uint32_t OutputDirect(u64 guest_addr, uint32_t frame_count) override;
     void Reset() override;
     void SetVolume(float volume) override { m_volume = volume; }
     float GetVolume() const override { return m_volume; }
@@ -295,6 +297,34 @@ void WasapiDevice::Output(const u8* data, uint32_t frame_count) {
         });
         m_ws.queue.push_back(std::move(block));
     }
+}
+
+// ---------------------------------------------------------------------------
+// OutputDirect — zero-copy variant: read stereo PCM16 from guest memory
+// directly into the queue, bypassing the caller's intermediate buffer.
+// ---------------------------------------------------------------------------
+uint32_t WasapiDevice::OutputDirect(u64 guest_addr, uint32_t frame_count) {
+    if (!m_open || frame_count == 0 || guest_addr == 0) return 0;
+
+    const size_t samples = static_cast<size_t>(frame_count) * 2;
+    std::vector<s16> block(samples);
+    Memory::ReadBuffer(guest_addr, block.data(), samples * sizeof(s16));
+
+    if (m_volume != 1.0f) {
+        for (size_t i = 0; i < samples; ++i) {
+            block[i] = static_cast<s16>(
+                static_cast<float>(block[i]) * m_volume);
+        }
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_cv.wait(lock, [this] {
+            return m_ws.queue.size() < 8;
+        });
+        m_ws.queue.push_back(std::move(block));
+    }
+    return frame_count;
 }
 
 // ---------------------------------------------------------------------------

@@ -122,6 +122,7 @@ public:
     bool IsOpen() const override { return m_open; }
     AalCaps GetCaps() const override;
     void Output(const u8* data, uint32_t frame_count) override;
+    uint32_t OutputDirect(u64 guest_addr, uint32_t frame_count) override;
     void Reset() override;
     void SetVolume(float) override {}
     float GetVolume() const override { return 1.0f; }

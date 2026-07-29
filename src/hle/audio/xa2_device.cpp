@@ -4,6 +4,7 @@
 
 #include "audio_device.h"
 #include "../../common/log.h"
+#include "../../memory/memory.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -27,6 +28,7 @@ public:
     bool IsOpen() const override { return m_open; }
     AalCaps GetCaps() const override;
     void Output(const u8* data, uint32_t frame_count) override;
+    uint32_t OutputDirect(u64 guest_addr, uint32_t frame_count) override;
     void Reset() override;
     void SetVolume(float volume) override { m_volume = volume; }
     float GetVolume() const override { return m_volume; }
@@ -221,6 +223,54 @@ void Xa2Device::Output(const u8* data, uint32_t frame_count) {
         m_free_blocks.push_back(block);
         --m_in_flight;
     }
+}
+
+// ---------------------------------------------------------------------------
+// OutputDirect — zero-copy variant: read stereo PCM16 from guest memory
+// directly into a pool block and submit, avoiding the caller's intermediate
+// buffer copy.
+// ---------------------------------------------------------------------------
+uint32_t Xa2Device::OutputDirect(u64 guest_addr, uint32_t frame_count) {
+    if (!m_open || !m_voice || frame_count == 0 || guest_addr == 0) return 0;
+
+    Xa2Block* block = nullptr;
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        while (m_free_blocks.empty()) {
+            lock.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            lock.lock();
+        }
+        block = m_free_blocks.front();
+        m_free_blocks.pop_front();
+        ++m_in_flight;
+    }
+
+    const size_t samples = static_cast<size_t>(frame_count) * 2;
+    if (block->data.size() < samples) {
+        block->data.resize(samples);
+    }
+    Memory::ReadBuffer(guest_addr, block->data.data(), samples * sizeof(s16));
+
+    if (m_volume != 1.0f) {
+        for (size_t i = 0; i < samples; ++i) {
+            block->data[i] = static_cast<s16>(
+                static_cast<float>(block->data[i]) * m_volume);
+        }
+    }
+
+    block->device = this;
+
+    XAUDIO2_BUFFER buf{};
+    buf.AudioBytes = static_cast<UINT32>(samples * sizeof(s16));
+    buf.pAudioData = reinterpret_cast<const BYTE*>(block->data.data());
+    buf.pContext   = block;
+    if (FAILED(m_voice->SubmitSourceBuffer(&buf))) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_free_blocks.push_back(block);
+        --m_in_flight;
+    }
+    return frame_count;
 }
 
 // ---------------------------------------------------------------------------

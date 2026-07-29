@@ -1,16 +1,25 @@
-// I2.4: Compat report dashboard — aggregates bot-run report outputs into a
+// I2.4: Compat report dashboard -- aggregates bot-run report outputs into a
 // markdown table showing which stage each title reaches per run.
 //
+// Scans bot-run crash bundle directories (pcsx5_crash/YYYYMMDD_HHMMSS_*/)
+// and/or individual --report JSON files produced by the emulator's
+// --report=<path> flag (see reports.h / reports.cpp CompatSummary format).
+//
 // Usage:
-//   compat_dashboard <bot_log_dir> [--output=<path>] [--json]
-//   compat_dashboard --scan <replay_manifest> [--output=<path>]
+//   compat_dashboard --dir <bundle_dir> [--output=<path>]
+//   compat_dashboard --report <report.json> [--report <more.json> ...]
+//   compat_dashboard <bundle_dir>  (shorthand for --dir)
 //
-// Scans the bot-run crash bundle directories (<bot_log_dir>/YYYYMMDD_HHMMSS_*/)
-// for compat_report.json files and assembles a markdown dashboard.
+// Output: COMPAT_DASHBOARD.md (or --output=<path>) with a summary count
+// table and a per-run detail table.
 //
-// Output: COMPAT_DASHBOARD.md (or specified path) with a table:
-//   | Title ID | Date | Status | Duration | Stage | Git Rev | Log |
-//   |----------|------|--------|----------|-------|---------|-----|
+// Status mapping from the CompatSummary format:
+//   "pass" + stage="execute" -> gameplay
+//   "pass" + stage="load"    -> boot
+//   "fail" + stage="load"    -> crash (during load)
+//   "fail" + stage="execute" -> crash
+//   "error"                  -> crash
+//   "hang" (inferred from log) -> hang
 
 #include <cstdio>
 #include <cstdlib>
@@ -22,229 +31,340 @@
 #include <sstream>
 #include <algorithm>
 #include <ctime>
+#include <cctype>
 
 namespace fs = std::filesystem;
 
 namespace {
 
-// ---------------------------------------------------------------------------
-// Simple JSON field extraction (no dependency on nlohmann in standalone tool).
-// ---------------------------------------------------------------------------
-std::string ExtractJsonString(const std::string& json, const std::string& key) {
-    std::string search = "\"" + key + "\"";
+// ===========================================================================
+// JSON extraction (minimal, no external dependency).  These functions parse
+// just enough of the CompatSummary schema to extract the fields we need.
+// ===========================================================================
+
+// Skip whitespace and return the position of the first non-whitespace char.
+const char* SkipWs(const char* p) {
+    while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+        ++p;
+    return p;
+}
+
+// Extract a JSON string value for a given key.  Returns empty string if
+// the key is not found or the value is not a string.
+std::string ExtractString(const std::string& json, const std::string& key) {
+    // Search for  "key":
+    const std::string search = "\"" + key + "\":";
     auto pos = json.find(search);
-    if (pos == std::string::npos) return "";
+    if (pos == std::string::npos) return {};
 
-    // Find the value after ':'
-    auto colon = json.find(':', pos + search.size());
-    if (colon == std::string::npos) return "";
+    pos += search.size();
+    const char* p = json.data() + pos;
+    p = SkipWs(p);
+    if (*p != '"') return {}; // not a string value
+    ++p; // skip opening quote
 
-    // Skip whitespace.
-    auto val_start = json.find_first_not_of(" \t\r\n", colon + 1);
-    if (val_start == std::string::npos) return "";
+    std::string result;
+    while (*p && *p != '"') {
+        if (*p == '\\' && *(p + 1)) {
+            ++p;
+            switch (*p) {
+                case 'n': result += '\n'; break;
+                case 'r': result += '\r'; break;
+                case 't': result += '\t'; break;
+                case '"': result += '"';  break;
+                case '\\':result += '\\'; break;
+                default:  result += *p;   break;
+            }
+        } else {
+            result += *p;
+        }
+        ++p;
+    }
+    return result;
+}
 
-    if (json[val_start] == '"') {
-        // String value: find closing quote.
-        auto val_end = json.find('"', val_start + 1);
-        if (val_end == std::string::npos) return "";
-        return json.substr(val_start + 1, val_end - val_start - 1);
-    } else if (json[val_start] == '{' || json[val_start] == '[') {
-        // Skip complex value (not supported).
-        return "";
-    } else {
-        // Number or literal (true/false/null).
-        auto val_end = json.find_first_of(",}\n\r", val_start);
-        if (val_end == std::string::npos) return json.substr(val_start);
-        return json.substr(val_start, val_end - val_start);
+// Extract a JSON number value for a given key.  Returns 0.0 if not found.
+double ExtractNumber(const std::string& json, const std::string& key) {
+    const std::string search = "\"" + key + "\":";
+    auto pos = json.find(search);
+    if (pos == std::string::npos) return 0.0;
+
+    pos += search.size();
+    const char* p = json.data() + pos;
+    p = SkipWs(p);
+    if (*p == '"') {
+        // Number stored as string (rare, but handle it).
+        ++p;
+        std::string num;
+        while (*p && *p != '"') { num += *p; ++p; }
+        return std::atof(num.c_str());
+    }
+    // Parse literal number.
+    char* end = nullptr;
+    double v = std::strtod(p, &end);
+    (void)end;
+    return v;
+}
+
+// ===========================================================================
+// Data model
+// ===========================================================================
+
+// Status we assign to a run on the dashboard.
+enum class RunStatus {
+    Unknown,
+    Boot,       // load succeeded but only reached boot stage
+    Menu,       // title reached its menu screen
+    Gameplay,   // passed menu, entered gameplay
+    Crash,      // emulator/game crashed
+    Hang,       // no progress (no flip, timeout)
+};
+
+const char* StatusLabel(RunStatus s) {
+    switch (s) {
+        case RunStatus::Boot:     return "boot";
+        case RunStatus::Menu:     return "menu";
+        case RunStatus::Gameplay: return "gameplay";
+        case RunStatus::Crash:    return "crash";
+        case RunStatus::Hang:     return "hang";
+        default:                  return "unknown";
     }
 }
 
-double ExtractJsonNumber(const std::string& json, const std::string& key) {
-    std::string s = ExtractJsonString(json, key);
-    if (s.empty()) return 0.0;
-    return std::atof(s.c_str());
-}
-
-bool ExtractJsonBool(const std::string& json, const std::string& key) {
-    std::string s = ExtractJsonString(json, key);
-    return s == "true";
-}
-
-// ---------------------------------------------------------------------------
-// Run record parsed from a bot-run bundle.
-// ---------------------------------------------------------------------------
 struct RunRecord {
     std::string title_id;
-    std::string date_str;
-    std::string status;     // "boot", "menu", "gameplay", "crash", "hang", "clean"
-    std::string stage;      // last boot stage
+    std::string date_str;       // human-readable date from dir name or timestamp_iso
+    RunStatus   status = RunStatus::Unknown;
+    std::string stage;          // last boot stage from report
     double      duration_ms = 0.0;
     std::string git_revision;
-    std::string log_path;
-    bool        crash      = false;
-    bool        has_report = false;
+    std::string log_path;       // path to associated bot log if found
 };
 
-// ---------------------------------------------------------------------------
-// Parse a compat_report.json file.
-// ---------------------------------------------------------------------------
-RunRecord ParseReport(const fs::path& report_path) {
+// ===========================================================================
+// Parse a CompatSummary JSON (written by reports.cpp WriteCompatSummary)
+// into a RunRecord.
+// ===========================================================================
+RunRecord ParseCompatReport(const std::string& json) {
     RunRecord rec;
-    rec.has_report = true;
 
-    std::ifstream f(report_path);
-    if (!f) return rec;
+    const std::string compat_status = ExtractString(json, "status");
+    const std::string compat_stage  = ExtractString(json, "stage");
 
-    std::stringstream ss;
-    ss << f.rdbuf();
-    std::string json = ss.str();
+    rec.title_id    = ExtractString(json, "title_id");
+    rec.stage       = compat_stage;
+    rec.duration_ms = ExtractNumber(json, "duration_ms");
+    rec.git_revision = ExtractString(json, "git_revision");
+    rec.date_str    = ExtractString(json, "timestamp_iso");
 
-    rec.title_id     = ExtractJsonString(json, "title_id");
-    rec.status       = ExtractJsonString(json, "status");
-    rec.stage        = ExtractJsonString(json, "stage");
-    rec.duration_ms  = ExtractJsonNumber(json, "duration_ms");
-    rec.git_revision = ExtractJsonString(json, "git_revision");
-
-    // Auto-detect crash status from log patterns.
-    rec.crash = (rec.status == "crash" || rec.status == "error");
-    if (rec.status.empty()) {
-        // Check for crash hints in the filename.
-        rec.status = "unknown";
+    // Map (status, stage) from the compat format to dashboard status.
+    if (compat_status == "pass") {
+        if (compat_stage == "execute") {
+            // Reached execution phase - either menu or gameplay.
+            // Default to gameplay; caller can refine with heuristics.
+            rec.status = RunStatus::Gameplay;
+        } else if (compat_stage == "load") {
+            rec.status = RunStatus::Boot;
+        } else {
+            rec.status = RunStatus::Boot; // partial progress
+        }
+    } else if (compat_status == "fail" || compat_status == "error") {
+        rec.status = RunStatus::Crash;
     }
 
     return rec;
 }
 
-// ---------------------------------------------------------------------------
-// Scan a bot-run crash bundle directory for reports.
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Read a report file from disk and parse it.
+// ===========================================================================
+RunRecord ReadReportFile(const fs::path& path) {
+    std::ifstream f(path);
+    if (!f) {
+        RunRecord empty;
+        return empty;
+    }
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ParseCompatReport(ss.str());
+}
+
+// ===========================================================================
+// Infer hang from log contents.
+// ===========================================================================
+bool LogIndicatesHang(const fs::path& log_path) {
+    if (!fs::exists(log_path)) return false;
+    std::ifstream lf(log_path);
+    if (!lf) return false;
+    std::string line;
+    while (std::getline(lf, line)) {
+        if (line.find("HANG") != std::string::npos ||
+            line.find("no flip within") != std::string::npos ||
+            line.find("TIMEOUT") != std::string::npos ||
+            line.find("hung") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ===========================================================================
+// Scan a bot-run crash bundle directory (pcsx5_crash/YYYYMMDD_HHMMSS_*/)
+// for report files and bot logs.
+// ===========================================================================
 std::vector<RunRecord> ScanBundleDir(const fs::path& root_dir) {
     std::vector<RunRecord> records;
 
-    if (!fs::exists(root_dir)) return records;
+    if (!fs::exists(root_dir) || !fs::is_directory(root_dir)) {
+        return records;
+    }
 
     for (const auto& entry : fs::directory_iterator(root_dir)) {
         if (!entry.is_directory()) continue;
 
-        fs::path report_file = entry.path() / "compat_report.json";
-        fs::path log_file = entry.path() / "bot_log.txt";
+        const fs::path dir_path = entry.path();
+        const std::string dir_name = dir_path.filename().string();
 
-        if (!fs::exists(report_file)) continue;
+        // Look for report JSON files in the directory.
+        // We try several known filenames that various bots use.
+        static const char* kReportNames[] = {
+            "compat_report.json",
+            "report.json",
+            "compat.json",
+        };
 
-        RunRecord rec = ParseReport(report_file);
+        fs::path report_path;
+        for (const char* name : kReportNames) {
+            fs::path candidate = dir_path / name;
+            if (fs::exists(candidate)) {
+                report_path = candidate;
+                break;
+            }
+        }
 
-        // Extract date from directory name (YYYYMMDD_HHMMSS_<title>).
-        std::string dir_name = entry.path().filename().string();
-        if (dir_name.size() >= 15) {
-            // Format: YYYYMMDD_HHMMSS_title
+        if (report_path.empty()) continue;
+
+        RunRecord rec = ReadReportFile(report_path);
+
+        // If title_id is empty, try to extract from directory name.
+        if (rec.title_id.empty()) {
+            // Directory format: YYYYMMDD_HHMMSS_titleid
+            if (dir_name.size() > 16) {
+                rec.title_id = dir_name.substr(16);
+            }
+        }
+
+        // Extract date from directory name if not in report.
+        if (rec.date_str.empty() && dir_name.size() >= 15) {
+            // Format: YYYYMMDD_HHMMSS_...
             rec.date_str = dir_name.substr(0, 4) + "-" +
                            dir_name.substr(4, 2) + "-" +
                            dir_name.substr(6, 2) + " " +
                            dir_name.substr(9, 2) + ":" +
                            dir_name.substr(11, 2) + ":" +
                            dir_name.substr(13, 2);
-
-            if (rec.title_id.empty() && dir_name.size() > 16) {
-                rec.title_id = dir_name.substr(16);
-            }
         }
 
-        // Check for hang indicator in log.
+        // Look for bot log to check for hang.
+        const fs::path log_file = dir_path / "bot_log.txt";
         if (fs::exists(log_file)) {
             rec.log_path = log_file.string();
-
-            std::ifstream lf(log_file);
-            std::string line;
-            while (std::getline(lf, line)) {
-                if (line.find("HANG") != std::string::npos ||
-                    line.find("no flip within") != std::string::npos) {
-                    if (rec.status == "crash" || rec.status == "unknown") {
-                        rec.status = "hang";
-                    }
-                }
+            if (LogIndicatesHang(log_file)) {
+                // Hang overrides crash / boot detection.
+                rec.status = RunStatus::Hang;
             }
         }
 
-        // Fix duration if report doesn't have it.
-        if (rec.duration_ms <= 0.0 && fs::exists(log_file)) {
-            rec.duration_ms = static_cast<double>(fs::file_size(log_file)) / 100.0; // rough estimate
+        // If duration is missing or zero, estimate from log file size.
+        if (rec.duration_ms <= 0.0 && !rec.log_path.empty()) {
+            std::error_code ec;
+            const auto fsize = fs::file_size(rec.log_path, ec);
+            if (!ec && fsize > 0) {
+                // Rough heuristic: ~1ms per 100 bytes of log.
+                rec.duration_ms = static_cast<double>(fsize) / 100.0;
+            }
         }
 
-        records.push_back(rec);
+        records.push_back(std::move(rec));
     }
 
-    // Sort by date (directory name string-sorted = chronological).
+    // Sort by date (string-sorted = chronological for ISO format).
     std::sort(records.begin(), records.end(),
               [](const RunRecord& a, const RunRecord& b) {
                   return a.date_str < b.date_str;
               });
-
     return records;
 }
 
-// ---------------------------------------------------------------------------
+// ===========================================================================
 // Format duration as human-readable.
-// ---------------------------------------------------------------------------
+// ===========================================================================
 std::string FormatDuration(double ms) {
-    if (ms < 1000) {
+    if (ms < 1000.0) {
         char buf[32];
         std::snprintf(buf, sizeof(buf), "%.0f ms", ms);
         return buf;
     }
-    double sec = ms / 1000.0;
-    if (sec < 120) {
+    const double sec = ms / 1000.0;
+    if (sec < 120.0) {
         char buf[32];
         std::snprintf(buf, sizeof(buf), "%.1f s", sec);
         return buf;
     }
-    double min = sec / 60.0;
+    const double min = sec / 60.0;
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%.1f min", min);
     return buf;
 }
 
-// ---------------------------------------------------------------------------
-// Generate markdown dashboard table.
-// ---------------------------------------------------------------------------
-std::string GenerateDashboard(const std::vector<RunRecord>& records,
-                               const std::string& source) {
+// ===========================================================================
+// Generate markdown dashboard.
+// ===========================================================================
+std::string BuildDashboard(const std::vector<RunRecord>& records,
+                           const std::string& source) {
     std::ostringstream os;
 
-    time_t now = std::time(nullptr);
-    char time_buf[32];
+    // Timestamp.
+    std::time_t now = std::time(nullptr);
+    char time_buf[64];
     std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC",
                   std::gmtime(&now));
 
     os << "# Compatibility Report Dashboard\n\n";
-    os << "Generated: " << time_buf << "  \n";
-    os << "Source: " << source << "  \n";
-    os << "Total runs: " << records.size() << "\n\n";
+    os << "- Generated: " << time_buf << "\n";
+    os << "- Source: " << source << "\n";
+    os << "- Runs: " << records.size() << "\n\n";
 
-    // Summary counts.
-    int boot = 0, menu = 0, gameplay = 0, crash = 0, hang = 0, clean = 0, unknown = 0;
+    // Summary table.
+    int boot_count = 0, menu_count = 0, gameplay_count = 0;
+    int crash_count = 0, hang_count = 0, unknown_count = 0;
+
     for (const auto& r : records) {
-        if (r.status == "boot")       boot++;
-        else if (r.status == "menu")  menu++;
-        else if (r.status == "gameplay" || r.status == "playable") gameplay++;
-        else if (r.status == "crash" || r.status == "error") crash++;
-        else if (r.status == "hang")  hang++;
-        else if (r.status == "clean" || r.status == "exit") clean++;
-        else unknown++;
+        switch (r.status) {
+            case RunStatus::Boot:     ++boot_count;     break;
+            case RunStatus::Menu:     ++menu_count;     break;
+            case RunStatus::Gameplay: ++gameplay_count;  break;
+            case RunStatus::Crash:    ++crash_count;    break;
+            case RunStatus::Hang:     ++hang_count;     break;
+            default:                  ++unknown_count;  break;
+        }
     }
 
     os << "## Summary\n\n";
     os << "| Stage | Count |\n";
-    os << "|-------|-------|\n";
-    if (boot > 0)     os << "| Boot | " << boot << " |\n";
-    if (menu > 0)     os << "| Menu | " << menu << " |\n";
-    if (gameplay > 0) os << "| Gameplay | " << gameplay << " |\n";
-    if (clean > 0)    os << "| Clean Exit | " << clean << " |\n";
-    if (crash > 0)    os << "| Crash | " << crash << " |\n";
-    if (hang > 0)     os << "| Hang | " << hang << " |\n";
-    if (unknown > 0)  os << "| Unknown | " << unknown << " |\n";
+    os << "|-------|------:|\n";
+    if (gameplay_count > 0) os << "| Gameplay | " << gameplay_count << " |\n";
+    if (menu_count > 0)     os << "| Menu     | " << menu_count     << " |\n";
+    if (boot_count > 0)     os << "| Boot     | " << boot_count     << " |\n";
+    if (crash_count > 0)    os << "| Crash    | " << crash_count    << " |\n";
+    if (hang_count > 0)     os << "| Hang     | " << hang_count     << " |\n";
+    if (unknown_count > 0)  os << "| Unknown  | " << unknown_count  << " |\n";
+    if (gameplay_count + menu_count > 0) {
+        os << "| **Playable** | **" << (gameplay_count + menu_count) << "** |\n";
+    }
     os << "\n";
 
-    // Detail table.
+    // Per-run detail table.
     os << "## Per-Run Detail\n\n";
     os << "| # | Title ID | Date | Status | Duration | Last Stage |\n";
     os << "|---|----------|------|--------|----------|------------|\n";
@@ -254,7 +374,7 @@ std::string GenerateDashboard(const std::vector<RunRecord>& records,
         os << "| " << (i + 1)
            << " | " << (r.title_id.empty() ? "?" : r.title_id)
            << " | " << (r.date_str.empty() ? "?" : r.date_str)
-           << " | " << r.status
+           << " | " << StatusLabel(r.status)
            << " | " << FormatDuration(r.duration_ms)
            << " | " << (r.stage.empty() ? "?" : r.stage)
            << " |\n";
@@ -262,77 +382,160 @@ std::string GenerateDashboard(const std::vector<RunRecord>& records,
 
     os << "\n---\n\n";
     os << "Generated by `compat_dashboard` | I2.4\n";
-
     return os.str();
 }
 
-} // namespace
+void PrintUsage() {
+    std::fprintf(stderr,
+        "Usage:\n"
+        "  compat_dashboard --dir <bundle_dir> [--output=<path>]\n"
+        "  compat_dashboard --report <report.json> [--report <more.json> ...]\n"
+        "  compat_dashboard <bundle_dir>\n"
+        "\n"
+        "Scans bot-run crash bundle directories (pcsx5_crash/YYYYMMDD_HHMMSS_*/)\n"
+        "for compat_report.json, or loads individual --report files produced by\n"
+        "the emulator's --report=<path> flag.  Outputs a markdown table to\n"
+        "COMPAT_DASHBOARD.md (or --output=<path>).\n"
+        "\n"
+        "Status mapping:\n"
+        "  CompatSummary status=\"pass\", stage=\"execute\" -> gameplay\n"
+        "  CompatSummary status=\"pass\", stage=\"load\"    -> boot\n"
+        "  CompatSummary status=\"fail\" or \"error\"         -> crash\n"
+        "  Log patterns (HANG, TIMEOUT, hung)               -> hang\n");
+}
+
+} // anonymous namespace
 
 int main(int argc, char* argv[]) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+
     if (argc < 2) {
-        std::fprintf(stderr,
-            "Usage:\n"
-            "  compat_dashboard <bundle_dir> [--output=<path>]\n"
-            "  compat_dashboard --scan <replay_manifest> [--output=<path>]\n"
-            "\n"
-            "Scans <bundle_dir> (default: pcsx5_crash/) for bot-run crash\n"
-            "bundles and their compat_report.json files, then generates a\n"
-            "markdown compatibility dashboard.\n");
+        PrintUsage();
         return 2;
     }
 
-    std::string bundle_dir = argv[1];
     std::string output_path = "COMPAT_DASHBOARD.md";
+    std::vector<std::string> report_files;  // individual --report files
+    std::string bundle_dir;                 // --dir target
 
-    // Skip --scan flag (not yet implemented - scan is the default mode).
-    if (bundle_dir == "--scan" || bundle_dir == "-s") {
-        if (argc < 3) {
-            std::fprintf(stderr, "Usage: --scan <replay_manifest_or_bundle_dir>\n");
-            return 2;
-        }
-        bundle_dir = argv[2];
-    }
-
-    // Check for --output flag (any position).
-    for (int i = 2; i < argc; ++i) {
-        if (std::strncmp(argv[i], "--output=", 9) == 0) {
+    // Parse arguments.
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--dir") == 0 && i + 1 < argc) {
+            bundle_dir = argv[++i];
+        } else if (std::strcmp(argv[i], "--report") == 0 && i + 1 < argc) {
+            report_files.push_back(argv[++i]);
+        } else if (std::strncmp(argv[i], "--output=", 9) == 0) {
             output_path = argv[i] + 9;
+        } else if (std::strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
+            output_path = argv[++i];
+        } else if (argv[i][0] == '-') {
+            // Unknown flag but might be positional if it starts with -
+            std::fprintf(stderr, "WARNING: ignoring unknown flag: %s\n", argv[i]);
+        } else {
+            // Positional argument: treat as bundle_dir shorthand.
+            if (bundle_dir.empty()) {
+                bundle_dir = argv[i];
+            } else {
+                std::fprintf(stderr,
+                    "WARNING: unexpected positional arg: %s\n", argv[i]);
+            }
         }
     }
 
-    // Determine the directory to scan.
-    fs::path scan_path = bundle_dir;
-    if (!fs::exists(scan_path)) {
-        scan_path = "pcsx5_crash";
+    // Collect records from all sources.
+    std::vector<RunRecord> records;
+
+    // 1. Scan bundle directory.
+    if (!bundle_dir.empty()) {
+        fs::path scan_path = bundle_dir;
         if (!fs::exists(scan_path)) {
-            std::fprintf(stderr, "ERROR: bundle directory not found: '%s' or 'pcsx5_crash/'\n",
-                         bundle_dir.c_str());
-            return 2;
+            // Fall back to pcsx5_crash/ as the default scanning root.
+            scan_path = "pcsx5_crash";
+            if (fs::exists(scan_path)) {
+                std::fprintf(stdout,
+                    "Note: '%s' not found, scanning 'pcsx5_crash/' instead.\n",
+                    bundle_dir.c_str());
+            }
+        }
+        if (fs::exists(scan_path)) {
+            auto dir_records = ScanBundleDir(scan_path);
+            records.insert(records.end(),
+                           std::make_move_iterator(dir_records.begin()),
+                           std::make_move_iterator(dir_records.end()));
+            std::fprintf(stdout, "Scanned %s: %zu run(s) found\n",
+                         scan_path.string().c_str(), dir_records.size());
+        } else {
+            std::fprintf(stderr,
+                "WARNING: bundle directory not found: '%s'\n",
+                bundle_dir.c_str());
         }
     }
 
-    std::vector<RunRecord> records = ScanBundleDir(scan_path);
+    // 2. Load individual --report files.
+    for (const auto& rp : report_files) {
+        RunRecord rec = ReadReportFile(rp);
+        if (rec.title_id.empty() && rec.stage.empty()) {
+            std::fprintf(stderr, "WARNING: could not parse report: %s\n",
+                         rp.c_str());
+            continue;
+        }
+        // Extract date from directory name if the report lacks timestamp.
+        if (rec.date_str.empty()) {
+            fs::path p(rp);
+            std::string parent = p.parent_path().filename().string();
+            if (parent.size() >= 15 &&
+                parent[0] >= '0' && parent[0] <= '9') {
+                rec.date_str = parent.substr(0, 4) + "-" +
+                               parent.substr(4, 2) + "-" +
+                               parent.substr(6, 2) + " " +
+                               parent.substr(9, 2) + ":" +
+                               parent.substr(11, 2) + ":" +
+                               parent.substr(13, 2);
+            }
+        }
+        records.push_back(std::move(rec));
+    }
 
     if (records.empty()) {
-        std::fprintf(stdout, "No crash bundle reports found in '%s'.\n",
-                     scan_path.string().c_str());
+        std::fprintf(stdout, "No reports found.\n");
+
         // Create empty dashboard.
-        std::string dashboard = "# Compatibility Report Dashboard\n\n"
-                                "No runs recorded yet.\n";
+        std::time_t now = std::time(nullptr);
+        char time_buf[64];
+        std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC",
+                      std::gmtime(&now));
+
+        std::string empty_dashboard =
+            "# Compatibility Report Dashboard\n\n"
+            "Generated: " + std::string(time_buf) + "\n\n"
+            "No runs recorded yet.\n";
+
         std::ofstream out(output_path);
         if (out) {
-            out << dashboard;
+            out << empty_dashboard;
             out.close();
-            std::fprintf(stdout, "Dashboard written: %s\n", output_path.c_str());
+            std::fprintf(stdout, "Dashboard written: %s (empty)\n",
+                         output_path.c_str());
         }
         return 0;
     }
 
-    std::string dashboard = GenerateDashboard(records, scan_path.string());
+    // Build source description for the dashboard header.
+    std::string source_desc;
+    if (!bundle_dir.empty()) source_desc = "dir: " + bundle_dir;
+    if (!report_files.empty()) {
+        if (!source_desc.empty()) source_desc += " + ";
+        source_desc += std::to_string(report_files.size()) +
+                       " report file(s)";
+    }
+
+    const std::string dashboard = BuildDashboard(records, source_desc);
 
     std::ofstream out(output_path);
     if (!out) {
-        std::fprintf(stderr, "ERROR: cannot write output: %s\n", output_path.c_str());
+        std::fprintf(stderr, "ERROR: cannot write output: %s\n",
+                     output_path.c_str());
         return 2;
     }
     out << dashboard;

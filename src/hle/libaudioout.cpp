@@ -857,10 +857,11 @@ void RegisterLibAudioOut() {
         } else if (port->wasapi.client) {
             SubmitToWasapi(*port, guest_ptr);
         } else {
-            // waveOut backend: need a persistent copy (async WOM_DONE).
-            std::vector<u8> wave_buf(byte_len);
-            std::memcpy(wave_buf.data(), guest_ptr, byte_len);
-            SubmitToBackend(*port, wave_buf.data());
+            // I5.3: Zero-copy — pass guest_ptr directly to SubmitToBackend.
+            // ConvertToStereoS16 reads from guest memory and writes into the
+            // OutBuffer (which persists until WOM_DONE), so no intermediate
+            // heap copy is needed.
+            SubmitToBackend(*port, guest_ptr);
         }
         return 0;
     };

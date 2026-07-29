@@ -1699,6 +1699,7 @@ add_executable(dump_imports
     )
     target_include_directories(golden_capture PRIVATE third_party)
     target_compile_options(golden_capture PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_compile_definitions(golden_capture PRIVATE _CRT_SECURE_NO_WARNINGS)
 
     # ------------------------------------------------------------------------
     # compat_dashboard — I2.4: Aggregates bot-run compat reports into markdown.
@@ -1707,23 +1708,46 @@ add_executable(dump_imports
         tools/compat_dashboard.cpp
     )
     target_compile_options(compat_dashboard PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_compile_definitions(compat_dashboard PRIVATE _CRT_SECURE_NO_WARNINGS)
 
     # ------------------------------------------------------------------------
-    # headless_bot_test — I2.2: Regression test that runs the CLI with
-    # --headless and --play-input, then checks for crash signatures.
-    # Uses the test replay in tests/golden/ if it exists.
+    # replay_tests - I2.2: C++ integration test that generates a basic
+    # replay JSON in a temp directory and runs pcsx5_cli with --headless
+    # --play-input on a known-good test ELF, verifying the emulator
+    # completes without crashing.  Skips gracefully when the test ELF is
+    # absent (clang not available on the build machine).
     # ------------------------------------------------------------------------
-    if(EXISTS ${CMAKE_SOURCE_DIR}/tests/golden/bot_replay.json)
+    add_executable(replay_tests
+        tests/replay_tests.cpp
+    )
+    target_compile_options(replay_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+
+    if(TARGET guest_test_elfs)
         add_test(NAME headless_bot_test
-            COMMAND ${CMAKE_SOURCE_DIR}/tools/run_bot_test.sh
-                    --play-input=${CMAKE_SOURCE_DIR}/tests/golden/bot_replay.json
-                    ${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
+            COMMAND replay_tests
+                    --cli=$<TARGET_FILE:pcsx5_cli>
+                    --elf=${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
         )
         set_tests_properties(headless_bot_test PROPERTIES
-            WILL_FAIL FALSE
-            TIMEOUT 120
+            TIMEOUT 60
             DEPENDS guest_test_elfs
         )
     endif()
+
+    # ------------------------------------------------------------------------
+    # regression - I2.2: Runs all bot replay inputs found in replays/
+    # through the regression suite script and tracks results in
+    # tests/regression_manifest.json.
+    # ------------------------------------------------------------------------
+    add_test(NAME regression
+        COMMAND ${CMAKE_SOURCE_DIR}/tools/run_regression_suite.sh
+                --replay-dir=${CMAKE_SOURCE_DIR}/replays
+                --games-dir=${CMAKE_SOURCE_DIR}/Games
+                --manifest=${CMAKE_SOURCE_DIR}/tests/regression_manifest.json
+                --cli=$<TARGET_FILE:pcsx5_cli>
+    )
+    set_tests_properties(regression PROPERTIES
+        TIMEOUT 600
+    )
 
 endif()

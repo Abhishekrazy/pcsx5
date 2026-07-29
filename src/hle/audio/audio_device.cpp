@@ -163,6 +163,15 @@ void PacingAudioDevice::Output(const u8* /*data*/, uint32_t frame_count) {
                           frame_duration_us;
 }
 
+// ---------------------------------------------------------------------------
+// OutputDirect — the Pacing device doesn't need the data; just pace.
+// ---------------------------------------------------------------------------
+uint32_t PacingAudioDevice::OutputDirect(u64 /*guest_addr*/, uint32_t frame_count) {
+    if (!m_open || frame_count == 0) return 0;
+    Output(nullptr, frame_count);
+    return frame_count;
+}
+
 void PacingAudioDevice::Reset() {
     m_next_timestamp_us = 0;
 }

@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <dbghelp.h>
 #include <psapi.h>
+#include <tlhelp32.h>
 
 #include <algorithm>
 #include <atomic>
@@ -49,6 +50,13 @@ BootTimelineCallback  g_boot_timeline_callback{nullptr};
 ConfigSnapshotCallback g_config_snapshot_callback{nullptr};
 std::atomic<uint64_t>  g_last_flip_frame{0};
 std::atomic<uint64_t>  g_last_flip_timestamp_us{0};
+
+// Microseconds since process start (steady clock).
+uint64_t NowUs() {
+    static const auto start = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count();
+}
 
 // Visual C++ runtime error handler (I6.4).
 void __cdecl InvalidParameterHandler(const wchar_t* expr, const wchar_t* func,
@@ -164,101 +172,10 @@ std::vector<std::string> CaptureThreadSnapshot() {
     return out;
 }
 
-// I6.4: Write a hang snapshot bundle.
-std::string WriteHangSnapshotBundle(const std::string& label) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    std::string dir;
-    if (g_bundle_dir.empty()) {
-        dir = "pcsx5_hang";
-    } else {
-        dir = g_bundle_dir + "/hang_snapshots";
-    }
-    std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    if (ec) return {};
-
-    std::string timestamp = NowIso8601();
-    for (auto& c : timestamp) if (c == ':' || c == '.') c = '-';
-
-    std::wstring wdir = Wide(dir + "/" + label + "_" + timestamp);
-    CreateDirectoryW(wdir.c_str(), nullptr);
-
-    // Write hang manifest.
-    WriteHangManifest(wdir, label);
-
-    // Write thread snapshot.
-    WriteHangThreadList(wdir);
-
-    // Write recent logs.
-    WriteRecentLogs(wdir);
-
-    // I2.3: Write boot timeline via callback.
-    if (g_boot_timeline_callback) {
-        std::string timeline = g_boot_timeline_callback();
-        WriteTextFile(wdir + L"\\boot_timeline.json",
-                      "{\n  \"boot_timeline\": " + timeline + "\n}\n");
-    }
-
-    // I2.3: Write config snapshot via callback.
-    if (g_config_snapshot_callback) {
-        std::string cfg = g_config_snapshot_callback();
-        WriteTextFile(wdir + L"\\config_snapshot.json", cfg);
-    }
-
-    // I6.4: Invoke hang callback for last-frame capture if registered.
-    if (g_hang_callback) {
-        g_hang_callback(wdir, g_hang_callback_user);
-    }
-
-    LOG_INFO(Diagnostics, "Hang snapshot written to %ls", wdir.c_str());
-    return WideToUtf8(wdir);
-}
-
 // ---------------------------------------------------------------------------
-// Unhandled-exception filter (runs on the faulting thread).
+// Internal helpers (namespace-Diagnostics scope so all later code can use them)
 // ---------------------------------------------------------------------------
-namespace {
 
-LONG WINAPI CrashFilter(EXCEPTION_POINTERS* ep) {
-    if (!ep || !ep->ExceptionRecord || !ep->ContextRecord) {
-        return EXCEPTION_EXECUTE_HANDLER;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        g_crash.timestamp_us    = ProcessUptimeMicros();
-        g_crash.thread_id       = GetCurrentThreadId();
-        g_crash.exc_code        = static_cast<u32>(ep->ExceptionRecord->ExceptionCode);
-        g_crash.fault_address   = ep->ExceptionRecord->ExceptionInformation[1];
-        g_crash.rip             = ep->ContextRecord->Rip;
-        g_crash.rsp             = ep->ContextRecord->Rsp;
-        g_crash.rbp             = ep->ContextRecord->Rbp;
-        g_crash.rax             = ep->ContextRecord->Rax;
-        g_crash.rbx             = ep->ContextRecord->Rbx;
-        g_crash.rcx             = ep->ContextRecord->Rcx;
-        g_crash.rdx             = ep->ContextRecord->Rdx;
-        g_crash.rsi             = ep->ContextRecord->Rsi;
-        g_crash.rdi             = ep->ContextRecord->Rdi;
-        g_crash.r8              = ep->ContextRecord->R8;
-        g_crash.r9              = ep->ContextRecord->R9;
-        g_crash.r10             = ep->ContextRecord->R10;
-        g_crash.r11             = ep->ContextRecord->R11;
-        g_crash.r12             = ep->ContextRecord->R12;
-        g_crash.r13             = ep->ContextRecord->R13;
-        g_crash.r14             = ep->ContextRecord->R14;
-        g_crash.r15             = ep->ContextRecord->R15;
-        g_crash_present.store(true, std::memory_order_release);
-    }
-
-    // Best-effort write the bundle.  Win32 file I/O only (heap may be corrupt).
-    WriteCrashReportBundle(false);
-    return EXCEPTION_EXECUTE_HANDLER;
-}
-
-// ---------------------------------------------------------------------------
-// File-writing helpers (Win32 API).
-// ---------------------------------------------------------------------------
 bool WriteAll(HANDLE h, const void* buf, DWORD n) {
     const u8* p = static_cast<const u8*>(buf);
     while (n > 0) {
@@ -296,7 +213,7 @@ std::string WideToUtf8(const std::wstring& ws) {
     return out;
 }
 
-std::string Hex(u64 v, int width = 0) {
+std::string Hex(u64 v, int width) {
     std::ostringstream os;
     os << "0x" << std::uppercase << std::hex << std::setw(width) << std::setfill('0') << v;
     return os.str();
@@ -339,8 +256,9 @@ std::string JsonEscape(const std::string& s) {
 }
 
 // ---------------------------------------------------------------------------
-// Bundle writers.  Each populates one artifact file.
+// Bundle writers (manifest / thread / log helpers).
 // ---------------------------------------------------------------------------
+
 bool WriteHangManifest(const std::wstring& dir, const std::string& label) {
     std::ostringstream os;
     os << "{\n"
@@ -370,6 +288,24 @@ bool WriteHangThreadList(const std::wstring& dir) {
     }
     return WriteTextFile(dir + L"\\threads.txt", os.str());
 }
+
+bool WriteRecentLogs(const std::wstring& dir) {
+    auto entries = GetRecentLogEntries(1024);
+    std::ostringstream os;
+    for (const auto& e : entries) {
+        os << "[" << e.timestamp_us << "]["
+           << LogCategoryName(e.category) << "]["
+           << LogLevelName(e.level) << "] "
+           << e.message << "\n";
+    }
+    return WriteTextFile(dir + L"\\recent.log", os.str());
+}
+
+// ---------------------------------------------------------------------------
+// Crash-only bundle writers (anonymous namespace, only used by CrashFilter and
+// the crash-report-bundle writer).
+// ---------------------------------------------------------------------------
+namespace {
 
 bool WriteCrashManifest(const std::wstring& dir) {
     std::ostringstream os;
@@ -415,18 +351,6 @@ bool WriteRegisters(const std::wstring& dir) {
        << "  \"rip\": " << Hex(g_crash.rip) << "\n"
        << "}\n";
     return WriteTextFile(dir + L"\\registers.json", os.str());
-}
-
-bool WriteRecentLogs(const std::wstring& dir) {
-    auto entries = GetRecentLogEntries(1024);
-    std::ostringstream os;
-    for (const auto& e : entries) {
-        os << "[" << e.timestamp_us << "]["
-           << LogCategoryName(e.category) << "]["
-           << LogLevelName(e.level) << "] "
-           << e.message << "\n";
-    }
-    return WriteTextFile(dir + L"\\recent.log", os.str());
 }
 
 bool WriteImportTrace(const std::wstring& dir) {
@@ -505,9 +429,8 @@ bool WriteMiniDump(const std::wstring& dir) {
     return ok != FALSE;
 }
 
-} // namespace
-
-std::string WriteCrashReportBundle(bool force) {
+// Internal implementation — called by both CrashFilter and WriteCrashReportBundle.
+std::string WriteCrashReportBundleImpl(bool force) {
     if (!g_crash_present.load(std::memory_order_acquire) && !force) {
         return {};
     }
@@ -543,6 +466,103 @@ std::string WriteCrashReportBundle(bool force) {
     return g_bundle_dir;
 }
 
+// ---------------------------------------------------------------------------
+// Unhandled-exception filter (runs on the faulting thread).
+// ---------------------------------------------------------------------------
+LONG WINAPI CrashFilter(EXCEPTION_POINTERS* ep) {
+    if (!ep || !ep->ExceptionRecord || !ep->ContextRecord) {
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_crash.timestamp_us    = ProcessUptimeMicros();
+        g_crash.thread_id       = GetCurrentThreadId();
+        g_crash.exc_code        = static_cast<u32>(ep->ExceptionRecord->ExceptionCode);
+        g_crash.fault_address   = ep->ExceptionRecord->ExceptionInformation[1];
+        g_crash.rip             = ep->ContextRecord->Rip;
+        g_crash.rsp             = ep->ContextRecord->Rsp;
+        g_crash.rbp             = ep->ContextRecord->Rbp;
+        g_crash.rax             = ep->ContextRecord->Rax;
+        g_crash.rbx             = ep->ContextRecord->Rbx;
+        g_crash.rcx             = ep->ContextRecord->Rcx;
+        g_crash.rdx             = ep->ContextRecord->Rdx;
+        g_crash.rsi             = ep->ContextRecord->Rsi;
+        g_crash.rdi             = ep->ContextRecord->Rdi;
+        g_crash.r8              = ep->ContextRecord->R8;
+        g_crash.r9              = ep->ContextRecord->R9;
+        g_crash.r10             = ep->ContextRecord->R10;
+        g_crash.r11             = ep->ContextRecord->R11;
+        g_crash.r12             = ep->ContextRecord->R12;
+        g_crash.r13             = ep->ContextRecord->R13;
+        g_crash.r14             = ep->ContextRecord->R14;
+        g_crash.r15             = ep->ContextRecord->R15;
+        g_crash_present.store(true, std::memory_order_release);
+    }
+
+    // Best-effort write the bundle.  Win32 file I/O only (heap may be corrupt).
+    WriteCrashReportBundleImpl(false);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+} // namespace
+
+// I6.4: Write a hang snapshot bundle.
+std::string WriteHangSnapshotBundle(const std::string& label) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    std::string dir;
+    if (g_bundle_dir.empty()) {
+        dir = "pcsx5_hang";
+    } else {
+        dir = g_bundle_dir + "/hang_snapshots";
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) return {};
+
+    std::string timestamp = NowIso8601();
+    for (auto& c : timestamp) if (c == ':' || c == '.') c = '-';
+
+    std::wstring wdir = Wide(dir + "/" + label + "_" + timestamp);
+    CreateDirectoryW(wdir.c_str(), nullptr);
+
+    // Write hang manifest.
+    WriteHangManifest(wdir, label);
+
+    // Write thread snapshot.
+    WriteHangThreadList(wdir);
+
+    // Write recent logs.
+    WriteRecentLogs(wdir);
+
+    // I2.3: Write boot timeline via callback.
+    if (g_boot_timeline_callback) {
+        std::string timeline = g_boot_timeline_callback();
+        WriteTextFile(wdir + L"\\boot_timeline.json",
+                      "{\n  \"boot_timeline\": " + timeline + "\n}\n");
+    }
+
+    // I2.3: Write config snapshot via callback.
+    if (g_config_snapshot_callback) {
+        std::string cfg = g_config_snapshot_callback();
+        WriteTextFile(wdir + L"\\config_snapshot.json", cfg);
+    }
+
+    // I6.4: Invoke hang callback for last-frame capture if registered.
+    if (g_hang_callback) {
+        g_hang_callback(wdir, g_hang_callback_user);
+    }
+
+    LOG_INFO(General, "Hang snapshot written to %ls", wdir.c_str());
+    return WideToUtf8(wdir);
+}
+
+// Write the crash report bundle to the configured directory.
+std::string WriteCrashReportBundle(bool force) {
+    return WriteCrashReportBundleImpl(force);
+}
+
 // I2.3: Write a diagnostic snapshot (not crash-triggered).
 std::string WriteDiagnosticSnapshot(const std::string& label) {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -575,7 +595,7 @@ std::string WriteDiagnosticSnapshot(const std::string& label) {
         WriteTextFile(wdir + L"\\config_snapshot.json", cfg);
     }
 
-    LOG_INFO(Diagnostics, "Diagnostic snapshot written: %s", subdir.c_str());
+    LOG_INFO(General, "Diagnostic snapshot written: %s", subdir.c_str());
     return subdir;
 }
 
