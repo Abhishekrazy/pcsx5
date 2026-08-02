@@ -760,8 +760,7 @@ namespace HLE {
         if (!dest || !src) return false;
         // Primary: page-table query (safe on any stack).
         const guest_addr_t s = reinterpret_cast<guest_addr_t>(src);
-        const guest_addr_t d = reinterpret_cast<guest_addr_t>(dest);
-        if (Memory::IsReadable(s, size) && Memory::IsWritable(d, size)) {
+        if (Memory::IsReadable(s, size)) {
             std::memcpy(dest, src, size);
             return true;
         }
