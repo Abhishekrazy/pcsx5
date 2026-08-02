@@ -517,8 +517,7 @@ bool Pm4CaptureCopy(void* dst, const void* src, size_t n) {
     if (n == 0) return true;
     if (dst && src) {
         const guest_addr_t s = reinterpret_cast<guest_addr_t>(src);
-        const guest_addr_t d = reinterpret_cast<guest_addr_t>(dst);
-        if (Memory::IsReadable(s, n) && Memory::IsWritable(d, n)) {
+        if (Memory::IsReadable(s, n)) {
             std::memcpy(dst, src, n);
             return true;
         }

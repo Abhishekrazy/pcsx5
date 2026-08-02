@@ -197,7 +197,7 @@ guest_addr_t g_cur_eh_base = 0;
 // legal (no C++ objects with destructors in scope).  Return false on fault.
 bool SafeReadMem(u64 addr, void* dst, size_t n) {
     if (n == 0) return true;
-    if (Memory::IsReadable(addr, n) && Memory::IsWritable(reinterpret_cast<guest_addr_t>(dst), n)) {
+    if (Memory::IsReadable(addr, n)) {
         std::memcpy(dst, reinterpret_cast<const void*>(addr), n);
         return true;
     }

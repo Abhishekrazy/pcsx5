@@ -1739,13 +1739,27 @@ add_executable(dump_imports
     # through the regression suite script and tracks results in
     # tests/regression_manifest.json.
     # ------------------------------------------------------------------------
-    add_test(NAME regression
-        COMMAND ${CMAKE_SOURCE_DIR}/tools/run_regression_suite.sh
-                --replay-dir=${CMAKE_SOURCE_DIR}/replays
-                --games-dir=${CMAKE_SOURCE_DIR}/Games
-                --manifest=${CMAKE_SOURCE_DIR}/tests/regression_manifest.json
-                --cli=$<TARGET_FILE:pcsx5_cli>
-    )
+    if(WIN32)
+        find_program(BASH_PROGRAM NAMES bash git-bash PATHS "C:/Program Files/Git/bin" "C:/Program Files/Git/usr/bin")
+        if(NOT BASH_PROGRAM)
+            set(BASH_PROGRAM "bash")
+        endif()
+        add_test(NAME regression
+            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tools/run_regression_suite.sh
+                    --replay-dir=${CMAKE_SOURCE_DIR}/replays
+                    --games-dir=${CMAKE_SOURCE_DIR}/Games
+                    --manifest=${CMAKE_SOURCE_DIR}/tests/regression_manifest.json
+                    --cli=$<TARGET_FILE:pcsx5_cli>
+        )
+    else()
+        add_test(NAME regression
+            COMMAND ${CMAKE_SOURCE_DIR}/tools/run_regression_suite.sh
+                    --replay-dir=${CMAKE_SOURCE_DIR}/replays
+                    --games-dir=${CMAKE_SOURCE_DIR}/Games
+                    --manifest=${CMAKE_SOURCE_DIR}/tests/regression_manifest.json
+                    --cli=$<TARGET_FILE:pcsx5_cli>
+        )
+    endif()
     set_tests_properties(regression PROPERTIES
         TIMEOUT 600
     )

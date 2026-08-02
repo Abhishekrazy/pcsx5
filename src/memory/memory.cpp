@@ -152,12 +152,15 @@ DWORD TranslateProtection(u32 protection) {
 }
 
 u32 TranslateFromWin32(DWORD win_prot) {
-    switch (win_prot) {
+    DWORD base_prot = win_prot & 0xFF;
+    switch (base_prot) {
         case PAGE_EXECUTE_READWRITE: return PROT_READ | PROT_WRITE | PROT_EXEC;
         case PAGE_EXECUTE_READ:      return PROT_READ | PROT_EXEC;
         case PAGE_EXECUTE:           return PROT_EXEC;
+        case PAGE_EXECUTE_WRITECOPY: return PROT_READ | PROT_WRITE | PROT_EXEC;
         case PAGE_READWRITE:         return PROT_READ | PROT_WRITE;
         case PAGE_READONLY:          return PROT_READ;
+        case PAGE_WRITECOPY:         return PROT_READ | PROT_WRITE;
         default:                     return PROT_NONE;
     }
 }
