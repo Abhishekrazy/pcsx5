@@ -170,6 +170,8 @@ namespace Pcsx5Ui
         private string _lastDedupLine = null; // dedup: last line text
         private int _lastDedupCount = 0; // dedup: repeat count
         private System.Windows.Media.Color _lastDedupColor; // dedup: line color
+        private static readonly System.Text.RegularExpressions.Regex DedupCountSuffix =
+            new(@"\s\(x(\d+)\)\s*$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
         // Embedded emulator window state (game renders inside the launcher window)
         private EmulatorWindowHost _emuHost = null;
@@ -1946,6 +1948,22 @@ namespace Pcsx5Ui
             _consoleLineQueue.Enqueue(new ConsoleLine { Text = message, Level = level });
         }
 
+        // Split "(xN)" suffix from a C++-deduped line.  Returns the base text
+        // and count; lines without the suffix get baseText=original, count=1.
+        private static bool TrySplitCount(string text, out string baseText, out int count)
+        {
+            var m = DedupCountSuffix.Match(text);
+            if (m.Success)
+            {
+                baseText = text.Substring(0, m.Index);
+                count = int.Parse(m.Groups[1].Value);
+                return true;
+            }
+            baseText = text;
+            count = 1;
+            return false;
+        }
+
         private void DrainConsoleQueue()
         {
             var doc = ConsoleOutputBox.Document;
@@ -1973,13 +1991,17 @@ namespace Pcsx5Ui
 
             while (drained < maxLinesPerDrain && _consoleLineQueue.TryDequeue(out var cl))
             {
-                string lineText = cl.Text;
                 var color = ConsoleLevelToColor(cl.Level);
 
-                // Dedup: if same as previous line, just increment count.
-                if (_lastDedupLine != null && _lastDedupLine == lineText && _lastDedupColor == color)
+                // Split "(xN)" suffix if the C++ core already deduped this line.
+                // WPF then dedups on the base text and SUMS counts so merging works
+                // correctly when the same base line arrives multiple times.
+                TrySplitCount(cl.Text, out string lineBase, out int lineCount);
+
+                // Dedup: if same base text as previous line, sum counts.
+                if (_lastDedupLine != null && _lastDedupLine == lineBase && _lastDedupColor == color)
                 {
-                    _lastDedupCount++;
+                    _lastDedupCount += lineCount;
                     continue;
                 }
 
@@ -2000,10 +2022,10 @@ namespace Pcsx5Ui
                     drained++;
                 }
 
-                // Start tracking new line.
-                _lastDedupLine = lineText;
+                // Start tracking new line (store base text, not the raw text).
+                _lastDedupLine = lineBase;
                 _lastDedupColor = color;
-                _lastDedupCount = 1;
+                _lastDedupCount = lineCount;
             }
 
             // Cap at MaxConsoleLines.

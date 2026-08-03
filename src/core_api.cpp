@@ -201,6 +201,8 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     for (int i = 0; i < 6; ++i) {
         LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
     }
+    LogConfig::SetDedup(cfg.logging.dedup);
+    LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);
     if (!cfg.crash.bundle_dir.empty()) g_state.crash_dir = cfg.crash.bundle_dir;
     if (g_state.crash_dir.empty())     g_state.crash_dir = "pcsx5_crash";
     g_state.strict_imports = g_state.strict_imports || cfg.hle.strict_imports;

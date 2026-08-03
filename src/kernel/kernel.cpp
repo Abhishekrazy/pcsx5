@@ -1,10 +1,12 @@
 #include "kernel.h"
 #include "fd_table.h"
+#include "instr_decode.h"
 #include "memory.h"
 #include "syscalls.h"
 #include "thread.h"
 #include "tls_patch.h"
 #include "../cpu/amd_compat.h"
+#include "../diagnostics/diagnostics.h"
 #include "../memory/memory.h"
 #include "../hle/hle.h"
 #include "../loader/module_graph.h"
@@ -18,6 +20,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <thread>
 #include <unordered_map>
 #include <memory>
@@ -90,6 +93,11 @@ namespace Kernel {
     static GuestTlsContext g_guest_tls;
     static std::vector<Loader::MappedSegment> g_guest_segments;
     static Loader::ModuleResolver g_module_resolver;
+
+    // Retained copy of the main module for crash-dump resolution.  Populated
+    // at boot (single-threaded); read lock-free from the VEH crash path.
+    static Loader::LoadedModule g_main_module_copy;
+    static bool                 g_main_module_retained = false;
 
     // ------------------------------------------------------------------
     // Heartbeat watchdog (H1): pins the process-alive timestamp in the log
@@ -937,6 +945,10 @@ namespace Kernel {
         LOG_INFO(Kernel, "Starting execution of %s at Entry Point: 0x%llx",
                  main_module.name.c_str(), main_module.entry_point);
 
+        // Retain a copy for crash-dump guest-address resolution.
+        g_main_module_copy    = main_module;
+        g_main_module_retained = true;
+
         // Dump first 32 bytes at the entry point for boot diagnostics.
         {
             u8 entry_code[32] = {};
@@ -1192,14 +1204,169 @@ namespace Kernel {
 //          the guest; anything unrecognized falls through to the crash path.
 //   EXCEPTION_SINGLE_STEP / everything else -> crash report + terminate.
 //
-// Policy for future work: if a game is found that depends on guest signal
-// delivery, the translation point is here — snapshot the faulting CONTEXT,
-// enqueue a guest sigframe on the faulting thread's guest stack, redirect RIP
-// to the registered handler, and translate codes: AV->SIGSEGV (read=SEGV_MAPERR/
-// write=SEGV_ACCERR), INT 3 (non-syscall-gate)->SIGTRAP, illegal opcode
-// (0xC000001D)->SIGILL, FP exceptions (0xC000008E/8F/90..)->SIGFPE.  Until
-// then, sys_sigaction/sys_sigprocmask (416/340) succeed silently so games
 // that merely *install* handlers continue to run.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Hardware-level crash dump helpers
+// ---------------------------------------------------------------------------
+
+enum class FaultClass { Null, GuestFrameBuffer, GuestCode, HleThunk, HostDll, HostOther };
+
+static const char* FaultClassName(FaultClass c) {
+    switch (c) {
+        case FaultClass::Null:             return "NULL";
+        case FaultClass::GuestFrameBuffer: return "Guest framebuffer";
+        case FaultClass::GuestCode:        return "Guest code/data segment";
+        case FaultClass::HleThunk:         return "HLE thunk page (TLS stub)";
+        case FaultClass::HostDll:          return "Host DLL";
+        case FaultClass::HostOther:        return "Host (other)";
+    }
+    return "?";
+}
+
+static FaultClass ClassifyFault(u64 addr) {
+    if (addr == 0)                                                     return FaultClass::Null;
+    if (addr >= 0x200000000ULL && addr < 0x202000000ULL)              return FaultClass::GuestFrameBuffer;
+    if (addr >= 0x800000000ULL && addr < 0x900000000ULL) {
+        if ((addr & ~0xFFFULL) == 0x840000000ULL)                     return FaultClass::HleThunk;
+        return FaultClass::GuestCode;
+    }
+    if (addr >= 0x7FF000000000ULL && addr < 0x800000000000ULL)        return FaultClass::HostDll;
+    return FaultClass::HostOther;
+}
+
+static void DumpRegisterSection(FILE* cf, const CONTEXT* c) {
+    fprintf(cf, "Registers:\n");
+    fprintf(cf, "  RAX: 0x%016llX  RBX: 0x%016llX  RCX: 0x%016llX  RDX: 0x%016llX\n",
+            (unsigned long long)c->Rax, (unsigned long long)c->Rbx,
+            (unsigned long long)c->Rcx, (unsigned long long)c->Rdx);
+    fprintf(cf, "  RSI: 0x%016llX  RDI: 0x%016llX  RBP: 0x%016llX  RSP: 0x%016llX\n",
+            (unsigned long long)c->Rsi, (unsigned long long)c->Rdi,
+            (unsigned long long)c->Rbp, (unsigned long long)c->Rsp);
+    fprintf(cf, "  R8:  0x%016llX  R9:  0x%016llX  R10: 0x%016llX  R11: 0x%016llX\n",
+            (unsigned long long)c->R8, (unsigned long long)c->R9,
+            (unsigned long long)c->R10, (unsigned long long)c->R11);
+    fprintf(cf, "  R12: 0x%016llX  R13: 0x%016llX  R14: 0x%016llX  R15: 0x%016llX\n",
+            (unsigned long long)c->R12, (unsigned long long)c->R13,
+            (unsigned long long)c->R14, (unsigned long long)c->R15);
+    fprintf(cf, "  RIP: 0x%016llX  EFLAGS: 0x%08lX  MXCSR: 0x%08lX  CS:%04X\n",
+            (unsigned long long)c->Rip, c->EFlags, c->MxCsr, c->SegCs);
+    for (int i = 0; i < 16; ++i) {
+        const M128A& x = (&c->Xmm0)[i];
+        fprintf(cf, "  XMM%2d: 0x%016llX%016llX\n", i, (unsigned long long)x.High, (unsigned long long)x.Low);
+    }
+}
+
+static void FindNearestSymbol(const Loader::LoadedModule& m, u64 rva, std::string& name, u64& off) {
+    name.clear(); off = 0; u64 best = ~0ull;
+    for (const auto& sym : m.symbols) {
+        if (sym.st_shndx == 0 || sym.st_value == 0) continue;
+        if (sym.st_name < m.string_table.size() && sym.st_value <= rva) {
+            u64 gap = rva - sym.st_value;
+            if (gap < best) { best = gap; name = &m.string_table[sym.st_name]; off = gap; }
+        }
+    }
+}
+struct GuestModInfo { std::string name; u64 base=0, rva=0, sym_off=0; std::string sym; bool ok=false; };
+static bool ResolveGuestAddress(u64 addr, GuestModInfo& out) {
+    if (g_main_module_retained && addr >= g_main_module_copy.base_address &&
+        addr < g_main_module_copy.base_address + g_main_module_copy.image_size) {
+        out.name = g_main_module_copy.name; out.base = g_main_module_copy.base_address;
+        out.rva = addr - g_main_module_copy.base_address; out.ok = true;
+        FindNearestSymbol(g_main_module_copy, out.rva, out.sym, out.sym_off);
+        return true;
+    }
+    for (const auto& seg : g_guest_segments) {
+        if (addr >= seg.address && addr < seg.address + seg.size) {
+            out.name = "guest-segment"; out.base = seg.address;
+            out.rva = addr - seg.address; out.ok = true;
+            return true;
+        }
+    }
+    return false;
+}
+static void WriteCrashDump(const EXCEPTION_RECORD* rec, const CONTEXT* ctx,
+                           const char* mod_name, u64 mod_off,
+                           ULONG_PTR /*stk_low*/, ULONG_PTR /*stk_high*/) {
+    // Note: separate crash_report.txt file write removed — the emergency
+    // crash_log.txt fopen below now carries the full enhanced dump.
+
+    FILE* cf = nullptr;
+    fopen_s(&cf, "crash_log.txt", "w");
+    if (!cf) return;
+
+    const u64 etype = (rec->NumberParameters >= 1) ? rec->ExceptionInformation[0] : 99;
+    const u64 faddr = (rec->NumberParameters >= 2) ? rec->ExceptionInformation[1] : 0;
+    const char* ename = (etype==0)?"Read":(etype==1)?"Write":(etype==8)?"Execute":"?";
+
+    fprintf(cf, "=== PCSX5 Hardware Crash Dump ===\n\n");
+    fprintf(cf, "Exception: 0x%llX (%s at 0x%llX)\n", (unsigned long long)rec->ExceptionCode, ename, (unsigned long long)faddr);
+    fprintf(cf, "RIP: 0x%llX  RSP: 0x%llX  Thread: %lu\n",
+            (unsigned long long)ctx->Rip, (unsigned long long)ctx->Rsp, ::GetCurrentThreadId());
+    if (mod_name && mod_name[0]) fprintf(cf, "Module: %s + 0x%llX\n", mod_name, (unsigned long long)mod_off);
+    fprintf(cf, "\n");
+
+    DumpRegisterSection(cf, ctx); fprintf(cf, "\n");
+
+    // Fault classification
+    FaultClass fc = ClassifyFault(faddr);
+    fprintf(cf, "Fault Class: %s\n", FaultClassName(fc));
+    Memory::MemoryInfo mi{};
+    if (Memory::Query(static_cast<guest_addr_t>(faddr), &mi) == Memory::Status::Ok) {
+        fprintf(cf, "  Region: base=0x%llX size=0x%llX committed=%s\n",
+                (unsigned long long)mi.base_address, (unsigned long long)mi.size,
+                mi.is_committed?"yes":"no");
+    } else fprintf(cf, "  Region: unmapped\n");
+    if (fc == FaultClass::GuestCode || fc == FaultClass::GuestFrameBuffer) {
+        GuestModInfo gmi{};
+        if (ResolveGuestAddress(faddr, gmi)) {
+            fprintf(cf, "  Module: %s base=0x%llX RVA=0x%llX",
+                    gmi.name.c_str(), (unsigned long long)gmi.base, (unsigned long long)gmi.rva);
+            if (!gmi.sym.empty())
+                fprintf(cf, " near %s + 0x%llX", gmi.sym.c_str(), (unsigned long long)gmi.sym_off);
+            fprintf(cf, "\n");
+        }
+    }
+    fprintf(cf, "\n");
+
+    // Faulting instruction
+    u8 ib[16]={};
+    fprintf(cf, "Faulting Instruction:\n");
+    if (SafeRead(ib, (void*)(ctx->Rip), 16)) {
+        fprintf(cf, "  Bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+                ib[0],ib[1],ib[2],ib[3],ib[4],ib[5],ib[6],ib[7],ib[8],ib[9],ib[10],ib[11],ib[12],ib[13],ib[14],ib[15]);
+        auto d = InstrDecode::Decode(ib,16);
+        fprintf(cf, "  Decode: %s (%u bytes)\n", d.text.c_str(), d.length);
+    } else fprintf(cf, "  <unreadable>\n");
+    fprintf(cf, "\n");
+
+    // Host call stack (before any guest memory scans for safety)
+    fprintf(cf, "Host Call Stack:\n");
+    void* stk[64];
+    USHORT nf = CaptureStackBackTrace(0,64,stk,nullptr);
+    for (USHORT i=0;i<nf;++i) {
+        char sn[MAX_PATH]="?"; HMODULE hf=nullptr; u64 of2=0;
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                (LPCSTR)stk[i],&hf)) {
+            GetModuleFileNameA(hf,sn,sizeof(sn));
+            of2=(u64)stk[i]-(u64)hf;
+        }
+        fprintf(cf, "  [%02d] %s + 0x%llX\n", i, sn, (unsigned long long)of2);
+    }
+    fprintf(cf, "\n");
+
+    // HLE import trace
+    fprintf(cf, "HLE Import Trace (last 16):\n");
+    auto trace = HLE::GetImportTrace(16);
+    for (auto& te : trace)
+        fprintf(cf, "  %s::%s args=(0x%llX,0x%llX,0x%llX,0x%llX)\n",
+                te.module_name.c_str(), te.name.c_str(),
+                (unsigned long long)te.arg1, (unsigned long long)te.arg2,
+                (unsigned long long)te.arg3, (unsigned long long)te.arg4);
+
+    fclose(cf);
+}
 // ---------------------------------------------------------------------------
 static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info) {
         // H4.3: recursion guard — must be first in the handler to
@@ -1281,6 +1448,9 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                     sprintf_s(instr_hex + i * 3, sizeof(instr_hex) - i * 3, "%02X ", instr[i]);
                 }
                 LOG_DEBUG(Kernel, "  Instruction bytes at crash RIP 0x%llx: %s", context->Rip, instr_hex);
+                auto decoded = InstrDecode::Decode(instr, 16);
+                LOG_DEBUG(Kernel, "  Decoded instruction: %s (%u bytes, %s)",
+                          decoded.text.c_str(), decoded.length, decoded.known ? "known" : "unknown");
             }
             LOG_DEBUG(Kernel, "  Access violation details: Type: %s, Address: 0x%llx",
                      exception_record->ExceptionInformation[0] == 0 ? "Read" :
@@ -1582,24 +1752,6 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
 
         u64 ip = context->Rip;
         if (ip >= 0x800000000 && ip < 0x900000000) {
-            FILE* f = nullptr;
-            fopen_s(&f, "crash_log.txt", "w");
-            if (f) {
-                fprintf(f, "GUEST APPLICATION CRASHED!\n");
-                fprintf(f, "Exception Code: 0x%X\n", exception_record->ExceptionCode);
-                fprintf(f, "Crash Address (RIP): 0x%llx (Offset: 0x%llx)\n", ip, ip - 0x800000000);
-                fprintf(f, "Register Dump:\n");
-                fprintf(f, "  RAX: 0x%016llx  RBX: 0x%016llx\n", context->Rax, context->Rbx);
-                fprintf(f, "  RCX: 0x%016llx  RDX: 0x%016llx\n", context->Rcx, context->Rdx);
-                fprintf(f, "  RSI: 0x%016llx  RDI: 0x%016llx\n", context->Rsi, context->Rdi);
-                fprintf(f, "  RBP: 0x%016llx  RSP: 0x%016llx\n", context->Rbp, context->Rsp);
-                fprintf(f, "  R8:  0x%016llx  R9:  0x%016llx\n", context->R8,  context->R9);
-                fprintf(f, "  R10: 0x%016llx  R11: 0x%016llx\n", context->R10, context->R11);
-                fprintf(f, "  R12: 0x%016llx  R13: 0x%016llx\n", context->R12, context->R13);
-                fprintf(f, "  R14: 0x%016llx  R15: 0x%016llx\n", context->R14, context->R15);
-                fclose(f);
-            }
-
             LOG_ERROR(Kernel, "--------------------------------------------------");
             LOG_ERROR(Kernel, "GUEST APPLICATION CRASHED!");
             LOG_ERROR(Kernel, "Exception Code: 0x%X", exception_record->ExceptionCode);
@@ -1627,6 +1779,10 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
 
             // Record the crash and let the SEH handler in TryStartGuest catch
             // it cleanly instead of killing the emulator process.
+            LogConfig::FlushDedup();
+            ULONG_PTR _sl = 0, _sh = 0;
+            GetCurrentThreadStackLimits(&_sl, &_sh);
+            WriteCrashDump(exception_record, context, "guest", 0, _sl, _sh);
             HLE::SetGuestCrashed(exception_record->ExceptionCode,
                                  static_cast<guest_addr_t>(context->Rip));
             return EXCEPTION_CONTINUE_SEARCH;
@@ -1684,56 +1840,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 }
             }
 
-            FILE* f = nullptr;
-            fopen_s(&f, "crash_log.txt", "w");
-            if (f) {
-                fprintf(f, "VEH Unhandled Exception: Code: 0x%X, RIP: 0x%llx, RSP: 0x%llx\n", 
-                        exception_record->ExceptionCode, context->Rip, context->Rsp);
-                fprintf(f, "Module: %s (Offset: 0x%llx)\n", module_name, offset);
-                fprintf(f, "Register Dump:\n");
-                fprintf(f, "  RAX: 0x%016llx  RBX: 0x%016llx\n", context->Rax, context->Rbx);
-                fprintf(f, "  RCX: 0x%016llx  RDX: 0x%016llx\n", context->Rcx, context->Rdx);
-                fprintf(f, "  RSI: 0x%016llx  RDI: 0x%016llx\n", context->Rsi, context->Rdi);
-                fprintf(f, "  RBP: 0x%016llx  RSP: 0x%016llx\n", context->Rbp, context->Rsp);
-                fprintf(f, "  R8:  0x%016llx  R9:  0x%016llx\n", context->R8,  context->R9);
-                fprintf(f, "  R10: 0x%016llx  R11: 0x%016llx\n", context->R10, context->R11);
-                fprintf(f, "  R12: 0x%016llx  R13: 0x%016llx\n", context->R12, context->R13);
-                fprintf(f, "  R14: 0x%016llx  R15: 0x%016llx\n", context->R14, context->R15);
-                
-                void* stack[64];
-                USHORT frames = CaptureStackBackTrace(0, 64, stack, nullptr);
-                fprintf(f, "Call Stack:\n");
-                for (USHORT i = 0; i < frames; ++i) {
-                    char symbol_name[MAX_PATH] = "Unknown";
-                    HMODULE h_mod_frame = nullptr;
-                    u64 offset_frame = 0;
-                    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                           reinterpret_cast<LPCSTR>(stack[i]), &h_mod_frame)) {
-                        GetModuleFileNameA(h_mod_frame, symbol_name, sizeof(symbol_name));
-                        offset_frame = reinterpret_cast<u64>(stack[i]) - reinterpret_cast<u64>(h_mod_frame);
-                    }
-                    fprintf(f, "  [%02d] %s + 0x%llx (Address: 0x%llx)\n", i, symbol_name, offset_frame, reinterpret_cast<u64>(stack[i]));
-                }
-                
-                // Scan the guest stack for values that look like guest return
-                // addresses (guest modules live at [0x800000000, 0x900000000)).
-                // This reveals the guest call chain when execution ended up in
-                // host code with a guest RSP.  Same stack-limit cap as above:
-                // probing past the top re-faults inside SafeRead's memcpy.
-                fprintf(f, "Guest stack scan (potential return addresses):\n");
-                for (u64 sp_scan = context->Rsp;
-                     sp_scan < context->Rsp + 0x2000 && sp_scan + sizeof(u64) <= scan_limit;
-                     sp_scan += 8) {
-                    u64 val = 0;
-                    if (!SafeRead(&val, reinterpret_cast<void*>(sp_scan), 8)) break;
-                    if (val >= 0x800000000 && val < 0x900000000) {
-                        fprintf(f, "  [RSP+0x%04llx] -> 0x%llx (guest offset 0x%llx)\n",
-                                sp_scan - context->Rsp, val, val - 0x800000000);
-                    }
-                }
 
-                fclose(f);
-            }
             LOG_ERROR(Kernel, "VEH Unhandled Exception: Code: 0x%X, RIP: 0x%llx, Module: %s, Offset: 0x%llx",
                       exception_record->ExceptionCode, context->Rip, module_name, offset);
 
@@ -1753,6 +1860,12 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                           te.module_name.c_str(), te.name.c_str(), te.symbol_id,
                           te.caller_rip, te.arg1, te.arg2, te.arg3, te.arg4);
             }
+
+            // Flush any pending dedup annotations + write the hardware-level crash dump.
+            LogConfig::FlushDedup();
+            ULONG_PTR sl = 0, sh = 0;
+            GetCurrentThreadStackLimits(&sl, &sh);
+            WriteCrashDump(exception_record, context, module_name, offset, sl, sh);
         }
 
         return EXCEPTION_CONTINUE_SEARCH;

@@ -349,10 +349,13 @@ JsonValue FltV(float f)   { return NumV(static_cast<double>(f)); }
 
 void ReadLogging (const JsonValue& root, LoggingConfig&  l) {
     if (const JsonValue* v = Field(root, "logging"); v && v->is_object()) {
-        if (auto* p = Field(*v, "min_level"))   l.min_level   = ParseLevel(*p, l.min_level);
-        if (auto* p = Field(*v, "json_output")) l.json_output = (p->is_bool() ? p->b : l.json_output);
-        if (auto* p = Field(*v, "file_path"))   l.file_path   = (p->is_string() ? p->s : l.file_path);
-        if (auto* p = Field(*v, "file_append")) l.file_append = (p->is_bool() ? p->b : l.file_append);
+        if (auto* p = Field(*v, "min_level"))    l.min_level    = ParseLevel(*p, l.min_level);
+        if (auto* p = Field(*v, "json_output"))  l.json_output  = (p->is_bool() ? p->b : l.json_output);
+        if (auto* p = Field(*v, "dedup"))        l.dedup        = (p->is_bool() ? p->b : l.dedup);
+        if (auto* p = Field(*v, "dedup_window_ms"))
+            l.dedup_window_ms = (p->is_number() ? static_cast<u64>(p->n) : l.dedup_window_ms);
+        if (auto* p = Field(*v, "file_path"))    l.file_path    = (p->is_string() ? p->s : l.file_path);
+        if (auto* p = Field(*v, "file_append"))  l.file_append  = (p->is_bool() ? p->b : l.file_append);
     }
 }
 
@@ -399,11 +402,13 @@ void ReadInput   (const JsonValue& root, InputConfig&    i) {
 
 void WriteLogging (JsonValue& root, const LoggingConfig&  l) {
     JsonValue v; v.type = JsonValue::Type::Object;
-    v.o["min_level"]   = StrV(LevelName(l.min_level));
-    v.o["json_output"] = BoolV(l.json_output);
-    v.o["file_path"]   = StrV(l.file_path);
-    v.o["file_append"] = BoolV(l.file_append);
-    root.o["logging"]  = std::move(v);
+    v.o["min_level"]       = StrV(LevelName(l.min_level));
+    v.o["json_output"]     = BoolV(l.json_output);
+    v.o["dedup"]           = BoolV(l.dedup);
+    v.o["dedup_window_ms"] = NumV(static_cast<double>(l.dedup_window_ms));
+    v.o["file_path"]       = StrV(l.file_path);
+    v.o["file_append"]     = BoolV(l.file_append);
+    root.o["logging"]      = std::move(v);
 }
 void WriteCrash   (JsonValue& root, const CrashConfig&    c) {
     JsonValue v; v.type = JsonValue::Type::Object;

@@ -100,6 +100,8 @@ set(KERNEL_SRC
     src/kernel/fd_table.cpp
     src/kernel/guest_clock.h
     src/kernel/guest_clock.cpp
+    src/kernel/instr_decode.h
+    src/kernel/instr_decode.cpp
     src/kernel/memory.h
     src/kernel/memory.cpp
     src/kernel/thread.h
