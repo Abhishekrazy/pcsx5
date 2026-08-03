@@ -1228,17 +1228,24 @@ namespace HLE {
             }
             LOG_DEBUG(HLE, "libkernel::memmove(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
+                // H4.6: reject sign-extended SCE error codes passed as pointers
+                constexpr u64 kBadPtrMask2 = 0xFFFFFFFF80000000ULL;
+                if ((dest & kBadPtrMask2) == kBadPtrMask2 || (src & kBadPtrMask2) == kBadPtrMask2) {
+                    LOG_WARN(HLE, "libkernel::memmove: bad pointer (looks like sign-extended "
+                             "error code): dest=0x%llx src=0x%llx count=%llu — returning dest",
+                             dest, src, count);
+                    return dest;
+                }
                 // Primary defence: validate memory before touching it.
-                // Guest page-table queries (Query/IsReadable/IsWritable)
-                // use VirtualQuery on the host — no memory access, safe
-                // on the guest stack.
-                if (!Memory::IsReadable(src, count)) {
-                    LOG_WARN(HLE, "libkernel::memmove: src 0x%llx not readable "
-                             "(size %llu) — skipped", src, count);
-                } else if (!Memory::IsWritable(dest, count)) {
-                    LOG_WARN(HLE, "libkernel::memmove: dest 0x%llx not writable "
-                             "(size %llu) — skipped", dest, count);
+                bool src_ok2  = Memory::IsReadable(src, count);
+                bool dest_ok2 = Memory::IsWritable(dest, count);
+                if (src_ok2 && dest_ok2) {
+                    std::memmove(reinterpret_cast<void*>(dest),
+                                 reinterpret_cast<const void*>(src), count);
                 } else {
+                    LOG_DEBUG(HLE, "libkernel::memmove: page-table guard failed "
+                              "(src_ok=%d dest_ok=%d) — attempting SEH fallback",
+                              src_ok2, dest_ok2);
                     __try {
                         std::memmove(reinterpret_cast<void*>(dest),
                                      reinterpret_cast<const void*>(src), count);
@@ -1278,16 +1285,37 @@ namespace HLE {
                 count = 0;
             }
 
+            // H4.6: detect sign-extended SCE error codes masquerading as
+            // pointers (0xFFFFFFFF8xxxxxxx — an HLE function returned an
+            // AgcError value that the game passed as a pointer).  These
+            // will crash inside host CRT (VCRUNTIME140.dll) when the game
+            // later dereferences the copy target.
+            constexpr u64 kBadPtrMask  = 0xFFFFFFFF80000000ULL;
+            constexpr u64 kBadPtrMatch = 0xFFFFFFFF80000000ULL;
+            if ((dest & kBadPtrMask) == kBadPtrMatch || (src & kBadPtrMask) == kBadPtrMatch) {
+                LOG_WARN(HLE, "libkernel::memcpy: bad pointer (looks like sign-extended "
+                         "error code): dest=0x%llx src=0x%llx count=%llu — returning dest",
+                         dest, src, count);
+                return dest;
+            }
+
             LOG_DEBUG(HLE, "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                // Primary defence via page-table query (no memory access).
-                if (!Memory::IsReadable(src, count)) {
-                    LOG_WARN(HLE, "libkernel::memcpy: src 0x%llx not readable "
-                             "(size %llu) — skipped", src, count);
-                } else if (!Memory::IsWritable(dest, count)) {
-                    LOG_WARN(HLE, "libkernel::memcpy: dest 0x%llx not writable "
-                             "(size %llu) — skipped", dest, count);
-                } else {
+                bool src_ok  = Memory::IsReadable(src, count);
+                bool dest_ok = Memory::IsWritable(dest, count);
+                if (src_ok && dest_ok) {
+                    // Fast path: page-table says the range is mapped — no SEH needed.
+                    std::memmove(reinterpret_cast<void*>(dest),
+                                 reinterpret_cast<const void*>(src), count);
+                } else if (!src_ok || !dest_ok) {
+                    // Fallback: addresses may be host pointers (outside guest
+                    // page table) — still attempt the copy under SEH guard.
+                    // Log at DEBUG (not WARN) since host-address copies are
+                    // normal for the AGC-to-DCB data pipeline.
+                    LOG_DEBUG(HLE, "libkernel::memcpy: page-table guard failed "
+                              "(src_ok=%d dest_ok=%d src=0x%llx dest=0x%llx count=%llu) "
+                              "— attempting SEH fallback",
+                              src_ok, dest_ok, src, dest, count);
                     __try {
                         std::memmove(reinterpret_cast<void*>(dest),
                                      reinterpret_cast<const void*>(src), count);
@@ -1791,6 +1819,13 @@ namespace HLE {
         RegisterSymbol("libkernel", "strcmp#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t a = args.arg1, b = args.arg2;
             if (!a || !b) return (u64)(s64)-1;
+            // H4.6: reject sign-extended SCE error codes passed as pointers
+            constexpr u64 kBadPtrMask  = 0xFFFFFFFF80000000ULL;
+            constexpr u64 kBadPtrMatch = 0xFFFFFFFF80000000ULL;
+            if ((a & kBadPtrMask) == kBadPtrMatch || (b & kBadPtrMask) == kBadPtrMatch) {
+                LOG_WARN(HLE, "strcmp: bad pointer (sign-extended error code): a=0x%llx b=0x%llx", a, b);
+                return (u64)(s64)-1;
+            }
             if (Memory::IsReadable(a, 1) && Memory::IsReadable(b, 1)) {
                 int cmp = strcmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
                 return (u64)(s64)cmp;
