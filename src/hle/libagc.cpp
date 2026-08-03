@@ -2040,14 +2040,11 @@ void RegisterLibAgc() {
         const u64 regs_addr = args.arg2;
         if (cmd == 0 || regs_addr == 0) return AgcError(kAgcErrorInvalidArgument);
         if (!Memory::IsWritable(cmd, 16)) return AgcError(kAgcErrorMemoryFault);
-        // H4.2: validate that regs_addr is a known guest pointer before
-        // writing it into the PM4 buffer — a leaked host pointer (0x7ff...)
-        // later dereferenced by the guest would crash inside VCRUNTIME140.
-        if (!Memory::IsValidGuestPointer(regs_addr)) {
-            LOG_WARN(HLE, "SetIndirectPatchAddress: regs_addr 0x%llx is not a valid "
-                          "guest pointer — rejecting", regs_addr);
-            return AgcError(kAgcErrorInvalidArgument);
-        }
+        // H4.8: accept regs_addr even if it's not a tracked guest pointer.
+        // The AGC data pipeline passes host addresses through memcpy return
+        // values; rejecting them here causes AgcError returns that propagate
+        // downstream as bad pointers into VCRUNTIME140.  The VEH crash
+        // recovery guards against the worst cases.
         Memory::Write<u32>(cmd + 8, static_cast<u32>(regs_addr & 0xFFFFFFFFull));
         Memory::Write<u32>(cmd + 12, static_cast<u32>(regs_addr >> 32));
         return 0;

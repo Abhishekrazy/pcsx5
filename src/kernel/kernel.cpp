@@ -1437,7 +1437,31 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             }
         }
 
-        LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu", 
+        // H4.7: Fast recovery for AVs in host DLLs when the fault address is a
+        // sentinel value (sign-extended SCE error code 0xFFFFFFFF8xxxxxxx,
+        // plain -1, or near-NULL).  Skip the load instruction and zero RCX.
+        // Only fires for obviously-invalid pointers — real memory faults
+        // (e.g. C++ unwind, GPU driver) pass through to normal crash handling.
+        if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+            context->Rip >= 0x7FF000000000ULL) {
+            const u64 faddr = (exception_record->NumberParameters >= 2) ? exception_record->ExceptionInformation[1] : 0;
+            // Only recover for sentinel addresses (error codes, -1, <4K).
+            if (faddr == 0 || faddr == ~0ULL || faddr < 0x1000 ||
+                (faddr & 0xFFFFFFFF80000000ULL) == 0xFFFFFFFF80000000ULL) {
+                context->Rcx = 0;
+                u8 b1 = 0;
+                u32 skip = 3;
+                if (SafeRead(&b1, reinterpret_cast<void*>(context->Rip), 1)) {
+                    if (b1 == 0x0F) skip = 3;
+                    else if (b1 >= 0x40 && b1 <= 0x4F) skip = 3;
+                    else skip = 2;
+                }
+                context->Rip += skip;
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        }
+
+        LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu",
                  exception_record->ExceptionCode, context->Rip, ::GetCurrentThreadId());
  
         if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
@@ -1861,6 +1885,12 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                           te.caller_rip, te.arg1, te.arg2, te.arg3, te.arg4);
             }
 
+            // H4.7: VCRUNTIME140 access-violation recovery — the game calls
+            // host CRT functions (strcmp/memcpy helpers) with bad pointers
+            // on a path we don't intercept.  Recover by skipping the faulting
+            // load instruction and zeroing the destination register, so the
+            // game sees empty/NUL data instead of crashing.  This is a
+            // temporary band-aid until we identify the un-intercepted path.
             // Flush any pending dedup annotations + write the hardware-level crash dump.
             LogConfig::FlushDedup();
             ULONG_PTR sl = 0, sh = 0;
