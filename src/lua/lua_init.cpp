@@ -207,6 +207,8 @@ bool RunDefaultInit(std::string* error) {
             for (int i = 0; i < 6; ++i) {
                 LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
             }
+            LogConfig::SetDedup(cfg.logging.dedup);
+            LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);
             return true;
         },
         []() { /* Logging is persistent; no teardown needed */ }
@@ -284,6 +286,8 @@ static int lua_Logging_Init(lua_State* L) {
     for (int i = 0; i < 6; ++i) {
         LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
     }
+    LogConfig::SetDedup(cfg.logging.dedup);
+    LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);
     return 0;
 }
 

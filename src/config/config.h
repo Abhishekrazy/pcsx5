@@ -38,6 +38,8 @@ inline constexpr int kCurrentSchemaVersion = 3;
 struct LoggingConfig {
     LogLevel  min_level   = LogLevel::Info;   // minimum per-category level
     bool      json_output = false;            // emit JSON objects to stdout
+    bool      dedup       = true;             // collapse repeated messages with (xN)
+    u64       dedup_window_ms = 1000;         // suppression window for dedup
     std::string file_path;                    // empty = no file mirror
     bool      file_append = false;            // append vs truncate
 };

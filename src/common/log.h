@@ -63,6 +63,16 @@ namespace LogConfig {
     // through unchanged.  Null callback disables the sink.
     using LogCallback = void (*)(int level, int category, const char* message, void* user);
     void SetLogCallback(LogCallback callback, void* user);
+
+    // Dedup: collapse repeated identical messages (same category + level +
+    // message text) into one line with a "(xN)" counter.  The ring buffer
+    // always receives every raw event — dedup only affects stdout / file /
+    // callback sinks.  Enabled by default with a 1-second suppression window.
+    void SetDedup(bool enabled);
+    void SetDedupWindow(u64 microseconds);
+    void SetDedupMaxLevel(LogLevel level);       // only dedup at or below this severity
+    void SetDedupCategory(LogCategory c, bool enabled);
+    void FlushDedup();                           // force-emit pending annotation
 }
 
 // Stringification helpers used by diagnostics, the test harness, and the
