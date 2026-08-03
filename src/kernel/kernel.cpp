@@ -1292,8 +1292,11 @@ static void WriteCrashDump(const EXCEPTION_RECORD* rec, const CONTEXT* ctx,
     // Note: separate crash_report.txt file write removed — the emergency
     // crash_log.txt fopen below now carries the full enhanced dump.
 
+    std::error_code ec;
+    std::filesystem::create_directories("logs", ec);
+
     FILE* cf = nullptr;
-    fopen_s(&cf, "crash_log.txt", "w");
+    fopen_s(&cf, "logs/crash_log.txt", "w");
     if (!cf) return;
 
     const u64 etype = (rec->NumberParameters >= 1) ? rec->ExceptionInformation[0] : 99;

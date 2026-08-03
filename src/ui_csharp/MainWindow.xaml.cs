@@ -264,7 +264,11 @@ namespace Pcsx5Ui
             }
             catch (Exception ex)
             {
-                try { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ui_crash_log.txt"), ex.ToString()); } catch { }
+                try {
+                    string logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+                    Directory.CreateDirectory(logsDir);
+                    File.WriteAllText(Path.Combine(logsDir, "ui_crash_log.txt"), ex.ToString());
+                } catch { }
                 MessageBox.Show(ex.ToString(), "UI Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -1045,6 +1049,17 @@ namespace Pcsx5Ui
         private void LaunchButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedGame == null) return;
+
+            // Aggressively clean up any orphaned emulator processes on the system first
+            try
+            {
+                foreach (var proc in System.Diagnostics.Process.GetProcessesByName("pcsx5_cli"))
+                {
+                    try { proc.Kill(); proc.Dispose(); } catch { }
+                }
+            }
+            catch { }
+
             if (_coreRunning) return; // single game at a time
 
             var game = _selectedGame;
@@ -1176,12 +1191,15 @@ namespace Pcsx5Ui
                 : $"0x{exitCode:X8} — {excName}";
             CrashExcCodeText.Text = excLabel;
 
-            // Try to extract RIP from crash_log.txt if it exists
-            string ripInfo = "See crash_log.txt for full dump";
+            // Try to extract RIP from logs/crash_log.txt if it exists
+            string ripInfo = "See logs/crash_log.txt for full dump";
             try {
-                string crashLogPath = System.IO.Path.Combine(
-                    System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
-                    "crash_log.txt");
+                string baseDir = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".";
+                string crashLogPath = System.IO.Path.Combine(baseDir, "logs", "crash_log.txt");
+                // Fallback to base dir check if they run standing standalone
+                if (!System.IO.File.Exists(crashLogPath)) {
+                    crashLogPath = System.IO.Path.Combine(baseDir, "crash_log.txt");
+                }
                 if (System.IO.File.Exists(crashLogPath)) {
                     var lines = System.IO.File.ReadAllLines(crashLogPath);
                     foreach (var line in lines) {
@@ -1491,15 +1509,18 @@ namespace Pcsx5Ui
 
         private void KillButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_coreRunning)
+            try
             {
-                try
+                _session?.Kill();
+                LogConsole("Force kill: guest thread terminated.");
+
+                // Aggressive fallback: kill any pcsx5_cli process still active on this machine
+                foreach (var proc in System.Diagnostics.Process.GetProcessesByName("pcsx5_cli"))
                 {
-                    _session?.Kill();
-                    LogConsole("Force kill: guest thread terminated.");
+                    try { proc.Kill(); proc.Dispose(); } catch { }
                 }
-                catch { }
             }
+            catch { }
         }
 
         private enum ConsoleDock { Right, Bottom, Left, Float }
@@ -3515,8 +3536,12 @@ namespace Pcsx5Ui
             CrashDialogOverlay.Visibility = Visibility.Collapsed;
             try
             {
-                string crashLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_log.txt");
+                string crashLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "crash_log.txt");
                 if (File.Exists(crashLogPath)) File.Delete(crashLogPath);
+
+                // Fallback secondary delete
+                string fallbackPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_log.txt");
+                if (File.Exists(fallbackPath)) File.Delete(fallbackPath);
             }
             catch { }
         }
@@ -3575,8 +3600,11 @@ namespace Pcsx5Ui
             CrashDialogOverlay.Visibility = Visibility.Collapsed;
             try
             {
-                string crashLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_log.txt");
+                string crashLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "crash_log.txt");
                 if (File.Exists(crashLogPath)) File.Delete(crashLogPath);
+
+                string fallbackPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_log.txt");
+                if (File.Exists(fallbackPath)) File.Delete(fallbackPath);
             }
             catch { }
 
