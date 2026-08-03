@@ -1408,7 +1408,7 @@
                         </Grid.RowDefinitions>
 
                         <!-- Emulator window is reparented into this area (HwndHost) -->
-                        <Border Grid.Row="0" Grid.Column="0" Background="Black">
+                        <Border x:Name="EmulatorHostBorder" Grid.Row="0" Grid.Column="0" Background="Black">
                             <ContentControl x:Name="EmulatorHostPresenter"/>
                         </Border>
 
@@ -1613,7 +1613,7 @@
                     </Grid>
 
                     <!-- Bottom game bar: title + phase status + Console toggle + Stop -->
-                    <Border Grid.Row="1" Background="#A0050508" BorderBrush="#15FFFFFF" BorderThickness="0,1,0,0" Height="52">
+                    <Border x:Name="GameBottomBar" Grid.Row="1" Background="#A0050508" BorderBrush="#15FFFFFF" BorderThickness="0,1,0,0" Height="52">
                         <Grid Margin="20,0">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock x:Name="GameBarTitle" Text="Running" FontSize="14" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
@@ -1655,31 +1655,6 @@
                                 Click="FooterConsole_Click" ToolTip="Toggle console log viewer"/>
                         <TextBlock Text="PCSX5 - PlayStation 5 Emulator v1.00" FontSize="10" Foreground="#3FA0A0A5" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- FLOATING CONSOLE DRAWER (accessible from all views) -->
-            <Border x:Name="GlobalConsoleDrawer" Grid.RowSpan="3" VerticalAlignment="Bottom"
-                    Background="#E6080A10" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="10,10,0,0"
-                    Height="280" Margin="20,0,20,0" Visibility="Collapsed" Panel.ZIndex="99">
-                <Grid Margin="8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,4">
-                        <TextBlock Text="CONSOLE OUTPUT" Foreground="#0099FF" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
-                        <Button Content="✕ Close" Height="24" MinWidth="60" Padding="8,0" FontSize="10"
-                                Style="{StaticResource SecondaryButtonStyle}" Margin="12,0,0,0"
-                                Click="FooterConsole_Click"/>
-                        <Button Content="Clear" Height="24" MinWidth="50" Padding="8,0" FontSize="10"
-                                Style="{StaticResource SecondaryButtonStyle}" Margin="4,0,0,0"
-                                Click="ClearConsole_Click"/>
-                    </StackPanel>
-                    <RichTextBox x:Name="GlobalConsoleOutput" Grid.Row="1" IsReadOnly="True"
-                                 Background="#10000000" Foreground="#C0C0C5" BorderThickness="0"
-                                 FontFamily="Consolas" FontSize="10" Padding="6"
-                                 VerticalScrollBarVisibility="Auto"/>
                 </Grid>
             </Border>
 
