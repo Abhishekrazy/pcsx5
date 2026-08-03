@@ -85,6 +85,8 @@ namespace Pcsx5Ui
         private ulong _lastFrameCounter;
 
         public WriteableBitmap FrameBitmap => _frameBitmap;
+        public ulong FrameCounter => _lastFrameCounter;
+        public Process Process => _process;
 
         public IpcSession(Dispatcher dispatcher)
         {

@@ -165,6 +165,9 @@ namespace Pcsx5Ui
         private struct ConsoleLine { public string Text; public int Level; } // Level: 0=Trace..5=Critical
         private readonly ConcurrentQueue<ConsoleLine> _consoleLineQueue = new ConcurrentQueue<ConsoleLine>();
         private System.Windows.Threading.DispatcherTimer _consoleDrainTimer;
+        private System.Windows.Threading.DispatcherTimer _hudMetricsTimer;
+        private ulong _lastFpsCount = 0;
+        private DateTime _lastFpsTime = DateTime.UtcNow;
         private const int MaxConsoleLines = 5000; // cap on the console RichTextBox
         private int _consoleLineNum = 0; // line number counter
         private string _lastDedupLine = null; // dedup: last line text
@@ -177,6 +180,9 @@ namespace Pcsx5Ui
         private EmulatorWindowHost _emuHost = null;
         private IntPtr _embeddedEmuHwnd = IntPtr.Zero;
         private bool _gameConsoleVisible = false;
+
+        private enum ConsoleDock { Right, Bottom, Left, Float }
+        private ConsoleDock _consoleDock = ConsoleDock.Right;
 
 
         public MainWindow()
@@ -218,6 +224,67 @@ namespace Pcsx5Ui
             _consoleDrainTimer.Interval = TimeSpan.FromMilliseconds(150);
             _consoleDrainTimer.Tick += (s, e) => DrainConsoleQueue();
             _consoleDrainTimer.Start();
+
+            _hudMetricsTimer = new System.Windows.Threading.DispatcherTimer();
+            _hudMetricsTimer.Interval = TimeSpan.FromSeconds(1);
+            _hudMetricsTimer.Tick += UpdateHudMetrics;
+            _hudMetricsTimer.Start();
+        }
+
+        private void UpdateHudMetrics(object sender, EventArgs e)
+        {
+            bool isRunning = _session != null &&
+                             _session.State != GameSessionState.Idle &&
+                             _session.State != GameSessionState.Stopped &&
+                             _session.State != GameSessionState.Crashed;
+
+            if (!isRunning || _session.IpcSession == null || HudMetricsPanel == null)
+            {
+                if (HudMetricsPanel != null) HudMetricsPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            if (HudMetricsPanel.Visibility != Visibility.Visible)
+            {
+                HudMetricsPanel.Visibility = Visibility.Visible;
+                _lastFpsCount = _session.IpcSession.FrameCounter;
+                _lastFpsTime = DateTime.UtcNow;
+            }
+
+            // 1. Calculate FPS
+            try
+            {
+                ulong currentCount = _session.IpcSession.FrameCounter;
+                var now = DateTime.UtcNow;
+                double seconds = (now - _lastFpsTime).TotalSeconds;
+                if (seconds > 0.1)
+                {
+                    double fps = (currentCount >= _lastFpsCount)
+                        ? (currentCount - _lastFpsCount) / seconds
+                        : 0;
+                    if (HudFpsText != null) HudFpsText.Text = $"FPS: {fps:F1}";
+                    _lastFpsCount = currentCount;
+                    _lastFpsTime = now;
+                }
+            }
+            catch { }
+
+            // 2. Fetch RAM & VRAM metrics from guest process
+            try
+            {
+                var proc = _session.IpcSession.Process;
+                if (proc != null && !proc.HasExited)
+                {
+                    proc.Refresh();
+                    long ramMb = proc.WorkingSet64 / (1024 * 1024);
+                    // Use PrivateMemory (heap/texture allocations) as a proxy for GPU VRAM mirror footprint
+                    long vramMb = proc.PrivateMemorySize64 / (1024 * 1024);
+
+                    if (HudRamText != null) HudRamText.Text = $"RAM: {ramMb} MB";
+                    if (HudVramText != null) HudVramText.Text = $"VRAM: {vramMb} MB";
+                }
+            }
+            catch { }
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)
@@ -1066,6 +1133,8 @@ namespace Pcsx5Ui
 
             LaunchButton.IsEnabled = false;
             StopButton.Visibility = Visibility.Visible;
+            if (GameStopButton != null) GameStopButton.Visibility = Visibility.Visible;
+            if (GameKillButton != null) GameKillButton.Visibility = Visibility.Visible;
             ConsoleOutputBox.Document.Blocks.Clear();
 
             LogConsole($"Launching via IPC: \"{game.EbootPath}\"");
@@ -1073,10 +1142,6 @@ namespace Pcsx5Ui
 
             // Stop title music when game launches
             _mediaPlayer.Stop();
-
-            // Switch to game view — no HwndHost needed (IPC renders via WriteableBitmap).
-            GameBarTitle.Text = game.Title;
-            if (GameBarPhase != null) GameBarPhase.Text = "Initializing...";
 
             // Prepare the frame display Image (replaces HwndHost entirely).
             var frameImage = new System.Windows.Controls.Image
@@ -1118,14 +1183,14 @@ namespace Pcsx5Ui
 
         private void OnGameStarted(GameEntry game)
         {
-            // Boot overlay was already shown in LaunchButton_Click; nothing more here.
             LogConsole($"[Session] Game session started: {game.Title}");
+            FooterStatus.Text = $"{game.Title} - Starting";
         }
 
         private void OnBootPhaseChanged(BootPhase phase, string message)
         {
             ShowBootOverlay(_session?.CurrentGame, phase, message);
-            if (GameBarPhase != null) GameBarPhase.Text = message;
+            FooterStatus.Text = $"{_session?.CurrentGame?.Title ?? "Game"} - Booting ({message})";
         }
 
         private void OnGameWindowReady(IntPtr hwnd)
@@ -1133,8 +1198,7 @@ namespace Pcsx5Ui
             // Embed the native render window; hide the boot overlay once the window is live.
             EmbedEmulatorWindow(hwnd);
             HideBootOverlay();
-            FooterStatus.Text = _selectedGame != null ? $"Running: {_selectedGame.Title}" : "Running";
-            if (GameBarPhase != null) GameBarPhase.Text = "Running";
+            FooterStatus.Text = _selectedGame != null ? $"{_selectedGame.Title} - Running" : "Running";
 
             if (_discordRpc != null && _selectedGame != null)
                 _discordRpc.UpdatePresence($"Playing {_selectedGame.Title}", "In-Game");
@@ -1148,6 +1212,8 @@ namespace Pcsx5Ui
 
             LaunchButton.IsEnabled = true;
             StopButton.Visibility = Visibility.Collapsed;
+            if (GameStopButton != null) GameStopButton.Visibility = Visibility.Collapsed;
+            if (GameKillButton != null) GameKillButton.Visibility = Visibility.Collapsed;
             LogConsole($"Game session ended (exit code {exitCode}).");
             FooterStatus.Text = "Ready";
 
@@ -1172,8 +1238,10 @@ namespace Pcsx5Ui
 
             LaunchButton.IsEnabled = true;
             StopButton.Visibility = Visibility.Collapsed;
+            if (GameStopButton != null) GameStopButton.Visibility = Visibility.Collapsed;
+            if (GameKillButton != null) GameKillButton.Visibility = Visibility.Collapsed;
             LogConsole($"[CRASH] {message}");
-            FooterStatus.Text = "Game Crashed";
+            FooterStatus.Text = $"{_session?.CurrentGame?.Title ?? "Game"} - Crashed";
 
             // Show crash dialog with full error details
             string excName = ((uint)exitCode) switch {
@@ -1315,7 +1383,7 @@ namespace Pcsx5Ui
 
         private void BootCancelBtn_Click(object sender, RoutedEventArgs e)
         {
-            _session?.RequestStop();
+            _session?.Kill();
             LogConsole("Boot cancelled by user.");
         }
 
@@ -1426,7 +1494,7 @@ namespace Pcsx5Ui
         {
             HideWatchdogToast();
             LogConsole("[Watchdog] User forced stop.");
-            _session?.RequestStop();
+            _session?.Kill();
         }
 
         private void HandleWatchdogToastNav(bool cross, bool circle)
@@ -1523,53 +1591,18 @@ namespace Pcsx5Ui
             catch { }
         }
 
-        private enum ConsoleDock { Right, Bottom, Left, Float }
-        private ConsoleDock _consoleDock = ConsoleDock.Right;
-
         private void ConsoleDockMode_Click(object sender, RoutedEventArgs e)
         {
             if (sender is System.Windows.Controls.Button btn && btn.Tag is string tag)
             {
-                var col = (int)GameConsolePanel.GetValue(Grid.ColumnProperty);
-                var row = (int)GameConsolePanel.GetValue(Grid.RowProperty);
                 switch (tag)
                 {
-                    case "Bottom":
-                        _consoleDock = ConsoleDock.Bottom;
-                        GameConsolePanel.SetValue(Grid.RowProperty, 1);
-                        GameConsolePanel.SetValue(Grid.ColumnProperty, 0);
-                        GameConsolePanel.Width = double.NaN;
-                        GameConsolePanel.Height = 200;
-                        GameContentBottomRow.Height = new GridLength(200);
-                        GameContentRightCol.Width = new GridLength(0);
-                        LogConsole("Console docked to bottom.");
-                        break;
-                    case "Right":
-                        _consoleDock = ConsoleDock.Right;
-                        GameConsolePanel.SetValue(Grid.RowProperty, 0);
-                        GameConsolePanel.SetValue(Grid.ColumnProperty, 1);
-                        GameConsolePanel.Width = 380;
-                        GameConsolePanel.Height = double.NaN;
-                        GameContentBottomRow.Height = new GridLength(0);
-                        GameContentRightCol.Width = new GridLength(380);
-                        LogConsole("Console docked to right.");
-                        break;
-                    case "Left":
-                        _consoleDock = ConsoleDock.Left;
-                        GameConsolePanel.SetValue(Grid.RowProperty, 0);
-                        GameConsolePanel.SetValue(Grid.ColumnProperty, 0);
-                        GameConsolePanel.Width = 380;
-                        GameConsolePanel.Height = double.NaN;
-                        GameContentBottomRow.Height = new GridLength(0);
-                        GameContentRightCol.Width = new GridLength(0);
-                        LogConsole("Console docked to left.");
-                        break;
-                    case "Float":
-                        _consoleDock = ConsoleDock.Float;
-                        GameConsolePanel.Visibility = Visibility.Collapsed;
-                        LogConsole("Console undocked (floating).");
-                        break;
+                    case "Bottom": _consoleDock = ConsoleDock.Bottom; LogConsole("Console docked to bottom."); break;
+                    case "Right":  _consoleDock = ConsoleDock.Right;  LogConsole("Console docked to right."); break;
+                    case "Left":   _consoleDock = ConsoleDock.Left;   LogConsole("Console docked to left."); break;
+                    case "Float":  _consoleDock = ConsoleDock.Float;  LogConsole("Console undocked (floating)."); break;
                 }
+                ApplyConsoleDockLayout(_consoleDock);
                 if (_consoleDock != ConsoleDock.Float)
                     GameConsolePanel.Visibility = Visibility.Visible;
             }
@@ -1670,12 +1703,49 @@ namespace Pcsx5Ui
 
         // Move the shared console panel between the Logs view and the game view
         // side panel (avoids WPF HwndHost airspace issues — no overlap).
+        private void ApplyConsoleDockLayout(ConsoleDock dock)
+        {
+            if (GameConsolePanel == null || GameContentBottomRow == null || GameContentRightCol == null) return;
+
+            switch (dock)
+            {
+                case ConsoleDock.Bottom:
+                    GameConsolePanel.SetValue(Grid.RowProperty, 1);
+                    GameConsolePanel.SetValue(Grid.ColumnProperty, 0);
+                    GameConsolePanel.Width = double.NaN;
+                    GameConsolePanel.Height = 200;
+                    GameContentBottomRow.Height = new GridLength(200);
+                    GameContentRightCol.Width = new GridLength(0);
+                    break;
+                case ConsoleDock.Right:
+                    GameConsolePanel.SetValue(Grid.RowProperty, 0);
+                    GameConsolePanel.SetValue(Grid.ColumnProperty, 1);
+                    GameConsolePanel.Width = 380;
+                    GameConsolePanel.Height = double.NaN;
+                    GameContentBottomRow.Height = new GridLength(0);
+                    GameContentRightCol.Width = new GridLength(380);
+                    break;
+                case ConsoleDock.Left:
+                    GameConsolePanel.SetValue(Grid.RowProperty, 0);
+                    GameConsolePanel.SetValue(Grid.ColumnProperty, 0);
+                    GameConsolePanel.Width = 380;
+                    GameConsolePanel.Height = double.NaN;
+                    GameContentBottomRow.Height = new GridLength(0);
+                    GameContentRightCol.Width = new GridLength(0);
+                    break;
+                case ConsoleDock.Float:
+                    GameConsolePanel.Visibility = Visibility.Collapsed;
+                    GameContentBottomRow.Height = new GridLength(0);
+                    GameContentRightCol.Width = new GridLength(0);
+                    break;
+            }
+        }
+
         private void SetGameConsoleVisible(bool visible)
         {
             _gameConsoleVisible = visible;
-            if (GameConsolePanel != null) GameConsolePanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             if (GameConsoleButton != null) GameConsoleButton.Content = visible ? "Hide Console" : "Console";
-            if (FooterConsoleButton != null) FooterConsoleButton.Content = visible ? "📋 Console ▲" : "📋 Console";
+            if (GameConsoleButton != null) GameConsoleButton.Content = visible ? "📋 Console ▲" : "📋 Console";
 
             bool isRunning = _session != null && (_session.State == GameSessionState.Booting || _session.State == GameSessionState.Running);
 
@@ -1683,21 +1753,25 @@ namespace Pcsx5Ui
             if (visible)
             {
                 if (GameView != null) GameView.Visibility = Visibility.Visible;
+                if (GameConsolePanel != null) GameConsolePanel.Visibility = (_consoleDock == ConsoleDock.Float) ? Visibility.Collapsed : Visibility.Visible;
+                ApplyConsoleDockLayout(_consoleDock);
 
-                // Hide emulator window and bottom game bar if no game is actively running
+                // Hide emulator window if no game is actively running
                 if (!isRunning)
                 {
                     if (EmulatorHostBorder != null) EmulatorHostBorder.Visibility = Visibility.Collapsed;
-                    if (GameBottomBar != null) GameBottomBar.Visibility = Visibility.Collapsed;
                 }
                 else
                 {
                     if (EmulatorHostBorder != null) EmulatorHostBorder.Visibility = Visibility.Visible;
-                    if (GameBottomBar != null) GameBottomBar.Visibility = Visibility.Visible;
                 }
             }
             else
             {
+                if (GameConsolePanel != null) GameConsolePanel.Visibility = Visibility.Collapsed;
+                if (GameContentBottomRow != null) GameContentBottomRow.Height = new GridLength(0);
+                if (GameContentRightCol != null) GameContentRightCol.Width = new GridLength(0);
+
                 // If console is hidden and no game is running, collapse GameView so clicks pass to background views
                 if (!isRunning)
                 {
