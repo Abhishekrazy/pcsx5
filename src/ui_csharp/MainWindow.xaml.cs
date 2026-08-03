@@ -1652,8 +1652,37 @@ namespace Pcsx5Ui
         private void SetGameConsoleVisible(bool visible)
         {
             _gameConsoleVisible = visible;
-            GameConsolePanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-            GameConsoleButton.Content = visible ? "Hide Console" : "Console";
+            if (GameConsolePanel != null) GameConsolePanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            if (GameConsoleButton != null) GameConsoleButton.Content = visible ? "Hide Console" : "Console";
+            if (FooterConsoleButton != null) FooterConsoleButton.Content = visible ? "📋 Console ▲" : "📋 Console";
+
+            bool isRunning = _session != null && (_session.State == GameSessionState.Booting || _session.State == GameSessionState.Running);
+
+            // If we are showing the console, we must make sure GameView's layout container is visible
+            if (visible)
+            {
+                if (GameView != null) GameView.Visibility = Visibility.Visible;
+
+                // Hide emulator window and bottom game bar if no game is actively running
+                if (!isRunning)
+                {
+                    if (EmulatorHostBorder != null) EmulatorHostBorder.Visibility = Visibility.Collapsed;
+                    if (GameBottomBar != null) GameBottomBar.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    if (EmulatorHostBorder != null) EmulatorHostBorder.Visibility = Visibility.Visible;
+                    if (GameBottomBar != null) GameBottomBar.Visibility = Visibility.Visible;
+                }
+            }
+            else
+            {
+                // If console is hidden and no game is running, collapse GameView so clicks pass to background views
+                if (!isRunning)
+                {
+                    if (GameView != null) GameView.Visibility = Visibility.Collapsed;
+                }
+            }
         }
 
         private void ShowTab(string tabName)
@@ -2064,48 +2093,9 @@ namespace Pcsx5Ui
             while (doc.Blocks.Count > MaxConsoleLines)
                 doc.Blocks.Remove(doc.Blocks.FirstBlock);
 
-            if (AutoScrollCheck?.IsChecked != false) ConsoleOutputBox.ScrollToEnd();
-
-            // Mirror to global floating console if visible
-            if (_globalConsoleVisible) {
-                var gDoc = GlobalConsoleOutput.Document;
-                if (gDoc.Blocks.Count > 0 && doc.Blocks.Count > 0) {
-                    var lastDocBlock = doc.Blocks.LastBlock;
-                    var lastGDocBlock = gDoc.Blocks.LastBlock;
-                    if (lastDocBlock is System.Windows.Documents.Paragraph p &&
-                        lastGDocBlock is System.Windows.Documents.Paragraph gp &&
-                        p.Inlines.FirstInline is System.Windows.Documents.Run pr &&
-                        gp.Inlines.FirstInline is System.Windows.Documents.Run gr) {
-                        if (pr.Text != gr.Text) {
-                            var clone = new System.Windows.Documents.Paragraph(
-                                new System.Windows.Documents.Run(pr.Text) {
-                                    Foreground = pr.Foreground,
-                                    FontFamily = pr.FontFamily,
-                                    FontSize = pr.FontSize
-                                }) { Margin = new Thickness(0) };
-                            gDoc.Blocks.Add(clone);
-                        }
-                    }
-                } else if (gDoc.Blocks.Count == 0 && doc.Blocks.Count > 0) {
-                    // Initial sync: copy all from game console
-                    foreach (var block in doc.Blocks) {
-                        if (block is System.Windows.Documents.Paragraph bp &&
-                            bp.Inlines.FirstInline is System.Windows.Documents.Run br) {
-                            var clone = new System.Windows.Documents.Paragraph(
-                                new System.Windows.Documents.Run(br.Text) {
-                                    Foreground = br.Foreground,
-                                    FontFamily = br.FontFamily,
-                                    FontSize = br.FontSize
-                                }) { Margin = new Thickness(0) };
-                            gDoc.Blocks.Add(clone);
-                        }
-                    }
-                }
-                // Cap global console too
-                const int MaxGlobalLines = 5000;
-                while (gDoc.Blocks.Count > MaxGlobalLines)
-                    gDoc.Blocks.Remove(gDoc.Blocks.FirstBlock);
-                GlobalConsoleOutput.ScrollToEnd();
+            if (_gameConsoleVisible)
+            {
+                if (AutoScrollCheck?.IsChecked != false) ConsoleOutputBox.ScrollToEnd();
             }
         }
 
@@ -2148,16 +2138,11 @@ namespace Pcsx5Ui
             // Drop pending queued lines too so cleared output doesn't reappear on next drain
             while (_consoleLineQueue.TryDequeue(out _)) { }
             ConsoleOutputBox.Document.Blocks.Clear();
-            GlobalConsoleOutput.Document.Blocks.Clear();
         }
 
-        // Toggle the global floating console drawer (accessible from all views)
-        private bool _globalConsoleVisible = false;
         private void FooterConsole_Click(object sender, RoutedEventArgs e)
         {
-            _globalConsoleVisible = !_globalConsoleVisible;
-            GlobalConsoleDrawer.Visibility = _globalConsoleVisible ? Visibility.Visible : Visibility.Collapsed;
-            FooterConsoleButton.Content = _globalConsoleVisible ? "📋 Console ▲" : "📋 Console";
+            SetGameConsoleVisible(!_gameConsoleVisible);
         }
 
         private string FormatBytes(long bytes)
