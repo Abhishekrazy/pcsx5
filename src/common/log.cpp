@@ -11,6 +11,7 @@
 #include <sstream>
 #include <thread>
 #include <unordered_map>
+#include <filesystem>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -267,7 +268,17 @@ void SetFileOutput(const std::string& path, bool append) {
         g_file_active = false;
         return;
     }
-    g_file_stream.open(path, append ? std::ios::app : std::ios::trunc);
+
+    std::string target_path = path;
+    bool is_absolute = (path.size() >= 2 && path[1] == ':') ||
+                       (path.size() >= 1 && (path[0] == '/' || path[0] == '\\'));
+    if (!is_absolute) {
+        std::error_code ec;
+        std::filesystem::create_directories("logs", ec);
+        target_path = "logs/" + path;
+    }
+
+    g_file_stream.open(target_path, append ? std::ios::app : std::ios::trunc);
     g_file_active = g_file_stream.is_open();
 }
 
