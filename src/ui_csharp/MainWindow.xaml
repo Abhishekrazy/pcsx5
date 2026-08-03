@@ -1012,15 +1012,100 @@
                 <!-- 2. SYSTEM SETTINGS VIEW (GRID) -->
                 <Grid x:Name="SettingsView" Visibility="Collapsed" Margin="40,20,40,20">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <!-- Settings Navigation Header -->
+                    <Border x:Name="SettingsHeader" Grid.Row="0" Margin="0,0,0,15" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="← Back" Height="30" MinWidth="70" Padding="12,0" FontSize="12"
+                                    Style="{StaticResource SecondaryButtonStyle}" Click="SettingsBack_Click"/>
+                            <TextBlock x:Name="SettingsSubTitle" Text="Settings" FontSize="18" FontWeight="Bold"
+                                       Foreground="White" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- SETTINGS MAIN MENU (card grid) -->
+                    <ScrollViewer x:Name="SettingsMenuPage" Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="0,0,15,0">
-                            
-                            <!-- GAME DIRECTORIES CARD -->
-                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                            <StackPanel x:Name="SettingsMainMenuContent" Visibility="Visible">
+                                <TextBlock Text="SETTINGS" FontSize="20" FontWeight="ExtraBold" Foreground="White" Margin="0,0,0,20"/>
+                                <TextBlock Text="Select a category to configure" FontSize="12" Foreground="#6FA0A0A5" Margin="0,-12,0,20"/>
+
+                                <WrapPanel Margin="0,0,0,20">
+                                    <!-- Graphics Card -->
+                                    <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1"
+                                            CornerRadius="10" Padding="20,16" Width="220" Height="100" Margin="0,0,12,12"
+                                            Cursor="Hand" MouseLeftButtonDown="SettingsNav_Click" Tag="Graphics">
+                                        <Border.Resources><Style TargetType="Border"><Setter Property="Background" Value="Transparent"/></Style></Border.Resources>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="🖥" FontSize="24" Margin="0,0,0,8"/>
+                                            <TextBlock Text="Graphics" FontSize="14" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="Renderer, resolution, fullscreen" FontSize="10" Foreground="#6FA0A0A5" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Audio Card -->
+                                    <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1"
+                                            CornerRadius="10" Padding="20,16" Width="220" Height="100" Margin="0,0,12,12"
+                                            Cursor="Hand" MouseLeftButtonDown="SettingsNav_Click" Tag="Audio">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="🎵" FontSize="24" Margin="0,0,0,8"/>
+                                            <TextBlock Text="Audio" FontSize="14" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="Backend, volume, buffer" FontSize="10" Foreground="#6FA0A0A5" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Input Card -->
+                                    <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1"
+                                            CornerRadius="10" Padding="20,16" Width="220" Height="100" Margin="0,0,12,12"
+                                            Cursor="Hand" MouseLeftButtonDown="SettingsNav_Click" Tag="Input">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="🎮" FontSize="24" Margin="0,0,0,8"/>
+                                            <TextBlock Text="Input &amp; Controller" FontSize="14" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="Gamepad, deadzone, mappings" FontSize="10" Foreground="#6FA0A0A5" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Emulation Card -->
+                                    <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1"
+                                            CornerRadius="10" Padding="20,16" Width="220" Height="100" Margin="0,0,12,12"
+                                            Cursor="Hand" MouseLeftButtonDown="SettingsNav_Click" Tag="Emulation">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="⚙" FontSize="24" Margin="0,0,0,8"/>
+                                            <TextBlock Text="Emulation" FontSize="14" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="HLE, strict imports, tracing" FontSize="10" Foreground="#6FA0A0A5" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Logging Card -->
+                                    <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1"
+                                            CornerRadius="10" Padding="20,16" Width="220" Height="100" Margin="0,0,12,12"
+                                            Cursor="Hand" MouseLeftButtonDown="SettingsNav_Click" Tag="Logging">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="📝" FontSize="24" Margin="0,0,0,8"/>
+                                            <TextBlock Text="Logging" FontSize="14" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="Output format, levels, file" FontSize="10" Foreground="#6FA0A0A5" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- UI Card -->
+                                    <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1"
+                                            CornerRadius="10" Padding="20,16" Width="220" Height="100" Margin="0,0,12,12"
+                                            Cursor="Hand" MouseLeftButtonDown="SettingsNav_Click" Tag="UI">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="🌐" FontSize="24" Margin="0,0,0,8"/>
+                                            <TextBlock Text="UI &amp; Language" FontSize="14" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="Localization, scaling, game folders" FontSize="10" Foreground="#6FA0A0A5" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <!-- Keep existing Game Directories quick-access -->
+                            <Border x:Name="SettingsGameDirsCard" Visibility="Collapsed" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
                                     <TextBlock Text="GAME DIRECTORIES" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
                                     <Grid>
@@ -1050,7 +1135,7 @@
                             </Border>
 
                             <!-- GRAPHICS CARD -->
-                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                            <Border x:Name="SettingsGraphicsCard" Visibility="Collapsed" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
                                     <TextBlock Text="GRAPHICS SETTINGS" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
                                     <Grid>
@@ -1095,7 +1180,7 @@
                             </Border>
 
                             <!-- AUDIO CARD -->
-                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                            <Border x:Name="SettingsAudioCard" Visibility="Collapsed" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
                                     <TextBlock Text="AUDIO SETTINGS" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
                                     <Grid>
@@ -1140,7 +1225,7 @@
                             </Border>
 
                             <!-- INPUT CONTROLLER CARD -->
-                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                            <Border x:Name="SettingsInputCard" Visibility="Collapsed" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
                                     <TextBlock Text="INPUT SETTINGS" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
                                     <Grid>
@@ -1176,7 +1261,7 @@
                             </Border>
 
                             <!-- HLE & COMPILER CARD -->
-                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                            <Border x:Name="SettingsEmulationCard" Visibility="Collapsed" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
                                     <TextBlock Text="SYSTEM &amp; EMULATION SETTINGS (HLE)" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
                                     <Grid>
@@ -1214,7 +1299,7 @@
                             </Border>
 
                             <!-- LOGGING CARD -->
-                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                            <Border x:Name="SettingsLoggingCard" Visibility="Collapsed" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
                                     <TextBlock Text="LOGGING SETTINGS" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
                                     <Grid>
@@ -1251,7 +1336,7 @@
                             </Border>
 
                             <!-- UI SETTINGS CARD -->
-                            <Border Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                            <Border x:Name="SettingsUiCard" Visibility="Collapsed" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
                                     <TextBlock x:Name="UiLocalizationHeaderTextBlock" Text="UI &amp; LOCALIZATION" FontSize="14" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,15"/>
                                     <Grid>
@@ -1295,7 +1380,13 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <Button x:Name="SaveSettingsBtn" Grid.Row="1" Content="Save Configuration" Width="180" Height="36" Style="{StaticResource ModernButtonStyle}" HorizontalAlignment="Right" Margin="0,10,15,0" Click="SaveSettingsBtn_Click"/>
+                    <!-- SETTINGS SUB-PAGES (hidden by default, shown on card click) -->
+                    <ScrollViewer x:Name="SettingsSubPage" Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                        <StackPanel x:Name="SettingsSubContent" Margin="0,0,15,0"/>
+                    </ScrollViewer>
+
+                    <Button x:Name="SaveSettingsBtn" Grid.Row="2" Content="Save Configuration" MinWidth="160" Height="36" Padding="20,0"
+                            Style="{StaticResource ModernButtonStyle}" HorizontalAlignment="Right" Margin="0,10,15,0" Click="SaveSettingsBtn_Click"/>
                 </Grid>
 
                 <!-- 4. EMBEDDED GAME VIEW (game renders inside the launcher window) -->
@@ -1529,12 +1620,12 @@
                                 <TextBlock x:Name="GameBarPhase" Text="" FontSize="11" Foreground="#6FA0A0A5" VerticalAlignment="Center" Margin="12,0,0,0"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                <Button x:Name="GameConsoleButton" Content="Console" Width="110" Height="32" Style="{StaticResource ModernButtonStyle}" Margin="0,0,10,0" Click="GameConsoleButton_Click"/>
-                                <Button x:Name="GameKillButton" Content="✕ Force Kill" Width="110" Height="32"
+                                <Button x:Name="GameConsoleButton" Content="Console" MinWidth="85" Height="32" Padding="12,0" Style="{StaticResource ModernButtonStyle}" Margin="0,0,10,0" Click="GameConsoleButton_Click"/>
+                                <Button x:Name="GameKillButton" Content="✕ Force Kill" MinWidth="100" Height="32" Padding="14,0"
                                         Background="#CC2200" BorderBrush="#FF4400" Foreground="White"
                                         FontWeight="Bold" Style="{StaticResource ModernButtonStyle}" Margin="0,0,10,0"
                                         Click="KillButton_Click"/>
-                                <Button x:Name="GameStopButton" Content="Stop" Width="80" Height="32" Style="{StaticResource ModernButtonStyle}" Click="StopButton_Click"/>
+                                <Button x:Name="GameStopButton" Content="Stop" MinWidth="75" Height="32" Padding="12,0" Style="{StaticResource ModernButtonStyle}" Click="StopButton_Click"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -1558,7 +1649,37 @@
                         <TextBlock x:Name="FooterGamepadHints" Text="🎮 [L1/R1] Tabs  •  [D-Pad] Move  •  [✕] Select  •  [◯] Back  •  [△] Settings" FontSize="11" FontWeight="SemiBold" Foreground="#0099FF"/>
                     </StackPanel>
 
-                    <TextBlock Grid.Column="1" Text="PCSX5 - PlayStation 5 Emulator v1.00" FontSize="10" Foreground="#3FA0A0A5" Margin="0,0,25,0" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
+                        <Button x:Name="FooterConsoleButton" Content="📋 Console" Height="26" MinWidth="80" Padding="10,0"
+                                FontSize="10" Style="{StaticResource ModernButtonStyle}"
+                                Click="FooterConsole_Click" ToolTip="Toggle console log viewer"/>
+                        <TextBlock Text="PCSX5 - PlayStation 5 Emulator v1.00" FontSize="10" Foreground="#3FA0A0A5" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- FLOATING CONSOLE DRAWER (accessible from all views) -->
+            <Border x:Name="GlobalConsoleDrawer" Grid.RowSpan="3" VerticalAlignment="Bottom"
+                    Background="#E6080A10" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="10,10,0,0"
+                    Height="280" Margin="20,0,20,0" Visibility="Collapsed" Panel.ZIndex="99">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="4,0,4,4">
+                        <TextBlock Text="CONSOLE OUTPUT" Foreground="#0099FF" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+                        <Button Content="✕ Close" Height="24" MinWidth="60" Padding="8,0" FontSize="10"
+                                Style="{StaticResource SecondaryButtonStyle}" Margin="12,0,0,0"
+                                Click="FooterConsole_Click"/>
+                        <Button Content="Clear" Height="24" MinWidth="50" Padding="8,0" FontSize="10"
+                                Style="{StaticResource SecondaryButtonStyle}" Margin="4,0,0,0"
+                                Click="ClearConsole_Click"/>
+                    </StackPanel>
+                    <RichTextBox x:Name="GlobalConsoleOutput" Grid.Row="1" IsReadOnly="True"
+                                 Background="#10000000" Foreground="#C0C0C5" BorderThickness="0"
+                                 FontFamily="Consolas" FontSize="10" Padding="6"
+                                 VerticalScrollBarVisibility="Auto"/>
                 </Grid>
             </Border>
 
@@ -1607,7 +1728,7 @@
 
             <!-- CRASH DIAGNOSTICS OVERLAY DIALOG -->
             <Grid x:Name="CrashDialogOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
-                <Border Background="#1C1F26" BorderBrush="#CC2200" BorderThickness="1.5" CornerRadius="12" Width="550" Height="420" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="25">
+                <Border Background="#1C1F26" BorderBrush="#CC2200" BorderThickness="1.5" CornerRadius="12" MinWidth="580" MaxWidth="680" MinHeight="420" MaxHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="25">
                     <Border.Effect>
                         <DropShadowEffect Color="#FF2200" BlurRadius="25" Opacity="0.4" ShadowDepth="0"/>
                     </Border.Effect>
@@ -1661,16 +1782,16 @@
 
                                 <!-- Raw Logs -->
                                 <TextBlock Text="CRASH DUMP EXTRACT:" FontSize="11" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="0,0,0,6"/>
-                                <TextBox x:Name="CrashRawText" IsReadOnly="True" Background="#15000000" Foreground="#FFA0A0A5" BorderThickness="0" TextWrapping="Wrap" FontFamily="Consolas" FontSize="10" Padding="8" Height="100" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"/>
+                                <TextBox x:Name="CrashRawText" IsReadOnly="True" Background="#15000000" Foreground="#FFA0A0A5" BorderThickness="0" TextWrapping="Wrap" FontFamily="Consolas" FontSize="10" Padding="8" MinHeight="80" MaxHeight="220" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"/>
                             </StackPanel>
                         </ScrollViewer>
 
                         <!-- Buttons -->
                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Copy to Clipboard" Width="130" Height="32" Style="{StaticResource SecondaryButtonStyle}" Click="CopyCrashToClipboard_Click" Margin="0,0,8,0"/>
-                            <Button Content="View Raw Logs" Width="120" Height="32" Style="{StaticResource SecondaryButtonStyle}" Click="ViewCrashRawLogs_Click" Margin="0,0,8,0"/>
-                            <Button Content="Dismiss" Width="100" Height="32" Style="{StaticResource SecondaryButtonStyle}" Click="DismissCrashDialog_Click" Margin="0,0,10,0"/>
-                            <Button Content="Run Boot Analyzer" Width="180" Height="32" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeCrashedGame_Click"/>
+                            <Button Content="Copy" MinWidth="70" Height="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="CopyCrashToClipboard_Click" Margin="0,0,6,0"/>
+                            <Button Content="Raw Logs" MinWidth="80" Height="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="ViewCrashRawLogs_Click" Margin="0,0,6,0"/>
+                            <Button Content="Dismiss" MinWidth="70" Height="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="DismissCrashDialog_Click" Margin="0,0,6,0"/>
+                            <Button Content="Boot Analyzer" MinWidth="110" Height="32" Padding="14,0" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeCrashedGame_Click"/>
                         </StackPanel>
                     </Grid>
                 </Border>

@@ -1160,11 +1160,43 @@ namespace Pcsx5Ui
             LogConsole($"[CRASH] {message}");
             FooterStatus.Text = "Game Crashed";
 
-            // Show crash dialog
-            CrashExcCodeText.Text = $"0x{exitCode:X8} (Guest Exception)";
-            CrashRipText.Text = _session?.CurrentGame?.EbootPath ?? "Unknown";
+            // Show crash dialog with full error details
+            string excName = ((uint)exitCode) switch {
+                0xC0000005 => "EXCEPTION_ACCESS_VIOLATION",
+                0xC000001D => "EXCEPTION_ILLEGAL_INSTRUCTION",
+                0xC00000FD => "EXCEPTION_STACK_OVERFLOW",
+                0xC0000094 => "EXCEPTION_INT_DIVIDE_BY_ZERO",
+                0xC0000096 => "EXCEPTION_PRIV_INSTRUCTION",
+                0xC0000008 => "EXCEPTION_INVALID_HANDLE",
+                0xE06D7363 => "C++ Exception (eh)",
+                _ => ""
+            };
+            string excLabel = string.IsNullOrEmpty(excName)
+                ? $"0x{exitCode:X8}"
+                : $"0x{exitCode:X8} — {excName}";
+            CrashExcCodeText.Text = excLabel;
+
+            // Try to extract RIP from crash_log.txt if it exists
+            string ripInfo = "See crash_log.txt for full dump";
+            try {
+                string crashLogPath = System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".",
+                    "crash_log.txt");
+                if (System.IO.File.Exists(crashLogPath)) {
+                    var lines = System.IO.File.ReadAllLines(crashLogPath);
+                    foreach (var line in lines) {
+                        if (line.StartsWith("RIP:")) { ripInfo = line.Trim(); break; }
+                    }
+                }
+            } catch { }
+            CrashRipText.Text = ripInfo;
+
             CrashAnalysisText.Text = message;
-            CrashRawText.Text = $"Title: {_session?.CurrentGame?.Title}\nTitleId: {_session?.CurrentGame?.TitleId}\nExit Code: 0x{exitCode:X8}\n\n{message}";
+            CrashRawText.Text = $"Title: {_session?.CurrentGame?.Title ?? "?"}\n"
+                              + $"TitleId: {_session?.CurrentGame?.TitleId ?? "?"}\n"
+                              + $"Exit Code: 0x{exitCode:X8}"
+                              + (string.IsNullOrEmpty(excName) ? "" : $" ({excName})")
+                              + $"\n\n{message}";
             CrashDialogOverlay.Visibility = Visibility.Visible;
 
             // Haptic feedback: brief rumble so the player feels the crash
@@ -2033,6 +2065,48 @@ namespace Pcsx5Ui
                 doc.Blocks.Remove(doc.Blocks.FirstBlock);
 
             if (AutoScrollCheck?.IsChecked != false) ConsoleOutputBox.ScrollToEnd();
+
+            // Mirror to global floating console if visible
+            if (_globalConsoleVisible) {
+                var gDoc = GlobalConsoleOutput.Document;
+                if (gDoc.Blocks.Count > 0 && doc.Blocks.Count > 0) {
+                    var lastDocBlock = doc.Blocks.LastBlock;
+                    var lastGDocBlock = gDoc.Blocks.LastBlock;
+                    if (lastDocBlock is System.Windows.Documents.Paragraph p &&
+                        lastGDocBlock is System.Windows.Documents.Paragraph gp &&
+                        p.Inlines.FirstInline is System.Windows.Documents.Run pr &&
+                        gp.Inlines.FirstInline is System.Windows.Documents.Run gr) {
+                        if (pr.Text != gr.Text) {
+                            var clone = new System.Windows.Documents.Paragraph(
+                                new System.Windows.Documents.Run(pr.Text) {
+                                    Foreground = pr.Foreground,
+                                    FontFamily = pr.FontFamily,
+                                    FontSize = pr.FontSize
+                                }) { Margin = new Thickness(0) };
+                            gDoc.Blocks.Add(clone);
+                        }
+                    }
+                } else if (gDoc.Blocks.Count == 0 && doc.Blocks.Count > 0) {
+                    // Initial sync: copy all from game console
+                    foreach (var block in doc.Blocks) {
+                        if (block is System.Windows.Documents.Paragraph bp &&
+                            bp.Inlines.FirstInline is System.Windows.Documents.Run br) {
+                            var clone = new System.Windows.Documents.Paragraph(
+                                new System.Windows.Documents.Run(br.Text) {
+                                    Foreground = br.Foreground,
+                                    FontFamily = br.FontFamily,
+                                    FontSize = br.FontSize
+                                }) { Margin = new Thickness(0) };
+                            gDoc.Blocks.Add(clone);
+                        }
+                    }
+                }
+                // Cap global console too
+                const int MaxGlobalLines = 5000;
+                while (gDoc.Blocks.Count > MaxGlobalLines)
+                    gDoc.Blocks.Remove(gDoc.Blocks.FirstBlock);
+                GlobalConsoleOutput.ScrollToEnd();
+            }
         }
 
         private static System.Windows.Media.Color ConsoleLevelToColor(int level)
@@ -2074,6 +2148,16 @@ namespace Pcsx5Ui
             // Drop pending queued lines too so cleared output doesn't reappear on next drain
             while (_consoleLineQueue.TryDequeue(out _)) { }
             ConsoleOutputBox.Document.Blocks.Clear();
+            GlobalConsoleOutput.Document.Blocks.Clear();
+        }
+
+        // Toggle the global floating console drawer (accessible from all views)
+        private bool _globalConsoleVisible = false;
+        private void FooterConsole_Click(object sender, RoutedEventArgs e)
+        {
+            _globalConsoleVisible = !_globalConsoleVisible;
+            GlobalConsoleDrawer.Visibility = _globalConsoleVisible ? Visibility.Visible : Visibility.Collapsed;
+            FooterConsoleButton.Content = _globalConsoleVisible ? "📋 Console ▲" : "📋 Console";
         }
 
         private string FormatBytes(long bytes)
@@ -2207,6 +2291,79 @@ namespace Pcsx5Ui
             // LogsView removed
             UpdateTabHighlight(TabSettingsBtn);
             UpdateSettingsUiFromConfig();
+            ResetSettingsView();
+        }
+
+        // Card navigation within Settings (drill-down hierarchy like PS5)
+        private void SettingsNav_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement card)
+            {
+                string category = card.Tag?.ToString() ?? "";
+                if (string.IsNullOrEmpty(category)) return;
+
+                // Hide the main menu content
+                SettingsMainMenuContent.Visibility = Visibility.Collapsed;
+
+                // Show back navigation header
+                SettingsHeader.Visibility = Visibility.Visible;
+                SettingsSubTitle.Text = $"Settings > {category}";
+
+                // Hide all cards first
+                SettingsGameDirsCard.Visibility = Visibility.Collapsed;
+                SettingsGraphicsCard.Visibility = Visibility.Collapsed;
+                SettingsAudioCard.Visibility = Visibility.Collapsed;
+                SettingsInputCard.Visibility = Visibility.Collapsed;
+                SettingsEmulationCard.Visibility = Visibility.Collapsed;
+                SettingsLoggingCard.Visibility = Visibility.Collapsed;
+                SettingsUiCard.Visibility = Visibility.Collapsed;
+
+                // Show only the selected category card(s)
+                switch (category)
+                {
+                    case "Graphics":
+                        SettingsGraphicsCard.Visibility = Visibility.Visible;
+                        break;
+                    case "Audio":
+                        SettingsAudioCard.Visibility = Visibility.Visible;
+                        break;
+                    case "Input":
+                        SettingsInputCard.Visibility = Visibility.Visible;
+                        break;
+                    case "Emulation":
+                        SettingsEmulationCard.Visibility = Visibility.Visible;
+                        break;
+                    case "Logging":
+                        SettingsLoggingCard.Visibility = Visibility.Visible;
+                        break;
+                    case "UI":
+                        SettingsUiCard.Visibility = Visibility.Visible;
+                        SettingsGameDirsCard.Visibility = Visibility.Visible; // game folders also shown here
+                        break;
+                }
+            }
+        }
+
+        private void SettingsBack_Click(object sender, RoutedEventArgs e)
+        {
+            ResetSettingsView();
+        }
+
+        private void ResetSettingsView()
+        {
+            // Show main menu content
+            SettingsMainMenuContent.Visibility = Visibility.Visible;
+            // Hide back header
+            SettingsHeader.Visibility = Visibility.Collapsed;
+
+            // Hide all detail cards
+            SettingsGameDirsCard.Visibility = Visibility.Collapsed;
+            SettingsGraphicsCard.Visibility = Visibility.Collapsed;
+            SettingsAudioCard.Visibility = Visibility.Collapsed;
+            SettingsInputCard.Visibility = Visibility.Collapsed;
+            SettingsEmulationCard.Visibility = Visibility.Collapsed;
+            SettingsLoggingCard.Visibility = Visibility.Collapsed;
+            SettingsUiCard.Visibility = Visibility.Collapsed;
         }
 
         
@@ -3606,6 +3763,7 @@ namespace Pcsx5Ui
         private void SaveSettingsBtn_Click(object sender, RoutedEventArgs e)
         {
             SaveConfigFromUi();
+            ResetSettingsView();
         }
 
         // Executable Boot & Memory Analyzer UI actions
