@@ -1232,6 +1232,17 @@ namespace Pcsx5Ui
 
         private void OnGameCrashed(int exitCode, string message)
         {
+            // Aggressively kill any running or orphan emulator processes on crash
+            try
+            {
+                _session?.Kill();
+                foreach (var proc in System.Diagnostics.Process.GetProcessesByName("pcsx5_cli"))
+                {
+                    try { proc.Kill(); proc.Dispose(); } catch { }
+                }
+            }
+            catch { }
+
             HideBootOverlay();
             HidePauseMenu();
             HideWatchdogToast();
