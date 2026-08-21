@@ -1,5 +1,10 @@
 # Architecture
 
+> **New**: for maintainer/extender docs see `guide/` at the repo root
+> (`COMPONENT_MAP.md` — per-subsystem map and ownership; `EXTENDING.md` — how-to
+> guides for modding, graphics/resolution, native hardware; `PROJECT_ATOM.md` — the
+> machine-readable project blueprint + invariants + "touch only these files").
+
 ## Subsystem map
 
 | Subsystem | Path | Role |

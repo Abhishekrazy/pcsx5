@@ -107,3 +107,4 @@ installer/Output/
 
 # Runtime shader disk cache (regenerated at runtime)
 /Cache/
+/kyty_clone

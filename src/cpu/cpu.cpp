@@ -177,7 +177,6 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
     // Execute the guest thread entry point.
     // The guest function receives its argument in rdi (SysV ABI first arg).
     u64 ret = InvokeGuestFunction(entry, argument, 0, 0);
-
     // Restore host GS TLS slot pointers after guest execution.
     __writegsqword(0x08, saved_gs_08);
     __writegsqword(0x10, saved_gs_10);

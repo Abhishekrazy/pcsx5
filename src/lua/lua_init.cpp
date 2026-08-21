@@ -205,10 +205,10 @@ bool RunDefaultInit(std::string* error) {
                 LogConfig::SetJsonOutput(true);
             }
             for (int i = 0; i < 6; ++i) {
-                LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
+                LogConfig::SetLevel(static_cast<LogCategory>(i), LogLevel::Debug);
             }
-            LogConfig::SetDedup(cfg.logging.dedup);
-            LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);
+            LogConfig::SetDedup(false);
+            LogConfig::SetDedupWindow(0);
             return true;
         },
         []() { /* Logging is persistent; no teardown needed */ }
@@ -284,9 +284,9 @@ static int lua_Logging_Init(lua_State* L) {
         LogConfig::SetJsonOutput(true);
     }
     for (int i = 0; i < 6; ++i) {
-        LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
+        LogConfig::SetLevel(static_cast<LogCategory>(i), LogLevel::Debug);
     }
-    LogConfig::SetDedup(cfg.logging.dedup);
+    LogConfig::SetDedup(false);
     LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);
     return 0;
 }

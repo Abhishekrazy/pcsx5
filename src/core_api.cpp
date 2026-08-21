@@ -138,6 +138,34 @@ void PersistSummary(const Reports::CompatSummary& summary,
     }
 }
 
+// When the caller passes a game directory instead of eboot.bin, resolve the
+// executable the same way the WPF launcher does.
+std::string ResolveLoadPath(const std::string& path) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(path, ec)) {
+        return path;
+    }
+
+    static const char* kCandidates[] = {
+        "decrypted/eboot.bin",
+        "eboot.bin",
+        "eboot.bin.esbak",
+        "eboot.elf",
+    };
+    for (const char* rel : kCandidates) {
+        const std::filesystem::path candidate =
+            std::filesystem::path(path) / rel;
+        if (std::filesystem::is_regular_file(candidate, ec)) {
+            LOG_INFO(General, "Resolved game directory to executable: %s",
+                     candidate.string().c_str());
+            return candidate.string();
+        }
+    }
+
+    LOG_WARN(General, "No eboot.bin found under game directory: %s", path.c_str());
+    return path;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -199,9 +227,9 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     }
     if (cfg.logging.json_output) LogConfig::SetJsonOutput(true);
     for (int i = 0; i < 6; ++i) {
-        LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
+        LogConfig::SetLevel(static_cast<LogCategory>(i), LogLevel::Debug);
     }
-    LogConfig::SetDedup(cfg.logging.dedup);
+    LogConfig::SetDedup(false);
     LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);
     if (!cfg.crash.bundle_dir.empty()) g_state.crash_dir = cfg.crash.bundle_dir;
     if (g_state.crash_dir.empty())     g_state.crash_dir = "pcsx5_crash";
@@ -311,7 +339,7 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
 // ---------------------------------------------------------------------------
 PCSX5_API int pcsx5_load(const char* eboot_path) {
     if (!g_state.initialized || !eboot_path || !*eboot_path) return -1;
-    const std::string target_path = eboot_path;
+    const std::string target_path = ResolveLoadPath(eboot_path);
 
     g_state.summary = BuildSummary(target_path, g_state.title_id, "fail", "load", 0.0);
     g_state.t0 = std::chrono::steady_clock::now();

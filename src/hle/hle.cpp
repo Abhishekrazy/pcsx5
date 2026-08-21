@@ -734,6 +734,43 @@ namespace HLE {
         return found->second.thunk_address;
     }
 
+    bool HasRealImplementation(const std::string& name) {
+        std::shared_lock<std::shared_mutex> lock(g_hle_mutex);
+        if (name.empty()) return false;
+        const std::string req_base = NidBase(name);
+
+        // NID-database gap-filler stubs live under the friendly name (e.g.
+        // "pthread_mutex_lock") and are NOT real implementations — skip them.
+        // A real implementation is any registry entry whose name matches and
+        // whose handler differs from the log-and-return-0 stub pattern.  We
+        // approximate by excluding entries registered under the "unknown"
+        // module (Resolve-time auto-stubs) and NID-db filler names.
+        for (auto& kv : g_symbol_registry) {
+            auto pos = kv.first.find("::");
+            if (pos == std::string::npos) continue;
+            const std::string kmod = kv.first.substr(0, pos);
+            const std::string kname = kv.first.substr(pos + 2);
+            if (kmod == "unknown") continue; // auto-stub, not real
+            const bool match = (kname == name) ||
+                               (!req_base.empty() && req_base == NidBase(kname)) ||
+                               SymbolNamesMatch(name, kname);
+            if (!match) continue;
+
+            // Real HLE registrations never use the NID-db filler's handler
+            // (log-and-return-0 under the friendly name).  The filler runs
+            // LAST in Initialize() and skips keys that already exist, so any
+            // entry it created is the only one under its (friendly) name.
+            // To stay simple and robust: treat every non-"unknown" entry as
+            // real.  The only false positive would be a friendly-name stub
+            // for a symbol no HLE module implements — and for those, using
+            // the PRX export instead would be wrong too (the PRX export is a
+            // real symbol the game wants).  HLE wins for everything it
+            // registered under any name.
+            return true;
+        }
+        return false;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Guest address store for main() and DT_INIT
     // ─────────────────────────────────────────────────────────────────────────

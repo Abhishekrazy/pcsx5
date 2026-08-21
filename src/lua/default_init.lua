@@ -68,7 +68,7 @@ RegisterSubsystem("Logging", {"ConfigService"},
             LogConfig_SetJsonOutput(true)
         end
         for i = 0, 5 do
-            LogConfig_SetLevel(i, log_cfg.min_level)
+            LogConfig_SetLevel(i, 1) -- Debug
         end
         return true
     end,

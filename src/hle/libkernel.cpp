@@ -438,6 +438,91 @@ namespace HLE {
         }
     } // namespace
 
+    // -----------------------------------------------------------------------
+    // Fake FILE structs for the game's native libc.prx stdio.
+    //
+    // The game's real libc.prx implements fread/fseek/ftell/fclose NATIVELY
+    // against its own FILE struct layout (fd at +4, flags at +0, buffer at
+    // +8/+0x10/+0x18/+0x20, ungetc area at +0x7e).  Handing it a real MSVC
+    // FILE* breaks every read (fd is read from +4 where MSVC stores part of
+    // _ptr), which is exactly why the C2 runtime's data.js chunk reader died
+    // mid-string ("image" + EOF).  We return a FAKE FILE struct in libc.prx's
+    // layout, backed by a real CRT fd; libc.prx's internals then call the
+    // _read/_close/lseek NIDs registered below, which route through our
+    // kernel fd layer.
+    // -----------------------------------------------------------------------
+
+    // Fake FILE layout, matching libc.prx's fopen init (0x820057f90):
+    //   +0x00 u16 flags        (1 = readable)
+    //   +0x02 u8  mode char
+    //   +0x04 s32 fd
+    //   +0x08 qword buffer base
+    //   +0x10 qword buffer end limit
+    //   +0x18 qword current read position
+    //   +0x20 qword buffer fill end
+    //   +0x28 qword (same as base)
+    //   +0x30 qword (same as base; ungetc ptr)
+    //   +0x38 qword ptr to +0x44 (ungetc struct)
+    //   +0x44 .. 0x7d  ungetc storage
+    //   +0x7e .. 0x7f  ungetc buffer (initial "buffer")
+    //   +0x80 qword user buffer (0)
+    constexpr u64 kFakeFileSize = 0x100;
+
+    std::mutex g_fake_file_mutex;
+    std::unordered_map<u64, int> g_fake_file_fds; // fake FILE* -> fd
+
+    u64 CreateFakeFile(int fd, char mode) {
+        guest_addr_t mem = 0;
+        if (Memory::Map(0, kFakeFileSize,
+                        Memory::PROT_READ | Memory::PROT_WRITE, &mem) != Memory::Status::Ok) {
+            return 0;
+        }
+        u8* f = reinterpret_cast<u8*>(mem);
+        std::memset(f, 0, kFakeFileSize);
+        *reinterpret_cast<u16*>(f + 0x00) = 1;           // readable
+        f[0x02] = static_cast<u8>(mode);
+        *reinterpret_cast<s32*>(f + 0x04) = fd;
+        const u64 self = mem;
+        *reinterpret_cast<u64*>(f + 0x08) = self + 0x7e; // base = ungetc
+        *reinterpret_cast<u64*>(f + 0x10) = self + 0x7f; // limit
+        *reinterpret_cast<u64*>(f + 0x18) = self + 0x7e; // pos
+        *reinterpret_cast<u64*>(f + 0x20) = self + 0x7e; // end
+        *reinterpret_cast<u64*>(f + 0x28) = self + 0x7e;
+        *reinterpret_cast<u64*>(f + 0x30) = self + 0x7e;
+        *reinterpret_cast<u64*>(f + 0x38) = self + 0x44;
+        *reinterpret_cast<u64*>(f + 0x50) = self + 0x7e;
+        *reinterpret_cast<u64*>(f + 0x58) = self + 0x7e;
+        std::lock_guard<std::mutex> lk(g_fake_file_mutex);
+        g_fake_file_fds[mem] = fd;
+        return mem;
+    }
+
+    void DestroyFakeFile(u64 f) {
+        if (!f) return;
+        int fd = -1;
+        {
+            std::lock_guard<std::mutex> lk(g_fake_file_mutex);
+            auto it = g_fake_file_fds.find(f);
+            if (it != g_fake_file_fds.end()) {
+                fd = it->second;
+                g_fake_file_fds.erase(it);
+            }
+        }
+        if (fd >= 0) _close(fd);
+        Memory::Unmap(f, kFakeFileSize);
+    }
+
+    bool IsFakeFile(u64 f) {
+        std::lock_guard<std::mutex> lk(g_fake_file_mutex);
+        return g_fake_file_fds.count(f) != 0;
+    }
+
+    int FakeFileFd(u64 f) {
+        std::lock_guard<std::mutex> lk(g_fake_file_mutex);
+        auto it = g_fake_file_fds.find(f);
+        return it != g_fake_file_fds.end() ? it->second : -1;
+    }
+
     // Translates a failed raw Orbis kernel result into the libc/POSIX ABI:
     // return -1 with errno set (via the __error() cell, SetGuestErrno).
     static u64 PosixFailure(s64 orbis_result, int not_found_errno = ENOENT) {
@@ -591,16 +676,85 @@ namespace HLE {
             LOG_DEBUG(HLE, "KernelGetProcParam() -> 0");
             return 0;
         });
-        // tls_get_addr (vNe1w4diLCs) — return TLS block address for a module.
-        // Used by the libc TLS access path.  Return a dummy address to prevent crash.
-        RegisterSymbol("libkernel", "vNe1w4diLCs#T#T", [](const GuestArgs&) -> u64 {
-            LOG_DEBUG(HLE, "tls_get_addr() -> 0 (stub)");
-            return 0;
+        // tls_get_addr (vNe1w4diLCs) — __tls_get_addr(desc) where desc =
+        // `{ size_t ti_module; size_t ti_offset; }` (ELF TLS descriptor, arg1=rdi).
+        // Returns the address of the TLS variable for ti_module+ti_offset.
+        // PCSX5 uses variant-II TLS.  Resolution is module-keyed: the MAIN
+        // module (and unknown indices) uses the original
+        // (thread_pointer + ti_offset) shared-block path — byte-identical to the
+        // pre-DTV behaviour; a KNOWN secondary TLS-bearing module gets a
+        // dedicated per-thread block seeded from its PT_TLS image.
+        RegisterSymbol("libkernel", "vNe1w4diLCs#T#T", [](const GuestArgs& a) -> u64 {
+            u64 module_id = 0, ti_offset = 0;
+            if (a.arg1 && a.arg1 >= 0x800000000ULL && Memory::IsReadable(a.arg1, 16)) {
+                module_id = Memory::Read<u64>(a.arg1);
+                ti_offset = Memory::Read<u64>(a.arg1 + 8);
+            }
+            const u64 tid = Kernel::GetCurrentThreadId();
+            const u64 tp  = Kernel::ResolveGuestThreadPointer(tid);
+            const u64 addr = Kernel::ResolveDynamicTls(tid, module_id, ti_offset, tp);
+            LOG_DEBUG(HLE, "__tls_get_addr(desc=0x%llx module=%llu offset=0x%llx) -> 0x%llx",
+                      a.arg1, module_id, ti_offset, addr);
+            return addr;
         });
         // KernelGetModuleInfoFromAddr (f7KBOafysXo) — lookup module by code address.
         RegisterSymbol("libkernel", "f7KBOafysXo#T#T", [](const GuestArgs& a) -> u64 {
             LOG_DEBUG(HLE, "KernelGetModuleInfoFromAddr(addr=0x%llx) -> ENOSYS", a.arg1);
             return 0x8002002D; // SCE_KERNEL_ERROR_ENOSYS
+        });
+
+        // sceKernelGetModuleInfoForUnwind (RpQJJVKTiFM) — returns address &
+        // module metadata; used by libc's unwinder to map a code address to a
+        // module and its segments.  Without it, CRT/static-init that iterates
+        // the returned segment table dereferences null -> AV (ASTRO BOT,
+        // "mov r14d,[r14]" at 0x3f0).  Fill a standard SceKernelModuleInfo.
+        //
+        // Standard PS5 SceKernelModuleInfo layout (internals):
+        //   0x00 size_t st_size
+        //   0x08 char  name[0x20]
+        //   0x28 u32   module_id
+        //   0x2c u32   module_idx
+        //   0x30 uintptr module_start
+        //   0x38 uintptr module_end
+        //   0x40 uintptr module_offset
+        //   0x48 size_t module_size
+        //   0x50 size_t module_flags
+        //   0x98 SceKernelModuleSegmentInfo segment_info[1] (address,size,size2,prot,flags,pad)
+        RegisterSymbol("libkernel", "RpQJJVKTiFM#T#T", [](const GuestArgs& a) -> u64 {
+            const guest_addr_t addr = a.arg1;
+            const guest_addr_t out  = a.arg2;
+            const auto* mod = Kernel::FindModuleForAddr(addr);
+            if (!mod) {
+                LOG_WARN(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx) -> module not found", addr);
+                return 0x80020004; // ENOENT-ish
+            }
+            if (!out || !Memory::IsWritable(out, 0x140)) {
+                LOG_WARN(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx, out=0x%llx) -> bad out", addr, out);
+                return 0x80020016; // EINVAL-ish
+            }
+            const u64 st = Memory::Read<u64>(out); // caller-provided st_size
+            Memory::Write<u64>(out + 0x00, st ? st : 0x140);
+            for (int i = 0; i < 0x20 && i < (int)mod->name.size(); ++i)
+                Memory::Write<u8>(out + 0x08 + i, static_cast<u8>(mod->name[i]));
+            Memory::Write<u32>(out + 0x28, 0);
+            Memory::Write<u32>(out + 0x2c, 0);
+            Memory::Write<u64>(out + 0x30, mod->base_address);
+            Memory::Write<u64>(out + 0x38, mod->base_address + mod->image_size);
+            Memory::Write<u64>(out + 0x40, mod->base_address);
+            Memory::Write<u64>(out + 0x48, mod->image_size);
+            Memory::Write<u64>(out + 0x50, 0);
+            // segment_info[0] = first executable/loadable segment
+            if (!mod->segments.empty()) {
+                const auto& s = mod->segments[0];
+                Memory::Write<u64>(out + 0x98, s.address);
+                Memory::Write<u64>(out + 0xa0, s.size);
+                Memory::Write<u64>(out + 0xa8, s.size);
+                Memory::Write<u32>(out + 0xb0, s.final_protection);
+                Memory::Write<u32>(out + 0xb4, s.flags & 0xFFFFu);
+            }
+            LOG_DEBUG(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx) -> module '%s' base=0x%llx size=0x%llx",
+                      addr, mod->name.c_str(), mod->base_address, mod->image_size);
+            return 0; // SCE_OK
         });
         // KernelIsNeoMode (WslcK1FQcGI) — is this a PS4 Pro?  PS5 always false.
         RegisterSymbol("libkernel", "WslcK1FQcGI#T#T", [](const GuestArgs&) -> u64 {
@@ -715,6 +869,31 @@ namespace HLE {
             LOG_DEBUG(HLE, "scePthreadAttrSetschedpolicy(attr=0x%llx, policy=%llu) -> OK", args.arg1, args.arg2);
             return 0;
         });
+        // Plain POSIX attr names used by the game's real libc.prx.
+        RegisterSymbol("libkernel", "pthread_attr_init", [](const GuestArgs& args) -> u64 {
+            if (args.arg1) Memory::Write<u64>(args.arg1, 0x38);
+            return 0;
+        });
+        RegisterSymbol("libkernel", "pthread_attr_destroy", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_setstacksize", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_setstack", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_getstacksize", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_getstack", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_get_np", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_setdetachstate", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_getdetachstate", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_setguardsize", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_getguardsize", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_setschedparam", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_getschedparam", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_setschedpolicy", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_setinheritsched", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_setschedparam", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_getschedparam", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_setprio", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_getprio", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_rename_np", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "__pthread_cxa_finalize", [](const GuestArgs&) -> u64 { return 0; });
 
         // =====================================================================
         // scePthreadCreate / scePthreadJoin are registered by NID below
@@ -725,7 +904,7 @@ namespace HLE {
         // =====================================================================
         // scePthreadDetach  ===  Detach a thread (auto-cleanup on exit).
         // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadDetach", [](const GuestArgs& args) -> u64 {
+        auto PthreadDetachImpl = [](const GuestArgs& args) -> u64 {
             u64 tid = args.arg1;
             LOG_INFO(HLE, "scePthreadDetach(tid=%llu)", tid);
 
@@ -734,16 +913,21 @@ namespace HLE {
                 return 3; // ESRCH
             }
             return 0;
-        });
+        };
+        RegisterSymbol("libkernel", "scePthreadDetach", PthreadDetachImpl);
+        RegisterSymbol("libkernel", "pthread_detach", PthreadDetachImpl);
 
         // =====================================================================
         // scePthreadExit  ===  Exit the current thread.
         // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadExit", [](const GuestArgs& args) -> u64 {
+        auto PthreadExitImpl = [](const GuestArgs& args) -> u64 {
             u64 exit_value = args.arg1;
             LOG_INFO(HLE, "scePthreadExit(value=0x%llx)", exit_value);
             ExitThread(static_cast<DWORD>(exit_value));
-        });
+            __assume(0); // ExitThread never returns
+        };
+        RegisterSymbol("libkernel", "scePthreadExit", PthreadExitImpl);
+        RegisterSymbol("libkernel", "pthread_exit", PthreadExitImpl);
 
         // scePthreadSelf is registered by NID below (aI+OeCz8xrQ#T#T).
         RegisterSymbol("libkernel", "scePthreadGetprio", [](const GuestArgs& args) -> u64 {
@@ -951,6 +1135,14 @@ namespace HLE {
             
             LOG_DEBUG(HLE, "libkernel::memset(dest: 0x%llx, ch: %u, count: %llu)", dest, ch, count);
             if (dest && count > 0) {
+                if (!Memory::IsWritable(dest, count)) {
+                    Memory::CommitOnFault(dest);
+                    if (!Memory::IsWritable(dest, count)) {
+                        LOG_WARN(HLE, "libkernel::memset: dest range not writable (0x%llx, %llu) — skipped",
+                                 dest, count);
+                        return dest;
+                    }
+                }
                 std::memset(reinterpret_cast<void*>(dest), static_cast<int>(ch & 0xFF), count);
             }
             return dest;
@@ -1216,7 +1408,83 @@ namespace HLE {
         // on non-primary stacks.  The explicit memory validation below
         // is the PRIMARY defence; the SEH is a best-effort fallback for
         // the narrow TOCTOU race window where it does work.
-        auto MemmoveImpl = [](const GuestArgs& args) -> u64 {
+        // Shared guarded copy for memmove/memcpy.  The __try/__except SEH
+        // fallback is NOT functional on the guest stack (x64 unwinder validates
+        // the frame against the TIB and skips handlers on non-primary stacks),
+        // so a first-chance AV there escapes to the kernel VEH and hard-crashes
+        // the emulator.  Instead: when the page-table guard fails, demand-commit
+        // the reserved page(s) (PS5 on-demand memory — a game may reserve VA and
+        // touch it later), then re-check.  Only if the range is still not mapped
+        // (a genuine host-address copy, normal for the AGC-to-DCB pipeline) do we
+        // attempt the copy directly.
+        auto GuardedCopy = [](guest_addr_t dest, guest_addr_t src, u64 count,
+                              const char* which) {
+            // PCSX5_STR_COPY_PROBE: log every string-like copy whose source or
+            // destination begins with '"' or contains the image-path prefix.
+            // Gated behind an env var so normal runs are unaffected; used to
+            // locate where a record's image path is truncated to "image".
+            static const bool probe_on = ([] {
+                char b[2] = {0}; size_t n = 0;
+                return ::getenv_s(&n, b, sizeof(b), "PCSX5_STR_COPY_PROBE") == 0 && n > 0;
+            })();
+            if (probe_on && count >= 3 && count <= 0x1000) {
+                auto dump = [&](guest_addr_t a) -> std::string {
+                    std::string s;
+                    for (u64 i = 0; i < count && i < 40; ++i) {
+                        if (!Memory::IsReadable(a + i, 1)) break;
+                        char c = static_cast<char>(Memory::Read<u8>(a + i));
+                        s += (c >= 32 && c < 127) ? c : '?';
+                    }
+                    return s;
+                };
+                const std::string sd = dump(src);
+                const std::string dd = dump(dest);
+                if (sd.find("image") != std::string::npos ||
+                    dd.find("image") != std::string::npos ||
+                    sd.rfind("\"", 0) == 0 || dd.rfind("\"", 0) == 0) {
+                    LOG_INFO(HLE, "STRCPY %s count=%llu src@0x%llx=\"%s\" dest@0x%llx=\"%s\"",
+                             which, count, src, sd.c_str(), dest, dd.c_str());
+                }
+            }
+            bool src_ok  = Memory::IsReadable(src, count);
+            bool dest_ok = Memory::IsWritable(dest, count);
+            if (src_ok && dest_ok) {
+                std::memmove(reinterpret_cast<void*>(dest),
+                             reinterpret_cast<const void*>(src), count);
+                return;
+            }
+            if (!src_ok)  Memory::CommitOnFault(src);
+            if (!dest_ok) Memory::CommitOnFault(dest);
+            src_ok  = Memory::IsReadable(src, count);
+            dest_ok = Memory::IsWritable(dest, count);
+            if (src_ok && dest_ok) {
+                std::memmove(reinterpret_cast<void*>(dest),
+                             reinterpret_cast<const void*>(src), count);
+                return;
+            }
+            // Still unmapped after demand-commit.  A genuine host-address copy
+            // (AGC-to-DCB pipeline passes host addresses through here) is fine
+            // to attempt, but a near-null / sub-2GB pointer that isn't in the
+            // guest page table is a game bug — attempting it raises a host CRT
+            // AV that SEH cannot guard on the guest stack.  Skip those instead
+            // of crashing the emulator.
+            // Validate via VirtualQuery before attempting host copy to prevent hard AVs on uncommitted memory
+            MEMORY_BASIC_INFORMATION mbi_s{}, mbi_d{};
+            bool s_valid = (VirtualQuery(reinterpret_cast<LPCVOID>(src), &mbi_s, sizeof(mbi_s)) != 0 && mbi_s.State == MEM_COMMIT);
+            bool d_valid = (VirtualQuery(reinterpret_cast<LPCVOID>(dest), &mbi_d, sizeof(mbi_d)) != 0 && mbi_d.State == MEM_COMMIT);
+            if (!s_valid || !d_valid) {
+                LOG_WARN(HLE, "libkernel::%s: skipping copy with uncommitted memory (src_valid=%d dest_valid=%d src=0x%llx dest=0x%llx count=%llu)",
+                         which, (int)s_valid, (int)d_valid, src, dest, count);
+                return;
+            }
+            LOG_DEBUG(HLE, "libkernel::%s: page-table guard still fails after demand-commit "
+                      "(src_ok=%d dest_ok=%d src=0x%llx dest=0x%llx count=%llu) — host copy",
+                      which, (int)src_ok, (int)dest_ok, src, dest, count);
+            std::memmove(reinterpret_cast<void*>(dest),
+                         reinterpret_cast<const void*>(src), count);
+        };
+
+        auto MemmoveImpl = [&GuardedCopy](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             guest_addr_t src  = args.arg2;
             u64 count         = args.arg3;
@@ -1236,25 +1504,7 @@ namespace HLE {
                              dest, src, count);
                     return dest;
                 }
-                // Primary defence: validate memory before touching it.
-                bool src_ok2  = Memory::IsReadable(src, count);
-                bool dest_ok2 = Memory::IsWritable(dest, count);
-                if (src_ok2 && dest_ok2) {
-                    std::memmove(reinterpret_cast<void*>(dest),
-                                 reinterpret_cast<const void*>(src), count);
-                } else {
-                    LOG_DEBUG(HLE, "libkernel::memmove: page-table guard failed "
-                              "(src_ok=%d dest_ok=%d) — attempting SEH fallback",
-                              src_ok2, dest_ok2);
-                    __try {
-                        std::memmove(reinterpret_cast<void*>(dest),
-                                     reinterpret_cast<const void*>(src), count);
-                    } __except (EXCEPTION_EXECUTE_HANDLER) {
-                        LOG_WARN(HLE, "libkernel::memmove: AV during copy "
-                                 "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped",
-                                 dest, src, count);
-                    }
-                }
+                GuardedCopy(dest, src, count, "memmove");
             }
             return dest;
         };
@@ -1274,7 +1524,7 @@ namespace HLE {
             return mem;
         });
 
-        auto MemcpyImpl = [](const GuestArgs& args) -> u64 {
+        auto MemcpyImpl = [&GuardedCopy](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             guest_addr_t src  = args.arg2;
             u64 count         = args.arg3;
@@ -1301,30 +1551,7 @@ namespace HLE {
 
             LOG_DEBUG(HLE, "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                bool src_ok  = Memory::IsReadable(src, count);
-                bool dest_ok = Memory::IsWritable(dest, count);
-                if (src_ok && dest_ok) {
-                    // Fast path: page-table says the range is mapped — no SEH needed.
-                    std::memmove(reinterpret_cast<void*>(dest),
-                                 reinterpret_cast<const void*>(src), count);
-                } else if (!src_ok || !dest_ok) {
-                    // Fallback: addresses may be host pointers (outside guest
-                    // page table) — still attempt the copy under SEH guard.
-                    // Log at DEBUG (not WARN) since host-address copies are
-                    // normal for the AGC-to-DCB data pipeline.
-                    LOG_DEBUG(HLE, "libkernel::memcpy: page-table guard failed "
-                              "(src_ok=%d dest_ok=%d src=0x%llx dest=0x%llx count=%llu) "
-                              "— attempting SEH fallback",
-                              src_ok, dest_ok, src, dest, count);
-                    __try {
-                        std::memmove(reinterpret_cast<void*>(dest),
-                                     reinterpret_cast<const void*>(src), count);
-                    } __except (EXCEPTION_EXECUTE_HANDLER) {
-                        LOG_WARN(HLE, "libkernel::memcpy: AV during copy "
-                                 "(dest: 0x%llx, src: 0x%llx, count: %llu) — skipped",
-                                 dest, src, count);
-                    }
-                }
+                GuardedCopy(dest, src, count, "memcpy");
             }
             return dest;
         };
@@ -1405,7 +1632,18 @@ namespace HLE {
 
         // =====================================================================
         // POSIX-like file I/O (C stdio)
+        //
+        // The game's real libc.prx implements fread/fseek/ftell/fclose NATIVELY
+        // against its own FILE struct layout (fd at +4, flags at +0, buffer at
+        // +8/+0x10/+0x18/+0x20, ungetc area at +0x7e).  Handing it a real MSVC
+        // FILE* breaks every read (fd is read from +4 where MSVC stores part
+        // of _ptr), which is exactly why the C2 runtime's data.js chunk reader
+        // died mid-string ("image" + EOF).  We therefore return a FAKE FILE
+        // struct in libc.prx's layout, backed by a real CRT fd, and register
+        // the _read/_close/lseek NIDs so libc.prx's internals route through
+        // our kernel fd layer.
         // =====================================================================
+
         // fopen (xeYO4u7uyJ0#T#T)
         RegisterSymbol("libkernel", "xeYO4u7uyJ0#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t path_ptr = args.arg1;
@@ -1413,16 +1651,58 @@ namespace HLE {
             std::string path, mode;
             for (u64 i = 0; ; ++i) { u8 c = Memory::Read<u8>(path_ptr + i); if (!c) break; path += (char)c; }
             for (u64 i = 0; ; ++i) { u8 c = Memory::Read<u8>(mode_ptr + i); if (!c) break; mode += (char)c; }
-            FILE* f = fopen(Kernel::TranslateGuestPath(path).c_str(), mode.c_str());
-            LOG_INFO(HLE, "libkernel::fopen('%s', '%s') -> %p", path.c_str(), mode.c_str(), f);
-            return reinterpret_cast<u64>(f);
+            const std::string host_path = Kernel::TranslateGuestPath(path);
+            // Map the mode string to open() flags (read/write/append + binary).
+            int oflags = _O_BINARY;
+            char mode_char = 'r';
+            if (!mode.empty()) mode_char = mode[0];
+            bool readable = false, writable = false, append = false, rw = false;
+            for (char c : mode) {
+                switch (c) {
+                    case 'r': readable = true; break;
+                    case 'w': writable = true; break;
+                    case 'a': writable = true; append = true; break;
+                    case '+': rw = true; break;
+                    default: break;
+                }
+            }
+            if (append)             oflags |= _O_APPEND | _O_CREAT;
+            if (writable)           oflags |= _O_CREAT;
+            if (rw)                 oflags |= _O_RDWR;
+            else if (readable)      oflags |= _O_RDONLY;
+            else if (writable)      oflags |= _O_WRONLY;
+            const int fd = _open(host_path.c_str(), oflags, 0644);
+            if (fd < 0) {
+                LOG_INFO(HLE, "libkernel::fopen('%s', '%s') -> NULL (errno %d)",
+                         path.c_str(), mode.c_str(), errno);
+                return 0;
+            }
+            TrackGuestFd(fd);
+            const u64 f = CreateFakeFile(fd, mode_char);
+            if (!f) {
+                _close(fd);
+                UntrackGuestFd(fd);
+                LOG_ERROR(HLE, "libkernel::fopen('%s'): fake FILE alloc failed", path.c_str());
+                return 0;
+            }
+            LOG_INFO(HLE, "libkernel::fopen('%s', '%s') -> 0x%llx (fake FILE, fd=%d)",
+                     path.c_str(), mode.c_str(), f, fd);
+            return f;
         });
 
         // fclose (uodLYyUip20#T#T)
         RegisterSymbol("libkernel", "uodLYyUip20#T#T", [](const GuestArgs& args) -> u64 {
-            FILE* f = reinterpret_cast<FILE*>(args.arg1);
-            int r = f ? fclose(f) : -1;
-            LOG_DEBUG(HLE, "libkernel::fclose(%p) -> %d", f, r);
+            const u64 f = args.arg1;
+            if (!f) return ~0ull;
+            if (IsFakeFile(f)) {
+                const int fd = FakeFileFd(f);
+                DestroyFakeFile(f);
+                if (fd >= 0) UntrackGuestFd(fd);
+                LOG_DEBUG(HLE, "libkernel::fclose(0x%llx) -> 0 (fake FILE)", f);
+                return 0;
+            }
+            int r = fclose(reinterpret_cast<FILE*>(f));
+            LOG_DEBUG(HLE, "libkernel::fclose(%p) -> %d", reinterpret_cast<void*>(f), r);
             return (u64)(s64)r;
         });
 
@@ -1431,28 +1711,46 @@ namespace HLE {
             guest_addr_t buf = args.arg1;
             u64 size  = args.arg2;
             u64 count = args.arg3;
-            FILE* f   = reinterpret_cast<FILE*>(args.arg4);
-            if (!f || !buf) return 0;
-            u64 n = fread(reinterpret_cast<void*>(buf), size, count, f);
+            u64 f     = args.arg4;
+            if (!f || !buf || !size || !count) return 0;
+            const int fd = FakeFileFd(f);
+            if (fd >= 0) {
+                const u64 n = static_cast<u64>(KernelReadCore(fd, buf, size * count));
+                LOG_DEBUG(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, count: %llu) -> %llu", buf, size, count, n);
+                return n;
+            }
+            u64 n = fread(reinterpret_cast<void*>(buf), size, count, reinterpret_cast<FILE*>(f));
             LOG_DEBUG(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, count: %llu) -> %llu", buf, size, count, n);
             return n;
         });
 
         // fseek (rQFVBXp-Cxg#T#T)
         RegisterSymbol("libkernel", "rQFVBXp-Cxg#T#T", [](const GuestArgs& args) -> u64 {
-            FILE* f    = reinterpret_cast<FILE*>(args.arg1);
+            u64 f      = args.arg1;
             s64 offset = static_cast<s64>(args.arg2);
             int whence = static_cast<int>(args.arg3);
-            int r = f ? fseek(f, (long)offset, whence) : -1;
-            LOG_DEBUG(HLE, "libkernel::fseek(%p, %lld, %d) -> %d", f, offset, whence, r);
+            const int fd = FakeFileFd(f);
+            if (fd >= 0) {
+                const s64 r = _lseeki64(fd, offset, whence);
+                LOG_DEBUG(HLE, "libkernel::fseek(0x%llx, %lld, %d) -> %lld", f, offset, whence, r);
+                return r < 0 ? ~0ull : 0;
+            }
+            int r = f ? fseek(reinterpret_cast<FILE*>(f), (long)offset, whence) : -1;
+            LOG_DEBUG(HLE, "libkernel::fseek(%p, %lld, %d) -> %d", reinterpret_cast<void*>(f), offset, whence, r);
             return (u64)(s64)r;
         });
 
         // ftell (Qazy8LmXTvw#T#T)
         RegisterSymbol("libkernel", "Qazy8LmXTvw#T#T", [](const GuestArgs& args) -> u64 {
-            FILE* f = reinterpret_cast<FILE*>(args.arg1);
-            long r = f ? ftell(f) : -1;
-            LOG_DEBUG(HLE, "libkernel::ftell(%p) -> %ld", f, r);
+            u64 f = args.arg1;
+            const int fd = FakeFileFd(f);
+            if (fd >= 0) {
+                const s64 r = _lseeki64(fd, 0, SEEK_CUR);
+                LOG_DEBUG(HLE, "libkernel::ftell(0x%llx) -> %lld", f, r);
+                return static_cast<u64>(r);
+            }
+            long r = f ? ftell(reinterpret_cast<FILE*>(f)) : -1;
+            LOG_DEBUG(HLE, "libkernel::ftell(%p) -> %ld", reinterpret_cast<void*>(f), r);
             return (u64)(s64)r;
         });
 
@@ -1552,6 +1850,32 @@ namespace HLE {
         RegisterSymbol("libc", "fstat", PosixFstat);
         RegisterSymbol("libc", "mqQMh1zPPT8", PosixFstat);
 
+        // -------------------------------------------------------------------
+        // libc.prx internal file primitives.  The game's real libc.prx runs
+        // its OWN fread/fseek/ftell/fclose natively against the fake FILE
+        // struct we hand out from fopen; those functions call _read/_close/
+        // lseek through their GOT slots, which must land here so the fd-based
+        // kernel layer actually performs the I/O.  Without these the slots
+        // resolve to auto-stubs returning 0 and every read yields no data.
+        // -------------------------------------------------------------------
+        RegisterSymbol("libkernel", "DRuBt2pvICk", [](const GuestArgs& args) -> u64 {   // _read
+            return static_cast<u64>(KernelReadCore(static_cast<int>(args.arg1), args.arg2, args.arg3));
+        });
+        RegisterSymbol("libkernel", "FxVZqBAA7ks", [](const GuestArgs& args) -> u64 {   // _write
+            return static_cast<u64>(KernelWriteCore(static_cast<int>(args.arg1), args.arg2, args.arg3));
+        });
+        RegisterSymbol("libkernel", "_write", PosixWrite);   // name variant too
+        RegisterSymbol("libkernel", "NNtFaKJbPt0", [](const GuestArgs& args) -> u64 {   // _close
+            return static_cast<u64>(KernelCloseCore(static_cast<int>(args.arg1)));
+        });
+        RegisterSymbol("libkernel", "Oy6IpwgtYOk", [](const GuestArgs& args) -> u64 {   // lseek
+            const int fd     = static_cast<int>(args.arg1);
+            const s64 offset = static_cast<s64>(args.arg2);
+            const int whence = static_cast<int>(args.arg3);
+            const s64 r = _lseeki64(fd, offset, whence);
+            return static_cast<u64>(r);
+        });
+
         // sceKernelMunmap (cQke9UuBQOk#S#N)
         RegisterSymbol("libkernel", "cQke9UuBQOk#S#N", [](const GuestArgs& args) -> u64 {
             guest_addr_t addr = args.arg1;
@@ -1617,22 +1941,37 @@ namespace HLE {
         // pthread stubs (single-threaded model — all calls succeed trivially)
         // =====================================================================
         // scePthreadSelf (aI+OeCz8xrQ#T#T) — current thread ID from the CpuCore registry
-        RegisterSymbol("libkernel", "aI+OeCz8xrQ#T#T", [](const GuestArgs& /*args*/) -> u64 {
+        auto PthreadSelfImpl = [](const GuestArgs& /*args*/) -> u64 {
             u64 tid = Kernel::GetCurrentThreadId();
             LOG_DEBUG(HLE, "scePthreadSelf() -> 0x%llx", tid);
             return tid;
-        });
+        };
+        RegisterSymbol("libkernel", "aI+OeCz8xrQ#T#T", PthreadSelfImpl);
+        RegisterSymbol("libkernel", "pthread_self", PthreadSelfImpl);
+        RegisterSymbol("libkernel", "scePthreadSelf", PthreadSelfImpl);
 
         // scePthreadYield (T72hz6ffq08#T#T) — no-op in single-threaded mode
-        RegisterSymbol("libkernel", "T72hz6ffq08#T#T", [](const GuestArgs& /*args*/) -> u64 {
-            return 0;
-        });
+        // (real yield implementation registered later with pthread_yield).
+
+        // pthread_equal (vXg9dK7/4qM#T#T) — compare thread ids.
+        auto PthreadEqualImpl = [](const GuestArgs& args) -> u64 {
+            return args.arg1 == args.arg2 ? 1 : 0;
+        };
+        RegisterSymbol("libkernel", "pthread_equal", PthreadEqualImpl);
+        RegisterSymbol("libkernel", "scePthreadEqual", PthreadEqualImpl);
+
+        // pthread_getthreadid_np (MNFAlmXy+uY#T#T) — current thread id.
+        auto PthreadGetThreadIdImpl = [](const GuestArgs& /*args*/) -> u64 {
+            return Kernel::GetCurrentThreadId();
+        };
+        RegisterSymbol("libkernel", "pthread_getthreadid_np", PthreadGetThreadIdImpl);
+        RegisterSymbol("libkernel", "scePthreadGetthreadid", PthreadGetThreadIdImpl);
 
         // scePthreadCreate (6UgtwV+0zb4#T#T) — spawns a guest thread via the
         // CpuCore registry (reached through the Kernel:: thread API).
         // Honors the CpuConfig max_guest_threads limit to avoid race conditions
         // in the Construct runtime's multi-threaded JSON parser (PPSA02929).
-        RegisterSymbol("libkernel", "6UgtwV+0zb4#T#T", [](const GuestArgs& args) -> u64 {
+        auto PthreadCreateImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t tid_out   = args.arg1;
             guest_addr_t attr_ptr  = args.arg2;
             guest_addr_t entry_ptr = args.arg3;
@@ -1705,10 +2044,13 @@ namespace HLE {
             LOG_INFO(HLE, "scePthreadCreate(NID)(entry=0x%llx, arg=0x%llx, name='%s') -> tid=%llu",
                      entry_ptr, start_arg, name.c_str(), tid);
             return 0;
-        });
+        };
+        RegisterSymbol("libkernel", "6UgtwV+0zb4#T#T", PthreadCreateImpl);
+        RegisterSymbol("libkernel", "pthread_create", PthreadCreateImpl);
+        RegisterSymbol("libkernel", "pthread_create_name_np", PthreadCreateImpl);
 
         // scePthreadJoin (onNY9Byn-W8#S#N) — waits on the CpuCore-registered thread
-        RegisterSymbol("libkernel", "onNY9Byn-W8#S#N", [](const GuestArgs& args) -> u64 {
+        auto PthreadJoinImpl = [](const GuestArgs& args) -> u64 {
             u64 tid = args.arg1;
             guest_addr_t value_ptr = args.arg2;
 
@@ -1721,7 +2063,9 @@ namespace HLE {
 
             LOG_INFO(HLE, "scePthreadJoin(NID)(tid=%llu) -> exit_code=%llu", tid, exit_code);
             return 0;
-        });
+        };
+        RegisterSymbol("libkernel", "onNY9Byn-W8#S#N", PthreadJoinImpl);
+        RegisterSymbol("libkernel", "pthread_join", PthreadJoinImpl);
 
         // scePthreadMutex/Cond init/lock/unlock/destroy and the mutex-attr NIDs
         // hit by PPSA01668 (F8bUHwAG284, iMp8QpE+XO4, 1FGvU0i9saQ, cmo1RIYva9o,
@@ -1803,14 +2147,14 @@ namespace HLE {
             u32 ch = static_cast<u32>(args.arg2);
             u64 n = args.arg3;
             if (dst && n > 0 && n < 0x10000000ULL) {
-                if (Memory::IsWritable(dst, n)) {
-                    std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n);
-                } else {
-                    __try { std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n); }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {
-                        LOG_WARN(HLE, "libkernel::memset: AV (dest: 0x%llx, count: %llu) — skipped", dst, n);
+                if (!Memory::IsWritable(dst, n)) {
+                    Memory::CommitOnFault(dst);
+                    if (!Memory::IsWritable(dst, n)) {
+                        LOG_WARN(HLE, "libkernel::memset: dest range not writable (0x%llx, %llu) — skipped", dst, n);
+                        return dst;
                     }
                 }
+                std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n);
             }
             return dst;
         });
@@ -1889,6 +2233,8 @@ namespace HLE {
         };
         RegisterSymbol("libkernel", "pthread_yield", PthreadYieldImpl);
         RegisterSymbol("libkernel", "B5GmVDKwpn0", PthreadYieldImpl);
+        RegisterSymbol("libkernel", "T72hz6ffq08#T#T", PthreadYieldImpl);
+        RegisterSymbol("libkernel", "scePthreadYield", PthreadYieldImpl);
 
         // RandomExports HLE (sceRandomGetRandomNumber / hardware RNG fallback)
         auto RandomGetRandomNumberImpl = [](const GuestArgs& args) -> u64 {
