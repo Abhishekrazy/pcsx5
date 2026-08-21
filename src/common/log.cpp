@@ -38,13 +38,13 @@ std::string           g_file_path;
 LogConfig::LogCallback g_log_callback = nullptr;
 void*                 g_log_callback_user = nullptr;
 LogLevel              g_min_levels[7] = {
-    LogLevel::Info, // Loader
-    LogLevel::Info, // Memory
-    LogLevel::Info, // Kernel
-    LogLevel::Info, // HLE
-    LogLevel::Info, // GPU
-    LogLevel::Info, // Cpu
-    LogLevel::Info, // General
+    LogLevel::Info,  // Loader
+    LogLevel::Info,  // Memory
+    LogLevel::Info,  // Kernel
+    LogLevel::Debug, // HLE
+    LogLevel::Info,  // GPU
+    LogLevel::Info,  // Cpu
+    LogLevel::Info,  // General
 };
 
 // ---------------------------------------------------------------------------

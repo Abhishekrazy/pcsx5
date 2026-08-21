@@ -127,6 +127,15 @@ namespace HLE {
     // Falls back to auto-stub creation if not found anywhere (unless strict mode).
     guest_addr_t ResolveAny(const std::string& name);
 
+    // True when a real (non-auto-stub) HLE implementation is registered for
+    // `name` under any module.  Used by the kernel linker to prefer HLE
+    // implementations over PRX exports that only match on the NID base form
+    // (e.g. libc.prx exports malloc as "gQX+4GDQjpM#D#A" while the game
+    // imports "gQX+4GDQjpM#T#T" — HLE's malloc must win, but the C++ ABI
+    // typeinfo/vtable/dtor data NIDs no HLE module implements must resolve
+    // to the real libc data).
+    bool HasRealImplementation(const std::string& name);
+
     // Store the guest VA of the game's main() function (called from ELF loader)
     void SetGuestMainAddress(guest_addr_t addr);
     guest_addr_t GetGuestMainAddress();

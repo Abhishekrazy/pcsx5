@@ -1555,6 +1555,21 @@ void RegisterLibKernelSync() {
     RegisterSymbol("libkernel", "scePthreadMutexattrSettype", ScePthreadMutexattrSettype);
     RegisterSymbol("libkernel", "scePthreadMutexattrSetprotocol", [](const GuestArgs&) -> u64 { return 0; });
 
+    // Plain POSIX pthread names: the game's real libc.prx links against
+    // libkernel by NID (e.g. pthread_mutex_lock#T#T), and with the NID-base
+    // export matching these resolve to the implementations below instead of
+    // the NID-db log-and-return-0 stubs (which left mutexes unlocked and
+    // races corrupted libc state, e.g. a null dest in native memset).
+    RegisterSymbol("libkernel", "pthread_mutex_init", ScePthreadMutexInit);
+    RegisterSymbol("libkernel", "pthread_mutex_lock", ScePthreadMutexLock);
+    RegisterSymbol("libkernel", "pthread_mutex_trylock", ScePthreadMutexTrylock);
+    RegisterSymbol("libkernel", "pthread_mutex_unlock", ScePthreadMutexUnlock);
+    RegisterSymbol("libkernel", "pthread_mutex_destroy", ScePthreadMutexDestroy);
+    RegisterSymbol("libkernel", "pthread_mutexattr_init", ScePthreadMutexattrInit);
+    RegisterSymbol("libkernel", "pthread_mutexattr_destroy", ScePthreadMutexattrDestroy);
+    RegisterSymbol("libkernel", "pthread_mutexattr_settype", ScePthreadMutexattrSettype);
+    RegisterSymbol("libkernel", "pthread_mutexattr_setprotocol", [](const GuestArgs&) -> u64 { return 0; });
+
     // pthread condition variable
     RegisterSymbol("libkernel", "scePthreadCondInit", ScePthreadCondInit);
     RegisterSymbol("libkernel", "scePthreadCondWait", ScePthreadCondWait);
@@ -1567,6 +1582,17 @@ void RegisterLibKernelSync() {
         return 0;
     });
     RegisterSymbol("libkernel", "scePthreadCondattrDestroy", [](const GuestArgs&) -> u64 { return 0; });
+    RegisterSymbol("libkernel", "pthread_cond_init", ScePthreadCondInit);
+    RegisterSymbol("libkernel", "pthread_cond_wait", ScePthreadCondWait);
+    RegisterSymbol("libkernel", "pthread_cond_timedwait", ScePthreadCondTimedwait);
+    RegisterSymbol("libkernel", "pthread_cond_signal", ScePthreadCondSignal);
+    RegisterSymbol("libkernel", "pthread_cond_broadcast", ScePthreadCondBroadcast);
+    RegisterSymbol("libkernel", "pthread_cond_destroy", ScePthreadCondDestroy);
+    RegisterSymbol("libkernel", "pthread_condattr_init", [](const GuestArgs& a) -> u64 {
+        if (a.arg1) SafeWriteU64(a.arg1, 0);
+        return 0;
+    });
+    RegisterSymbol("libkernel", "pthread_condattr_destroy", [](const GuestArgs&) -> u64 { return 0; });
 
     // pthread read-write lock
     RegisterSymbol("libkernel", "scePthreadRwlockInit", ScePthreadRwlockInit);
@@ -1579,6 +1605,18 @@ void RegisterLibKernelSync() {
         return 0;
     });
     RegisterSymbol("libkernel", "scePthreadRwlockattrDestroy", [](const GuestArgs&) -> u64 { return 0; });
+    RegisterSymbol("libkernel", "pthread_rwlock_init", ScePthreadRwlockInit);
+    RegisterSymbol("libkernel", "pthread_rwlock_rdlock", ScePthreadRwlockRdlock);
+    RegisterSymbol("libkernel", "pthread_rwlock_tryrdlock", ScePthreadRwlockRdlock);
+    RegisterSymbol("libkernel", "pthread_rwlock_wrlock", ScePthreadRwlockWrlock);
+    RegisterSymbol("libkernel", "pthread_rwlock_trywrlock", ScePthreadRwlockWrlock);
+    RegisterSymbol("libkernel", "pthread_rwlock_unlock", ScePthreadRwlockUnlock);
+    RegisterSymbol("libkernel", "pthread_rwlock_destroy", ScePthreadRwlockDestroy);
+    RegisterSymbol("libkernel", "pthread_rwlockattr_init", [](const GuestArgs& a) -> u64 {
+        if (a.arg1) SafeWriteU64(a.arg1, 0);
+        return 0;
+    });
+    RegisterSymbol("libkernel", "pthread_rwlockattr_destroy", [](const GuestArgs&) -> u64 { return 0; });
 
     // pthread once + TLS keys
     RegisterSymbol("libkernel", "scePthreadOnce", ScePthreadOnce);
@@ -1588,6 +1626,11 @@ void RegisterLibKernelSync() {
     RegisterSymbol("libkernel", "scePthreadKeyDelete", ScePthreadKeyDelete);
     RegisterSymbol("libkernel", "scePthreadGetspecific", ScePthreadGetspecific);
     RegisterSymbol("libkernel", "scePthreadSetspecific", ScePthreadSetspecific);
+    RegisterSymbol("libkernel", "pthread_once", ScePthreadOnce);
+    RegisterSymbol("libkernel", "pthread_key_create", ScePthreadKeyCreate);
+    RegisterSymbol("libkernel", "pthread_key_delete", ScePthreadKeyDelete);
+    RegisterSymbol("libkernel", "pthread_getspecific", ScePthreadGetspecific);
+    RegisterSymbol("libkernel", "pthread_setspecific", ScePthreadSetspecific);
 
     // sceKernel* mutex objects
     RegisterSymbol("libkernel", "sceKernelCreateMutex", SceKernelCreateMutex);

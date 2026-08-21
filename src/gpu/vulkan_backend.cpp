@@ -453,19 +453,16 @@ namespace GPU {
             case GLFW_KEY_S:    case GLFW_KEY_DOWN:  button_flag = 0x00000040; break; // PAD_DOWN
             case GLFW_KEY_A:    case GLFW_KEY_LEFT:  button_flag = 0x00000080; break; // PAD_LEFT
             case GLFW_KEY_D:    case GLFW_KEY_RIGHT: button_flag = 0x00000020; break; // PAD_RIGHT
-            case GLFW_KEY_SPACE:                     button_flag = 0x00004000; break; // PAD_CROSS
-            case GLFW_KEY_Z:                         button_flag = 0x00004000; break; // PAD_CROSS (alias)
-            case GLFW_KEY_ENTER:                     button_flag = 0x00002000; break; // PAD_CIRCLE
-            case GLFW_KEY_X:                         button_flag = 0x00002000; break; // PAD_CIRCLE (alias)
-            case GLFW_KEY_LEFT_SHIFT:                button_flag = 0x00008000; break; // PAD_SQUARE
-            case GLFW_KEY_V:                         button_flag = 0x00008000; break; // PAD_SQUARE (alias)
-            case GLFW_KEY_C:                         button_flag = 0x00001000; break; // PAD_TRIANGLE
+            case GLFW_KEY_SPACE: case GLFW_KEY_Z: case GLFW_KEY_J: button_flag = 0x00004000; break; // PAD_CROSS
+            case GLFW_KEY_ENTER: case GLFW_KEY_X: case GLFW_KEY_L: button_flag = 0x00002000; break; // PAD_CIRCLE
+            case GLFW_KEY_LEFT_SHIFT: case GLFW_KEY_V: case GLFW_KEY_K: button_flag = 0x00008000; break; // PAD_SQUARE
+            case GLFW_KEY_C: case GLFW_KEY_I:                      button_flag = 0x00001000; break; // PAD_TRIANGLE
             case GLFW_KEY_Q:                         button_flag = 0x00000400; break; // PAD_L1
             case GLFW_KEY_E:                         button_flag = 0x00000800; break; // PAD_R1
             case GLFW_KEY_R:                         button_flag = 0x00000100; break; // PAD_L2 (digital)
             case GLFW_KEY_F:                         button_flag = 0x00000200; break; // PAD_R2 (digital)
             case GLFW_KEY_TAB:                       button_flag = 0x00000008; break; // PAD_OPTIONS
-            case GLFW_KEY_T:                         button_flag = 0x00100000; break; // PAD_TOUCHPAD (click)
+            case GLFW_KEY_BACKSPACE: case GLFW_KEY_T: button_flag = 0x00100000; break; // PAD_TOUCHPAD (click)
             case GLFW_KEY_ESCAPE:
                 // Signal close
                 if (g_window) glfwSetWindowShouldClose(g_window, GLFW_TRUE);

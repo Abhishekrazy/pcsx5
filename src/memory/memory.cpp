@@ -66,11 +66,26 @@ guest_addr_t PoolAlloc(u64 aligned_size) {
     if (g_pool_used + aligned_size > kPoolSize) return 0;  // OOM
     guest_addr_t addr = reinterpret_cast<guest_addr_t>(g_pool_base) + g_pool_used;
     g_pool_used += aligned_size;
+    // Check whether these pages were previously committed (LIFO rewind reuse).
+    // Fresh commits are zero-initialized by the kernel; a reused block that
+    // PoolFree rewound keeps its stale contents, which breaks guest code that
+    // relies on Orbis-style zero-initialized memory.
+    bool reused_committed = false;
+    {
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi)) &&
+            mbi.State == MEM_COMMIT) {
+            reused_committed = true;
+        }
+    }
     // Pages in the pool are reserved-only at init; commit the sub-range now.
     if (!VirtualAlloc(reinterpret_cast<void*>(addr), aligned_size,
                       MEM_COMMIT, PAGE_READWRITE)) {
         g_pool_used -= aligned_size;  // roll back the bump
         return 0;
+    }
+    if (reused_committed) {
+        std::memset(reinterpret_cast<void*>(addr), 0, aligned_size);
     }
     return addr;
 }
@@ -596,6 +611,15 @@ Status Query(guest_addr_t address, MemoryInfo* out_info) {
                 out_info->is_committed     = r.committed;
                 out_info->is_reserved      = !r.committed;
                 out_info->win32_protection = r.win32_prot;
+                if (!r.committed) {
+                    MEMORY_BASIC_INFORMATION mbi{};
+                    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) != 0 && mbi.State == MEM_COMMIT) {
+                        out_info->is_committed     = true;
+                        out_info->is_reserved      = false;
+                        out_info->win32_protection = mbi.Protect;
+                        out_info->protection       = TranslateFromWin32(mbi.Protect);
+                    }
+                }
                 return Status::Ok;
             }
         }
@@ -685,28 +709,26 @@ void WriteBuffer(guest_addr_t addr, const void* src, u64 size) {
 bool CommitOnFault(guest_addr_t address) {
     constexpr u64 kGranularity = 65536; // Windows allocation granularity
     const guest_addr_t base = address & ~(kGranularity - 1);
-    // Only act when the fault address lies inside a tracked guest region.
-    bool covered = false;
-    {
-        std::lock_guard<std::mutex> lock(g_regions_mutex);
-        for (const auto& r : g_regions) {
-            if (r.base <= address && address < r.base + r.size) {
-                covered = true;
-                break;
-            }
-        }
+    // Accept any genuinely-reserved page, tracked or not.  The guest VAs are
+    // host VAs, so the game can touch pages the emulator never recorded (e.g.
+    // guest thread stacks set up in the host thread path, or reserve-then-touch
+    // heaps) — refusing to commit them turns a benign demand-commit into a
+    // hard host crash the next time host CRT memcpy runs on the guest stack.
+    // VirtualQuery below is the authoritative state check.
+    MEMORY_BASIC_INFORMATION mbi{};
+    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
+        LOG_WARN(Memory, "CommitOnFault: VirtualQuery failed at 0x%llx", address);
+        return false;
     }
-    if (!covered) return false;
     // The region record may be marked committed as a whole while only a
     // subrange actually is (Memory::Protect's commit fallback flips the
     // containing record).  Decide per fault page instead: commit only when
     // the page is genuinely still reserved (LOST EPIC's Unity heap does
     // exactly this: reserve 8 MB, mprotect-commit 4 MB, then touch more).
-    MEMORY_BASIC_INFORMATION mbi{};
-    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
+    if (mbi.State != MEM_RESERVE) {
+        LOG_WARN(Memory, "CommitOnFault: page at 0x%llx not MEM_RESERVE (state=%u) — skipping", address, (u32)mbi.State);
         return false;
     }
-    if (mbi.State != MEM_RESERVE) return false;
     if (!VirtualAlloc(reinterpret_cast<void*>(base), kGranularity, MEM_COMMIT, PAGE_READWRITE)) {
         LOG_WARN(Memory, "CommitOnFault: failed to commit 64 KiB at 0x%llx (err=%lu)",
                  base, GetLastError());

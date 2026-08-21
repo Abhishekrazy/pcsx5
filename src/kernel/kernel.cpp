@@ -5,7 +5,10 @@
 #include "syscalls.h"
 #include "thread.h"
 #include "tls_patch.h"
+#include "guest_tracer.h"
+#include <algorithm>
 #include "../cpu/amd_compat.h"
+#include "../cpu/cpu.h"
 #include "../diagnostics/diagnostics.h"
 #include "../memory/memory.h"
 #include "../hle/hle.h"
@@ -28,6 +31,7 @@
 #include <set>
 #include <vector>
 #include <string>
+#include <sstream>
 
 // Windows-compatible replacements for Unix headers (minimal set for kernel.cpp)
 #ifndef KERNEL_UNIX_COMPAT_H
@@ -201,6 +205,52 @@ namespace Kernel {
     static std::set<std::string> g_prx_loading;
     static Loader::ModuleGraph g_module_graph;
     constexpr u32 kMaxPrxLoadDepth = 32;
+
+    // Loaded-module registry for sceKernelGetModuleInfo* HLE.  Populated from
+    // LinkModule so every linked module (the three u5ag.* segments, PRX, etc.)
+    // is address-queryable.  Guarded by g_module_registry_mutex.
+    static std::mutex g_module_registry_mutex;
+    static std::vector<Loader::LoadedModule> g_loaded_modules;
+
+    // Dynamic-TLS support (__tls_get_addr).  Each registered module that has a
+    // PT_TLS segment is given a 1-based TLS-module index (the main module is
+    // index 1 when it is TLS-bearing), mirroring the ELF TLS-descriptor
+    // sv_ndx the guest loader uses.  Per (thread, module) we lazily allocate a
+    // dedicated guest block seeded from the module's PT_TLS template, so a
+    // secondary module's TLS variables no longer collide with the main block.
+    static std::vector<u32> g_loaded_module_tls_index; // parallel to g_loaded_modules (0=none)
+    static std::vector<std::pair<u64, u64>> g_tls_block_cache; // (tid,module)->(block_va) 1:1 key pack
+    static std::vector<u64>                  g_tls_block_va;   // parallel block value
+    static std::mutex                        g_tls_block_mutex;
+
+    void RegisterLoadedModule(const Loader::LoadedModule& module) {
+        if (module.base_address == 0 || module.segments.empty()) return;
+        std::lock_guard<std::mutex> lock(g_module_registry_mutex);
+        // Avoid duplicates for the same base address.
+        for (const auto& m : g_loaded_modules) {
+            if (m.base_address == module.base_address) return;
+        }
+        g_loaded_modules.push_back(module);
+        g_loaded_module_tls_index.push_back(0); // resolved below
+        const size_t idx = g_loaded_modules.size() - 1;
+        if (module.has_tls) {
+            // 1-based TLS-module index: the first TLS-bearing module loaded is
+            // "module 1", which is the main block (fast path in __tls_get_addr).
+            g_loaded_module_tls_index[idx] = static_cast<u32>(idx + 1);
+        }
+    }
+
+    const Loader::LoadedModule* FindModuleForAddr(guest_addr_t addr) {
+        if (!addr) return nullptr;
+        std::lock_guard<std::mutex> lock(g_module_registry_mutex);
+        for (const auto& m : g_loaded_modules) {
+            if (addr >= m.base_address &&
+                addr < m.base_address + m.image_size) {
+                return &m;
+            }
+        }
+        return nullptr;
+    }
 
     static std::string NormalizePrxPath(const std::filesystem::path& path) {
         std::string key = std::filesystem::absolute(path).lexically_normal().string();
@@ -510,7 +560,7 @@ namespace Kernel {
 
     // Look up an import name in the export tables of already-loaded PRX
     // modules.  Returns 0 when no loaded PRX exports the symbol.
-    static guest_addr_t FindLoadedPrxExport(const std::string& sym_name) {
+    static guest_addr_t FindLoadedPrxExportExact(const std::string& sym_name) {
         for (const auto& [key, record] : g_prx_modules) {
             const auto& module = record->module;
             for (const auto& sym : module.symbols) {
@@ -524,24 +574,73 @@ namespace Kernel {
         return 0;
     }
 
-    static bool LinkModule(Loader::LoadedModule& module) {
-        LOG_INFO(Kernel, "Linking module %s at base address 0x%llx...", module.name.c_str(), module.base_address);
-
-        auto resolve_external = [&](const std::string& sym_name) -> guest_addr_t {
-            // Prefer real exports from loaded PRX modules; fall back to HLE.
-            guest_addr_t addr = FindLoadedPrxExport(sym_name);
-            if (addr != 0) {
-                return addr;
-            }
-            addr = HLE::ResolveAny(sym_name);
-            if (addr == 0) {
-                LOG_WARN(Kernel, "Unresolved external symbol: %s", sym_name.c_str());
-                if (HLE::IsStrictImportMode()) {
-                    LOG_ERROR(Kernel, "Strict import mode active. Aborting load.");
-                    return 0;
+    // NID-base fallback: PS5 NIDs are identified by their 11-char base; the
+    // 4-char "#X#Y" suffix is a type tag that may differ between an importer's
+    // request and the exporter's declaration (e.g. libc.prx exports data as
+    // "#D#A" while the game imports the same NID as "#T#T" — typeinfo /
+    // vtable / dtor imports for C++ exceptions hit exactly this case).
+    // Used ONLY for symbols no HLE module implements (see resolve_external),
+    // so well-working HLE implementations (malloc/memset/pthread) are never
+    // replaced by real-but-uninitialized libc code.
+    static guest_addr_t FindLoadedPrxExportBaseNid(const std::string& sym_name) {
+        const auto nid_base = [](const std::string& s) -> std::string {
+            const auto pos = s.find('#');
+            return pos == std::string::npos ? s : s.substr(0, pos);
+        };
+        const std::string base = nid_base(sym_name);
+        if (base.empty()) return 0;
+        for (const auto& [key, record] : g_prx_modules) {
+            const auto& module = record->module;
+            for (const auto& sym : module.symbols) {
+                if (sym.st_shndx == 0 || sym.st_value == 0) continue; // not an export
+                const char* name = &module.string_table[sym.st_name];
+                if (!name) continue;
+                const std::string candidate(name);
+                if (nid_base(candidate) == base) {
+                    return module.base_address + sym.st_value;
                 }
             }
-            return addr;
+        }
+        return 0;
+    }
+
+    static bool LinkModule(Loader::LoadedModule& module) {
+        LOG_INFO(Kernel, "Linking module %s at base address 0x%llx...", module.name.c_str(), module.base_address);
+        RegisterLoadedModule(module); // make address-queryable for sceKernelGetModuleInfo*
+
+        auto resolve_external = [&](const std::string& sym_name) -> guest_addr_t {
+            // 1. Exact-string match against loaded PRX exports first (a real
+            //    PRX symbol with the same name wins over HLE — it is the game's
+            //    actual library).
+            {
+                guest_addr_t addr = FindLoadedPrxExportExact(sym_name);
+                if (addr != 0) {
+                    return addr;
+                }
+            }
+            // 2. Real HLE implementations (malloc, memset, pthread sync, AGC,
+            //    video/audio HLE, ...) take precedence over PRX exports that
+            //    only match on the NID base form.  The game imports
+            //    "gQX+4GDQjpM#T#T" (malloc) while libc.prx exports
+            //    "gQX+4GDQjpM#D#A"; using the real libc malloc here breaks
+            //    boot because the real libc.prx environment is never
+            //    initialized (no DT_INIT, no heap) — its malloc returns NULL.
+            if (HLE::HasRealImplementation(sym_name)) {
+                return HLE::ResolveAny(sym_name);
+            }
+            // 3. NID-base fallback to PRX exports: PS5 libraries export data
+            //    (typeinfo/vtable/dtor for the C++ exception machinery) under
+            //    a "#D#A" tag while the game imports the same NID as "#T#T".
+            //    No HLE module implements these, so resolve them to the real
+            //    libc data (e.g. p6LrHjIQMdk, QW2jL1J5rwY, kALvdgEv5ME ...).
+            {
+                guest_addr_t addr = FindLoadedPrxExportBaseNid(sym_name);
+                if (addr != 0) {
+                    return addr;
+                }
+            }
+            // 4. Last resort: HLE auto-stub (logs, returns 0).
+            return HLE::ResolveAny(sym_name);
         };
 
         // Process relocation table
@@ -1395,6 +1494,14 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             return EXCEPTION_CONTINUE_SEARCH;
         }
 
+        // Guest CPU step-tracer (PCSX5_GUEST_TRACE): claims single-step and
+        // arming-breakpoint exceptions before any other handler so the tracer
+        // can capture the guest instruction flow.  Inert unless the env var is
+        // set (see guest_tracer.cpp).
+        if (GuestTracer::HandleTrap(exception_record->ExceptionCode, context)) {
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+
         // Host stack overflow: log minimally and defer to the unhandled
         // filter chain (stack guarantee reserved in Initialize gives it room
         // to run).  Without the guarantee the OS kills the process silently
@@ -1466,6 +1573,101 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
 
         LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu",
                  exception_record->ExceptionCode, context->Rip, ::GetCurrentThreadId());
+
+        // ---- GUEST NULL-CALL attribution (durable diagnostic) -------------
+        // A guest indirect call through a null/bad function pointer faults by
+        // trying to EXECUTE at/near address 0 (AV, ExceptionInformation[0]==8).
+        // The guest thread's dedicated stack still holds the return-address
+        // chain, so walk it to identify the guest call-site that made the call.
+        if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+            context->Rip < 0x10000ULL) {
+            const u64 etype = (exception_record->NumberParameters >= 2)
+                                  ? exception_record->ExceptionInformation[0] : 0;
+            LOG_ERROR(Kernel, "--------------------------------------------------");
+            LOG_ERROR(Kernel, "GUEST NULL-CALL: RIP=0x%llx etype=%llu code=0x%X — indirect call through null/bad fn-ptr | "
+                      "RAX=0x%llx RBX=0x%llx RCX=0x%llx RDX=0x%llx RSI=0x%llx RDI=0x%llx "
+                      "RSP=0x%llx RBP=0x%llx R8=0x%llx R9=0x%llx R10=0x%llx R11=0x%llx R12=0x%llx R13=0x%llx R14=0x%llx R15=0x%llx",
+                      context->Rip, etype, exception_record->ExceptionCode,
+                      context->Rax, context->Rbx, context->Rcx, context->Rdx,
+                      context->Rsi, context->Rdi,
+                      context->Rsp, context->Rbp,
+                      context->R8, context->R9, context->R10, context->R11,
+                      context->R12, context->R13, context->R14, context->R15);
+            const u64 g_tid = CpuCore::GetCurrentThreadId();
+            if (auto* gt = CpuCore::GetThreadById(g_tid)) {
+                const u64 gbase = gt->stack_base, gsize = gt->stack_size;
+                LOG_ERROR(Kernel, "  [guest thread %llu stack base=0x%llx size=0x%llx]", g_tid, gbase, gsize);
+                u64 lo = (context->Rsp >= gbase && context->Rsp < gbase + gsize)
+                             ? context->Rsp : (gbase + gsize - 0x2000);
+                u64 hi = lo + 0x4000;
+                if (hi > gbase + gsize) hi = gbase + gsize;
+                int ra_count = 0;
+                for (u64 p = lo; p + 8 <= hi && ra_count < 48; p += 8) {
+                    u64 v = 0;
+                    if (!SafeRead(&v, reinterpret_cast<void*>(p), 8)) break;
+                    if (v >= 0x810000000 && v < 0x900000000) {
+                        LOG_ERROR(Kernel, "  [guest-stack+0x%04llx] ret-> 0x%llx (off 0x%llx)",
+                                  p - lo, v, v - 0x810000000);
+                        ++ra_count;
+                    }
+                }
+            } else {
+                for (u64 p = context->Rsp; p + 8 <= context->Rsp + 0x2000; p += 8) {
+                    u64 v = 0;
+                    if (!SafeRead(&v, reinterpret_cast<void*>(p), 8)) break;
+                    if (v >= 0x810000000 && v < 0x900000000) {
+                        LOG_ERROR(Kernel, "  [rsp+0x%04llx] ret-> 0x%llx (off 0x%llx)",
+                                  p - context->Rsp, v, v - 0x810000000);
+                    }
+                }
+            }
+            // Dump the guest instruction bytes at/just before the immediate
+            // caller (return address = [rsp]) so the indirect-call instruction
+            // and the load that produced the null target (RAX=0) are visible.
+            {
+                u64 caller = 0;
+                SafeRead(&caller, reinterpret_cast<void*>(context->Rsp), 8);
+                if (caller >= 0x810000000 && caller < 0x900000000) {
+                    // The call instruction is a few bytes before the return addr.
+                    u64 base = caller - 32;
+                    if (base < 0x810000000) base = 0x810000000;
+                    u8 buf[40] = {};
+                    int nread = 0;
+                    for (u64 k = 0; k < 40; ++k) {
+                        if (!SafeRead(&buf[k], reinterpret_cast<void*>(base + k), 1)) break;
+                        ++nread;
+                    }
+                    if (nread >= 8) {
+                        std::string hex;
+                        for (int k = 0; k < nread; ++k) {
+                            char t[4];
+                            sprintf_s(t, sizeof(t), "%02x ", buf[k]);
+                            hex += t;
+                        }
+                        LOG_ERROR(Kernel, "  [caller 0x%llx-32 bytes] %s", caller, hex.c_str());
+                    }
+                }
+            }
+            // Dump a guest-data window around RBX (often a vtable/GOT/table base the
+            // null pointer came from), so the 0 slot feeding the null call is visible.
+            {
+                u64 base = context->Rbx;
+                if (base >= 0x810000000 && base < 0x900000000) {
+                    u64 lo = base;
+                    if (lo + 0x60 > 0x900000000) lo = 0x900000000 - 0x60;
+                    std::ostringstream row;
+                    for (u64 k = 0; k < 0x60; k += 8) {
+                        u64 v = 0;
+                        if (!SafeRead(&v, reinterpret_cast<void*>(lo + k), 8)) break;
+                        char t[24];
+                        sprintf_s(t, sizeof(t), "[%04llx]%06llx ", k, (v & 0xffffffffffULL));
+                        row << t;
+                    }
+                    LOG_ERROR(Kernel, "  [datarbx 0x%llx] %s", base, row.str().c_str());
+                }
+            }
+            LOG_ERROR(Kernel, "--------------------------------------------------");
+        }
  
         if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
             u8 instr[16] = {0};
@@ -1804,6 +2006,21 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 LOG_ERROR(Kernel, "  [RDI+0x%02llx] = 0x%016llx", off, val);
             }
 
+            // Guest stack scan — find the return addresses on the guest stack
+            // so host-frame crashes in real libc.prx code (native memset etc.)
+            // can be attributed to the calling guest frame.
+            LOG_ERROR(Kernel, "Guest stack scan:");
+            for (u64 sp_scan = context->Rsp;
+                 sp_scan < context->Rsp + 0x2000;
+                 sp_scan += 8) {
+                u64 val = 0;
+                if (!SafeRead(&val, reinterpret_cast<void*>(sp_scan), 8)) break;
+                if (val >= 0x800000000 && val < 0x900000000) {
+                    LOG_ERROR(Kernel, "  [RSP+0x%04llx] -> 0x%llx (offset 0x%llx)",
+                              sp_scan - context->Rsp, val, val - 0x800000000);
+                }
+            }
+
             // Record the crash and let the SEH handler in TryStartGuest catch
             // it cleanly instead of killing the emulator process.
             LogConfig::FlushDedup();
@@ -1867,6 +2084,10 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 }
             }
 
+            // Debug curation: the guest/host stack scans and faulting-region
+            // layout diagnostics were proven out while chasing a VCRUNTIME
+            // memcpy AV (see CommitOnFault).  The scans are intentionally
+            // omitted from the final log to keep crash reports compact.
 
             LOG_ERROR(Kernel, "VEH Unhandled Exception: Code: 0x%X, RIP: 0x%llx, Module: %s, Offset: 0x%llx",
                       exception_record->ExceptionCode, context->Rip, module_name, offset);
@@ -1931,6 +2152,91 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             tp = g_guest_tls.ThreadPointer();
         }
         return tp;
+    }
+
+    // Dynamic-TLS (module-keyed) resolution for __tls_get_addr.  The ELF TLS
+    // descriptor carries { sv_ndx (ti_module), ti_offset }.  The main module
+    // (and unknown/0 indices) is handled by the original single-shared-block
+    // path `tp + ti_offset` — byte-identical to the pre-DTV behaviour, which is
+    // what single-module titles (Dreaming Sarah) rely on.  A KNOWN secondary
+    // TLS-bearing module gets a dedicated per-(thread,module) block seeded from
+    // its PT_TLS image (mirrors KyTy's RuntimeLinker::TlsGetAddr / SharpEmu's
+    // GuestTlsTemplate), so a second module's TLS no longer aliases the main
+    // block.  Any mismatch/unknown index falls back to `tp + ti_offset`.
+    guest_addr_t ResolveDynamicTls(u64 guest_tid, u64 ti_module, u64 ti_offset,
+                                   guest_addr_t tp) {
+        // Main module / unknown / malformed: preserve today's behaviour exactly.
+        if (ti_module == 0 || ti_module == 1) {
+            return tp + ti_offset;
+        }
+
+        // Find the TLS-bearing loaded module whose 1-based TLS index == ti_module.
+        const Loader::LoadedModule* mod = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(g_module_registry_mutex);
+            for (size_t i = 0; i < g_loaded_modules.size() && i < g_loaded_module_tls_index.size(); ++i) {
+                if (g_loaded_module_tls_index[i] == static_cast<u32>(ti_module)) {
+                    mod = &g_loaded_modules[i];
+                    break;
+                }
+            }
+        }
+        if (!mod || !mod->has_tls || mod->tls_file_size > 0x100000ULL) {
+            return tp + ti_offset; // no usable PT_TLS image -> prior behaviour
+        }
+
+        const u64 key = (guest_tid << 32) | (ti_module & 0xFFFFFFFFull);
+        u64 block_va = 0;
+        bool need_build = false;
+        {
+            std::lock_guard<std::mutex> lock(g_tls_block_mutex);
+            for (size_t i = 0; i < g_tls_block_cache.size(); ++i) {
+                if (g_tls_block_cache[i].first == key) {
+                    block_va = g_tls_block_va[i];
+                    break;
+                }
+            }
+            if (block_va == 0) need_build = true;
+        }
+
+        if (need_build) {
+            // Locate the PT_TLS init image in guest memory: tls_template_offset
+            // is a FILE offset, so find the mapped segment containing it.
+            u64 templ_va = 0;
+            for (const auto& seg : mod->segments) {
+                const u64 fo = seg.file_offset;
+                if (mod->tls_template_offset >= fo &&
+                    mod->tls_template_offset + mod->tls_file_size <= fo + seg.file_size) {
+                    templ_va = seg.address + (mod->tls_template_offset - fo);
+                    break;
+                }
+            }
+            constexpr u64 kTcbSize  = 0x40;
+            constexpr u64 kTcbAlign = 0x20;
+            const u64 need = ((mod->tls_mem_size + kTcbAlign - 1) & ~(kTcbAlign - 1)) + kTcbSize;
+            guest_addr_t mapped = 0;
+            if (Memory::Map(0, need, Memory::PROT_READ | Memory::PROT_WRITE, &mapped) != Memory::Status::Ok) {
+                return tp + ti_offset;
+            }
+            if (templ_va && Memory::IsReadable(templ_va, mod->tls_file_size)) {
+                std::memmove(reinterpret_cast<void*>(mapped),
+                             reinterpret_cast<void*>(templ_va),
+                             static_cast<size_t>(mod->tls_file_size));
+            } else {
+                std::memset(reinterpret_cast<void*>(mapped), 0, static_cast<size_t>(need));
+            }
+            // TCB self-pointer at the top of the block (variant-II style), so
+            // tp-relative accesses within the block's own region stay coherent.
+            const u64 tcb = mapped + need - kTcbSize;
+            Memory::Write<u64>(tcb, tcb);
+            block_va = mapped;
+            {
+                std::lock_guard<std::mutex> lock(g_tls_block_mutex);
+                g_tls_block_cache.push_back({key, block_va});
+                g_tls_block_va.push_back(block_va);
+            }
+        }
+        return block_va + ti_offset;
     }
 }
 // namespace Kernel

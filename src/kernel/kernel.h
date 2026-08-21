@@ -71,6 +71,23 @@ namespace Kernel {
     // VEH fs-emulation lookup).
     guest_addr_t ResolveGuestThreadPointer(u64 guest_tid);
 
+    // Dynamic-TLS (module-keyed) resolution for __tls_get_addr({ti_module,
+    // ti_offset}).  `tp` is the caller's thread pointer.  Returns the guest
+    // address of the TLS variable: for the main module (ti_module<=1) and for
+    // any unknown module it falls back to `tp + ti_offset` (today's behavior,
+    // byte-identical); for a known secondary module it serves a dedicated
+    // per-thread TLS block seeded from that module's PT_TLS template.
+    guest_addr_t ResolveDynamicTls(u64 guest_tid, u64 ti_module, u64 ti_offset,
+                                   guest_addr_t tp);
+
+    // Loaded-module registry used by sceKernelGetModuleInfo* HLE so a game
+    // can map a code/data address back to its owning module (name, base,
+    // segments).  RegisterLoadedModule is called during module linking;
+    // FindModuleForAddr returns the module whose [base, base+image_size)
+    // range contains `addr`, or null.
+    void RegisterLoadedModule(const Loader::LoadedModule& module);
+    const Loader::LoadedModule* FindModuleForAddr(guest_addr_t addr);
+
     // Resolve system calls (syscall instructions)
     void HandleSyscall(u32 syscall_number, guest_addr_t context);
 }

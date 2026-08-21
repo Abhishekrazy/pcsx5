@@ -220,6 +220,8 @@ pcsx5/
 ├── assets/              # Shaders, fonts, localization
 ├── third_party/         # Vendored dependencies (GLFW, etc.)
 ├── tools/               # Build scripts, DualSense test tools, PkgToolBox
+├── guide/               # 📚 Component map, extension HOWTO, project blueprint
+│   │                    #    (COMPONENT_MAP.md, EXTENDING.md, PROJECT_ATOM.md)
 ├── CMakeLists.txt       # Main build configuration
 ├── BUILDING.md          # Detailed build guide
 ├── PENDING.md           # Prioritized work queue

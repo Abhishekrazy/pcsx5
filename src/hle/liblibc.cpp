@@ -39,6 +39,10 @@ namespace {
 // file wrappers in libkernel.cpp through HLE::GuestErrnoPtr/SetGuestErrno.
 thread_local s32 t_guest_errno = 0;
 
+// Last strtod() input pointer — points into the game's JSON parse buffer;
+// used by the C2 parse-error diagnostic to locate/dump that buffer.
+u64 g_last_strtod_ptr = 0;
+
 constexpr u64 kHeapChunkSize  = 16ULL * 1024 * 1024;
 constexpr u64 kHeaderSize     = 16;
 constexpr u64 kHeaderMagic    = 0x5043583548454150ULL; // "PCX5HEAP"
@@ -1419,12 +1423,24 @@ void DebugDumpGuestMemory(u64 base, u64 size, const char* path) {
     FILE* f = nullptr;
     if (fopen_s(&f, path, "wb") != 0 || !f) return;
     for (u64 off = 0; off < size; off += 0x1000) {
+        // The kernel VEH treats host-RIP AVs as fatal BEFORE SEH can catch
+        // them, so probing unmapped regions with memcpy crashes the process.
+        // Query each page's state first and write zeros for unmapped pages.
+        const u64 addr = base + off;
+        MEMORY_BASIC_INFORMATION mbi{};
         char page[0x1000];
-        __try {
-            std::memcpy(page, reinterpret_cast<void*>(base + off), 0x1000);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
-            std::memset(page, 0, sizeof(page));
+        bool mapped = false;
+        if (::VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi)) != 0 &&
+            mbi.State == MEM_COMMIT &&
+            (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) == 0) {
+            __try {
+                std::memcpy(page, reinterpret_cast<void*>(addr), 0x1000);
+                mapped = true;
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                mapped = false;
+            }
         }
+        if (!mapped) std::memset(page, 0, sizeof(page));
         std::fwrite(page, 1, 0x1000, f);
     }
     std::fclose(f);
@@ -1609,6 +1625,138 @@ auto CxaThrowImpl = [](const GuestArgs& args) -> u64 {
             }
             if (n >= 4) {
                 LOG_INFO(HLE, "  obj[+%d] -> string: \"%s\"", q * 8, s);
+                if (memcmp(s, "parse error", 11) == 0) {
+                    char hexbuf[512] = {};
+                    int hn = 0;
+                    for (int i = 0; i < n; ++i) {
+                        hn += snprintf(hexbuf + hn, sizeof(hexbuf) - hn, "%02x ", (u8)s[i]);
+                    }
+                    LOG_INFO(HLE, "  parse-error message bytes (%d): %s", n, hexbuf);
+                }
+            }
+        }
+
+        // Temporary diagnostic: when the C2 JSON parser (Dreaming Sarah /
+        // Construct runtime) throws "parse error - unexpected <c>", dump the
+        // parser state object.  The throw site (eboot 0x81012f2a0) keeps the
+        // parser object in RDI; the tokenizer state lives at +0x70 (cur pos)
+        // / +0x78 (end) with the offending char near the throw.
+        {
+            bool is_parse_err = false;
+            for (int q = 0; q < 8 && !is_parse_err; ++q) {
+                bool vok = true;
+                const u64 slot = Rd64(user + static_cast<u64>(q * 8), &vok);
+                if (!vok || slot < 0x10000 || slot >= (1ULL << 47)) continue;
+                char s[32] = {};
+                int n = 0;
+                for (; n < 31; ++n) {
+                    bool cok = true;
+                    const char c = static_cast<char>(Rd8(slot + static_cast<u64>(n), &cok));
+                    if (!cok || c == '\0') break;
+                    s[n] = c;
+                }
+                if (n >= 11 && memcmp(s, "parse error", 11) == 0) {
+                    is_parse_err = true;
+                    break;
+                }
+            }
+            if (is_parse_err) {
+                static bool g_dumped_parse = false;
+                if (!g_dumped_parse) {
+                    g_dumped_parse = true;
+                    LOG_ERROR(HLE, "parse-dump: last strtod ptr=0x%llx (buffer dump follows)",
+                              g_last_strtod_ptr);
+                    // The C2 parser tokenizes its JSON buffer sequentially; the
+                    // last strtod input sits at file offset 2375 ("0.5],0],[\"images/
+                    // precio...").  From it we can derive the buffer base and scan
+                    // the guest stack for the parser object (token type 0xe=error).
+                    const u64 buf_start = g_last_strtod_ptr >= 2375 ? g_last_strtod_ptr - 2375 : 0;
+                    const u64 buf_end   = buf_start + 1245105; // data.js size
+                    LOG_ERROR(HLE, "parse-dump: buffer=[0x%llx,0x%llx) data.js-sized",
+                              buf_start, buf_end);
+                    // DebugDumpGuestMemory in the raw is heavy (1.5MB); still
+                    // worth it once for the byte-level diff against data.js.
+                    if (buf_start >= 0x800000000ULL) {
+                        DebugDumpGuestMemory(buf_start, 1245105 + 0x8000, ".work/parse_buf.bin");
+                        LOG_ERROR(HLE, "parse-dump: wrote .work/parse_buf.bin (base 0x%llx)",
+                                  buf_start);
+                    }
+                    // Find the parser object via the throw-site frame
+                    // (0x81012f2a0): push rbp; mov rbp,rsp; push r15,r14,
+                    // r13,r12,rbx; sub rsp,0xa8.  r13 in that frame is the
+                    // value-reader's parser (r13 = rsi at 0x81012daab).
+                    // At the __cxa_throw call rsp = rbp - 0xd8 → rbp =
+                    // stack_args + 0xd0, saved r13 at [rbp-0x18].
+                    {
+                        const u64 sp = args.stack_args ? args.stack_args : 0;
+                        if (sp) {
+                            bool pok = true;
+                            const u64 parser = Rd64(sp + 0xb8, &pok);
+                            if (pok && parser >= 0x800000000ULL) {
+                                bool fok = true;
+                                const u64 tokv = Rd64(parser + 0x40, &fok);
+                                const u64 ts = Rd64(parser + 0xa8, &fok);
+                                const u64 te = Rd64(parser + 0xb8, &fok);
+                                const u64 endp = Rd64(parser + 0xc0, &fok);
+                                const u64 curp = Rd64(parser + 0x70, &fok);
+                                LOG_ERROR(HLE, "parse-dump: PARSER=0x%llx token=0x%llx "
+                                          "str=[0x%llx,0x%llx) cur=0x%llx end=0x%llx",
+                                          parser, tokv, ts, te, curp, endp);
+                                if (fok && ts && te >= ts && te - ts <= 32 && ts >= 0x800000000ULL) {
+                                    const u64 file_off = (buf_start && ts >= buf_start) ? ts - buf_start : 0;
+                                    LOG_ERROR(HLE, "parse-dump: offending token at file_off=%llu",
+                                              file_off);
+                                    for (int row = -2; row < 3; ++row) {
+                                        char hexs[160] = {};
+                                        char asc[17] = {};
+                                        int hn = 0;
+                                        for (int b = 0; b < 16; ++b) {
+                                            bool bok = true;
+                                            const u8 c = static_cast<u8>(Rd8(ts + static_cast<u64>(row * 16 + b), &bok));
+                                            if (!bok) break;
+                                            hn += snprintf(hexs + hn, sizeof(hexs) - hn, "%02x ", c);
+                                            asc[b] = (c >= 32 && c < 127) ? static_cast<char>(c) : '.';
+                                        }
+                                        asc[16] = 0;
+                                        LOG_ERROR(HLE, "  tok%+03d: %-48s %s", row * 16, hexs, asc);
+                                    }
+                                }
+                                // Diagnostic (Dreaming Sarah): the tokenizer echoes
+                                // a short prefix of a JSON string into an inline
+                                // SSO buffer at parser+0x58 (subagent-verified: it
+                                // held 22 69 6d 61 67 65 = `"image` while the token
+                                // span was only 1 byte = `"`).  Dump that buffer and
+                                // the following 128 bytes to see the real string the
+                                // tokenizer stopped on, plus where it diverges from
+                                // data.js.
+                                {
+                                    bool eok = true;
+                                    const u64 echo = parser + 0x58;
+                                    LOG_ERROR(HLE, "parse-dump: echo[parser+0x58] span=%llu "
+                                              "curp=0x%llx ts=0x%llx te=0x%llx",
+                                              (te >= ts) ? te - ts : 0, curp, ts, te);
+                                    for (int row = 0; row < 8 && eok; ++row) {
+                                        char hexs[160] = {};
+                                        char asc[17] = {};
+                                        int hn = 0;
+                                        for (int b = 0; b < 16; ++b) {
+                                            bool bok = true;
+                                            const u8 c = static_cast<u8>(Rd8(echo + static_cast<u64>(row * 16 + b), &bok));
+                                            if (!bok) { eok = false; break; }
+                                            hn += snprintf(hexs + hn, sizeof(hexs) - hn, "%02x ", c);
+                                            asc[b] = (c >= 32 && c < 127) ? static_cast<char>(c) : '.';
+                                        }
+                                        asc[16] = 0;
+                                        LOG_ERROR(HLE, "  echo%+03d: %-72s %s", row * 16, hexs, asc);
+                                    }
+                                }
+                            } else {
+                                LOG_ERROR(HLE, "parse-dump: no parser via [sp+0xb8] "
+                                          "(sp=0x%llx, parser=0x%llx)", sp, parser);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -2322,6 +2470,7 @@ void RegisterLibLibc() {
     };
     auto StrtodImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1) return 0;
+        g_last_strtod_ptr = args.arg1;
         char* end = nullptr;
         static _locale_t c_locale = _create_locale(LC_ALL, "C");
         const double v = _strtod_l(reinterpret_cast<const char*>(args.arg1), &end, c_locale);
@@ -2333,7 +2482,7 @@ void RegisterLibLibc() {
             char preview[24] = {};
             const char* src = reinterpret_cast<const char*>(args.arg1);
             for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
-            LOG_INFO(HLE, "strtod('%s') -> %g (end+%ld)", preview, v,
+            LOG_INFO(HLE, "strtod(0x%llx,'%s') -> %g (end+%ld)", args.arg1, preview, v,
                      static_cast<long>(end - reinterpret_cast<const char*>(args.arg1)));
         }
         return bits;

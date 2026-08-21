@@ -112,6 +112,8 @@ set(KERNEL_SRC
     src/kernel/tls.cpp
     src/kernel/tls_patch.h
     src/kernel/tls_patch.cpp
+    src/kernel/guest_tracer.h
+    src/kernel/guest_tracer.cpp
 )
 
 # CPU core — owns the guest thread registry; required wherever KERNEL_SRC is
