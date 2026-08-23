@@ -1,230 +1,180 @@
 #include "memory.h"
-#include "kernel.h"
+#include "memory/memory.h"
+#include "../common/log.h"
 #include <windows.h>
 #include <algorithm>
-#include <mutex>
+
+// ---------------------------------------------------------------------------
+// Kernel guest-memory front end.
+//
+// Stage 2: this module no longer owns a guest VA allocator.  All placement,
+// reservation, commit, protection and host-backing decisions live in
+// Memory:: (src/memory) — the single guest VA authority.  What remains here
+// is the syscall-facing translation layer (POSIX mmap/munmap/brk semantics
+// onto the Memory contract) plus kernel-visible metadata.
+//
+// The previous implementation bumped a static pointer through a private
+// 4 TB window (0x400000000000..) with direct VirtualAlloc calls — invisible
+// to Memory's region table and unreachable from the fault classifier.  No
+// shipped title exercises these syscalls (they are Linux-number syscalls;
+// PS5 guests use the sceKernel* HLE), so delegation changes no boot behavior
+// while removing the second allocator.
+// ---------------------------------------------------------------------------
 
 namespace Kernel {
 
-// Guest memory allocator state
-static u64 g_guest_alloc_base = 0x400000000000;  // 4TB base address for guest allocations
-static u64 g_guest_alloc_size = 0x10000000000;   // 1TB allocation space
-static u64 g_guest_alloc_current = 0;
-static std::mutex g_guest_alloc_mutex;
-
-// Initialize guest memory allocator
+// Initialize/shutdown: Memory::Initialize/Shutdown own the actual state; the
+// Lua subsystem registry initializes Memory before Kernel, so these are just
+// liveness checks with a clear error if ordering is ever violated.
 void InitializeGuestMemory() {
-    std::lock_guard<std::mutex> lock(g_guest_alloc_mutex);
-    g_guest_alloc_current = g_guest_alloc_base;
+    // Touch the manager cheaply to confirm it is live (Query on page 0 is
+    // NotMapped but proves the region lock works).
+    Memory::MemoryInfo info{};
+    (void)Memory::Query(0, &info);
 }
 
-// Shutdown guest memory allocator
 void ShutdownGuestMemory() {
-    std::lock_guard<std::mutex> lock(g_guest_alloc_mutex);
-    // Free all allocated guest memory
-    // In a real implementation, we'd track all allocations and free them
-    g_guest_alloc_current = g_guest_alloc_base;
+    // Nothing to do: Memory::Shutdown (registered separately) releases all
+    // manager-owned ranges.  Kernel keeps no independent VA bookkeeping.
 }
 
-// Allocate guest memory
+// Allocate guest memory — anonymous mmap-style allocation via the manager.
 guest_addr_t AllocGuestMemory(u64 size, u64 alignment, int prot, int flags, int fd, s64 offset) {
-    std::lock_guard<std::mutex> lock(g_guest_alloc_mutex);
-    (void)flags;
-    (void)fd;
-    (void)offset;
-    
-    // Align the current pointer
-    u64 aligned_current = (g_guest_alloc_current + alignment - 1) & ~(alignment - 1);
-    
-    // Check if we have enough space
-    if (aligned_current + size > g_guest_alloc_base + g_guest_alloc_size) {
-        return 0;  // Out of memory
-    }
-    
-    guest_addr_t addr = aligned_current;
-    g_guest_alloc_current = aligned_current + size;
-    
-    // Reserve the memory in the host process
-    void* host_addr = VirtualAlloc(
-        reinterpret_cast<void*>(addr),
-        static_cast<SIZE_T>(size),
-        MEM_RESERVE | MEM_COMMIT,
-        PAGE_READWRITE
-    );
-    
-    if (host_addr == nullptr) {
-        // Rollback allocation
-        g_guest_alloc_current = aligned_current;
-        return 0;
-    }
-    
-    // Apply protection
-    DWORD protect = 0;
-    if (prot & PROT_READ) protect |= PAGE_READONLY;
-    if (prot & PROT_WRITE) protect |= PAGE_READWRITE;
-    if (prot & PROT_EXEC) protect |= PAGE_EXECUTE_READ;
-    if ((prot & PROT_READ) && (prot & PROT_WRITE)) protect = PAGE_READWRITE;
-    if ((prot & PROT_READ) && (prot & PROT_WRITE) && (prot & PROT_EXEC)) protect = PAGE_EXECUTE_READWRITE;
-    
-    DWORD old_protect;
-    if (!VirtualProtect(host_addr, static_cast<SIZE_T>(size), protect, &old_protect)) {
-        VirtualFree(host_addr, 0, MEM_RELEASE);
-        g_guest_alloc_current = aligned_current;
-        return 0;
-    }
-    
-    return addr;
-}
+    (void)flags; (void)fd; (void)offset;
 
-// Free guest memory
-bool FreeGuestMemory(guest_addr_t addr, u64 size) {
-    std::lock_guard<std::mutex> lock(g_guest_alloc_mutex);
-    (void)size;
-    
-    // Release the memory in the host process
-    BOOL result = VirtualFree(
-        reinterpret_cast<void*>(static_cast<uintptr_t>(addr)),
-        0,
-        MEM_RELEASE
-    );
-    
-    // Note: We don't actually reclaim the address space in this simple allocator
-    // A more sophisticated allocator would track free blocks
-    
-    return result != FALSE;
-}
+    u32 mprot = Memory::PROT_NONE;
+    if (prot & PROT_READ)  mprot |= Memory::PROT_READ;
+    if (prot & PROT_WRITE) mprot |= Memory::PROT_WRITE;
+    if (prot & PROT_EXEC)  mprot |= Memory::PROT_EXEC;
+    if (mprot == Memory::PROT_NONE) mprot = Memory::PROT_READ | Memory::PROT_WRITE;
 
-// Change memory protection
-bool ProtectGuestMemory(guest_addr_t addr, u64 size, int prot) {
-    // Map guest R/W/X combinations to the exact host page protection;
-    // OR-ing PAGE_* constants together is not a valid translation.
-    const bool r = (prot & PROT_READ)  != 0;
-    const bool w = (prot & PROT_WRITE) != 0;
-    const bool x = (prot & PROT_EXEC)  != 0;
-    DWORD protect;
-    if (x)      protect = w ? PAGE_EXECUTE_READWRITE : (r ? PAGE_EXECUTE_READ : PAGE_EXECUTE);
-    else if (w) protect = PAGE_READWRITE;
-    else if (r) protect = PAGE_READONLY;
-    else        protect = PAGE_NOACCESS;
-    
-    DWORD old_protect;
-    BOOL result = VirtualProtect(
-        reinterpret_cast<void*>(static_cast<uintptr_t>(addr)),
-        static_cast<SIZE_T>(size),
-        protect,
-        &old_protect
-    );
-    
-    return result != FALSE;
-}
-
-// Get memory info for a guest address
-bool GetGuestMemoryInfo(guest_addr_t addr, MEMORY_BASIC_INFORMATION* info) {
-    return VirtualQuery(
-        reinterpret_cast<void*>(static_cast<uintptr_t>(addr)),
-        info,
-        sizeof(MEMORY_BASIC_INFORMATION)
-    ) != 0;
-}
-
-// Check if guest address is valid
-bool IsValidGuestAddress(guest_addr_t addr, u64 size) {
-    return addr >= g_guest_alloc_base && 
-           addr + size <= g_guest_alloc_base + g_guest_alloc_size;
-}
-
-// Map guest memory (for mmap syscall)
-guest_addr_t MapGuestMemory(guest_addr_t addr, u64 length, int prot, int flags, int fd, s64 offset) {
-    // If addr is 0, let the allocator choose
-    if (addr == 0) {
-        return AllocGuestMemory(length, 0x1000, prot, flags, fd, offset);
-    }
-    
-    // Check if the requested address is available
-    if (!IsValidGuestAddress(addr, length)) {
-        return 0;
-    }
-    
-    // Try to reserve at the specific address
-    void* host_addr = VirtualAlloc(
-        reinterpret_cast<void*>(static_cast<uintptr_t>(addr)),
-        static_cast<SIZE_T>(length),
-        MEM_RESERVE | MEM_COMMIT,
-        PAGE_READWRITE
-    );
-    
-    if (host_addr == nullptr) {
-        return 0;
-    }
-    
-    // Apply protection
-    DWORD protect = 0;
-    if (prot & PROT_READ) protect |= PAGE_READONLY;
-    if (prot & PROT_WRITE) protect |= PAGE_READWRITE;
-    if (prot & PROT_EXEC) protect |= PAGE_EXECUTE_READ;
-    if ((prot & PROT_READ) && (prot & PROT_WRITE)) protect = PAGE_READWRITE;
-    if ((prot & PROT_READ) && (prot & PROT_WRITE) && (prot & PROT_EXEC)) protect = PAGE_EXECUTE_READWRITE;
-    
-    DWORD old_protect;
-    if (!VirtualProtect(host_addr, static_cast<SIZE_T>(length), protect, &old_protect)) {
-        VirtualFree(host_addr, 0, MEM_RELEASE);
-        return 0;
-    }
-    
-    return addr;
-}
-
-// Unmap guest memory (for munmap syscall)
-bool UnmapGuestMemory(guest_addr_t addr, u64 length) {
-    return FreeGuestMemory(addr, length);
-}
-
-// Get current break (for brk syscall)
-guest_addr_t GetBreak() {
-    std::lock_guard<std::mutex> lock(g_guest_alloc_mutex);
-    return g_guest_alloc_current;
-}
-
-// Set break (for brk syscall)
-guest_addr_t SetBreak(guest_addr_t new_break) {
-    std::lock_guard<std::mutex> lock(g_guest_alloc_mutex);
-    
-    if (new_break < g_guest_alloc_base) {
-        return g_guest_alloc_current;
-    }
-    
-    if (new_break > g_guest_alloc_base + g_guest_alloc_size) {
-        return g_guest_alloc_current;
-    }
-    
-    if (new_break > g_guest_alloc_current) {
-        // Expand the break - allocate more memory
-        u64 size = new_break - g_guest_alloc_current;
-        void* host_addr = VirtualAlloc(
-            reinterpret_cast<void*>(static_cast<uintptr_t>(g_guest_alloc_current)),
-            static_cast<SIZE_T>(size),
-            MEM_COMMIT,
-            PAGE_READWRITE
-        );
-        
-        if (host_addr == nullptr) {
-            return g_guest_alloc_current;
+    guest_addr_t addr = 0;
+    // MAP_FIXED callers go through MapGuestMemory; this entry always lets the
+    // manager place.  Alignment below page granularity is meaningless to the
+    // host (64 KiB allocation granularity); larger alignments pass through.
+    const u64 align = (alignment > 0x1000) ? alignment : 0x1000;
+    if (Memory::Map(0, size, mprot, &addr) != Memory::Status::Ok && align > 0x1000) {
+        // Retry honoring an explicit large alignment via Reserve+Commit at a
+        // manager-chosen aligned address.
+        guest_addr_t reserved = 0;
+        const u64 padded = size + align;
+        if (Memory::Reserve(0, padded, &reserved) == Memory::Status::Ok) {
+            const guest_addr_t aligned = (reserved + align - 1) & ~(align - 1);
+            if (Memory::Commit(aligned, size, mprot) == Memory::Status::Ok &&
+                Memory::Unmap(reserved, aligned - reserved) == Memory::Status::Ok) {
+                return aligned;
+            }
+            Memory::Unmap(reserved, padded);
+            return 0;
         }
-        
-        g_guest_alloc_current = new_break;
-    } else if (new_break < g_guest_alloc_current) {
-        // Shrink the break - decommit memory
-        u64 size = g_guest_alloc_current - new_break;
-        VirtualFree(
-            reinterpret_cast<void*>(static_cast<uintptr_t>(new_break)),
-            static_cast<SIZE_T>(size),
-            MEM_DECOMMIT
-        );
-        
-        g_guest_alloc_current = new_break;
+        return 0;
     }
-    
-    return g_guest_alloc_current;
+    return addr;
+}
+
+bool FreeGuestMemory(guest_addr_t addr, u64 size) {
+    return Memory::Unmap(addr, size) == Memory::Status::Ok ||
+           Memory::ReleaseRange(addr) == Memory::Status::Ok;
+}
+
+bool ProtectGuestMemory(guest_addr_t addr, u64 size, int prot) {
+    u32 mprot = Memory::PROT_NONE;
+    if (prot & PROT_READ)  mprot |= Memory::PROT_READ;
+    if (prot & PROT_WRITE) mprot |= Memory::PROT_WRITE;
+    if (prot & PROT_EXEC)  mprot |= Memory::PROT_EXEC;
+    return Memory::Protect(addr, size, mprot) == Memory::Status::Ok;
+}
+
+bool GetGuestMemoryInfo(guest_addr_t addr, MEMORY_BASIC_INFORMATION* info) {
+    // The caller wants raw host VM state (used by diagnostics paths).
+    // VirtualQuery is the ground truth for committed/reserved/free; the
+    // region table refines ownership but MBI is what this API promises.
+    if (!info) return false;
+    return VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(addr)),
+                        info, sizeof(MEMORY_BASIC_INFORMATION)) != 0;
+}
+
+bool IsValidGuestAddress(guest_addr_t addr, u64 size) {
+    return Memory::IsReadable(addr, size) || Memory::IsRangeFree(addr, size) == false;
+}
+
+// mmap syscall front end.
+guest_addr_t MapGuestMemory(guest_addr_t addr, u64 length, int prot, int flags, int fd, s64 offset) {
+    (void)fd; (void)offset;
+
+    u32 mprot = Memory::PROT_NONE;
+    if (prot & PROT_READ)  mprot |= Memory::PROT_READ;
+    if (prot & PROT_WRITE) mprot |= Memory::PROT_WRITE;
+    if (prot & PROT_EXEC)  mprot |= Memory::PROT_EXEC;
+    if (mprot == Memory::PROT_NONE) mprot = Memory::PROT_READ | Memory::PROT_WRITE;
+
+    const bool fixed = (flags & MAP_FIXED) != 0;
+    if (addr == 0 || !fixed) {
+        // Manager places when no fixed address requested.  A non-zero
+        // non-fixed addr is a hint: try it first, fall back to placement.
+        if (addr != 0) {
+            guest_addr_t out = 0;
+            if (Memory::Map(addr, length, mprot, &out) == Memory::Status::Ok) {
+                return out;
+            }
+        }
+        guest_addr_t out = 0;
+        if (Memory::Map(0, length, mprot, &out) != Memory::Status::Ok) {
+            return 0;
+        }
+        return out;
+    }
+
+    // Fixed mapping: deterministic failure when unavailable.
+    guest_addr_t out = 0;
+    if (Memory::Map(addr, length, mprot, &out) != Memory::Status::Ok) {
+        return 0;
+    }
+    return out;
+}
+
+bool UnmapGuestMemory(guest_addr_t addr, u64 length) {
+    const Memory::Status st = Memory::Unmap(addr, length);
+    return st == Memory::Status::Ok || st == Memory::Status::NotMapped;
+}
+
+// brk support: the classic bump-cursor semantics over the manager.  The base
+// is established once from a real manager allocation rather than a hardcoded
+// magic address, so it participates in the same address space as everything
+// else.
+namespace {
+guest_addr_t g_brk_base = 0;   // first brk allocation
+guest_addr_t g_brk_current = 0;
+constexpr u64 kBrkMaxSize = 256ULL * 1024 * 1024;  // sane ceiling for brk growth
+} // namespace
+
+guest_addr_t GetBreak() {
+    return g_brk_current;
+}
+
+guest_addr_t SetBreak(guest_addr_t new_break) {
+    if (g_brk_base == 0) {
+        // First brk call: establish the heap through the manager.
+        guest_addr_t heap = 0;
+        if (Memory::Map(0, kBrkMaxSize, Memory::PROT_READ | Memory::PROT_WRITE, &heap)
+                != Memory::Status::Ok) {
+            LOG_ERROR(Kernel, "SetBreak: failed to establish brk heap");
+            return 0;
+        }
+        g_brk_base = heap;
+        g_brk_current = heap;
+        LOG_DEBUG(Kernel, "brk heap established at 0x%llx (%llu MB)",
+                  heap, kBrkMaxSize / (1024 * 1024));
+    }
+
+    if (new_break < g_brk_base) return g_brk_current;
+    if (new_break > g_brk_base + kBrkMaxSize) return g_brk_current;
+
+    // The heap is one committed manager mapping; moving the cursor needs no
+    // host calls in either direction (pages beyond the old break were never
+    // guaranteed zero anyway under this simplified model).
+    g_brk_current = new_break;
+    return g_brk_current;
 }
 
 } // namespace Kernel

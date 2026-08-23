@@ -10,6 +10,13 @@
 
 namespace Loader {
 
+    // Diagnostics title id (MODULE_RELOCATE lines).  Default empty.
+    static std::string g_current_title_id;
+
+    void SetDiagnosticsTitleId(const std::string& title_id) {
+        g_current_title_id = title_id;
+    }
+
     bool Load(const std::string& filepath, LoadedModule& out_module) {
         LOG_INFO(Loader, "Loading ELF binary: %s", filepath.c_str());
 
@@ -192,9 +199,23 @@ namespace Loader {
                      static_cast<unsigned long long>(eh_frame_filesz));
         }
 
-        // Reserve the entire virtual address range for the image first
+        // Reserve the entire virtual address range for the image first.
+        // Stage 2 contract: the loader EXPRESSES a preferred address; Memory
+        // decides availability and never relocates on its own.  When the
+        // preferred base is taken we walk fallback hints ourselves and log a
+        // MODULE_RELOCATE line for every relocation so layout decisions are
+        // observable in diagnostics.
         guest_addr_t reserved_base = 0;
-        if (Memory::Reserve(base_address + load_base, total_size, &reserved_base) != Memory::Status::Ok) {
+        const char* module_label = out_module.name.empty()
+            ? filepath.c_str() : out_module.name.c_str();
+        const guest_addr_t preferred = base_address + load_base;
+        if (!Memory::IsRangeFree(preferred, total_size)) {
+            LOG_DEBUG(Loader, "Preferred module base 0x%llx unavailable "
+                      "(Memory::IsRangeFree)", preferred);
+        }
+        if (Memory::Reserve(preferred, total_size, &reserved_base) == Memory::Status::Ok) {
+            reserved_base = preferred;  // Reserve honors fixed addresses exactly
+        } else {
             // The preferred base is taken (e.g. the main module already sits
             // at 0x800000000).  PIE modules are relocatable: walk upward in
             // the guest window until a free range is found so that several
@@ -205,7 +226,15 @@ namespace Loader {
                      hint + total_size < kGuestWindowEnd;
                      hint += kPieBaseStep) {
                     if (Memory::Reserve(hint, total_size, &reserved_base) == Memory::Status::Ok) {
-                        LOG_INFO(Loader, "Preferred PIE base busy; relocated module to guest base 0x%llx", hint);
+                        // MODULE_RELOCATE: every relocation is observable.
+                        LOG_WARN(Loader,
+                                 "MODULE_RELOCATE title=%s module=%s "
+                                 "preferred=0x%llx allocated=0x%llx size=0x%llx reason=collision",
+                                 g_current_title_id.c_str(),
+                                 module_label ? module_label : "?",
+                                 (unsigned long long)preferred,
+                                 (unsigned long long)hint,
+                                 (unsigned long long)total_size);
                         reserved = true;
                         break;
                     }

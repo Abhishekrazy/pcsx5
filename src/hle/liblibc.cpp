@@ -893,6 +893,11 @@ u64 EmitLandingTrampoline(const GuestUnwindContext& ctx) {
         }
         g_tramp_page = static_cast<u8*>(page);
         g_tramp_used = 0;
+        // Register the RWX trampoline page with the VA authority (guest code
+        // executes from here during unwinding).
+        Memory::AdoptRange(reinterpret_cast<u64>(g_tramp_page), kTrampPageSize,
+                           Memory::PROT_READ | Memory::PROT_WRITE | Memory::PROT_EXEC,
+                           /*committed=*/true, Memory::Owner::Hle, "unwind-trampoline");
     }
     u8* chunk = g_tramp_page + g_tramp_used;
     g_tramp_used += kTrampChunk;
@@ -1138,6 +1143,35 @@ void RunPhase2(u64 ue, u64 handler_cfa, GuestUnwindContext ctx, u64 ret_slot) {
     for (u64 depth = 0; depth < 4096; ++depth) {
         FrameEval fe;
         if (!EvalFrame(ctx, fe)) {
+            // Same HLE/host-frame skip as phase 1: a host rip inside the walk
+            // means we crossed an HleCommonDispatcher frame, not end of stack.
+            const u64 rip = ctx.gr[16];
+            FdeInfo probe_fde;
+            if (rip < 0x800000000ULL || rip >= 0x900000000ULL || !FindFde(rip, probe_fde)) {
+                bool resumed = false;
+                FdeInfo prev_fde;
+                const bool have_prev = FindFde(rip, prev_fde);
+                const u64 scan_base = (ctx.cfa + 8) & ~7ull;
+                for (u64 p = scan_base; p + 8 <= (scan_base + 0x10000); p += 8) {
+                    bool sok = true;
+                    const u64 cand = Rd64(p, &sok);
+                    if (!sok || cand < 0x800000000ULL || cand >= 0x900000000ULL) continue;
+                    FdeInfo fde;
+                    if (!FindFde(cand, fde)) continue;
+                    if (have_prev && fde.pc_begin == prev_fde.pc_begin) continue;
+                    LOG_WARN(HLE, "unwind: phase 2 skipped HLE/host frame at depth %llu "
+                             "(rip=0x%llx) — resuming at guest ret 0x%llx",
+                             depth, rip, cand);
+                    ctx.gr[16] = cand;
+                    ctx.cfa = p;
+                    resumed = true;
+                    break;
+                }
+                if (!resumed) {
+                    UnwindFatal("phase 2 ran out of frames (FDE missing)", ue);
+                }
+                continue;
+            }
             UnwindFatal("phase 2 ran out of frames (FDE missing)", ue);
         }
         ctx.cfa = fe.cfa;
@@ -1222,9 +1256,50 @@ u64 RaiseException(u64 ue, const GuestUnwindContext& initial, u64 ret_slot) {
     for (u64 depth = 0; depth < 4096; ++depth) {
         FrameEval fe;
         if (!EvalFrame(ctx, fe)) {
-            LOG_INFO(HLE, "unwind: phase 1 frame walk ended at depth %llu (no FDE for rip=0x%llx)",
-                     depth, ctx.gr[16]);
-            break; // end of stack
+            // HLE frames: guest code runs natively on a host-allocated stack
+            // and HleCommonDispatcher pushes real HOST frames (VCRUNTIME
+            // memcpy etc.) onto it.  When the CFI walk crosses such a frame,
+            // the next rip is a host address with no guest FDE.  That is not
+            // end-of-stack — skip host frames by scanning upward from the
+            // current frame's CFA for the next value in the guest window that
+            // has an FDE, then continue the walk there.
+            const u64 rip = ctx.gr[16];
+            const bool host_rip = rip < 0x800000000ULL || rip >= 0x900000000ULL;
+            bool resumed = false;
+            FdeInfo probe_fde;
+            if (host_rip || !FindFde(rip, probe_fde)) {
+                // Scan upward for a plausible OUTER caller return address:
+                // must be in the guest window AND its FDE must NOT be the
+                // frame we just failed on (stale pc_begin values of the
+                // current function also live on the stack — accepting those
+                // re-enters the same frame forever).
+                FdeInfo prev_fde;
+                const bool have_prev = FindFde(rip, prev_fde);
+                const u64 scan_base = (ctx.cfa + 8) & ~7ull;
+                for (u64 p = scan_base; p + 8 <= (scan_base + 0x10000); p += 8) {
+                    bool sok = true;
+                    const u64 cand = Rd64(p, &sok);
+                    if (!sok || cand < 0x800000000ULL || cand >= 0x900000000ULL) continue;
+                    FdeInfo fde;
+                    if (!FindFde(cand, fde)) continue;
+                    if (have_prev && fde.pc_begin == prev_fde.pc_begin) continue;
+                    // Also reject candidates that point back INTO the last
+                    // good guest function we unwound out of.
+                    LOG_WARN(HLE, "unwind: phase 1 skipped HLE/host frame at depth %llu "
+                             "(rip=0x%llx) — resuming at guest ret 0x%llx (stack+0x%llx)",
+                             depth, rip, cand, p - ctx.cfa);
+                    ctx.gr[16] = cand;
+                    ctx.cfa = p;
+                    resumed = true;
+                    break;
+                }
+            }
+            if (!resumed) {
+                LOG_INFO(HLE, "unwind: phase 1 frame walk ended at depth %llu (no FDE for rip=0x%llx)",
+                         depth, ctx.gr[16]);
+                break; // end of stack
+            }
+            continue;
         }
         if (depth == 1) { depth1_rbp = ctx.gr[6]; depth1_rbx = ctx.gr[3]; }
         ctx.cfa = fe.cfa;

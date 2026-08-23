@@ -11,6 +11,7 @@
 // probing).  Keep the stub API surface identical to tls_patch.h.
 
 #include "tls_patch.h"
+#include "../memory/memory.h"
 
 #ifndef PCSX5_TLS_PATCH_FULL
 
@@ -242,6 +243,11 @@ bool Initialize() {
                                MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
         if (p) {
             g_stub_region = static_cast<u8*>(p);
+            // Register the stub region (it sits inside the guest code window
+            // at 0x840000000) so Query/fault classification see it.
+            Memory::AdoptRange(reinterpret_cast<u64>(g_stub_region), kStubRegionSize,
+                               Memory::PROT_READ | Memory::PROT_WRITE | Memory::PROT_EXEC,
+                               /*committed=*/true, Memory::Owner::Kernel, "tls-stub");
             break;
         }
     }
@@ -267,6 +273,7 @@ void Shutdown() {
     }
     if (g_stub_region) {
         VirtualFree(g_stub_region, 0, MEM_RELEASE);
+        Memory::ForgetResource(reinterpret_cast<u64>(g_stub_region));
         g_stub_region = nullptr;
     }
     g_enabled.store(false);

@@ -18,6 +18,7 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <string>
 #include <unordered_set>
 #include <mutex>
 #include <io.h>
@@ -71,6 +72,10 @@ namespace HLE {
                 return false;
             }
             g_phys_pool_base = reinterpret_cast<guest_addr_t>(p);
+            // Register with the guest VA authority so Query/IsValidGuestPointer
+            // see the pool (reserved-only; commits stay HLE-managed chunks).
+            Memory::AdoptRange(g_phys_pool_base, PHYS_POOL_SIZE, Memory::PROT_NONE,
+                               /*committed=*/false, Memory::Owner::Hle, "phys-pool");
             LOG_INFO(HLE, "PhysPool: reserved 2 GB at base 0x%llx", g_phys_pool_base);
             return true;
         }
@@ -250,6 +255,27 @@ namespace HLE {
         }
 
         guest_addr_t mapped_va = reinterpret_cast<guest_addr_t>(target);
+        // Track guest-visible mappings with the VA authority (guest-owned:
+        // the game chose/accepted this address).  Ranges that came from
+        // Memory::Reserve/Memory::Map are already tracked correctly — only
+        // the raw VirtualAlloc hint path and phys-pool commits need adoption,
+        // and pool interiors are covered by the pool's adopted reservation.
+        if (!IsPhysPoolAddress(mapped_va) &&
+            Memory::QueryOwner(mapped_va) == Memory::Owner::None) {
+            const u32 mprot = (rwx & 4 ? Memory::PROT_EXEC : 0) |
+                              (rwx & 2 ? Memory::PROT_WRITE : 0) |
+                              (rwx & 1 ? Memory::PROT_READ : 0);
+            Memory::AdoptRange(mapped_va, rounded, mprot,
+                               /*committed=*/true, Memory::Owner::Guest,
+                               "map-direct-hint");
+        } else if (IsPhysPoolAddress(mapped_va)) {
+            // Phys-backed mapping: refresh the committed state on the pool's
+            // adopted record so Query reflects live commits.  The pool is one
+            // region; only flip to committed once any part is committed.
+            Memory::AdoptRange(g_phys_pool_base, PHYS_POOL_SIZE, Memory::PROT_NONE,
+                               /*committed=*/false, Memory::Owner::Hle,
+                               "phys-pool");
+        }
         Memory::Write<u64>(addr_ptr, mapped_va);
         LOG_INFO(HLE, "sceKernelMapDirectMemory -> va: 0x%llx", mapped_va);
         return 0;
@@ -397,6 +423,19 @@ namespace HLE {
         s64 KernelWriteCore(int fd, guest_addr_t buf, u64 count) {
             if (!buf || count == 0) return 0;
             if (!IsGuestFd(fd)) return SCE_KERNEL_ERROR_EBADF;
+            // Mirror guest stdout/stderr into the log: games report their own
+            // fatal errors (il2cpp exceptions, assert text) on fd 1/2 before
+            // crashing — capture that verbatim so it survives the crash.
+            if (fd >= 0 && fd <= 2 && Memory::IsReadable(buf, 1)) {
+                const u64 cap = count < 512 ? count : 512;
+                std::string text(static_cast<size_t>(cap), '\0');
+                for (u64 i = 0; i < cap; ++i) {
+                    u8 c = Memory::Read<u8>(buf + i);
+                    if ((c < 0x20 || c > 0x7E) && c != '\n' && c != '\t') c = '?';
+                    text[static_cast<size_t>(i)] = static_cast<char>(c);
+                }
+                LOG_INFO(HLE, "GUEST-STDOUT[%d]: %s", fd, text.c_str());
+            }
             const int n = _write(fd, reinterpret_cast<const void*>(buf), static_cast<unsigned>(count));
             if (n < 0) return OrbisErrno();
             LOG_DEBUG(HLE, "sceKernelWrite(fd=%d, buf=0x%llx, count=%llu) -> %d", fd, buf, count, n);
@@ -721,39 +760,37 @@ namespace HLE {
         //   0x50 size_t module_flags
         //   0x98 SceKernelModuleSegmentInfo segment_info[1] (address,size,size2,prot,flags,pad)
         RegisterSymbol("libkernel", "RpQJJVKTiFM#T#T", [](const GuestArgs& a) -> u64 {
-            const guest_addr_t addr = a.arg1;
-            const guest_addr_t out  = a.arg2;
+            // ABI (per SharpEmu KernelRuntimeCompatExports): rdi=queried addr,
+            // rsi=flags (0..2), rdx=out SceKernelModuleInfoForUnwind. The out
+            // struct is 0x130 bytes and carries the .eh_frame fields the guest
+            // libc++abi unwinder needs at 0x108/0x110/0x118.
+            const guest_addr_t addr  = a.arg1;
+            const int          flags = static_cast<int>(a.arg2);
+            const guest_addr_t out   = a.arg3;
+            if (!out) return 0x80020016; // EINVAL-ish
+            if (flags < 0 || flags >= 3) return 0x80020016;
+            if (!Memory::IsWritable(out, 0x130)) {
+                LOG_WARN(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx, flags=%d, out=0x%llx) -> bad out",
+                         addr, flags, out);
+                return 0x80020016;
+            }
             const auto* mod = Kernel::FindModuleForAddr(addr);
             if (!mod) {
                 LOG_WARN(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx) -> module not found", addr);
                 return 0x80020004; // ENOENT-ish
             }
-            if (!out || !Memory::IsWritable(out, 0x140)) {
-                LOG_WARN(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx, out=0x%llx) -> bad out", addr, out);
-                return 0x80020016; // EINVAL-ish
-            }
-            const u64 st = Memory::Read<u64>(out); // caller-provided st_size
-            Memory::Write<u64>(out + 0x00, st ? st : 0x140);
+            Memory::Write<u64>(out + 0x000, 0x130);
             for (int i = 0; i < 0x20 && i < (int)mod->name.size(); ++i)
-                Memory::Write<u8>(out + 0x08 + i, static_cast<u8>(mod->name[i]));
-            Memory::Write<u32>(out + 0x28, 0);
-            Memory::Write<u32>(out + 0x2c, 0);
-            Memory::Write<u64>(out + 0x30, mod->base_address);
-            Memory::Write<u64>(out + 0x38, mod->base_address + mod->image_size);
-            Memory::Write<u64>(out + 0x40, mod->base_address);
-            Memory::Write<u64>(out + 0x48, mod->image_size);
-            Memory::Write<u64>(out + 0x50, 0);
-            // segment_info[0] = first executable/loadable segment
-            if (!mod->segments.empty()) {
-                const auto& s = mod->segments[0];
-                Memory::Write<u64>(out + 0x98, s.address);
-                Memory::Write<u64>(out + 0xa0, s.size);
-                Memory::Write<u64>(out + 0xa8, s.size);
-                Memory::Write<u32>(out + 0xb0, s.final_protection);
-                Memory::Write<u32>(out + 0xb4, s.flags & 0xFFFFu);
-            }
-            LOG_DEBUG(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx) -> module '%s' base=0x%llx size=0x%llx",
-                      addr, mod->name.c_str(), mod->base_address, mod->image_size);
+                Memory::Write<u8>(out + 0x008 + i, static_cast<u8>(mod->name[i]));
+            Memory::Write<u64>(out + 0x108, mod->eh_frame_hdr_addr);
+            Memory::Write<u64>(out + 0x110, mod->eh_frame_hdr_addr);
+            Memory::Write<u64>(out + 0x118, mod->eh_frame_hdr_size);
+            Memory::Write<u64>(out + 0x120, mod->base_address);
+            Memory::Write<u64>(out + 0x128, mod->image_size);
+            LOG_DEBUG(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx, flags=%d, out=0x%llx) -> '%s' "
+                      "base=0x%llx eh_hdr=0x%llx size=0x%llx",
+                      addr, flags, out, mod->name.c_str(), mod->base_address,
+                      mod->eh_frame_hdr_addr, mod->image_size);
             return 0; // SCE_OK
         });
         // KernelIsNeoMode (WslcK1FQcGI) — is this a PS4 Pro?  PS5 always false.
@@ -1312,12 +1349,18 @@ namespace HLE {
             if (!addr_ptr || !length) return 0x800D0004; // EINVAL
 
             guest_addr_t hint = Memory::Read<u64>(addr_ptr);
+            const u64 aligned_len = (length + 0xFFFF) & ~0xFFFULL;  // 64 KiB granularity
             guest_addr_t out = 0;
             if (Memory::Reserve(hint, length, &out) != Memory::Status::Ok) {
                 if (hint == 0) return 0x800D0006; // ENOMEM
                 LOG_WARN(HLE, "sceKernelReserveVirtualRange: hint 0x%llx failed; retrying without hint", hint);
                 if (Memory::Reserve(0, length, &out) != Memory::Status::Ok) return 0x800D0006;
             }
+            // Reserve tags Owner::Loader by default; this is a game-requested
+            // reservation, so correct the ownership record.
+            Memory::AdoptRange(out, aligned_len, Memory::PROT_NONE,
+                               /*committed=*/false, Memory::Owner::Guest,
+                               "reserve-virtual-range");
             Memory::Write<u64>(addr_ptr, out);
             LOG_INFO(HLE, "sceKernelReserveVirtualRange -> va: 0x%llx", out);
             return 0;
@@ -2010,6 +2053,9 @@ namespace HLE {
                 return 11; // EAGAIN
             }
             u64 stack_base = reinterpret_cast<u64>(guest_stack);
+            // Register the thread stack so Query/fault classification see it.
+            Memory::AdoptRange(stack_base, kGuestStackSize, Memory::PROT_READ | Memory::PROT_WRITE,
+                               /*committed=*/true, Memory::Owner::Kernel, "thread-stack");
 
             // Orbis thread-pointer layout: fs:[0] yields the tp (self-pointer
             // stored at tp) and libc/CRT data lives at NEGATIVE offsets from
@@ -2018,6 +2064,13 @@ namespace HLE {
             constexpr u64 kTlsHeadroom = 0x10000;
             constexpr u64 kTlsSize = 0x4000;
             void* tls_block = VirtualAlloc(nullptr, kTlsHeadroom + kTlsSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (tls_block) {
+                Memory::AdoptRange(reinterpret_cast<u64>(tls_block),
+                                   kTlsHeadroom + kTlsSize,
+                                   Memory::PROT_READ | Memory::PROT_WRITE,
+                                   /*committed=*/true, Memory::Owner::Kernel,
+                                   "thread-tls");
+            }
             u64 tls_base = reinterpret_cast<u64>(tls_block) + kTlsHeadroom;
             if (tls_block) {
                 // Self-pointer at tp[0] (FreeBSD TCB convention)

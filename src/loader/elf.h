@@ -348,6 +348,10 @@ namespace Loader {
     // Load an ELF executable into memory and map its PT_LOAD segments
     bool Load(const std::string& filepath, LoadedModule& out_module);
 
+    // Title id used in MODULE_RELOCATE diagnostics.  Optional: set by the
+    // host once param.json has been parsed, before module loading starts.
+    void SetDiagnosticsTitleId(const std::string& title_id);
+
     // ------------------------------------------------------------------------
     // SELF (Signed ELF) container
     //

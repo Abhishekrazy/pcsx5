@@ -407,6 +407,7 @@ PCSX5_API int pcsx5_load(const char* eboot_path) {
             std::filesystem::path(target_path).filename().string();
         GPU::SetBootStatus(stage.c_str());
     }
+    Loader::SetDiagnosticsTitleId(g_state.title_id);  // MODULE_RELOCATE lines
     if (!Kernel::LoadModule(target_path, g_state.main_module)) {
         LOG_ERROR(General, "Failed to load target module: %s", target_path.c_str());
 
