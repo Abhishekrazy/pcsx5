@@ -1,0 +1,19 @@
+{
+  "name": "pcsx5-gemini-guard",
+  "version": "1.0.0",
+  "description": "Evidence-driven Gemini engineering harness for PCSX5.",
+  "capabilities": [
+    "architecture-review",
+    "hardware-investigation",
+    "memory-engineering",
+    "reverse-engineering",
+    "game-debugging",
+    "Unity-analysis",
+    "Unreal-analysis",
+    "PC-game-analysis",
+    "multi-agent-debugging",
+    "automation",
+    "dependency-review",
+    "release-review"
+  ]
+}
