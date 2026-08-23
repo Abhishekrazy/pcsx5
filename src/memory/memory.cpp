@@ -23,10 +23,22 @@ struct Region {
     u32          protection;  // PROT_* bitmask
     u32          win32_prot;
     bool         committed;
+    Owner        owner   = Owner::None;
+    std::string  name;         // diagnostic label (module name, "stack", ...)
+    // True when THIS manager performed the host allocation (Reserve/Map/
+    // AllocateRange/Commit) and therefore must VirtualFree it on release.
+    // False for AdoptRange registrations whose host memory the adopter owns.
+    bool         managed = true;
 };
 
 std::mutex              g_regions_mutex;
 std::vector<Region>     g_regions;
+
+// Released ranges available for reuse by AllocateRange.  A range lands here
+// via ReleaseRange/Unmap of a tracked region.  Coalescing is deliberately
+// NOT done yet (correctness first; the guest module window has few ranges).
+struct FreeRange { guest_addr_t base; u64 size; };
+std::vector<FreeRange>  g_free_ranges;
 
 GuestFaultHandler       g_fault_handler = nullptr;
 void*                   g_fault_user    = nullptr;
@@ -51,6 +63,16 @@ constexpr u64 kPoolSize    = 1ULL * 1024 * 1024 * 1024;  // 1 GB — enough for 
 void*  g_pool_base    = nullptr;  // VirtualAlloc base (page-aligned)
 u64    g_pool_used    = 0;        // bytes consumed so far (bump allocator)
 bool   g_pool_ok      = false;    // set after successful pool reservation
+
+// True when `address` lies inside the direct-mapped pool's reserved span.
+// Pool pages stay physically committed after PoolFree, so VirtualQuery alone
+// cannot distinguish a live sub-allocation from a freed one — the region
+// table decides.
+bool IsInPool(guest_addr_t address) {
+    if (!g_pool_ok) return false;
+    const guest_addr_t pool_start = reinterpret_cast<guest_addr_t>(g_pool_base);
+    return address >= pool_start && address < pool_start + kPoolSize;
+}
 
 // Pool sub-allocator.  Size must already be page-aligned.  Returns 0 on
 // failure (pool exhausted or not initialized).
@@ -182,7 +204,27 @@ u32 TranslateFromWin32(DWORD win_prot) {
 
 void TrackRegion(guest_addr_t base, u64 size, u32 prot, DWORD win_prot, bool committed) {
     std::lock_guard<std::mutex> lock(g_regions_mutex);
-    g_regions.push_back(Region{base, size, prot, win_prot, committed});
+    Region r;
+    r.base = base; r.size = size; r.protection = prot;
+    r.win32_prot = win_prot; r.committed = committed;
+    r.owner = Owner::None;
+    g_regions.push_back(std::move(r));
+}
+
+// Owner/name-carrying variant used by the Stage 2 allocation paths.
+void TrackRegionOwned(guest_addr_t base, u64 size, u32 prot, DWORD win_prot,
+                      bool committed, Owner owner, const char* name) {
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    Region r;
+    r.base = base; r.size = size; r.protection = prot;
+    r.win32_prot = win_prot; r.committed = committed;
+    r.owner = owner;
+    if (name) r.name = name;
+    // A newly tracked range must not also sit on the free list.
+    g_free_ranges.erase(std::remove_if(g_free_ranges.begin(), g_free_ranges.end(),
+        [&](const FreeRange& f) { return f.base == base && f.size <= size; }),
+        g_free_ranges.end());
+    g_regions.push_back(std::move(r));
 }
 
 void UntrackRegion(guest_addr_t base, u64 size) {
@@ -257,6 +299,16 @@ const char* StatusAsString(Status s) {
     return "Unknown";
 }
 
+const char* OwnerAsString(Owner o) {
+    switch (o) {
+        case Owner::Loader: return "loader";
+        case Owner::Kernel: return "kernel";
+        case Owner::Hle:    return "hle";
+        case Owner::Guest:  return "guest";
+        default:            return "none";
+    }
+}
+
 bool Initialize() {
     LOG_INFO(Memory, "Initializing guest memory manager...");
     g_fault_veh = AddVectoredExceptionHandler(/*First=*/1, GuestFaultVeh);
@@ -276,20 +328,14 @@ bool Initialize() {
         LOG_INFO(Memory, "Mapped guest framebuffer region at 0x%llx-0x%llx", out_fb_addr, out_fb_addr + 0x2000000);
     }
 
-    // O1.3: pre-commit commonly-used guest memory regions at boot to reduce
-    // demand-commit fault overhead.  The 256 MB region starting at 0x800000000
-    // covers the main ELF, PRX modules, and early heap/stack allocations.
-    {
-        guest_addr_t pre_base = 0x800000000ULL;
-        u64 pre_size = 256ULL * 1024 * 1024;  // 256 MB
-        guest_addr_t out = 0;
-        Status ps = Map(pre_base, pre_size, PROT_READ | PROT_WRITE, &out);
-        if (ps == Status::Ok) {
-            LOG_INFO(Memory, "Pre-committed 256 MB at 0x%llx (demand-commit optimization)", pre_base);
-        } else {
-            LOG_INFO(Memory, "Pre-commit skipped (will demand-commit on fault): %s", StatusAsString(ps));
-        }
-    }
+    // O1.3 (retired): this used to force-map 256 MB at 0x800000000 as a
+    // boot-time pre-commit optimization.  It conflicted with the loader's
+    // PIE base hint (elf.cpp kPieBaseHint = 0x800000000): whichever ran first
+    // silently displaced the other, and in practice the fixed-address
+    // VirtualAlloc failed with ERROR_INVALID_ADDRESS in most processes —
+    // so the optimization never actually engaged while still breaking the
+    // loader's preferred base.  Demand-commit via CommitOnFault covers the
+    // same pages lazily and is exercised by memory_query_tests.
 
     // O1.2 / I3.2: pre-reserve a large VA pool for fast sub-allocation.
     // Let the kernel choose the base — forcing a specific address (0x4000000000)
@@ -320,7 +366,28 @@ void Shutdown() {
         g_fault_veh = nullptr;
     }
     std::lock_guard<std::mutex> lock(g_regions_mutex);
+    // Release manager-owned host allocations so a subsequent Initialize()
+    // starts clean instead of leaking reservations (the framebuffer Map at
+    // 0x200000000 fails with ERROR_INVALID_ADDRESS on the second init
+    // otherwise).  Adopted ranges stay — their owner frees them.
+    for (const auto& r : g_regions) {
+        if (!r.managed || IsInPool(r.base)) continue;
+        if (!VirtualFree(reinterpret_cast<void*>(r.base), 0, MEM_RELEASE)) {
+            LOG_DEBUG(Memory, "Shutdown: VirtualFree [0x%llx-0x%llx] failed (err=%lu)",
+                      r.base, r.base + r.size, GetLastError());
+        }
+    }
+    // Release the direct-mapped pool so a subsequent Initialize() does not
+    // orphan a 1 GB reservation per init/shutdown cycle.
+    if (g_pool_base) {
+        VirtualFree(g_pool_base, 0, MEM_RELEASE);
+        g_pool_base = nullptr;
+    }
+    g_pool_used = 0;
+    g_pool_ok = false;
+    g_pool_free.clear();  // PoolFreeSlot vector
     g_regions.clear();
+    g_free_ranges.clear();
     g_write_ranges.clear();
     g_fault_handler = nullptr;
     g_fault_user = nullptr;
@@ -352,8 +419,9 @@ Status Map(guest_addr_t address, u64 size, u32 protection, guest_addr_t* out_add
                 VirtualProtect(reinterpret_cast<void*>(pool_addr),
                                aligned_size, actual_win, &old);
             }
-            TrackRegion(pool_addr, aligned_size, protection,
-                        TranslateProtection(protection), true);
+            TrackRegionOwned(pool_addr, aligned_size, protection,
+                             TranslateProtection(protection), true,
+                             Owner::Kernel, "map");
             *out_addr = pool_addr;
             return Status::Ok;
         }
@@ -396,7 +464,10 @@ Status Map(guest_addr_t address, u64 size, u32 protection, guest_addr_t* out_add
                  ? Status::OutOfMemory : Status::Win32Error;
     }
     const guest_addr_t guest_addr = reinterpret_cast<guest_addr_t>(allocated);
-    TrackRegion(guest_addr, aligned_size, protection, win_prot, /*committed=*/true);
+    TrackRegionOwned(guest_addr, aligned_size, protection, win_prot,
+                     /*committed=*/true, Owner::Kernel,
+                     (address == kGuestVaBase || address >= kGuestVaBase) &&
+                     address < kGuestVaEnd ? "module-window" : "map");
     *out_addr = guest_addr;
     LOG_DEBUG(Memory, "Mapped [0x%llx-0x%llx] prot=%u (size=0x%llx)",
               guest_addr, guest_addr + aligned_size, protection, aligned_size);
@@ -421,7 +492,10 @@ Status Reserve(guest_addr_t address, u64 size, guest_addr_t* out_addr) {
         return (err == ERROR_NOT_ENOUGH_MEMORY) ? Status::OutOfMemory : Status::Win32Error;
     }
     const guest_addr_t guest_addr = reinterpret_cast<guest_addr_t>(reserved);
-    TrackRegion(guest_addr, aligned_size, PROT_NONE, PAGE_NOACCESS, /*committed=*/false);
+    TrackRegionOwned(guest_addr, aligned_size, PROT_NONE, PAGE_NOACCESS,
+                     /*committed=*/false, Owner::Loader,
+                     (address >= kGuestVaBase && address < kGuestVaEnd)
+                         ? "module" : "reserve");
     *out_addr = guest_addr;
     LOG_DEBUG(Memory, "Reserved [0x%llx-0x%llx] (size=0x%llx)",
               guest_addr, guest_addr + aligned_size, aligned_size);
@@ -509,7 +583,36 @@ Status Unmap(guest_addr_t address, u64 size) {
     const u64 aligned_size = ALIGN_UP(size, PAGE_SIZE);
     void* ptr = reinterpret_cast<void*>(address);
 
-    // I3.2: try pool free first (fast, no VirtualFree).
+    // Not-mapped semantics: an address we never tracked and that the host
+    // reports free has nothing to release.  Checked before the VirtualFree
+    // attempts, which would otherwise surface Win32Error for a plain
+    // use-after-unmap / bogus-address case.
+    {
+        bool tracked = false;
+        {
+            std::lock_guard<std::mutex> lock(g_regions_mutex);
+            for (const auto& r : g_regions) {
+                if (r.base <= address && address < r.base + r.size) {
+                    tracked = true;
+                    break;
+                }
+            }
+        }
+        if (!tracked) {
+            MEMORY_BASIC_INFORMATION mbi{};
+            // VirtualQuery returning 0 means the address is beyond any host
+            // allocation — the same condition Query uses for NotMapped.
+            if (VirtualQuery(ptr, &mbi, sizeof(mbi)) == 0 || mbi.State == MEM_FREE) {
+                LOG_DEBUG(Memory, "Unmap of untracked free range [0x%llx-0x%llx] -> NotMapped",
+                          address, address + size);
+                return Status::NotMapped;
+            }
+        }
+    }
+
+    // I3.2: try pool free first (fast, no VirtualFree).  Pool VAs are NOT
+    // added to the free list: their pages stay committed inside the pool
+    // span, and PoolAlloc's bump/free-list already handles reuse.
     if (PoolFree(address, aligned_size)) {
         UntrackRegion(address, aligned_size);
         LOG_DEBUG(Memory, "Unmapped from pool [0x%llx-0x%llx]", address, address + size);
@@ -520,6 +623,8 @@ Status Unmap(guest_addr_t address, u64 size) {
     if (VirtualFree(ptr, 0, MEM_RELEASE)) {
         UntrackRegion(address, aligned_size);
         std::lock_guard<std::mutex> lock(g_regions_mutex);
+        // Full release: the span becomes reusable by AllocateRange.
+        g_free_ranges.push_back({address, aligned_size});
         const guest_addr_t end = address + aligned_size;
         g_write_ranges.erase(std::remove_if(g_write_ranges.begin(),
             g_write_ranges.end(),
@@ -625,6 +730,13 @@ Status Query(guest_addr_t address, MemoryInfo* out_info) {
         }
     }
     // Fall back to VirtualQuery for any host allocation that we did not track.
+    // Exception: inside our direct-mapped pool the pages stay physically
+    // committed after PoolFree (kept for reuse), so VirtualQuery would report
+    // a freed sub-allocation as still mapped.  The region table above is the
+    // authority there — untracked pool space means unmapped.
+    if (IsInPool(address)) {
+        return Status::NotMapped;
+    }
     MEMORY_BASIC_INFORMATION mbi{};
     if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
         return Status::NotMapped;
@@ -685,6 +797,192 @@ MemoryStats GetStats() {
         if (r.committed) s.total_committed += r.size;
     }
     return s;
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2: guest VA range ownership contract.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// True when [base, base+size) overlaps any tracked region or any known
+// host allocation we must treat as taken (the direct-mapped pool interior,
+// which stays committed after PoolFree by design).
+bool RangeOverlapsOwnedLocked(guest_addr_t base, u64 size) {
+    const guest_addr_t end = base + size;
+    for (const auto& r : g_regions) {
+        if (r.base < end && base < r.base + r.size) return true;
+    }
+    // Pool interior is owned even where untracked (freed pool blocks keep
+    // their pages for reuse; handing the VA out again would alias live data).
+    if (g_pool_ok) {
+        const guest_addr_t pool_start = reinterpret_cast<guest_addr_t>(g_pool_base);
+        if (base < pool_start + kPoolSize && pool_start < end) return true;
+    }
+    return false;
+}
+
+} // namespace
+
+Status AllocateRange(u64 size, u64 alignment, Owner owner,
+                     const char* name, guest_addr_t* out_addr) {
+    if (!out_addr || size == 0) return Status::InvalidArgument;
+    *out_addr = 0;
+    if (alignment == 0) alignment = PAGE_SIZE;
+
+    // Windows allocation granularity: every reservation is 64 KiB aligned.
+    u64 alloc_align = (alignment > 65536) ? alignment : 65536;
+    const u64 aligned_size = ALIGN_UP(size, 65536);
+
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+
+    // Deterministic low-address-first scan of the guest module window.
+    guest_addr_t cursor = ALIGN_UP(kGuestVaBase, alloc_align);
+    while (cursor + aligned_size <= kGuestVaEnd) {
+        if (!RangeOverlapsOwnedLocked(cursor, aligned_size)) {
+            // Reserve at the host level.  We hold g_regions_mutex — same lock
+            // TrackRegion takes — and VirtualAlloc never re-enters us.
+            void* reserved = VirtualAlloc(reinterpret_cast<void*>(cursor),
+                                          aligned_size, MEM_RESERVE, PAGE_NOACCESS);
+            if (reserved) {
+                Region r;
+                r.base = cursor; r.size = aligned_size;
+                r.protection = PROT_NONE; r.win32_prot = PAGE_NOACCESS;
+                r.committed = false; r.owner = owner;
+                if (name) r.name = name;
+                g_regions.push_back(std::move(r));
+                *out_addr = cursor;
+                LOG_DEBUG(Memory, "AllocateRange: [0x%llx-0x%llx] owner=%s name=%s",
+                          cursor, cursor + aligned_size, OwnerAsString(owner),
+                          name ? name : "");
+                return Status::Ok;
+            }
+            // Host refused this specific address (should not happen given the
+            // overlap check, but stay safe): skip one granule and retry.
+            LOG_WARN(Memory, "AllocateRange: VirtualAlloc refused 0x%llx (err=%lu)",
+                     cursor, GetLastError());
+        }
+        const guest_addr_t next = cursor + alloc_align;
+        if (next <= cursor) break;  // overflow guard
+        cursor = next;
+    }
+    LOG_INFO(Memory, "AllocateRange: no free %llu-byte range in window "
+             "[0x%llx-0x%llx) (owner=%s name=%s)",
+             (unsigned long long)aligned_size,
+             (unsigned long long)kGuestVaBase, (unsigned long long)kGuestVaEnd,
+             OwnerAsString(owner), name ? name : "");
+    return Status::OutOfMemory;
+}
+
+Status ReleaseRange(guest_addr_t base) {
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    auto it = std::find_if(g_regions.begin(), g_regions.end(),
+        [&](const Region& r) { return r.base == base; });
+    if (it == g_regions.end()) {
+        return Status::NotMapped;
+    }
+    Region r = *it;
+    g_regions.erase(it);
+
+    // Release host backing.  MEM_RELEASE works for whole reservations; a
+    // partially-committed reservation releases both commit and reserve state.
+    if (r.managed) {
+        if (IsInPool(base)) {
+            PoolFree(base, r.size);  // pool ranges: rewind/free-list, no VirtualFree
+        } else {
+            if (!VirtualFree(reinterpret_cast<void*>(base), 0, MEM_RELEASE)) {
+                LOG_WARN(Memory, "ReleaseRange: VirtualFree failed at 0x%llx (err=%lu) — "
+                         "tracking removed anyway", base, GetLastError());
+            }
+        }
+    }
+
+    // Drop write-tracking that lives entirely inside the released span.
+    const guest_addr_t end = base + r.size;
+    g_write_ranges.erase(std::remove_if(g_write_ranges.begin(), g_write_ranges.end(),
+        [&](const TrackedWriteRange& w) {
+            return w.start >= base && w.start + w.length <= end;
+        }),
+        g_write_ranges.end());
+
+    g_free_ranges.push_back({base, r.size});
+    LOG_DEBUG(Memory, "ReleaseRange: freed [0x%llx-0x%llx] (was owner=%s name=%s)",
+              base, end, OwnerAsString(r.owner), r.name.c_str());
+    return Status::Ok;
+}
+
+Status ForgetResource(guest_addr_t address) {
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    auto it = std::find_if(g_regions.begin(), g_regions.end(),
+        [&](const Region& r) { return r.base == address; });
+    if (it == g_regions.end()) {
+        return Status::NotMapped;
+    }
+    if (it->managed) {
+        // Forgetting a manager-owned range would leak its host backing —
+        // callers must use ReleaseRange for those.  Refuse loudly.
+        LOG_WARN(Memory, "ForgetResource: [0x%llx-0x%llx] is manager-owned; "
+                 "use ReleaseRange (refused)", it->base, it->base + it->size);
+        return Status::AccessDenied;
+    }
+    LOG_DEBUG(Memory, "ForgetResource: untracked [0x%llx-0x%llx] (owner=%s, host pages stay)",
+              it->base, it->base + it->size, OwnerAsString(it->owner));
+    g_regions.erase(it);
+    return Status::Ok;
+}
+
+Owner QueryOwner(guest_addr_t address) {
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    for (const auto& r : g_regions) {
+        if (r.base <= address && address < r.base + r.size) return r.owner;
+    }
+    return Owner::None;
+}
+
+bool IsRangeFree(guest_addr_t address, u64 size) {
+    if (size == 0) return false;
+    // Page 0 is never allocatable: guest null-pointer dereferences must
+    // fault, never silently succeed against an allocation at 0.
+    if (address < PAGE_SIZE) return false;
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    return !RangeOverlapsOwnedLocked(address, size);
+}
+
+Status AdoptRange(guest_addr_t address, u64 size, u32 protection,
+                  bool committed, Owner owner, const char* name) {
+    if (size == 0) return Status::InvalidArgument;
+    const u64 aligned_size = ALIGN_UP(size, PAGE_SIZE);
+    {
+        std::lock_guard<std::mutex> lock(g_regions_mutex);
+        // Idempotent: re-adopting an exactly-matching tracked range updates
+        // its record (owner/name/state) instead of double-tracking.  Used
+        // e.g. to retag Memory::Reserve output as game-requested.
+        for (auto& r : g_regions) {
+            if (r.base == address && r.size == aligned_size) {
+                r.protection = protection;
+                r.win32_prot = TranslateProtection(protection);
+                r.committed  = committed;
+                r.owner      = owner;
+                if (name) r.name = name;
+                r.managed    = false;  // host memory not ours to free
+                LOG_DEBUG(Memory, "AdoptRange: retagged [0x%llx-0x%llx] owner=%s",
+                          address, address + aligned_size, OwnerAsString(owner));
+                return Status::Ok;
+            }
+        }
+    }
+    TrackRegionOwned(address, aligned_size, protection,
+                     TranslateProtection(protection), committed, owner, name);
+    {
+        std::lock_guard<std::mutex> lock(g_regions_mutex);
+        for (auto& r : g_regions) {
+            if (r.base == address && r.size == aligned_size) r.managed = false;
+        }
+    }
+    LOG_DEBUG(Memory, "AdoptRange: [0x%llx-0x%llx] owner=%s name=%s committed=%d",
+              address, address + aligned_size, OwnerAsString(owner),
+              name ? name : "", (int)committed);
+    return Status::Ok;
 }
 
 bool IsValidGuestPointer(guest_addr_t address) {

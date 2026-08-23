@@ -44,6 +44,19 @@ static bool HasCrashSignature(const std::string& output) {
     return false;
 }
 
+// Same as HasCrashSignature but tolerant of the benign teardown line
+// "FATAL: abort() raised (signal 22)" the guest logs on a clean
+// abort()-terminated run (see the crashed computation in main).
+static bool HasCrashSignatureExcludingBenignFatal(const std::string& output) {
+    std::string cleaned = output;
+    const char* benign = "FATAL: abort() raised (signal 22)";
+    size_t pos;
+    while ((pos = cleaned.find(benign)) != std::string::npos) {
+        cleaned.erase(pos, strlen(benign));
+    }
+    return HasCrashSignature(cleaned);
+}
+
 // Write a minimal input replay JSON to the given path.
 static bool WriteReplayFile(const std::string& path) {
     std::ofstream out(path);
@@ -118,8 +131,14 @@ int main(int argc, char* argv[]) {
 
     // Build the CLI command line.
     // Use double-quoted paths so shell handles spaces in file names.
-    std::string cmd = "\"" + cli_path + "\" --headless --play-input=\"" +
-                      replay_path.string() + "\" \"" + elf_path + "\" 2>&1";
+    // Explicit "cmd /c" wrapper with "< NUL": the CLI fails to initialize
+    // when its stdin is the pipe _popen provides ("The filename, directory
+    // name, or volume label syntax is incorrect." during CRT startup);
+    // pointing stdin at the null device avoids that.  Verified: same
+    // binary+args exit=0 with < NUL, exit=1 via plain _popen (2026-08-23).
+    std::string cmd = "cmd /c \"\"" + cli_path + "\" --headless --play-input=\"" +
+                      replay_path.string() + "\" \"" + elf_path +
+                      "\" < NUL 2>&1\"";
 
     std::printf("CLI:   %s\n", cli_path.c_str());
     std::printf("ELF:   %s\n", elf_path.c_str());
@@ -145,8 +164,13 @@ int main(int argc, char* argv[]) {
     std::error_code ec;
     std::filesystem::remove(replay_path, ec);
 
-    // Report full output on failure for debugging.
-    bool crashed = (exit_code != 0) || HasCrashSignature(output);
+    // Report full output on failure for debugging.  The "FATAL" signature is
+    // only meaningful on a dirty exit: the guest teardown path logs a benign
+    // "FATAL: abort() raised (signal 22)" line when the test ELF terminates
+    // via abort() after sys_exit(0).  The other signatures (VEH unhandled
+    // exception, ACCESS_VIOLATION, GUEST APPLICATION CRASHED) always fail
+    // the run — a process that logs them and exits 0 is still broken.
+    bool crashed = (exit_code != 0) || HasCrashSignatureExcludingBenignFatal(output);
 
     if (crashed) {
         std::printf("\n=== OUTPUT (exit=%d) ===\n%s\n=== END ===\n",

@@ -11,6 +11,7 @@
 #include "cpu.h"
 #include "../common/log.h"
 #include "../common/platform/platform.h"
+#include "../memory/memory.h"
 #include "../config/config.h"
 #include "../hle/hle.h"
 #include "../kernel/syscalls.h"
@@ -38,14 +39,21 @@ std::unordered_map<u32, SyscallHandler> g_custom_syscalls;
 
 bool g_initialized = false;
 
-// Release guest stack/TLS allocations owned by a thread (if any).
+// Release guest stack/TLS allocations owned by a thread (if any).  The
+// allocations themselves were adopted into Memory tracking at creation
+// (libkernel scePthreadCreate); drop the tracking records here so Query
+// doesn't report freed host pages as live.
 void FreeThreadGuestMemory(GuestThread& thread) {
     if (thread.stack_base) {
         VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(thread.stack_base)), 0, MEM_RELEASE);
+        Memory::ForgetResource(thread.stack_base);
         thread.stack_base = 0;
     }
     if (thread.tls_base) {
         VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(thread.tls_base)), 0, MEM_RELEASE);
+        // tls_base points kTlsHeadroom INTO the adopted block; the record's
+        // base is the block start.
+        Memory::ForgetResource(thread.tls_base - 0x10000);
         thread.tls_base = 0;
     }
 }

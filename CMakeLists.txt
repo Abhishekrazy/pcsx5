@@ -417,6 +417,8 @@ if(BUILD_TESTING)
     add_executable(kernel_memory_tests
         tests/kernel_memory_tests.cpp
         src/kernel/memory.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
     )
     target_include_directories(kernel_memory_tests PRIVATE src)
     target_compile_options(kernel_memory_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
@@ -463,8 +465,9 @@ if(BUILD_TESTING)
     add_test(NAME self_header COMMAND self_header_tests)
 
     add_executable(tls_context_tests
-        tests/tls_context.cpp
+        tests/tls_context_tests.cpp
         src/kernel/tls.cpp
+        src/common/log.cpp
     )
     target_include_directories(tls_context_tests PRIVATE src)
     target_compile_options(tls_context_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
@@ -1744,15 +1747,31 @@ add_executable(dump_imports
     # tests/regression_manifest.json.
     # ------------------------------------------------------------------------
     if(WIN32)
-        find_program(BASH_PROGRAM NAMES bash git-bash PATHS "C:/Program Files/Git/bin" "C:/Program Files/Git/usr/bin")
+        # NB: find_program(NAMES bash) can pick up C:/Windows/System32/bash.exe
+        # (WSL), which cannot read Windows drive paths.  Prefer the Git-for-
+        # Windows bash explicitly and reject the System32 one.
+        find_program(BASH_PROGRAM NAMES bash
+            PATHS "C:/Program Files/Git/bin" "C:/Program Files/Git/usr/bin"
+            NO_DEFAULT_PATH)
+        if(NOT BASH_PROGRAM)
+            find_program(BASH_PROGRAM NAMES git-bash.exe bash.exe
+                PATHS "C:/Program Files/Git/bin")
+        endif()
         if(NOT BASH_PROGRAM)
             set(BASH_PROGRAM "bash")
         endif()
+        # MSYS/Git-bash cannot open "I:/..." style paths directly ("I:" reads
+        # as a relative name).  Convert drive paths to the /i/... mount form
+        # so bash resolves them inside its own POSIX namespace.
+        string(TOLOWER "${CMAKE_SOURCE_DIR}" _reg_src_lower)
+        string(SUBSTRING "${_reg_src_lower}" 0 1 _reg_drive)
+        string(SUBSTRING "${CMAKE_SOURCE_DIR}" 2 -1 _reg_rest)
+        set(_reg_posix "/${_reg_drive}${_reg_rest}")
         add_test(NAME regression
-            COMMAND ${BASH_PROGRAM} ${CMAKE_SOURCE_DIR}/tools/run_regression_suite.sh
-                    --replay-dir=${CMAKE_SOURCE_DIR}/replays
-                    --games-dir=${CMAKE_SOURCE_DIR}/Games
-                    --manifest=${CMAKE_SOURCE_DIR}/tests/regression_manifest.json
+            COMMAND ${BASH_PROGRAM} ${_reg_posix}/tools/run_regression_suite.sh
+                    --replay-dir=${_reg_posix}/replays
+                    --games-dir=${_reg_posix}/Games
+                    --manifest=${_reg_posix}/tests/regression_manifest.json
                     --cli=$<TARGET_FILE:pcsx5_cli>
         )
     else()

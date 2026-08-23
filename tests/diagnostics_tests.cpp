@@ -103,12 +103,19 @@ void TestLogRingBuffer() {
 // ---------------------------------------------------------------------------
 void TestLogFileOutput() {
     std::fprintf(stdout, "[TEST] Log file output\n");
-    const std::string path = "diagnostics_test_log.txt";
+    // Use an absolute path: SetFileOutput redirects relative paths into the
+    // logs/ directory, and this test asserts on exact file placement.
+    const std::string path = (std::filesystem::temp_directory_path()
+                              / "pcsx5_diagnostics_test_log.txt").string();
     std::filesystem::remove(path);
 
     LogConfig::SetFileOutput(path, /*append=*/false);
     LOG_INFO(General, "file-output-line-1");
     LOG_WARN(General, "file-output-line-2");
+    // The dedup gate holds the last distinct message pending (suppressed)
+    // until the next key change or an explicit flush — force it out so both
+    // lines reach the file before it is closed.
+    LogConfig::FlushDedup();
     LogConfig::SetFileOutput(""); // disable
 
     std::string contents = Slurp(path);

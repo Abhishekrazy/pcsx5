@@ -63,7 +63,11 @@ std::vector<u8> BuildBlob(u32 version, u32 type, u64 file_size,
     WriteLe32(blob.data() + 0x0C, type);
     WriteLe64(blob.data() + 0x10, file_size);
     WriteLe32(blob.data() + 0x18, data_offset);
-    for (size_t i = 0; i < 0x20; ++i)
+    // The digest lives at 0x20..0x40; only stamp it when the buffer is large
+    // enough (small truncation test blobs below the full public header may
+    // legitimately be shorter).
+    const size_t digest_fill = total < 0x40 ? total - 0x20 : 0x20;
+    for (size_t i = 0; i < digest_fill; ++i)
         blob[0x20 + i] = static_cast<u8>(i);
     return blob;
 }

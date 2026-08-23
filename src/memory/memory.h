@@ -56,6 +56,15 @@ constexpr u32 PROT_READ  = 0x1;
 constexpr u32 PROT_WRITE = 0x2;
 constexpr u32 PROT_EXEC  = 0x4;
 
+// Guest module window — where PIE images and PRX modules live.  Mirrors the
+// loader's constants (elf.cpp kPieBaseHint/kGuestWindowEnd); kept here so
+// AllocateRange and fault classification agree with module placement.
+// The full guest VA space is NOT limited to this window (framebuffer at
+// 0x200000000, kernel-chosen pool/heap addresses outside it), but module
+// auto-placement only ever picks from inside it.
+constexpr guest_addr_t kGuestVaBase = 0x800000000ULL;
+constexpr guest_addr_t kGuestVaEnd  = 0x900000000ULL;
+
 // ---------------------------------------------------------------------------
 // Init / shutdown
 // ---------------------------------------------------------------------------
@@ -83,6 +92,73 @@ bool IsExecutable(guest_addr_t address, u64 size);
 
 // Aggregated view of the regions currently tracked by the manager.
 MemoryStats GetStats();
+
+// ---------------------------------------------------------------------------
+// Guest VA range ownership (Stage 2 contract).
+//
+// Every guest VA range is owned by exactly one named subsystem.  Ownership is
+// explicit so that "who allocated this address" is queryable and so that a
+// released range can be reused deterministically.  The loader expresses a
+// preferred address via Reserve/AllocateRange; Memory decides availability —
+// it never silently relocates (the caller walks fallback hints and logs why).
+//
+//   Reserve(address, size)      — reserve VA, no host commit (PROT_NONE).
+//   Commit(address, size, prot) — back reserved pages / adjust protection.
+//   Map(address, size, prot)    — reserve + commit in one step.
+//   Unmap(address, size)        — release host backing AND the reservation
+//                                 (range becomes free for reuse).
+//   AllocateRange(size, align, owner, name, out) — owner-agnostic placement:
+//                                 pick any free range in the guest module
+//                                 window.  Used when no preferred address.
+//   ReleaseRange(base)          — Unmap by ownership record; frees for reuse.
+//
+// Windows enforces physical single-ownership under the hood (VirtualAlloc
+// refuses overlapping reservations), but only ranges that go through this
+// API are *visible* to Query/IsValidGuestPointer.  Host-side allocations made
+// outside this API (e.g. legacy HLE pools) must call AdoptRange to register.
+// ---------------------------------------------------------------------------
+enum class Owner : u32 {
+    None    = 0,  // untracked / unknown
+    Loader  = 1,  // guest module images (eboot, PRX)
+    Kernel  = 2,  // kernel-managed guest allocations (stacks, TLS, mmap)
+    Hle     = 3,  // HLE-owned (thunk page, phys pool, trampolines)
+    Guest   = 4,  // guest-requested (ReserveVirtualRange / MapDirectMemory)
+};
+
+const char* OwnerAsString(Owner o);
+
+// Find and reserve a free range of `size` bytes (aligned up to `alignment`,
+// minimum 64 KiB allocation granularity).  Deterministic low-address-first
+// policy inside [kGuestVaBase, kGuestVaEnd).  Returns OutOfMemory when no
+// gap fits — the CALLER decides whether/how to fall back.
+Status AllocateRange(u64 size, u64 alignment, Owner owner,
+                     const char* name, guest_addr_t* out_addr);
+
+// Release a previously reserved/mapped range by base address: unmaps host
+// backing (if any), removes tracking, and marks the VA span reusable.
+// Returns NotMapped when `base` does not start a tracked region.
+Status ReleaseRange(guest_addr_t base);
+
+// Who owns the containing region of `address`?  None when unmapped/untracked.
+Owner QueryOwner(guest_addr_t address);
+
+// True when [address, address+size) lies entirely outside every tracked
+// region AND outside all host allocations we know of (pool interior counts
+// as owned by Memory itself).  Cheap check for "can I Reserve here?"
+bool IsRangeFree(guest_addr_t address, u64 size);
+
+// Register a range that was allocated through Win32 directly (outside this
+// API) so Query/IsValidGuestPointer/QueryOwner can see it.  Does NOT change
+// host page state.  Use Owner::Hle or Owner::Kernel as appropriate.
+Status AdoptRange(guest_addr_t address, u64 size, u32 protection,
+                  bool committed, Owner owner, const char* name);
+
+// Drop the tracking record for an adopted range WITHOUT touching host pages
+// — the adopter keeps sole responsibility for freeing the host allocation
+// (e.g. a thread stack VirtualFree'd by the CPU thread registry).  After this
+// returns Ok, Query reports NotMapped for the range.  Returns NotMapped when
+// no exactly-matching tracked region exists.
+Status ForgetResource(guest_addr_t address);
 
 // ---------------------------------------------------------------------------
 // Returns true when `address` falls inside any tracked memory region

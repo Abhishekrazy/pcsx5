@@ -1549,6 +1549,12 @@ void RegisterLibKernelSync() {
     RegisterSymbol("libkernel", "scePthreadMutexTrylock", ScePthreadMutexTrylock);
     RegisterSymbol("libkernel", "scePthreadMutexUnlock", ScePthreadMutexUnlock);
     RegisterSymbol("libkernel", "scePthreadMutexDestroy", ScePthreadMutexDestroy);
+    // NID forms (per SharpEmu KernelPthreadCompatExports).  These were
+    // previously mis-registered as libSceAgcDriver MapMemory stubs, which made
+    // every guest mutex lock/unlock a silent no-op returning 0.
+    RegisterSymbol("libkernel", "9UK1vLZQft4#y#J", ScePthreadMutexLock);   // scePthreadMutexLock
+    RegisterSymbol("libkernel", "upoVrzMHFeE#F#F", ScePthreadMutexTrylock); // scePthreadMutexTrylock
+    RegisterSymbol("libkernel", "tn3VlD0hG60#k#N", ScePthreadMutexUnlock);  // scePthreadMutexUnlock
     // mutex attr (type recorded per guest attr address, read by MutexInit)
     RegisterSymbol("libkernel", "scePthreadMutexattrInit", ScePthreadMutexattrInit);
     RegisterSymbol("libkernel", "scePthreadMutexattrDestroy", ScePthreadMutexattrDestroy);

@@ -2116,12 +2116,13 @@ void RegisterLibAgc() {
         if (cb == 0 || size > 1 || compare_func > 7 || operation > 4 || cache_policy > 3) {
             return 0;
         }
-        // H4.2: validate the memory address before writing it into the PM4
-        // packet — a leaked host pointer would corrupt GPU state or crash.
-        if (!Memory::IsValidGuestPointer(address)) {
-            LOG_WARN(HLE, "DcbWaitRegMem: address 0x%llx is not a valid guest pointer", address);
-            return 0;
-        }
+        // H4.8: accept the wait address even if it is not a tracked guest
+        // pointer, matching SetIndirectPatchAddress and DcbDmaData.  The AGC
+        // datapath legitimately passes values that are absent from the tracked
+        // region set (e.g. host addresses from memcpy returns, GPU-only
+        // apertures); rejecting them here turns a real wait packet into a
+        // silent "buffer full" 0 return, which crashes downstream.  The packet
+        // walker faults at execution time, not at emit time.
         const u64 reference   = Memory::Read<u64>(args.stack_args + 0);
         const u64 mask        = Memory::Read<u64>(args.stack_args + 8);
         const u32 poll_cycles = Memory::Read<u32>(args.stack_args + 16);
@@ -2686,30 +2687,11 @@ void RegisterLibAgc() {
         return 0;
     };
     RegisterSymbol("libSceAgcDriver", "sceAgcDriverMapMemory", AgcDriverMapMemoryImpl);
-    RegisterSymbol("libSceAgcDriver", "9UK1vLZQft4#y#J", AgcDriverMapMemoryImpl);
-
-    RegisterSymbol("libSceAgcDriver", "tn3VlD0hG60#k#N", [](const GuestArgs& args) -> u64 {
-        u64 device = args.arg1;
-        u64 addr = args.arg2;
-        u64 host_ptr = args.arg3;
-        LOG_DEBUG(HLE, "tn3VlD0hG60#k#N called: device=0x%llx, addr=0x%llx, host_ptr=0x%llx",
-                  device, addr, host_ptr);
-
-        // LOST EPIC treats the return value as a mapped host pointer and
-        // writes through it immediately; returning 0 caused a null write.
-        // Back it with a persistent 1 MB guest-visible buffer.
-        static guest_addr_t s_agc_host_buffer = 0;
-        if (!s_agc_host_buffer) {
-            if (Memory::Map(0, 1 * 1024 * 1024,
-                            Memory::PROT_READ | Memory::PROT_WRITE,
-                            &s_agc_host_buffer) != Memory::Status::Ok) {
-                LOG_ERROR(HLE, "tn3VlD0hG60#k#N: failed to map host buffer!");
-                return 0;
-            }
-            LOG_INFO(HLE, "tn3VlD0hG60#k#N: mapped host buffer at 0x%llx", s_agc_host_buffer);
-        }
-        return s_agc_host_buffer;
-    });
+    // NOTE: NIDs 9UK1vLZQft4 (scePthreadMutexLock) and tn3VlD0hG60
+    // (scePthreadMutexUnlock) were previously mis-registered here as AGC
+    // MapMemory stubs.  They belong to libkernel's mutex API and are now
+    // registered correctly in libkernel_sync.cpp — do NOT re-add them under
+    // libSceAgcDriver; doing so turns every guest mutex op into a no-op.
 
     RegisterSymbol("libSceAgcDriver", "Ujf3KzMvRmI#j#j", [](const GuestArgs& args) -> u64 {
         u64 align = args.arg1;
