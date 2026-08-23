@@ -1,8 +1,0 @@
-{
-  "name": "pcsx5-guard",
-  "version": "1.0.0",
-  "description": "Architecture, evidence, refactoring, compatibility, dependency, debugging and release guardrails for PCSX5.",
-  "author": {
-    "name": "PCSX5 Project"
-  }
-}

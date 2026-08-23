@@ -1,39 +1,58 @@
-# PCSX5 Goals
+# PCSX5 Engineering Goals
 
-## Long-term
+## Long-Term Goals
 
-- Clean layered emulator architecture.
-- Stable native ABI and thin UI.
-- Deterministic headless core.
-- Strong CPU, memory/MMU, kernel/HLE, loader, GPU, audio and input boundaries.
-- High-quality observability and crash diagnostics.
-- Evidence-based compatibility database.
-- Automated regression, trace comparison and crash clustering.
-- Specialized AI agents that investigate without inventing behavior.
+### Emulator
+- Clean subsystem ownership.
+- Stable versioned native ABI.
+- Headless deterministic runtime where practical.
+- Correct CPU, Memory/MMU, Kernel, HLE, Loader, GPU, Audio and Input boundaries.
+- Observable execution and fault diagnostics.
+- Strong compatibility regression infrastructure.
+- Repeatable title boot/playability evidence.
+- Maintainable shader translation pipeline.
+- Reliable save state architecture.
+- Safe and reproducible release/update system.
+
+### Engineering Platform
+- Specialized AI agents for investigation.
+- Independent architectural verification.
+- Automated crash clustering.
+- Trace comparison.
+- Binary/NID inventory.
+- Shader corpus regression.
+- Compatibility matrix generation.
+- Reproducible developer environments.
+
+### Distribution
 - Reproducible builds.
 - Signed releases.
-- Automatic updates with rollback.
-- Human- and AI-maintainable codebase.
+- Stable/preview channels.
+- Automatic update checks.
+- Staged updates.
+- Health verification.
+- Rollback.
 
-## Short-term
+## Short-Term Goals
 
 1. Preserve current working behavior.
-2. Complete Memory/MMU ownership migration.
-3. Verify real-title regressions.
-4. Clean TLS ownership.
-5. Reduce Kernel/HLE coupling.
-6. Isolate AGC from GPU internals.
-7. Consolidate GPU front door.
-8. Remove duplicated CMake sources.
-9. Reduce harmful global state.
-10. Make stubbed imports observable.
-11. Strengthen compatibility regression infrastructure.
-12. Build safe release/update infrastructure.
+2. Finish Memory/MMU contract and lifecycle cleanup.
+3. Establish correct TLS/config lifecycle ownership.
+4. Reduce Kernel/HLE dependency cycles.
+5. Isolate AGC from GPU internals.
+6. Consolidate GPU public front door.
+7. Clean build/source duplication.
+8. Reduce harmful global mutable state.
+9. Make unknown NIDs/stubs observable.
+10. Strengthen title compatibility records.
+11. Build automated boot/regression tooling.
+12. Establish secure release/update architecture.
 
-## Explicit non-goals
+## Non-Goals
 
 - No speculative JIT.
-- No C++26 upgrade without a concrete need.
+- No C++26 upgrade merely for novelty.
+- No wholesale rewrite.
 - No framework accumulation.
-- No aesthetic rewrite.
 - No title-specific hacks without evidence.
+- No optimization without measurement.
