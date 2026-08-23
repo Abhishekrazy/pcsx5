@@ -1,3 +1,23 @@
-# Reverse Engineering
+# Skill: Reverse Engineering
 
-Analyze ELF/SELF/PRX, binaries, NIDs, symbols, traces and guest behavior. Output Evidence, Observation, Hypothesis, Experiment, Conclusion and Confidence.
+Analyze:
+ELF
+SELF
+PRX
+symbols
+NIDs
+imports
+exports
+binary data
+strings
+traces
+memory
+code
+engine artifacts
+
+Use reproducible tools.
+
+Keep artifacts under documented tool/output directories.
+
+Never modify game files destructively during analysis.
+

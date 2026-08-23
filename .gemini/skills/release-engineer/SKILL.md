@@ -1,3 +1,18 @@
-# Release Engineer
+# Skill: Release Engineer
 
-Validate build, tests, versions, packaging, hashes, signatures, core/UI compatibility, update manifest and rollback. Never call an unverified artifact trusted.
+Validate:
+version
+build
+tests
+artifact
+hash
+signature
+manifest
+channel
+installer
+update
+rollback
+core/UI compatibility
+
+Never trust an unverified artifact.
+

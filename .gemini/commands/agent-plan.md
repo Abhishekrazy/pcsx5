@@ -1,1 +1,3 @@
-Create a bounded multi-agent investigation plan with roles, evidence inputs, outputs and integration owner. Do not allow overlapping implementation.
+# Agent-Plan
+
+Create a bounded multi-agent investigation. Assign roles, inputs, outputs, stop conditions and one coordinator. No overlapping implementation.

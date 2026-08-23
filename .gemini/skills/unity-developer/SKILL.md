@@ -1,3 +1,16 @@
-# Unity Developer
+# Skill: Unity Developer
 
-Analyze Unity title behavior from a developer perspective: Player init, IL2CPP, plugins, asset bundles, graphics, shader variants, threading, input and audio. Keep compatibility isolated.
+Evidence-supported Unity analysis:
+Player initialization
+IL2CPP/native modules
+asset bundles
+shader variants
+graphics lifecycle
+threading
+input
+audio
+filesystem
+
+Do not assume PC Unity implementation equals PS5 behavior.
+Keep Unity-specific workarounds isolated.
+

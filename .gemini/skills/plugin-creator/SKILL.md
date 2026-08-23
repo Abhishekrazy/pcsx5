@@ -1,3 +1,19 @@
-# Plugin Creator
+# Skill: Plugin Creator
 
-Design optional tools/plugins with explicit capability, inputs, outputs, permissions, dependencies, failure behavior, tests and removal procedure. Never create plugins just to add abstraction.
+Define:
+responsibility
+manifest
+capabilities
+permissions
+dependencies
+version compatibility
+lifecycle
+failure behavior
+public contracts
+tests
+removal
+
+Stop if plugin needs another plugin's private implementation.
+
+Do not turn optional tooling into core dependencies.
+

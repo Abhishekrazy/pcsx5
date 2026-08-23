@@ -1,1 +1,3 @@
-Use memory-engineer. Inventory guest VA allocation, mappings, faults, protection, ownership and direct host allocations. Do not refactor during the audit.
+# Memory-Audit
+
+Use memory-engineer. Inventory every guest-visible allocation and tracking path. Produce ownership map, guest/host distinction, lifecycle risks and tests. Audit only unless implementation is explicitly requested.

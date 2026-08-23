@@ -1,9 +1,22 @@
-# Installation
+# PCSX5 Gemini Harness v2 Installation
 
 Copy this package into the PCSX5 repository root.
 
-Start with `GEMINI.md`.
+Important:
+- `GEMINI.md` is the project AI constitution.
+- `.gemini/rules/` contains mandatory governance.
+- `.gemini/skills/` contains procedural specialist skills.
+- `.gemini/commands/` contains bounded workflows.
+- `architecture/` is intended as the shared architecture source of truth.
+- `docs/` contains goals/reporting/orchestration templates.
 
-Keep the existing Claude harness if you still use Claude Code. Shared architecture decisions should live in `docs/` so multiple AI clients follow the same project policy.
+If the repository already has a Claude harness, do not delete it automatically.
 
-After installation, run an audit-only request before allowing implementation changes.
+Recommended transition:
+1. Install this harness.
+2. Keep existing Claude files during migration.
+3. Compare both harnesses against shared architecture/ADRs.
+4. Run Gemini in audit/planning mode first.
+5. Only then allow implementation.
+
+Do not copy project-specific AZOOG/SharkTravel rules from another project. This harness is rewritten for PCSX5 emulator architecture.
