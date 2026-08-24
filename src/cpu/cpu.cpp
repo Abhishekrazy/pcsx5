@@ -222,6 +222,8 @@ void Shutdown() {
         }
     }
     g_threads.clear();
+    g_next_thread_id = 1;
+    g_current_thread_id = 0;
     g_initialized = false;
     LOG_INFO(Cpu, "CPU core shut down");
 }

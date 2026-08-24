@@ -174,11 +174,13 @@ bool RunDefaultInit(std::string* error) {
     reg.Register(Subsystem{
         "ConfigService", {},
         []() {
-            // Default config dir; overridden by CLI if ConfigService is already init'd.
-            ConfigService::Initialize("pcsx5_config");
+            // Default config dir; preserved from CLI/core startup if ConfigService is already init'd.
+            if (!ConfigService::IsInitialized()) {
+                ConfigService::Initialize("pcsx5_config");
+            }
             return true;
         },
-        []() { /* ConfigService is persistent; no teardown needed */ }
+        []() { /* ConfigService is persistent; lifecycle managed by core_api / pcsx5_shutdown */ }
     });
 
     // 2. Diagnostics — install crash handler early
@@ -205,7 +207,7 @@ bool RunDefaultInit(std::string* error) {
                 LogConfig::SetJsonOutput(true);
             }
             for (int i = 0; i < 6; ++i) {
-                LogConfig::SetLevel(static_cast<LogCategory>(i), LogLevel::Debug);
+                LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
             }
             LogConfig::SetDedup(false);
             LogConfig::SetDedupWindow(0);
@@ -260,6 +262,9 @@ lua_State* GetLuaState() { return g_lua_state; }
 // --- Helper Lua C functions for the default init script ---
 
 static int lua_ConfigService_Init(lua_State* L) {
+    if (ConfigService::IsInitialized()) {
+        return 0;
+    }
     const char* config_dir = lua_tostring(L, 1);
     if (!config_dir) config_dir = "pcsx5_config";
     ConfigService::Initialize(config_dir);
@@ -284,7 +289,7 @@ static int lua_Logging_Init(lua_State* L) {
         LogConfig::SetJsonOutput(true);
     }
     for (int i = 0; i < 6; ++i) {
-        LogConfig::SetLevel(static_cast<LogCategory>(i), LogLevel::Debug);
+        LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
     }
     LogConfig::SetDedup(false);
     LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);

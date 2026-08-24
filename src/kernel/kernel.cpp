@@ -558,88 +558,46 @@ namespace Kernel {
         LOG_INFO(Kernel, "Patched %llu syscall instructions in executable segments.", patched_count);
     }
 
-    // Look up an import name in the export tables of already-loaded PRX
-    // modules.  Returns 0 when no loaded PRX exports the symbol.
-    static guest_addr_t FindLoadedPrxExportExact(const std::string& sym_name) {
-        for (const auto& [key, record] : g_prx_modules) {
-            const auto& module = record->module;
-            for (const auto& sym : module.symbols) {
-                if (sym.st_shndx == 0 || sym.st_value == 0) continue; // not an export
-                const char* name = &module.string_table[sym.st_name];
-                if (name && sym_name == name) {
-                    return module.base_address + sym.st_value;
-                }
-            }
-        }
-        return 0;
-    }
-
-    // NID-base fallback: PS5 NIDs are identified by their 11-char base; the
-    // 4-char "#X#Y" suffix is a type tag that may differ between an importer's
-    // request and the exporter's declaration (e.g. libc.prx exports data as
-    // "#D#A" while the game imports the same NID as "#T#T" — typeinfo /
-    // vtable / dtor imports for C++ exceptions hit exactly this case).
-    // Used ONLY for symbols no HLE module implements (see resolve_external),
-    // so well-working HLE implementations (malloc/memset/pthread) are never
-    // replaced by real-but-uninitialized libc code.
-    static guest_addr_t FindLoadedPrxExportBaseNid(const std::string& sym_name) {
-        const auto nid_base = [](const std::string& s) -> std::string {
-            const auto pos = s.find('#');
-            return pos == std::string::npos ? s : s.substr(0, pos);
-        };
-        const std::string base = nid_base(sym_name);
-        if (base.empty()) return 0;
-        for (const auto& [key, record] : g_prx_modules) {
-            const auto& module = record->module;
-            for (const auto& sym : module.symbols) {
-                if (sym.st_shndx == 0 || sym.st_value == 0) continue; // not an export
-                const char* name = &module.string_table[sym.st_name];
-                if (!name) continue;
-                const std::string candidate(name);
-                if (nid_base(candidate) == base) {
-                    return module.base_address + sym.st_value;
-                }
-            }
-        }
-        return 0;
-    }
+    // Removed unused lookup functions
 
     static bool LinkModule(Loader::LoadedModule& module) {
         LOG_INFO(Kernel, "Linking module %s at base address 0x%llx...", module.name.c_str(), module.base_address);
         RegisterLoadedModule(module); // make address-queryable for sceKernelGetModuleInfo*
 
-        auto resolve_external = [&](const std::string& sym_name) -> guest_addr_t {
-            // 1. Exact-string match against loaded PRX exports first (a real
-            //    PRX symbol with the same name wins over HLE — it is the game's
-            //    actual library).
-            {
-                guest_addr_t addr = FindLoadedPrxExportExact(sym_name);
-                if (addr != 0) {
-                    return addr;
+        std::unordered_map<std::string, guest_addr_t> exact_exports;
+        std::unordered_map<std::string, guest_addr_t> base_exports;
+        for (const auto& [key, record] : g_prx_modules) {
+            const auto& mod = record->module;
+            for (const auto& sym : mod.symbols) {
+                if (sym.st_shndx == 0 || sym.st_value == 0) continue;
+                if (sym.st_name >= mod.string_table.size()) continue;
+                const char* name = mod.string_table.c_str() + sym.st_name;
+                if (!name || !name[0]) continue;
+                guest_addr_t addr = mod.base_address + sym.st_value;
+                exact_exports[name] = addr;
+                std::string_view sv(name);
+                auto pos = sv.find('#');
+                std::string base = (pos == std::string_view::npos) ? std::string(sv) : std::string(sv.substr(0, pos));
+                if (!base.empty()) {
+                    base_exports.try_emplace(base, addr);
                 }
             }
-            // 2. Real HLE implementations (malloc, memset, pthread sync, AGC,
-            //    video/audio HLE, ...) take precedence over PRX exports that
-            //    only match on the NID base form.  The game imports
-            //    "gQX+4GDQjpM#T#T" (malloc) while libc.prx exports
-            //    "gQX+4GDQjpM#D#A"; using the real libc malloc here breaks
-            //    boot because the real libc.prx environment is never
-            //    initialized (no DT_INIT, no heap) — its malloc returns NULL.
+        }
+
+        auto resolve_external = [&](const std::string& sym_name) -> guest_addr_t {
+            auto it_exact = exact_exports.find(sym_name);
+            if (it_exact != exact_exports.end()) {
+                return it_exact->second;
+            }
             if (HLE::HasRealImplementation(sym_name)) {
                 return HLE::ResolveAny(sym_name);
             }
-            // 3. NID-base fallback to PRX exports: PS5 libraries export data
-            //    (typeinfo/vtable/dtor for the C++ exception machinery) under
-            //    a "#D#A" tag while the game imports the same NID as "#T#T".
-            //    No HLE module implements these, so resolve them to the real
-            //    libc data (e.g. p6LrHjIQMdk, QW2jL1J5rwY, kALvdgEv5ME ...).
-            {
-                guest_addr_t addr = FindLoadedPrxExportBaseNid(sym_name);
-                if (addr != 0) {
-                    return addr;
-                }
+            const auto pos = sym_name.find('#');
+            const std::string base = pos == std::string::npos ? sym_name : sym_name.substr(0, pos);
+            auto it_base = base_exports.find(base);
+            if (it_base != base_exports.end()) {
+                return it_base->second;
             }
-            // 4. Last resort: HLE auto-stub (logs, returns 0).
             return HLE::ResolveAny(sym_name);
         };
 
@@ -809,6 +767,12 @@ namespace Kernel {
                              record->module.name.c_str());
                 }
                 PatchSyscalls(record->module.segments);
+
+                // Queue for initialization
+                if (record->module.init_address != 0 || record->module.init_array_address != 0) {
+                    HLE::QueuePrxInitAddress(record->module.name, record->module.base_address, record->module.init_address, record->module.init_array_address, record->module.init_array_size);
+                }
+
                 // Same shared-page union merge as the main module path: PRX
                 // segments can overlap a 16KB guest page.
                 for (const auto& seg : record->module.segments) {
@@ -1106,6 +1070,63 @@ namespace Kernel {
 
         LOG_INFO(Kernel, "Guest stack frame configured on dedicated stack at sp = 0x%llx", sp);
 
+        // --- DIAGNOSTIC TRACING BREAKPOINTS ---
+        if (GuestTracer::Enabled()) {
+            GuestTracer::AddBreakpoint(main_module.entry_point, "eboot _start");
+            if (main_module.init_address) {
+                GuestTracer::AddBreakpoint(main_module.init_address, "eboot DT_INIT");
+            }
+            for (const auto& [key, record] : g_prx_modules) {
+                if (record->module.init_address) {
+                    GuestTracer::AddBreakpoint(record->module.init_address, record->module.name + " DT_INIT");
+                }
+                for (const auto& sym : record->module.symbols) {
+                    if (sym.st_name >= record->module.string_table.size()) continue;
+                    const char* name = record->module.string_table.c_str() + sym.st_name;
+                    if (name && std::string_view(name).find("bzQExy189ZI") == 0) {
+                        GuestTracer::AddBreakpoint(record->module.base_address + sym.st_value, "libc _init_env");
+                    }
+                }
+            }
+        }
+        // --------------------------------------
+        
+        LOG_INFO(Kernel, "PRX_INIT_QUEUE_BEGIN");
+        auto& prx_queue = HLE::GetPrxInitQueue();
+        int depth = 0;
+        for (auto& prx : prx_queue) {
+            if (prx.state == HLE::InitState::Initialized) continue;
+            
+            prx.state = HLE::InitState::Initializing;
+            
+            if (prx.dt_init) {
+                LOG_INFO(Kernel, "MODULE_INIT_BEGIN module=%s address=0x%llx dependency_depth=%d", 
+                         prx.module_name.c_str(), prx.dt_init, depth);
+                ::InvokeGuestOnStack(prx.dt_init, sp - 1024);
+                LOG_INFO(Kernel, "MODULE_INIT_END module=%s address=0x%llx result=success", 
+                         prx.module_name.c_str(), prx.dt_init);
+            }
+            
+            if (prx.init_array_address && prx.init_array_size > 0) {
+                u64 count = prx.init_array_size / 8;
+                LOG_INFO(Kernel, "MODULE_INIT_BEGIN module=%s init_array=0x%llx count=%llu dependency_depth=%d", 
+                         prx.module_name.c_str(), prx.init_array_address, count, depth);
+                for (u64 i = 0; i < count; ++i) {
+                    guest_addr_t func = Memory::Read<u64>(prx.init_array_address + (i * 8));
+                    if (func) {
+                        ::InvokeGuestOnStack(func, sp - 1024);
+                    }
+                }
+                LOG_INFO(Kernel, "MODULE_INIT_END module=%s init_array=0x%llx result=success", 
+                         prx.module_name.c_str(), prx.init_array_address);
+            }
+            
+            prx.state = HLE::InitState::Initialized;
+            depth++;
+        }
+        LOG_INFO(Kernel, "PRX_INIT_QUEUE_END");
+
+        LOG_INFO(Kernel, "GUEST_ENTRY_BEGIN eboot.bin 0x%llx", main_module.entry_point);
         u32 guest_exit_code = 0;
         bool success = StartGuestCaptured(main_module.entry_point, sp, &guest_exit_code);
         if (out_guest_exit_code) {
@@ -1538,12 +1559,19 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             const DWORD code = exception_record->ExceptionCode;
             if (code != EXCEPTION_ACCESS_VIOLATION &&
                 code != EXCEPTION_BREAKPOINT &&
-                code != STATUS_ILLEGAL_INSTRUCTION) {
+                code != STATUS_ILLEGAL_INSTRUCTION &&
+                code != EXCEPTION_SINGLE_STEP) {
                 return EXCEPTION_CONTINUE_SEARCH;
             }
             Memory::MemoryInfo rip_info{};
             if (Memory::Query(context->Rip, &rip_info) != Memory::Status::Ok) {
                 return EXCEPTION_CONTINUE_SEARCH; // RIP is host code (CLR/WPF/driver)
+            }
+        }
+
+        if (exception_record->ExceptionCode == EXCEPTION_SINGLE_STEP) {
+            if (GuestTracer::HandleTrap(exception_record->ExceptionCode, context)) {
+                return EXCEPTION_CONTINUE_EXECUTION;
             }
         }
 
@@ -1571,8 +1599,10 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             }
         }
 
-        LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu",
-                 exception_record->ExceptionCode, context->Rip, ::GetCurrentThreadId());
+        if (exception_record->ExceptionCode != 0xE06D7363) {
+            LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu",
+                     exception_record->ExceptionCode, context->Rip, ::GetCurrentThreadId());
+        }
 
         // ---- GUEST NULL-CALL attribution (durable diagnostic) -------------
         // A guest indirect call through a null/bad function pointer faults by
@@ -1688,6 +1718,9 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         }
 
         if (exception_record->ExceptionCode == EXCEPTION_BREAKPOINT) {
+            if (GuestTracer::HandleTrap(exception_record->ExceptionCode, context)) {
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
             u8* ip = reinterpret_cast<u8*>(context->Rip);
             u8 sig[2];
             if (ip && SafeRead(sig, ip, 2) && sig[0] == 0xCC && sig[1] == 0x90) {

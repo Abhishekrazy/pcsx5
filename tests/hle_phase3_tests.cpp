@@ -9,6 +9,7 @@
 #include "hle/hle.h"
 #include "hle/libkernel_sync.h"
 #include "memory/memory.h"
+#include "gpu/gpu.h"
 #include "common/log.h"
 #include "common/nid.h"
 
@@ -428,6 +429,14 @@ void TestNidDbStubs() {
 
     HLE::RegisterNidDbStubs();
 
+    // Register a safe contract so the DB stub returns 0 without crashing as an UNKNOWN stub.
+    HLE::StubContract safe_contract{};
+    safe_contract.module_name = "testmod";
+    safe_contract.name = "testDbStubFunc";
+    safe_contract.classification = HLE::StubClass::VOID_OR_SIDE_EFFECT;
+    safe_contract.default_return_policy = 0;
+    HLE::RegisterStubContract(safe_contract);
+
     // The new entry resolves under its real name and returns 0 when called.
     const guest_addr_t thunk = HLE::ResolveAny("testDbStubFunc");
     EXPECT(thunk != 0, "DB stub resolves by real name");
@@ -556,6 +565,154 @@ void TestClockGettime() {
     Memory::Unmap(ts, 0x1000);
 }
 
+// ---------------------------------------------------------------------------
+// HLE lifecycle and reset symmetry test.
+// ---------------------------------------------------------------------------
+void TestHleLifecycleAndReset() {
+    std::fprintf(stdout, "[TEST] HLE lifecycle and reset symmetry\n");
+
+    // 1. Trigger runtime state: stop request and guest crash.
+    HLE::RequestStop();
+    EXPECT(HLE::StopRequested(), "StopRequested is true after RequestStop()");
+
+    HLE::SetGuestCrashed(0xC0000005, 0x80001000ULL);
+    EXPECT(HLE::IsGuestCrashed(), "IsGuestCrashed is true after SetGuestCrashed()");
+    u32 exc_code = 0;
+    guest_addr_t rip = 0;
+    char msg[64] = {};
+    EXPECT(HLE::GetLastGuestCrashInfo(&exc_code, &rip, msg, sizeof(msg)), "Crash info retrievable");
+    EXPECT_EQ(exc_code, (u32)0xC0000005, "Crash exception code matches");
+    EXPECT_EQ(rip, (guest_addr_t)0x80001000ULL, "Crash rip matches");
+
+    // 2. Shutdown HLE and verify full reset.
+    HLE::Shutdown();
+    EXPECT(!HLE::StopRequested(), "StopRequested reset to false after Shutdown()");
+    EXPECT(!HLE::IsGuestCrashed(), "IsGuestCrashed reset to false after Shutdown()");
+    EXPECT(!HLE::GetLastGuestCrashInfo(&exc_code, &rip, msg, sizeof(msg)), "GetLastGuestCrashInfo returns false after Shutdown()");
+
+    // 3. Re-initialize HLE and verify clean operation.
+    EXPECT(HLE::Initialize(), "HLE re-initializes cleanly");
+    EXPECT(!HLE::StopRequested(), "StopRequested is false on re-init");
+    EXPECT(!HLE::IsGuestCrashed(), "IsGuestCrashed is false on re-init");
+
+    // Test that guest heap allocates fresh memory without crashing.
+    const u64 malloc_id = SymbolId("libc", "malloc");
+    EXPECT(malloc_id != 0, "malloc resolves after re-init");
+    const u64 p1 = HleDispatch(malloc_id, 256, 0, 0, 0, 0, 0, 0x8100, 0);
+    EXPECT(p1 != 0, "malloc succeeds on re-initialized HLE");
+    EXPECT(Memory::IsWritable(p1, 256), "allocated heap block is writable");
+
+    const u64 free_id = SymbolId("libc", "free");
+    EXPECT(free_id != 0, "free resolves after re-init");
+    HleDispatch(free_id, p1, 0, 0, 0, 0, 0, 0x8101, 0);
+}
+
+// ---------------------------------------------------------------------------
+// VideoOut & VBlank pump lifecycle and teardown symmetry test.
+// ---------------------------------------------------------------------------
+void TestVideoOutLifecycleAndTeardown() {
+    std::fprintf(stdout, "[TEST] VideoOut / VBlank pump lifecycle and teardown symmetry\n");
+
+    // 1. Initial state: pump not running before open.
+    EXPECT(!HLE::IsVblankPumpRunning(), "VBlank pump not running initially");
+
+    // 2. Start VBlank pump.
+    HLE::EnsureVblankPumpStarted();
+    EXPECT(HLE::IsVblankPumpRunning(), "VBlank pump is running after EnsureVblankPumpStarted");
+
+    // Open a videoout port and register an equeue for vblank events.
+    const u64 open_id = SymbolId("libSceVideoOut", "sceVideoOutOpen");
+    const u64 addv_id = SymbolId("libSceVideoOut", "sceVideoOutAddVblankEvent");
+    EXPECT(open_id && addv_id, "VideoOut symbols available");
+
+    const u64 handle = HleDispatch(open_id, 1, 0, 0, 0, 0, 0, 0x8200, 0);
+    EXPECT_EQ(handle, (u64)0x4000, "sceVideoOutOpen returns initial handle 0x4000");
+
+    guest_addr_t scratch = 0;
+    EXPECT(Memory::Map(0, 0x1000, Memory::PROT_READ | Memory::PROT_WRITE, &scratch) == Memory::Status::Ok,
+           "map scratch page for vblank events");
+
+    const u64 eq_out = scratch + 0x100;
+    HLE::GuestArgs eq_args{};
+    eq_args.arg1 = eq_out;
+    eq_args.arg2 = 0;
+    EXPECT_EQ(HLE::SceKernelCreateEqueue(eq_args), (u64)0, "CreateEqueue for vblank test");
+    const u32 equeue = Memory::Read<u32>(eq_out);
+    EXPECT(equeue != 0, "valid equeue handle");
+
+    EXPECT_EQ(HleDispatch(addv_id, equeue, handle, 0x5555, 0, 0, 0, 0x8201, 0), (u64)0,
+              "AddVblankEvent -> 0");
+
+    // Wait for at least one vblank edge from the background thread (wait timeout 200ms).
+    const u64 ev_buf  = scratch + 0x200;
+    const u64 out_cnt = scratch + 0x2F0;
+    const u64 timo    = scratch + 0x2F8;
+    Memory::Write<u32>(timo, 200000); // 200 ms timeout
+    HLE::GuestArgs wait_args{};
+    wait_args.arg1 = equeue;
+    wait_args.arg2 = ev_buf;
+    wait_args.arg3 = 1;
+    wait_args.arg4 = out_cnt;
+    wait_args.arg5 = timo;
+    EXPECT_EQ(HLE::SceKernelWaitEqueue(wait_args), (u64)0, "WaitEqueue receives vblank event");
+    EXPECT_EQ(Memory::Read<s32>(out_cnt), (s32)1, "at least one vblank event delivered");
+
+    // 3. Reset / Shutdown VideoOut.
+    HLE::ResetVideoOut();
+    EXPECT(!HLE::IsVblankPumpRunning(), "VBlank pump is stopped after ResetVideoOut");
+
+    // 4. Re-initialize VideoOut and start a second session.
+    HLE::EnsureVblankPumpStarted();
+    EXPECT(HLE::IsVblankPumpRunning(), "VBlank pump restarts cleanly in second session");
+
+    const u64 handle2 = HleDispatch(open_id, 1, 0, 0, 0, 0, 0, 0x8202, 0);
+    EXPECT_EQ(handle2, (u64)0x4000, "sceVideoOutOpen returns fresh handle 0x4000 after reset");
+
+    // Tear down VideoOut cleanly.
+    HLE::ResetVideoOut();
+    EXPECT(!HLE::IsVblankPumpRunning(), "VBlank pump stopped after second teardown");
+
+    Memory::Unmap(scratch, 0x1000);
+}
+
+// ---------------------------------------------------------------------------
+// GPU subsystem & XInput platform resource lifecycle & teardown symmetry test.
+// ---------------------------------------------------------------------------
+void TestGpuLifecycleAndTeardown() {
+    std::fprintf(stdout, "[TEST] GPU / XInput platform resource lifecycle and teardown symmetry\n");
+
+    // Session 1: initialize GPU subsystem.
+    EXPECT(GPU::Initialize(), "GPU::Initialize session 1 succeeds");
+
+    // Poll events in session 1 (triggers XInput init & pad refresh).
+    GPU::PollEvents();
+    GPU::PadButtonState pad1 = GPU::GetCurrentPadState();
+    EXPECT_EQ(pad1.left_analog_x, 127, "initial pad left_analog_x is 127");
+    EXPECT_EQ(pad1.left_analog_y, 127, "initial pad left_analog_y is 127");
+
+    // Mutate framebuffer configuration.
+    GPU::SetFramebufferConfig(1280, 720, 1 /* BGRA8 */);
+
+    // Shutdown session 1.
+    GPU::Shutdown();
+
+    // Verify pad state and flags are reset post-shutdown.
+    GPU::PadButtonState pad_post = GPU::GetCurrentPadState();
+    EXPECT_EQ(pad_post.buttons, 0u, "pad buttons reset on shutdown");
+
+    // Session 2: re-initialize GPU subsystem.
+    EXPECT(GPU::Initialize(), "GPU::Initialize session 2 succeeds (reinitialization symmetry)");
+
+    // Poll events in session 2 (verifies g_xinput_inited reinitializes cleanly without skipping).
+    GPU::PollEvents();
+    GPU::PadButtonState pad2 = GPU::GetCurrentPadState();
+    EXPECT_EQ(pad2.left_analog_x, 127, "session 2 pad left_analog_x is 127");
+    EXPECT_EQ(pad2.left_analog_y, 127, "session 2 pad left_analog_y is 127");
+
+    // Teardown session 2.
+    GPU::Shutdown();
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
@@ -579,6 +736,9 @@ int main() {
     TestNidDbStubs();
     TestDirectMemoryMapping();
     TestClockGettime();
+    TestHleLifecycleAndReset();
+    TestVideoOutLifecycleAndTeardown();
+    TestGpuLifecycleAndTeardown();
 
     HLE::Shutdown();
     Memory::Shutdown();

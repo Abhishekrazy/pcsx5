@@ -1,16 +1,5 @@
 //
-// guest_tracer.cpp — focused guest CPU tracer for Dreaming Sarah (PPSA02929).
-// See guest_tracer.h.
-//
-// Logs every call to the Construct JSON string reader (guest 0x81012f790) to
-// guest_trace.log: thread id + parser token start/cursor/length + string bytes.
-//
-// Mechanism: permanently overwrite the first byte of 0x81012f790 with INT3
-// (0xCC).  On each trap: log, emulate the skipped "push rbp" by writing rbp to
-// [rsp-8] (guarded), advance RIP past the 1-byte instruction, and leave 0xCC in
-// place so every subsequent call re-traps.
-//
-// Inert unless PCSX5_GUEST_TRACE is set.
+// guest_tracer.cpp - diagnostic CPU tracer.
 //
 
 #include "guest_tracer.h"
@@ -20,6 +9,7 @@
 #include <mutex>
 #include <fstream>
 #include <cstring>
+#include <unordered_map>
 
 #include <windows.h>
 
@@ -29,101 +19,152 @@ namespace Kernel {
 
 namespace {
 
-constexpr u64 kStringReader = 0x81012f790;
+struct Breakpoint {
+    u64 address;
+    std::string name;
+    u8 original_byte;
+    bool is_active;
+};
 
 struct TraceState {
     std::mutex    mtx;
-    bool          armed      = false;
-    unsigned long long hit_count = 0;
+    std::unordered_map<u64, Breakpoint> breakpoints;
     std::ofstream file;
+    
+    // For single step re-arming
+    u64 pending_rearm_address = 0;
 };
 
 bool TraceEnabled() {
-    char buf[2] = {0};
-    size_t n = 0;
-    return (::getenv_s(&n, buf, sizeof(buf), "PCSX5_GUEST_TRACE") == 0 && n > 0);
+    return true;
 }
 
 TraceState& State() { static TraceState st; return st; }
 
-// arm the INT3 breakpoint once
-void ArmBreakpoint() {
-    TraceState& st = State();
-    if (st.armed) return;
+// Write a byte to memory bypassing protection
+void WriteByteSafe(u64 address, u8 value) {
     DWORD oldProt = 0;
-    const u64 page = kStringReader & ~0xFFFull;
+    const u64 page = address & ~0xFFFull;
     ::VirtualProtect(reinterpret_cast<void*>(page), 0x2000, PAGE_EXECUTE_READWRITE, &oldProt);
-    *reinterpret_cast<u8*>(kStringReader) = 0xCC;
+    *reinterpret_cast<u8*>(address) = value;
     ::VirtualProtect(reinterpret_cast<void*>(page), 0x2000, oldProt, &oldProt);
-    st.armed = true;
-    std::fprintf(stderr, "[GT] armed 0x%llx\n", static_cast<unsigned long long>(kStringReader));
 }
 
-// Read a u64 from guest memory via Memory::ReadBuffer (safe, no guest-stack SEH).
-bool ReadGuest64(u64 addr, u64* out) {
-    if (addr < 0x10000 || addr >= (1ULL << 47)) return false;
-    if (!Memory::IsReadable(addr, 8)) return false;
-    *out = Memory::Read<u64>(addr);
-    return true;
+// Read a byte from memory safely
+u8 ReadByteSafe(u64 address) {
+    if (!Memory::IsReadable(address, 1)) return 0;
+    return Memory::Read<u8>(address);
 }
 
-void LogStringReader(PCONTEXT ctx) {
+void LogState(PCONTEXT ctx, const std::string& name) {
     TraceState& st = State();
-    const u64 parser = ctx->Rsi;   // arg2 = parser object
-    u64 start = 0, cursor = 0;
-    ReadGuest64(parser + 0x60, &start);
-    ReadGuest64(parser + 0x70, &cursor);
-    char s[96] = {0};
-    int n = 0;
-    if (start && cursor > start + 1) {
-        for (u64 a = start + 1; a < cursor && n < 90 && Memory::IsReadable(a, 1); ++a) {
-            const char c = static_cast<char>(Memory::Read<u8>(a));
-            s[n++] = (c >= 32 && c < 127) ? c : '.';
+    if (!st.file.is_open()) {
+        st.file.open("guest_trace.log", std::ios::out | std::ios::app);
+    }
+    
+    const unsigned long tid = ::GetCurrentThreadId();
+    st.file << "\n[TRACE] " << name << " hit! (TID=" << tid << ")\n";
+    st.file << std::hex;
+    st.file << "  RIP=" << ctx->Rip << " RSP=" << ctx->Rsp << " RBP=" << ctx->Rbp << "\n";
+    st.file << "  RDI=" << ctx->Rdi << " RSI=" << ctx->Rsi << " RDX=" << ctx->Rdx << "\n";
+    st.file << "  RCX=" << ctx->Rcx << " R8 =" << ctx->R8  << " R9 =" << ctx->R9  << "\n";
+    
+    // Dump 32 QWORDs of stack
+    st.file << "  Stack dump:\n";
+    for (int i = 0; i < 32; ++i) {
+        u64 addr = ctx->Rsp + (i * 8);
+        if (Memory::IsReadable(addr, 8)) {
+            st.file << "    [" << addr << "] = " << Memory::Read<u64>(addr) << "\n";
         }
     }
-    const unsigned long tid = ::GetCurrentThreadId();
-    if (st.file) {
-        st.file << "tid=" << tid << " parser=0x" << std::hex << parser
-                << " start=0x" << start << " cursor=0x" << cursor
-                << " len=" << std::dec << (cursor > start ? cursor - start - 2 : 0)
-                << " \"" << s << "\"\n";
-        st.file.flush();
-    }
+    st.file << std::dec;
+    st.file.flush();
 }
 
 } // namespace
 
 bool GuestTracer::Enabled() {
-    if (!TraceEnabled()) return false;
-    ArmBreakpoint();
-    return true;
+    return TraceEnabled();
+}
+
+void GuestTracer::AddBreakpoint(u64 address, const std::string& name) {
+    if (!TraceEnabled()) return;
+    
+    std::lock_guard<std::mutex> lock(State().mtx);
+    TraceState& st = State();
+    
+    if (st.breakpoints.count(address) > 0) return;
+    
+    Breakpoint bp;
+    bp.address = address;
+    bp.name = name;
+    bp.original_byte = ReadByteSafe(address);
+    bp.is_active = true;
+    
+    st.breakpoints[address] = bp;
+    
+    // Write INT3
+    WriteByteSafe(address, 0xCC);
+    if (!st.file.is_open()) {
+        st.file.open("guest_trace.log", std::ios::out | std::ios::app);
+    }
+    st.file << "[GT] Breakpoint added: " << name << " at 0x" << std::hex << address << " (orig 0x" << (int)bp.original_byte << ")\n" << std::dec;
+    st.file.flush();
 }
 
 bool GuestTracer::HandleTrap(DWORD exception_code, PCONTEXT ctx) {
-    if (!Enabled()) return false;
+    if (!TraceEnabled()) return false;
 
     std::lock_guard<std::mutex> lock(State().mtx);
     TraceState& st = State();
 
-    if (exception_code != EXCEPTION_BREAKPOINT) return false;
-    const u64 rip = ctx->Rip;
-    if (rip != kStringReader && rip != kStringReader + 1) return false;
-
-    if (!st.file.is_open()) {
-        st.file.open("guest_trace.log", std::ios::out | std::ios::trunc);
+    if (exception_code == EXCEPTION_SINGLE_STEP) {
+        // Did we just step over a breakpoint?
+        if (st.pending_rearm_address != 0) {
+            u64 addr = st.pending_rearm_address;
+            st.pending_rearm_address = 0;
+            
+            // Re-arm it
+            if (st.breakpoints.count(addr)) {
+                WriteByteSafe(addr, 0xCC);
+                st.breakpoints[addr].is_active = true;
+            }
+            
+            // Clear TF
+            ctx->EFlags &= ~0x100;
+            return true;
+        }
+        return false;
     }
 
-    ++st.hit_count;
-    LogStringReader(ctx);
-
-    // Emulate the skipped "push rbp" (1 byte) safely, then advance.
-    const u64 new_rsp = ctx->Rsp - 8;
-    if (new_rsp >= 0x10000 && new_rsp < (1ULL << 47) && Memory::IsWritable(new_rsp, 8)) {
-        Memory::Write<u64>(new_rsp, ctx->Rbp);
-        ctx->Rsp = new_rsp;
+    if (exception_code == EXCEPTION_BREAKPOINT) {
+        u64 bp_addr = 0;
+        if (st.breakpoints.count(ctx->Rip)) bp_addr = ctx->Rip;
+        else if (st.breakpoints.count(ctx->Rip - 1)) {
+            bp_addr = ctx->Rip - 1;
+            ctx->Rip = bp_addr; // Rewind RIP to execute the original instruction
+        }
+        
+        if (bp_addr != 0) {
+            Breakpoint& bp = st.breakpoints[bp_addr];
+            if (bp.is_active) {
+                LogState(ctx, bp.name);
+                
+                // Disarm and restore original byte
+                WriteByteSafe(bp_addr, bp.original_byte);
+                bp.is_active = false;
+                
+                // Set TF to single step
+                ctx->EFlags |= 0x100;
+                st.pending_rearm_address = bp_addr;
+                
+                return true;
+            }
+        }
+        return false;
     }
-    ctx->Rip = kStringReader + 1;
-    return true;
+
+    return false;
 }
 
 void GuestTracer::NotifyGuestRip(u64 /*rip*/, PCONTEXT /*ctx*/) {}

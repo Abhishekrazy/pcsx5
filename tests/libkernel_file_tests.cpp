@@ -14,6 +14,10 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "hle/libkernel_file.h"
 #include "hle/hle.h"
+#include "kernel/kernel.h"
+#include "kernel/fd_table.h"
+#include "kernel/memory.h"
+#include "cpu/cpu.h"
 #include "memory/memory.h"
 #include "common/log.h"
 
@@ -171,6 +175,189 @@ void TestMapDirectMemory1() {
     std::printf("  sceKernelMapDirectMemory: OK\n");
 }
 
+// FD table lifecycle, handle close symmetry, duplicate, and re-initialization.
+void TestFdTableLifecycleAndTeardown() {
+    // 1. Initialize FD table and verify standard descriptors (0, 1, 2).
+    Kernel::InitializeFdTable();
+    assert(Kernel::GetOpenFdCount() == 3);
+    assert(Kernel::IsValidFd(0));
+    assert(Kernel::IsValidFd(1));
+    assert(Kernel::IsValidFd(2));
+
+    // 2. Allocate multiple descriptors with mock/real file handles.
+    HANDLE h1 = CreateFileA(kTestFile, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    assert(h1 != INVALID_HANDLE_VALUE);
+    HANDLE h2 = CreateFileA(kTestFile, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    assert(h2 != INVALID_HANDLE_VALUE);
+
+    int fd1 = Kernel::AllocateFd(Kernel::FD_TYPE_FILE, h1, O_RDONLY, 0644, "test_file_1");
+    int fd2 = Kernel::AllocateFd(Kernel::FD_TYPE_FILE, h2, O_RDONLY, 0644, "test_file_2");
+    assert(fd1 == 3);
+    assert(fd2 == 4);
+    assert(Kernel::GetOpenFdCount() == 5);
+    assert(Kernel::IsValidFd(fd1));
+    assert(Kernel::IsValidFd(fd2));
+
+    // 3. Test duplication without recursive lock failure.
+    int dup_fd = Kernel::DuplicateFd(fd1, -1);
+    assert(dup_fd == 5);
+    assert(Kernel::GetOpenFdCount() == 6);
+    assert(Kernel::CloseFd(dup_fd));
+    assert(Kernel::GetOpenFdCount() == 5);
+
+    // 4. Teardown FD table while descriptors are still open:
+    // MUST NOT DEADLOCK on non-recursive mutex and MUST close open handles.
+    Kernel::ShutdownFdTable();
+    assert(Kernel::GetOpenFdCount() == 0);
+    assert(!Kernel::IsValidFd(0));
+    assert(!Kernel::IsValidFd(fd1));
+    assert(!Kernel::IsValidFd(fd2));
+
+    // 5. Re-initialize FD table: must start clean with stdin/stdout/stderr.
+    Kernel::InitializeFdTable();
+    assert(Kernel::GetOpenFdCount() == 3);
+    assert(Kernel::IsValidFd(0));
+
+    HANDLE h3 = CreateFileA(kTestFile, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    assert(h3 != INVALID_HANDLE_VALUE);
+    int fd3 = Kernel::AllocateFd(Kernel::FD_TYPE_FILE, h3, O_RDONLY, 0644, "test_file_3");
+    assert(fd3 == 3); // Reused lowest available non-standard slot
+    assert(Kernel::GetOpenFdCount() == 4);
+
+    Kernel::ShutdownFdTable();
+    assert(Kernel::GetOpenFdCount() == 0);
+
+    // Re-initialize for subsequent test fixtures
+    Kernel::InitializeFdTable();
+    std::printf("  fd_table lifecycle and teardown symmetry: OK\n");
+}
+
+// Complete Kernel subsystem lifecycle, module registry, threads, BRK, and path symmetry.
+void TestKernelLifecycleAndTeardownSymmetry() {
+    // 1. Initialize Kernel subsystem
+    assert(Kernel::Initialize());
+
+    // 2. Register module metadata
+    Loader::LoadedModule mod;
+    mod.name = "libtest.prx";
+    mod.base_address = 0x880000000;
+    mod.image_size = 0x20000;
+    Loader::MappedSegment seg{};
+    seg.address = 0x880000000;
+    seg.size = 0x20000;
+    mod.segments.push_back(seg);
+    Kernel::RegisterLoadedModule(mod);
+    assert(Kernel::FindModuleForAddr(0x880001000) != nullptr);
+
+    // 3. Set path mappings
+    Kernel::SetApp0Directory("C:/games/test_app0");
+    Kernel::SetSaveDataDirectory("C:/savedata/test_save");
+    assert(Kernel::TranslateGuestPath("/app0/data.bin") == "C:/games/test_app0/data.bin");
+
+    // 4. Configure module resolver
+    Kernel::ConfigureModuleResolver("C:/games/test_app0", "");
+    assert(!Kernel::GetModuleResolver().SearchDirectories().empty());
+
+    // 5. Establish BRK cursor
+    guest_addr_t brk_val = Kernel::SetBreak(0);
+    assert(brk_val != 0);
+    assert(Kernel::GetBreak() == brk_val);
+
+    // 6. Register a secondary thread
+    Kernel::ThreadContext tctx;
+    tctx.thread_id = 2;
+    tctx.tls_base = 0x1234000;
+    Kernel::RegisterThread(tctx);
+    assert(Kernel::ResolveGuestThreadPointer(2) == 0x1234000);
+
+    // 7. Shutdown Kernel subsystem
+    Kernel::Shutdown();
+
+    // 8. Verify all state is reset cleanly
+    assert(Kernel::FindModuleForAddr(0x880001000) == nullptr);
+    assert(Kernel::TranslateGuestPath("/app0/data.bin") == "/app0/data.bin");
+    assert(Kernel::GetModuleResolver().SearchDirectories().empty());
+    assert(Kernel::GetBreak() == 0);
+    assert(Kernel::ResolveGuestThreadPointer(2) == 0);
+    assert(CpuCore::ActiveThreadCount() == 0);
+
+    // 9. Re-initialize Kernel subsystem for a fresh session
+    assert(Kernel::Initialize());
+    assert(Kernel::FindModuleForAddr(0x880001000) == nullptr);
+    assert(Kernel::TranslateGuestPath("/app0/data.bin") == "/app0/data.bin");
+    assert(Kernel::GetBreak() == 0);
+
+    Kernel::Shutdown();
+    std::printf("  kernel subsystem lifecycle and teardown symmetry: OK\n");
+}
+
+// HLE 2 GB direct memory physical pool reservation, commit, access, shutdown deallocation, and reinitialization.
+void TestHlePhysicalPoolLifecycleAndTeardown() {
+    // 1. Allocate from physical pool via SceKernelAllocateDirectMemory
+    const guest_addr_t phys_out_ptr = g_page + 0x820;
+    Memory::Write<u64>(phys_out_ptr, 0);
+    GuestArgs alloc_args = Args(0, 0, 0x20000, 0x10000, 0, phys_out_ptr);
+    assert(SceKernelAllocateDirectMemory(alloc_args) == 0);
+    const u64 phys_offset = Memory::Read<u64>(phys_out_ptr);
+    assert(phys_offset != 0);
+
+    // 2. Map direct memory backing via SceKernelMapDirectMemory2
+    const guest_addr_t addr_ptr = g_page + 0x810;
+    Memory::Write<u64>(addr_ptr, 0);
+    u64 stack_alignment = 0x10000;
+    GuestArgs map_args = Args(addr_ptr, 0x20000, /*memoryType=*/0,
+                              /*prot=*/0x3 /*RW*/, /*flags=*/0, /*directMemoryStart=*/phys_offset);
+    map_args.stack_args = reinterpret_cast<u64>(&stack_alignment);
+
+    assert(SceKernelMapDirectMemory2(map_args) == 0);
+    const u64 mapped = Memory::Read<u64>(addr_ptr);
+    assert(mapped != 0);
+    assert(HLE::IsPhysPoolAddress(mapped));
+    assert(Memory::QueryOwner(mapped) == Memory::Owner::Hle);
+
+    // Verify read/write
+    Memory::Write<u64>(mapped, 0xCAFEBABE12345678ULL);
+    assert(Memory::Read<u64>(mapped) == 0xCAFEBABE12345678ULL);
+
+    // 3. Shut down HLE physical pool
+    HLE::ResetPhysPool();
+
+    // 4. Verify pool is released and untracked
+    assert(!HLE::IsPhysPoolAddress(mapped));
+    assert(Memory::QueryOwner(mapped) == Memory::Owner::None);
+
+    // Verify host memory is MEM_FREE via VirtualQuery
+    MEMORY_BASIC_INFORMATION mbi{};
+    SIZE_T query_res = VirtualQuery(reinterpret_cast<void*>(mapped), &mbi, sizeof(mbi));
+    assert(query_res != 0);
+    assert(mbi.State == MEM_FREE);
+
+    // 5. Re-allocate in a fresh session to ensure clean re-initialization
+    Memory::Write<u64>(phys_out_ptr, 0);
+    assert(SceKernelAllocateDirectMemory(alloc_args) == 0);
+    const u64 phys_offset2 = Memory::Read<u64>(phys_out_ptr);
+    assert(phys_offset2 != 0);
+
+    Memory::Write<u64>(addr_ptr, 0);
+    GuestArgs map_args2 = Args(addr_ptr, 0x20000, /*memoryType=*/0,
+                               /*prot=*/0x3 /*RW*/, /*flags=*/0, /*directMemoryStart=*/phys_offset2);
+    map_args2.stack_args = reinterpret_cast<u64>(&stack_alignment);
+    assert(SceKernelMapDirectMemory2(map_args2) == 0);
+    const u64 mapped2 = Memory::Read<u64>(addr_ptr);
+    assert(mapped2 != 0);
+    assert(HLE::IsPhysPoolAddress(mapped2));
+    assert(Memory::QueryOwner(mapped2) == Memory::Owner::Hle);
+    Memory::Write<u64>(mapped2, 0xDEADBEEF87654321ULL);
+    assert(Memory::Read<u64>(mapped2) == 0xDEADBEEF87654321ULL);
+
+    // Final shutdown of pool
+    HLE::ResetPhysPool();
+    assert(!HLE::IsPhysPoolAddress(mapped2));
+    assert(Memory::QueryOwner(mapped2) == Memory::Owner::None);
+
+    std::printf("  hle physical pool lifecycle and teardown symmetry: OK\n");
+}
+
 } // namespace
 
 int main() {
@@ -202,6 +389,9 @@ int main() {
     TestPosixStat();
     TestMapDirectMemory2();
     TestMapDirectMemory1();
+    TestFdTableLifecycleAndTeardown();
+    TestKernelLifecycleAndTeardownSymmetry();
+    TestHlePhysicalPoolLifecycleAndTeardown();
 
     std::remove(kTestFile);
     std::printf("libkernel_file_tests: ALL OK\n");

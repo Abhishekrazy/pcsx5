@@ -23,6 +23,12 @@
 
 namespace Kernel {
 
+namespace {
+guest_addr_t g_brk_base = 0;   // first brk allocation
+guest_addr_t g_brk_current = 0;
+constexpr u64 kBrkMaxSize = 256ULL * 1024 * 1024;  // sane ceiling for brk growth
+} // namespace
+
 // Initialize/shutdown: Memory::Initialize/Shutdown own the actual state; the
 // Lua subsystem registry initializes Memory before Kernel, so these are just
 // liveness checks with a clear error if ordering is ever violated.
@@ -34,8 +40,10 @@ void InitializeGuestMemory() {
 }
 
 void ShutdownGuestMemory() {
-    // Nothing to do: Memory::Shutdown (registered separately) releases all
-    // manager-owned ranges.  Kernel keeps no independent VA bookkeeping.
+    // Memory::Shutdown releases all manager-owned ranges.
+    // Reset kernel-visible BRK heap cursors.
+    g_brk_base = 0;
+    g_brk_current = 0;
 }
 
 // Allocate guest memory — anonymous mmap-style allocation via the manager.
@@ -142,12 +150,6 @@ bool UnmapGuestMemory(guest_addr_t addr, u64 length) {
 // is established once from a real manager allocation rather than a hardcoded
 // magic address, so it participates in the same address space as everything
 // else.
-namespace {
-guest_addr_t g_brk_base = 0;   // first brk allocation
-guest_addr_t g_brk_current = 0;
-constexpr u64 kBrkMaxSize = 256ULL * 1024 * 1024;  // sane ceiling for brk growth
-} // namespace
-
 guest_addr_t GetBreak() {
     return g_brk_current;
 }

@@ -7,6 +7,32 @@
 #include <csetjmp>
 
 namespace HLE {
+    
+    enum class StubClass {
+        VOID_OR_SIDE_EFFECT,
+        INTEGER_RETURN,
+        POINTER_RETURN,
+        HANDLE_RETURN,
+        STRUCT_RETURN,
+        FLOAT_RETURN,
+        UNKNOWN,
+        NEVER_SAFE
+    };
+
+    struct StubContract {
+        std::string module_name;
+        std::string library_name;
+        std::string name;
+        StubClass classification;
+        u64 default_return_policy;
+        bool is_dangerous;
+    };
+
+    // Looks up the contract for a given NID/symbol. Returns a default UNKNOWN contract if not registered.
+    StubContract GetStubContract(const std::string& name);
+
+    // Registers a contract classification for a given NID/symbol.
+    void RegisterStubContract(const StubContract& contract);
 
     // Structure containing registers passed from the guest application (System V ABI)
     struct GuestArgs {
@@ -160,6 +186,20 @@ namespace HLE {
     void SetDtInitAddress(guest_addr_t addr);
     guest_addr_t GetDtInitAddress();
 
+    // PRX Initialization Lifecycle
+    enum class InitState { NotInitialized, Initializing, Initialized, Failed };
+    struct PrxInitRecord {
+        std::string module_name;
+        guest_addr_t module_base;
+        guest_addr_t dt_init;
+        guest_addr_t init_array_address;
+        u64 init_array_size;
+        InitState state;
+    };
+    void QueuePrxInitAddress(const std::string& name, guest_addr_t base, guest_addr_t dt_init, guest_addr_t init_array_addr, u64 init_array_size);
+    void ClearPrxInitQueue();
+    std::vector<PrxInitRecord>& GetPrxInitQueue();
+
     // Save-data host backing directory (libsavedata.cpp).  The title id is
     // supplied by main() from --title-id; GetSaveDataDir() creates and returns
     // <cwd>/pcsx5_savedata/<title-id>/.
@@ -198,6 +238,7 @@ namespace HLE {
     // `addr` (read/write) and returns true on success.
     bool IsPhysPoolAddress(guest_addr_t addr);
     bool CommitPhysPool(guest_addr_t addr);
+    void ResetPhysPool();
 
     // AGC → VideoOut flip forwarding (libvideoout.cpp): runs the SubmitFlip
     // path (counters, flip events, GPU present) for an RFlip packet found in
@@ -209,6 +250,11 @@ namespace HLE {
     // so a targetless draw can be retargeted at it when its RFlip arrives.
     bool VideoOutGetDisplayBufferInfo(u32 handle, s32 buffer_index,
                                       guest_addr_t* addr, u32* width, u32* height);
+
+    // VideoOut and VBlank pump lifecycle (libvideoout.cpp)
+    void EnsureVblankPumpStarted();
+    void ResetVideoOut();
+    bool IsVblankPumpRunning();
 
     // Push the configured audio output settings into libSceAudioOut
     // (libaudioout.cpp).  Called from main() after the config service loads;
@@ -259,6 +305,9 @@ namespace HLE {
     bool GetLastGuestCrashInfo(u32* out_exception_code, guest_addr_t* out_rip,
                                char* out_buf, int buf_size);
 
+    // Resets the libc guest heap allocator (clears bump pointer, end, and free list).
+    void ResetLibcHeap();
+
     // Dynamic dispatcher callback (called by assembly bridge).
     // guest_rsp is the guest stack pointer at thunk entry (points at the guest
     // return address; the first SysV stack argument is at guest_rsp + 8).
@@ -278,6 +327,7 @@ extern "C" u64 InvokeGuestFunction(u64 guest_func_va, u64 rdi_arg, u64 rsi_arg, 
 // rcx = guest_func_va, rdx = pointer to an array of 6 u64 SysV arguments
 // (rdi, rsi, rdx, rcx, r8, r9).  Returns: rax = guest return value.
 extern "C" u64 InvokeGuestFunction6(u64 guest_func_va, const u64* args6);
+extern "C" u64 InvokeGuestOnStack(u64 guest_func_va, u64 guest_rsp);
 
 // Per-thread host stack pointer helpers called by dispatcher.asm.
 // Each guest/host thread gets its own private copy via __declspec(thread).

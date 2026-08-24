@@ -1,0 +1,1493 @@
+﻿[95m==================================================
+  pcsx5 - PlayStation 5 Emulator & Compatibility Layer
+==================================================[0m
+[36m[General][Info] Loaded global config (schema v3) from pcsx5_config/global.json[0m
+[36m[HLE][Info] VideoOut: VRR mode disabled[0m
+[36m[General][Info] Crash-report bundle directory: pcsx5_crash[0m
+[36m[Loader][Info] LoadNidDatabase: loaded 753 entries from 'assets/nid_db.txt' (0 skipped)[0m
+[36m[General][Info] Loaded NID database: assets/nid_db.txt[0m
+[36m[General][Info] Active title: PPSA21564[0m
+[36m[General][Info] SubsystemRegistry: initializing 'ConfigService'...[0m
+[36m[General][Info] SubsystemRegistry: 'ConfigService' initialized OK[0m
+[36m[General][Info] SubsystemRegistry: initializing 'Diagnostics'...[0m
+[36m[General][Info] SubsystemRegistry: 'Diagnostics' initialized OK[0m
+[36m[General][Info] SubsystemRegistry: initializing 'Memory'...[0m
+[36m[Memory][Info] Initializing guest memory manager...[0m
+[36m[Memory][Info] Guest fault VEH installed at 0x0000019400C0C410[0m
+[37m[Memory][Debug] Mapped [0x200000000-0x202000000] prot=3 (size=0x2000000)[0m
+[36m[Memory][Info] Mapped guest framebuffer region at 0x200000000-0x202000000[0m
+[36m[Memory][Info] Direct-mapped memory pool: 1024 MB at 0x194026b0000[0m
+[36m[General][Info] SubsystemRegistry: 'Memory' initialized OK[0m
+[36m[General][Info] SubsystemRegistry: initializing 'Logging'...[0m
+[36m[General][Info] SubsystemRegistry: 'Logging' initialized OK[0m
+[36m[General][Info] SubsystemRegistry: initializing 'HLE'...[0m
+[36m[HLE][Info] Initializing HLE subsystem...[0m
+[36m[HLE][Info] Allocated HLE thunk page at: 0x194026b0000[0m
+[36m[HLE][Info] Registering libkernel HLE symbols...[0m
+[36m[HLE][Info] Registering libkernel sync/equeue/clock HLE symbols...[0m
+[36m[HLE][Info] Registering libScePad HLE symbols...[0m
+[36m[HLE][Info] Registering libScePad HLE symbols...[0m
+[36m[HLE][Info] libScePad HLE symbols registered successfully[0m
+[36m[HLE][Info] Registering libSceVideoOut HLE symbols (port/flip model)...[0m
+[36m[HLE][Info] Registering libSceAgc / libSceAgcDriver HLE symbols (Phase 5 M0)...[0m
+[36m[HLE][Info] Registering libSceSaveData / common-dialog HLE symbols...[0m
+[36m[HLE][Info] Registering libSceUserService HLE symbols (config profiles)...[0m
+[36m[HLE][Info] Registering libSceSysmodule HLE symbols...[0m
+[36m[HLE][Info] Registering libc/libSceLibcInternal heap HLE symbols...[0m
+[36m[HLE][Info] Registering C++ ABI / unwind HLE symbols...[0m
+[36m[HLE][Info] Registering libSceSystemService HLE symbols...[0m
+[36m[HLE][Info] Registering NP (NpManager/NpTrophy2/NpGameIntent/NpCommon) HLE symbols...[0m
+[36m[HLE][Info] Registering keystone HLE symbols...[0m
+[36m[HLE][Info] Registering libSceAudioOut HLE symbols...[0m
+[36m[HLE][Info] Registering libSceAtrac9 HLE symbols...[0m
+[36m[HLE][Info] Registering libSceJson HLE symbols...[0m
+[36m[HLE][Info] libSceJson HLE symbols registered successfully.[0m
+[36m[HLE][Info] Registering libSceAppContent HLE symbols...[0m
+[36m[HLE][Info] Registering libSceRtc HLE symbols...[0m
+[36m[HLE][Info] Registering libSceFiber HLE symbols...[0m
+[36m[HLE][Info] Registering libSceRegMgr HLE symbols...[0m
+[36m[HLE][Info] Registering libSceNotification / libSceNpNotification HLE symbols...[0m
+[36m[HLE][Info] Registering libSceNet + libSceNetCtl HLE symbols...[0m
+[36m[HLE][Info] Registered 391 NID-database stub(s) (753 entries scanned).[0m
+[36m[General][Info] SubsystemRegistry: 'HLE' initialized OK[0m
+[36m[General][Info] SubsystemRegistry: initializing 'Kernel'...[0m
+[36m[Kernel][Info] Initializing Kernel subsystem...[0m
+[36m[Memory][Info] Guest fault handler set: 00007FF8B5584BF0 (user=0000000000000000)[0m
+[36m[Kernel][Info] Allocated guest TLS block [0x194027b0000 - 0x194027f0000], base at 0x194027d0000[0m
+[36m[Kernel][Info] TlsPatch: initialized (TLS slot 7, stub region 0x840000000)[0m
+[36m[Kernel][Info] Registered Vectored Exception Handler successfully.[0m
+[36m[General][Info] SubsystemRegistry: 'Kernel' initialized OK[0m
+[36m[General][Info] SubsystemRegistry: initializing 'GPU'...[0m
+[36m[GPU][Info] Initializing GPU subsystem (GLFW + Vulkan Backend)...[0m
+[36m[GPU][Info] GLFW Window created successfully (1280x720).[0m
+PCSX5_WINDOW_HANDLE=919454
+[36m[GPU][Info] Vulkan: instance created (2 extensions).[0m
+[36m[GPU][Info] Vulkan: Win32 surface created.[0m
+[36m[GPU][Info] Vulkan: selected device 'NVIDIA GeForce RTX 5070 Ti' (queue family 0).[0m
+[36m[GPU][Info] Vulkan: logical device + graphics/present queue ready.[0m
+[36m[GPU][Info] Vulkan present: swapchain 1280x720, 3 images, format 44.[0m
+[36m[GPU][Info] Vulkan present path initialized (FIFO vsync).[0m
+[36m[GPU][Info] Vulkan backend active on 'NVIDIA GeForce RTX 5070 Ti' — guest frames present via swapchain.[0m
+[36m[GPU][Info] draw: loaded pipeline cache (36 bytes)[0m
+[36m[GPU][Info] Guest draw executor initialized (M6 batched).[0m
+[36m[GPU][Info] Guest draw executor ready.[0m
+[36m[GPU][Info] DWM composition API 'dwmapi.dll' resolved successfully for VSync.[0m
+[36m[GPU][Info] Successfully loaded Windows XInput API from xinput1_4.dll (rumble: yes)[0m
+[36m[GPU][Info] Boot screen presented successfully (first frame displayed).[0m
+[36m[General][Info] SubsystemRegistry: 'GPU' initialized OK[0m
+[36m[HLE][Info] Strict-import mode disabled.[0m
+[36m[Kernel][Info] Guest /savedata0 mapped to host dir: I:\Personal\Windows\pcsx5\pcsx5_savedata\PPSA21564[0m
+[36m[General][Info] All subsystems initialized successfully.[0m
+[33m[Kernel][Warn] No firmware_modules_dir configured and none found auto-detected. PRX resolution falls back to HLE stubs. Place firmware PRX files in 'firmware_modules/' next to the emulator executable or set loader.firmware_modules_dir in the config.[0m
+[36m[Kernel][Info] PRX module search dir: Games/PPSA21564-app\sce_module[0m
+[36m[Kernel][Info] Guest /app0 mapped to host dir: Games/PPSA21564-app[0m
+[36m[Loader][Info] Loading ELF binary: Games/PPSA21564-app/eboot.bin[0m
+[36m[Loader][Info] Loading SELF container: Games/PPSA21564-app/eboot.bin[0m
+[36m[Loader][Info]   SELF Seg[0]: id=1 offset=0xa70 size=0x3a780 memsz=0x3a780 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[1]: id=0 offset=0x3b1f0 size=0x74edc9c memsz=0x74edc9c encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[2]: id=3 offset=0x7528e90 size=0x9f60 memsz=0x9f60 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[3]: id=1 offset=0x7532df0 size=0x13e9795 memsz=0x13e9795 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[4]: id=5 offset=0x891c590 size=0x2b20 memsz=0x2b20 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[5]: id=3 offset=0x891f0b0 size=0x5603e8 memsz=0x5603e8 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[6]: id=7 offset=0x8e7f4a0 size=0x2a4a0 memsz=0x2a4a0 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[7]: id=7 offset=0x8ea9940 size=0x5492690 memsz=0x5492690 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[8]: id=9 offset=0xe33bfd0 size=0x6760 memsz=0x6760 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[9]: id=8 offset=0xe342730 size=0xce8b98 memsz=0xce8b98 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[10]: id=11 offset=0xf02b2d0 size=0x20 memsz=0x20 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[11]: id=11 offset=0xf02b2f0 size=0x44 memsz=0x44 encrypted=0 compressed=0[0m
+[36m[Loader][Info] SELF inner ELF Header hex: 7F 45 4C 46 02 01 01 09 02 00 00 00 00 00 00 00 10 FE 3E 00 01 00 00 00 70 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 D8 63 34 A5 00 00 00 00 00 00 00 00 40 00 38 00 0E 00 40 00 00 00 33 00 [0m
+[36m[Loader][Info]   Phdr[0]: type=1, p_offset=0x4000, p_filesz=0x74edc9c (sum=0x74f1c9c)[0m
+[36m[Loader][Info]   Phdr[1]: type=1, p_offset=0x74f4000, p_filesz=0x13e9795 (sum=0x88dd795)[0m
+[36m[Loader][Info]   Phdr[2]: type=1685382480, p_offset=0x74f4000, p_filesz=0x262bd4 (sum=0x7756bd4)[0m
+[36m[Loader][Info]   Phdr[3]: type=1, p_offset=0x88e0000, p_filesz=0x5603e8 (sum=0x8e403e8)[0m
+[36m[Loader][Info]   Phdr[4]: type=1685382482, p_offset=0x88e0000, p_filesz=0x5603e8 (sum=0x8e403e8)[0m
+[36m[Loader][Info]   Phdr[5]: type=7, p_offset=0x88e0000, p_filesz=0x40 (sum=0x88e0040)[0m
+[36m[Loader][Info]   Phdr[6]: type=1627389953, p_offset=0x8e40388, p_filesz=0x60 (sum=0x8e403e8)[0m
+[36m[Loader][Info]   Phdr[7]: type=1, p_offset=0x8e44000, p_filesz=0x5492690 (sum=0xe2d6690)[0m
+[36m[Loader][Info]   Phdr[8]: type=1, p_offset=0xe2d7e10, p_filesz=0xce8b98 (sum=0xefc09a8)[0m
+[36m[Loader][Info]   Phdr[9]: type=4, p_offset=0xefbf8b0, p_filesz=0x24 (sum=0xefbf8d4)[0m
+[36m[Loader][Info]   Phdr[10]: type=2, p_offset=0xefbf8d8, p_filesz=0x10d0 (sum=0xefc09a8)[0m
+[36m[Loader][Info]   Phdr[11]: type=1879047936, p_offset=0xefc09b0, p_filesz=0x44 (sum=0xefc09f4)[0m
+[36m[Loader][Info]   Phdr[12]: type=1879047937, p_offset=0xefc09f4, p_filesz=0x3cd3 (sum=0xefc46c7)[0m
+[36m[Loader][Info]   Phdr[13]: type=4, p_offset=0xefc46c8, p_filesz=0x48 (sum=0xefc4710)[0m
+[36m[Loader][Info] Reconstructed SELF segment id=1: file_off=0xa70 -> ELF off=0x74f4000 size=0x3a780[0m
+[36m[Loader][Info] Reconstructed SELF segment id=0: file_off=0x3b1f0 -> ELF off=0x4000 size=0x74edc9c[0m
+[36m[Loader][Info] Reconstructed SELF segment id=3: file_off=0x7528e90 -> ELF off=0x88e0000 size=0x9f60[0m
+[36m[Loader][Info] Reconstructed SELF segment id=1: file_off=0x7532df0 -> ELF off=0x74f4000 size=0x13e9795[0m
+[36m[Loader][Info] Reconstructed SELF segment id=5: file_off=0x891c590 -> ELF off=0x88e0000 size=0x2b20[0m
+[36m[Loader][Info] Reconstructed SELF segment id=3: file_off=0x891f0b0 -> ELF off=0x88e0000 size=0x5603e8[0m
+[36m[Loader][Info] Reconstructed SELF segment id=7: file_off=0x8e7f4a0 -> ELF off=0x8e44000 size=0x2a4a0[0m
+[36m[Loader][Info] Reconstructed SELF segment id=7: file_off=0x8ea9940 -> ELF off=0x8e44000 size=0x5492690[0m
+[36m[Loader][Info] Reconstructed SELF segment id=9: file_off=0xe33bfd0 -> ELF off=0xefbf8b0 size=0x6760[0m
+[36m[Loader][Info] Reconstructed SELF segment id=8: file_off=0xe342730 -> ELF off=0xe2d7e10 size=0xce8b98[0m
+[36m[Loader][Info] Reconstructed SELF segment id=11: file_off=0xf02b2d0 -> ELF off=0xefc09b0 size=0x20[0m
+[36m[Loader][Info] Reconstructed SELF segment id=11: file_off=0xf02b2f0 -> ELF off=0xefc09b0 size=0x44[0m
+[36m[Loader][Info] SELF: embedded ELF at 0x1a0, phnum=14, region size=251420688[0m
+[36m[Loader][Info] SELF: program_type=0x00000101, header_size=1376, meta_size=1296, file_size=251835200, segment_count=12, flags=0x0022[0m
+[36m[Loader][Info] Loading ELF binary: C:\Users\ABHISH~1\AppData\Local\Temp\us30.0[0m
+[36m[Loader][Info] Valid ELF64 x86-64 binary detected. Entry Point: 0x70[0m
+[36m[Loader][Info] PS5 SDK module type 0xFE10 detected; treating as PIE.[0m
+[36m[Loader][Info]   Inner Phdr[0]: type=1, p_offset=0x4000, p_filesz=0x74edc9c, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[1]: type=1, p_offset=0x74f4000, p_filesz=0x13e9795, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[2]: type=1685382480, p_offset=0x74f4000, p_filesz=0x262bd4, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[3]: type=1, p_offset=0x88e0000, p_filesz=0x5603e8, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[4]: type=1685382482, p_offset=0x88e0000, p_filesz=0x5603e8, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[5]: type=7, p_offset=0x88e0000, p_filesz=0x40, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[6]: type=1627389953, p_offset=0x8e40388, p_filesz=0x60, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[7]: type=1, p_offset=0x8e44000, p_filesz=0x5492690, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[8]: type=1, p_offset=0xe2d7e10, p_filesz=0xce8b98, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[9]: type=4, p_offset=0xefbf8b0, p_filesz=0x24, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[10]: type=2, p_offset=0xefbf8d8, p_filesz=0x10d0, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[11]: type=1879047936, p_offset=0xefc09b0, p_filesz=0x44, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[12]: type=1879047937, p_offset=0xefc09f4, p_filesz=0x3cd3, file_size=0xefc6010[0m
+[36m[Loader][Info]   Inner Phdr[13]: type=4, p_offset=0xefc46c8, p_filesz=0x48, file_size=0xefc6010[0m
+[36m[Loader][Info] Required memory footprint: [0x0 - 0xfae4000] (size: 263077888 bytes)[0m
+[36m[Loader][Info] Position Independent Executable (PIE) detected. Mapping at base base: 0x800000000[0m
+[36m[Loader][Info] .eh_frame_hdr at guest 0x8074f0000 (2501588 bytes) — C++ exceptions supported.[0m
+[36m[Loader][Info] .eh_frame_hdr re-anchored to relocated base: guest 0x8074f0000[0m
+[36m[Loader][Info] Program Header 0: type=0x1 offset=0x4000 vaddr=0x0 filesz=0x74edc9c memsz=0x74edc9c flags=0x1 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x4000 p_vaddr=0x0 p_filesz=122608796 p_memsz=122608796 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 1: type=0x1 offset=0x74f4000 vaddr=0x74f0000 filesz=0x13e9795 memsz=0x13e9795 flags=0x4 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x74f4000 p_vaddr=0x74f0000 p_filesz=20879253 p_memsz=20879253 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 2: type=0x6474e550 offset=0x74f4000 vaddr=0x74f0000 filesz=0x262bd4 memsz=0x262bd4 flags=0x4 align=0x4[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6474e550 offset=0x74f4000, size=0x262bd4[0m
+[36m[Loader][Info] RAW DATA: 01 1B 03 3B 0C 2F 26 00 79 C5 04 00 70 00 B1 F8 28 2F 26 00 D0 00 B1 F8 48 2F 26 00 00 01 B1 F8 5C 2F 26 00 40 01 B1 F8 70 2F 26 00 70 01 B1 F8 84 2F 26 00 B0 01 B1 F8 98 2F 26 00 D0 01 B1 F8 B4 2F 26 00 E0 01 B1 F8 C8 2F 26 00 F0 01 B1 F8 DC 2F 26 00 10 02 B1 F8 F0 2F 26 00 30 02 B1 F8 04 30 26 00 40 02 B1 F8 18 30 26 00 50 02 B1 F8 2C 30 26 00 60 02 B1 F8 40 30 26 00 70 02 B1 F8 54 30 26 00 80 02 B1 F8 68 30 26 00 90 02 B1 F8 7C 30 26 00 A0 02 B1 F8 90 30 26 00 B0 02 B1 F8 A4 30 26 00 C0 02 B1 F8 B8 30 26 00 D0 02 B1 F8 CC 30 26 00 E0 02 B1 F8 E0 30 26 00 F0 02 B1 F8 F4 30 26 00 00 03 B1 F8 08 31 26 00 10 03 B1 F8 1C 31 26 00 20 03 B1 F8 30 31 26 00 30 03 B1 F8 44 31 26 00 40 03 B1 F8 58 31 26 00 50 03 B1 F8 6C 31 26 00 60 03 B1 F8 80 31 26 00 70 03 B1 F8 [0m
+[36m[Loader][Info] Program Header 3: type=0x1 offset=0x88e0000 vaddr=0x88dc000 filesz=0x5603e8 memsz=0x5603e8 flags=0x6 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x88e0000 p_vaddr=0x88dc000 p_filesz=5637096 p_memsz=5637096 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 4: type=0x6474e552 offset=0x88e0000 vaddr=0x88dc000 filesz=0x5603e8 memsz=0x564000 flags=0x4 align=0x1[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6474e552 offset=0x88e0000, size=0x5603e8[0m
+[36m[Loader][Info] RAW DATA: FF FF FF FF FF FF FF FF 00 00 80 3F 00 00 00 00 FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF A8 00 00 00 00 00 00 00 0E 00 00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 5: type=0x7 offset=0x88e0000 vaddr=0x88dc000 filesz=0x40 memsz=0xa0 flags=0x4 align=0x8[0m
+[36m[Loader][Info] Program Header 6: type=0x61000001 offset=0x8e40388 vaddr=0x8e3c388 filesz=0x60 memsz=0x60 flags=0x4 align=0x8[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x61000001 offset=0x8e40388, size=0x60[0m
+[36m[Loader][Info] RAW DATA: 60 00 00 00 00 00 00 00 4F 52 42 49 05 00 00 00 01 00 59 11 40 00 00 09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 11 04 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 7: type=0x1 offset=0x8e44000 vaddr=0x8e40000 filesz=0x5492690 memsz=0x5fb7e10 flags=0x6 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x8e44000 p_vaddr=0x8e40000 p_filesz=88680080 p_memsz=100367888 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 8: type=0x1 offset=0xe2d7e10 vaddr=0xedf7e10 filesz=0xce8b98 memsz=0xce8b98 flags=0x0 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0xe2d7e10 p_vaddr=0xedf7e10 p_filesz=13536152 p_memsz=13536152 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 9: type=0x4 offset=0xefbf8b0 vaddr=0xfadf8b0 filesz=0x24 memsz=0x24 flags=0x0 align=0x4[0m
+[36m[Loader][Info] Program Header 10: type=0x2 offset=0xefbf8d8 vaddr=0xfadf8d8 filesz=0x10d0 memsz=0x10d0 flags=0x6 align=0x8[0m
+[36m[Loader][Info] Program Header 11: type=0x6fffff00 offset=0xefc09b0 vaddr=0x0 filesz=0x44 memsz=0x0 flags=0x0 align=0x10[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6fffff00 offset=0xefc09b0, size=0x44[0m
+[36m[Loader][Info] RAW DATA: 50 41 54 48 3C 00 00 00 36 00 00 00 44 3A 2F 61 73 6F 62 69 2F 74 61 72 67 65 74 2F 61 70 70 2F 70 70 72 2F 41 72 6D 61 64 69 6C 6C 6F 5F 50 72 6F 73 70 65 72 6F 5F 4D 61 73 74 65 72 2E 65 6C 66 00 00 00 [0m
+[36m[Loader][Info] Program Header 12: type=0x6fffff01 offset=0xefc09f4 vaddr=0x0 filesz=0x3cd3 memsz=0x3cd3 flags=0x0 align=0x1[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6fffff01 offset=0xefc09f4, size=0x3cd3[0m
+[36m[Loader][Info] RAW DATA: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 13: type=0x4 offset=0xefc46c8 vaddr=0x0 filesz=0x48 memsz=0x0 flags=0x0 align=0x4[0m
+[36m[Loader][Info] Found PT_DYNAMIC: offset=0xefbf8d8 memsz=0x10d0 vaddr=0xfadf8d8[0m
+[36m[Loader][Info] PT_DYNAMIC num_entries: 269[0m
+[36m[Loader][Info] PT_DYNAMIC loaded from guest memory at 0x80fadf8d8[0m
+[36m[Loader][Info]   Dyn[0]: tag=1, val=0x6c51[0m
+[36m[Loader][Info]   Dyn[1]: tag=1627390021, val=0x1010100006c65[0m
+[36m[Loader][Info]   Dyn[2]: tag=1627390025, val=0x100006c65[0m
+[36m[Loader][Info]   Dyn[3]: tag=1627389977, val=0x9[0m
+[36m[Loader][Info]   Dyn[4]: tag=1, val=0x6c75[0m
+[36m[Loader][Info]   Dyn[5]: tag=1627390021, val=0x2010100006c8f[0m
+[36m[Loader][Info]   Dyn[6]: tag=1627390025, val=0x1000100006c8f[0m
+[36m[Loader][Info]   Dyn[7]: tag=1627389977, val=0x1000000000009[0m
+[36m[Loader][Info]   Dyn[8]: tag=1, val=0x6ca5[0m
+[36m[Loader][Info]   Dyn[9]: tag=1627390021, val=0x3010100006cc5[0m
+[36m[Loader][Info]   Dyn[10]: tag=1627390025, val=0x2000100006cda[0m
+[36m[Loader][Info]   Dyn[11]: tag=1627389977, val=0x2000000000009[0m
+[36m[Loader][Info]   Dyn[12]: tag=1, val=0x6cf6[0m
+[36m[Loader][Info]   Dyn[13]: tag=1627390021, val=0x4010100006d0d[0m
+[36m[Loader][Info]   Dyn[14]: tag=1627390025, val=0x3000100006d0d[0m
+[36m[Loader][Info]   Dyn[15]: tag=1627389977, val=0x3000000000009[0m
+[36m[Loader][Info]   Dyn[16]: tag=1, val=0x6d20[0m
+[36m[Loader][Info]   Dyn[17]: tag=1627390021, val=0x5010100006d2e[0m
+[36m[Loader][Info]   Dyn[18]: tag=1627390025, val=0x4000100006d2e[0m
+[36m[Loader][Info]   Dyn[19]: tag=1627389977, val=0x4000000000009[0m
+[36m[Loader][Info]   Dyn[20]: tag=1, val=0x6d38[0m
+[36m[Loader][Info]   Dyn[21]: tag=1627390021, val=0x6010100006d4b[0m
+[36m[Loader][Info]   Dyn[22]: tag=1627390025, val=0x5000100006d4b[0m
+[36m[Loader][Info]   Dyn[23]: tag=1627389977, val=0x5000000000009[0m
+[36m[Loader][Info]   Dyn[24]: tag=1, val=0x6d5a[0m
+[36m[Loader][Info]   Dyn[25]: tag=1627390021, val=0x7010100006d70[0m
+[36m[Loader][Info]   Dyn[26]: tag=1627390025, val=0x6000100006d70[0m
+[36m[Loader][Info]   Dyn[27]: tag=1627389977, val=0x6000000000009[0m
+[36m[Loader][Info]   Dyn[28]: tag=1, val=0x6d82[0m
+[36m[Loader][Info]   Dyn[29]: tag=1627390021, val=0x8010100006d90[0m
+[36m[Loader][Info]   Dyn[30]: tag=1627390025, val=0x7000100006d90[0m
+[36m[Loader][Info]   Dyn[31]: tag=1627389977, val=0x7000000000009[0m
+[36m[Loader][Info]   Dyn[32]: tag=1, val=0x6d9a[0m
+[36m[Loader][Info]   Dyn[33]: tag=1627390021, val=0x9010100006dab[0m
+[36m[Loader][Info]   Dyn[34]: tag=1627390025, val=0x8000100006dab[0m
+[36m[Loader][Info]   Dyn[35]: tag=1627389977, val=0x8000000000009[0m
+[36m[Loader][Info]   Dyn[36]: tag=1, val=0x6db8[0m
+[36m[Loader][Info]   Dyn[37]: tag=1627390021, val=0xa010100006dc7[0m
+[36m[Loader][Info]   Dyn[38]: tag=1627390025, val=0x9000100006dc7[0m
+[36m[Loader][Info]   Dyn[39]: tag=1627389977, val=0x9000000000009[0m
+[36m[Loader][Info]   Dyn[40]: tag=1, val=0x6dd2[0m
+[36m[Loader][Info]   Dyn[41]: tag=1627390021, val=0xb010100006de9[0m
+[36m[Loader][Info]   Dyn[42]: tag=1627390025, val=0xa000100006de9[0m
+[36m[Loader][Info]   Dyn[43]: tag=1627389977, val=0xa000000000009[0m
+[36m[Loader][Info]   Dyn[44]: tag=1, val=0x6dfc[0m
+[36m[Loader][Info]   Dyn[45]: tag=1627390021, val=0xc010100006e1c[0m
+[36m[Loader][Info]   Dyn[46]: tag=1627390025, val=0xb000100006e1c[0m
+[36m[Loader][Info]   Dyn[47]: tag=1627389977, val=0xb000000000009[0m
+[36m[Loader][Info]   Dyn[48]: tag=1, val=0x6e38[0m
+[36m[Loader][Info]   Dyn[49]: tag=1627390021, val=0xd010100006e4c[0m
+[36m[Loader][Info]   Dyn[50]: tag=1627390025, val=0xc000100006e4c[0m
+[36m[Loader][Info]   Dyn[51]: tag=1627389977, val=0xc000000000009[0m
+[36m[Loader][Info]   Dyn[52]: tag=1, val=0x6e5c[0m
+[36m[Loader][Info]   Dyn[53]: tag=1627390021, val=0xe010100006e70[0m
+[36m[Loader][Info]   Dyn[54]: tag=1627390025, val=0xd000100006e70[0m
+[36m[Loader][Info]   Dyn[55]: tag=1627389977, val=0xd000000000009[0m
+[36m[Loader][Info]   Dyn[56]: tag=1, val=0x6e80[0m
+[36m[Loader][Info]   Dyn[57]: tag=1627390021, val=0xf010100006e96[0m
+[36m[Loader][Info]   Dyn[58]: tag=1627390025, val=0xe000100006e96[0m
+[36m[Loader][Info]   Dyn[59]: tag=1627389977, val=0xe000000000009[0m
+[36m[Loader][Info]   Dyn[60]: tag=1, val=0x6ea8[0m
+[36m[Loader][Info]   Dyn[61]: tag=1627390021, val=0x10010100006ebc[0m
+[36m[Loader][Info]   Dyn[62]: tag=1627390025, val=0xf000100006ebc[0m
+[36m[Loader][Info]   Dyn[63]: tag=1627389977, val=0xf000000000009[0m
+[36m[Loader][Info]   Dyn[64]: tag=1, val=0x6ecc[0m
+[36m[Loader][Info]   Dyn[65]: tag=1627390021, val=0x11010100006eed[0m
+[36m[Loader][Info]   Dyn[66]: tag=1627390025, val=0x10000100006eed[0m
+[36m[Loader][Info]   Dyn[67]: tag=1627389977, val=0x10000000000009[0m
+[36m[Loader][Info]   Dyn[68]: tag=1, val=0x6f0a[0m
+[36m[Loader][Info]   Dyn[69]: tag=1627390021, val=0x12010100006f1a[0m
+[36m[Loader][Info]   Dyn[70]: tag=1627390025, val=0x11000100006f25[0m
+[36m[Loader][Info]   Dyn[71]: tag=1627389977, val=0x11000000000009[0m
+[36m[Loader][Info]   Dyn[72]: tag=1, val=0x6f31[0m
+[36m[Loader][Info]   Dyn[73]: tag=1627390021, val=0x13010100006f4e[0m
+[36m[Loader][Info]   Dyn[74]: tag=1627390025, val=0x12000100006f4e[0m
+[36m[Loader][Info]   Dyn[75]: tag=1627389977, val=0x12000000000009[0m
+[36m[Loader][Info]   Dyn[76]: tag=1, val=0x6f67[0m
+[36m[Loader][Info]   Dyn[77]: tag=1627390021, val=0x14010100006f77[0m
+[36m[Loader][Info]   Dyn[78]: tag=1627390025, val=0x13000100006f77[0m
+[36m[Loader][Info]   Dyn[79]: tag=1627389977, val=0x13000000000009[0m
+[36m[Loader][Info]   Dyn[80]: tag=1, val=0x6f83[0m
+[36m[Loader][Info]   Dyn[81]: tag=1627390021, val=0x15010100006f99[0m
+[36m[Loader][Info]   Dyn[82]: tag=1627390025, val=0x14000100006f99[0m
+[36m[Loader][Info]   Dyn[83]: tag=1627389977, val=0x14000000000009[0m
+[36m[Loader][Info]   Dyn[84]: tag=1, val=0x6fa4[0m
+[36m[Loader][Info]   Dyn[85]: tag=1627390021, val=0x16010100006fbc[0m
+[36m[Loader][Info]   Dyn[86]: tag=1627390025, val=0x15000100006fbc[0m
+[36m[Loader][Info]   Dyn[87]: tag=1627389977, val=0x15000000000009[0m
+[36m[Loader][Info]   Dyn[88]: tag=1, val=0x6fc9[0m
+[36m[Loader][Info]   Dyn[89]: tag=1627390021, val=0x17010100006fdd[0m
+[36m[Loader][Info]   Dyn[90]: tag=1627390025, val=0x16000100006fdd[0m
+[36m[Loader][Info]   Dyn[91]: tag=1627389977, val=0x16000000000009[0m
+[36m[Loader][Info]   Dyn[92]: tag=1, val=0x6fed[0m
+[36m[Loader][Info]   Dyn[93]: tag=1627390021, val=0x18010100007009[0m
+[36m[Loader][Info]   Dyn[94]: tag=1627390025, val=0x17000100007009[0m
+[36m[Loader][Info]   Dyn[95]: tag=1627389977, val=0x17000000000009[0m
+[36m[Loader][Info]   Dyn[96]: tag=1, val=0x7021[0m
+[36m[Loader][Info]   Dyn[97]: tag=1627390021, val=0x19010100007039[0m
+[36m[Loader][Info]   Dyn[98]: tag=1627390025, val=0x18000100007039[0m
+[36m[Loader][Info]   Dyn[99]: tag=1627389977, val=0x18000000000009[0m
+[36m[Loader][Info]   Dyn[100]: tag=1, val=0x704d[0m
+[36m[Loader][Info]   Dyn[101]: tag=1627390021, val=0x1a010000007065[0m
+[36m[Loader][Info]   Dyn[102]: tag=1627390025, val=0x19000100007065[0m
+[36m[Loader][Info]   Dyn[103]: tag=1627389977, val=0x19000000000009[0m
+[36m[Loader][Info]   Dyn[104]: tag=1, val=0x7079[0m
+[36m[Loader][Info]   Dyn[105]: tag=1627390021, val=0x1b01010000708b[0m
+[36m[Loader][Info]   Dyn[106]: tag=1627390025, val=0x1a00010000708b[0m
+[36m[Loader][Info]   Dyn[107]: tag=1627389977, val=0x1a000000000009[0m
+[36m[Loader][Info]   Dyn[108]: tag=1, val=0x7099[0m
+[36m[Loader][Info]   Dyn[109]: tag=1627390021, val=0x1c0101000070b1[0m
+[36m[Loader][Info]   Dyn[110]: tag=1627390025, val=0x1b0001000070b1[0m
+[36m[Loader][Info]   Dyn[111]: tag=1627389977, val=0x1b000000000009[0m
+[36m[Loader][Info]   Dyn[112]: tag=1, val=0x70c5[0m
+[36m[Loader][Info]   Dyn[113]: tag=1627390021, val=0x1d0101000070da[0m
+[36m[Loader][Info]   Dyn[114]: tag=1627390025, val=0x1c0001000070da[0m
+[36m[Loader][Info]   Dyn[115]: tag=1627389977, val=0x1c000000000009[0m
+[36m[Loader][Info]   Dyn[116]: tag=1, val=0x70eb[0m
+[36m[Loader][Info]   Dyn[117]: tag=1627390021, val=0x1e0101000070fb[0m
+[36m[Loader][Info]   Dyn[118]: tag=1627390025, val=0x1d0001000070fb[0m
+[36m[Loader][Info]   Dyn[119]: tag=1627389977, val=0x1d000000000009[0m
+[36m[Loader][Info]   Dyn[120]: tag=1, val=0x7107[0m
+[36m[Loader][Info]   Dyn[121]: tag=1627390021, val=0x1f010000007121[0m
+[36m[Loader][Info]   Dyn[122]: tag=1627390025, val=0x1e000100007121[0m
+[36m[Loader][Info]   Dyn[123]: tag=1627389977, val=0x1e000000000009[0m
+[36m[Loader][Info]   Dyn[124]: tag=1, val=0x7130[0m
+[36m[Loader][Info]   Dyn[125]: tag=1627390021, val=0x2001010000714a[0m
+[36m[Loader][Info]   Dyn[126]: tag=1627390025, val=0x1f00010000714a[0m
+[36m[Loader][Info]   Dyn[127]: tag=1627389977, val=0x1f000000000009[0m
+[36m[Loader][Info]   Dyn[128]: tag=1, val=0x7159[0m
+[36m[Loader][Info]   Dyn[129]: tag=1627390021, val=0x2101010000716c[0m
+[36m[Loader][Info]   Dyn[130]: tag=1627390025, val=0x2000010000717b[0m
+[36m[Loader][Info]   Dyn[131]: tag=1627389977, val=0x20000000000009[0m
+[36m[Loader][Info]   Dyn[132]: tag=1, val=0x718b[0m
+[36m[Loader][Info]   Dyn[133]: tag=1627390021, val=0x220100000071a6[0m
+[36m[Loader][Info]   Dyn[134]: tag=1627390025, val=0x210001000071a6[0m
+[36m[Loader][Info]   Dyn[135]: tag=1627389977, val=0x21000000000009[0m
+[36m[Loader][Info]   Dyn[136]: tag=1, val=0x71bd[0m
+[36m[Loader][Info]   Dyn[137]: tag=1627390021, val=0x230101000071ce[0m
+[36m[Loader][Info]   Dyn[138]: tag=1627390025, val=0x220001000071ce[0m
+[36m[Loader][Info]   Dyn[139]: tag=1627389977, val=0x22000000000009[0m
+[36m[Loader][Info]   Dyn[140]: tag=1, val=0x71db[0m
+[36m[Loader][Info]   Dyn[141]: tag=1627390021, val=0x240101000071ec[0m
+[36m[Loader][Info]   Dyn[142]: tag=1627390025, val=0x230001000071ec[0m
+[36m[Loader][Info]   Dyn[143]: tag=1627389977, val=0x23000000000009[0m
+[36m[Loader][Info]   Dyn[144]: tag=1, val=0x71f9[0m
+[36m[Loader][Info]   Dyn[145]: tag=1627390021, val=0x2501010000720b[0m
+[36m[Loader][Info]   Dyn[146]: tag=1627390025, val=0x2400010000720b[0m
+[36m[Loader][Info]   Dyn[147]: tag=1627389977, val=0x24000000000009[0m
+[36m[Loader][Info]   Dyn[148]: tag=1, val=0x7219[0m
+[36m[Loader][Info]   Dyn[149]: tag=1627390021, val=0x2601010000722b[0m
+[36m[Loader][Info]   Dyn[150]: tag=1627390025, val=0x2500010000722b[0m
+[36m[Loader][Info]   Dyn[151]: tag=1627389977, val=0x25000000000009[0m
+[36m[Loader][Info]   Dyn[152]: tag=1, val=0x7239[0m
+[36m[Loader][Info]   Dyn[153]: tag=1627390021, val=0x27010100007247[0m
+[36m[Loader][Info]   Dyn[154]: tag=1627390025, val=0x26000100007251[0m
+[36m[Loader][Info]   Dyn[155]: tag=1627389977, val=0x26000000000009[0m
+[36m[Loader][Info]   Dyn[156]: tag=1, val=0x725d[0m
+[36m[Loader][Info]   Dyn[157]: tag=1627390021, val=0x2801010000726d[0m
+[36m[Loader][Info]   Dyn[158]: tag=1627390025, val=0x2700010000726d[0m
+[36m[Loader][Info]   Dyn[159]: tag=1627389977, val=0x27000000000009[0m
+[36m[Loader][Info]   Dyn[160]: tag=1, val=0x7279[0m
+[36m[Loader][Info]   Dyn[161]: tag=1627390021, val=0x29010100007287[0m
+[36m[Loader][Info]   Dyn[162]: tag=1627390025, val=0x28000100007287[0m
+[36m[Loader][Info]   Dyn[163]: tag=1627389977, val=0x28000000000009[0m
+[36m[Loader][Info]   Dyn[164]: tag=1, val=0x7291[0m
+[36m[Loader][Info]   Dyn[165]: tag=1627390021, val=0x2a0101000072ac[0m
+[36m[Loader][Info]   Dyn[166]: tag=1627390025, val=0x290001000072bc[0m
+[36m[Loader][Info]   Dyn[167]: tag=1627389977, val=0x29000000000009[0m
+[36m[Loader][Info]   Dyn[168]: tag=1, val=0x72d3[0m
+[36m[Loader][Info]   Dyn[169]: tag=1627390021, val=0x2b0101000072e7[0m
+[36m[Loader][Info]   Dyn[170]: tag=1627390025, val=0x2a0001000072e7[0m
+[36m[Loader][Info]   Dyn[171]: tag=1627389977, val=0x2a000000000009[0m
+[36m[Loader][Info]   Dyn[172]: tag=1627390025, val=0x2b000100007247[0m
+[36m[Loader][Info]   Dyn[173]: tag=1627389977, val=0x2b000000000009[0m
+[36m[Loader][Info]   Dyn[174]: tag=1, val=0x72f7[0m
+[36m[Loader][Info]   Dyn[175]: tag=1627390021, val=0x2c010100007300[0m
+[36m[Loader][Info]   Dyn[176]: tag=1627390025, val=0x2c000100007300[0m
+[36m[Loader][Info]   Dyn[177]: tag=1627389977, val=0x2c000000000009[0m
+[36m[Loader][Info]   Dyn[178]: tag=1, val=0x7305[0m
+[36m[Loader][Info]   Dyn[179]: tag=1627390021, val=0x2d01010000731a[0m
+[36m[Loader][Info]   Dyn[180]: tag=1627390025, val=0x2d00010000732f[0m
+[36m[Loader][Info]   Dyn[181]: tag=1627389977, val=0x2d000000000009[0m
+[36m[Loader][Info]   Dyn[182]: tag=1, val=0x7340[0m
+[36m[Loader][Info]   Dyn[183]: tag=1627390021, val=0x2e010100007357[0m
+[36m[Loader][Info]   Dyn[184]: tag=1627390025, val=0x2e000100007357[0m
+[36m[Loader][Info]   Dyn[185]: tag=1627389977, val=0x2e000000000009[0m
+[36m[Loader][Info]   Dyn[186]: tag=1, val=0x736a[0m
+[36m[Loader][Info]   Dyn[187]: tag=1627390021, val=0x2f01010000737e[0m
+[36m[Loader][Info]   Dyn[188]: tag=1627390025, val=0x2f00010000737e[0m
+[36m[Loader][Info]   Dyn[189]: tag=1627389977, val=0x2f000000000009[0m
+[36m[Loader][Info]   Dyn[190]: tag=1, val=0x738e[0m
+[36m[Loader][Info]   Dyn[191]: tag=1627390021, val=0x3001010000739c[0m
+[36m[Loader][Info]   Dyn[192]: tag=1627390025, val=0x3000010000739c[0m
+[36m[Loader][Info]   Dyn[193]: tag=1627389977, val=0x30000000000009[0m
+[36m[Loader][Info]   Dyn[194]: tag=1, val=0x73a6[0m
+[36m[Loader][Info]   Dyn[195]: tag=1627390021, val=0x310101000073b4[0m
+[36m[Loader][Info]   Dyn[196]: tag=1627390025, val=0x310001000073b4[0m
+[36m[Loader][Info]   Dyn[197]: tag=1627389977, val=0x31000000000009[0m
+[36m[Loader][Info]   Dyn[198]: tag=1, val=0x73be[0m
+[36m[Loader][Info]   Dyn[199]: tag=1627390021, val=0x320101000073dc[0m
+[36m[Loader][Info]   Dyn[200]: tag=1627390025, val=0x320001000073dc[0m
+[36m[Loader][Info]   Dyn[201]: tag=1627389977, val=0x32000000000009[0m
+[36m[Loader][Info]   Dyn[202]: tag=1, val=0x73f6[0m
+[36m[Loader][Info]   Dyn[203]: tag=1627390021, val=0x33010100007405[0m
+[36m[Loader][Info]   Dyn[204]: tag=1627390025, val=0x33000100007405[0m
+[36m[Loader][Info]   Dyn[205]: tag=1627389977, val=0x33000000000009[0m
+[36m[Loader][Info]   Dyn[206]: tag=1, val=0x7410[0m
+[36m[Loader][Info]   Dyn[207]: tag=1627390021, val=0x3402010000741e[0m
+[36m[Loader][Info]   Dyn[208]: tag=1627390025, val=0x3400010000741e[0m
+[36m[Loader][Info]   Dyn[209]: tag=1627389977, val=0x34000000000009[0m
+[36m[Loader][Info]   Dyn[210]: tag=1, val=0x7428[0m
+[36m[Loader][Info]   Dyn[211]: tag=1627390021, val=0x3501010000743d[0m
+[36m[Loader][Info]   Dyn[212]: tag=1627390025, val=0x3500010000743d[0m
+[36m[Loader][Info]   Dyn[213]: tag=1627389977, val=0x35000000000009[0m
+[36m[Loader][Info]   Dyn[214]: tag=1, val=0x744e[0m
+[36m[Loader][Info]   Dyn[215]: tag=1627390021, val=0x36010000007467[0m
+[36m[Loader][Info]   Dyn[216]: tag=1627390025, val=0x36000100007467[0m
+[36m[Loader][Info]   Dyn[217]: tag=1627389977, val=0x36000000000009[0m
+[36m[Loader][Info]   Dyn[218]: tag=1, val=0x747c[0m
+[36m[Loader][Info]   Dyn[219]: tag=1627390021, val=0x3701010000748a[0m
+[36m[Loader][Info]   Dyn[220]: tag=1627390025, val=0x3700010000748a[0m
+[36m[Loader][Info]   Dyn[221]: tag=1627389977, val=0x37000000000009[0m
+[36m[Loader][Info]   Dyn[222]: tag=1, val=0x7494[0m
+[36m[Loader][Info]   Dyn[223]: tag=1627390021, val=0x380101000074a4[0m
+[36m[Loader][Info]   Dyn[224]: tag=1627390025, val=0x380001000074a4[0m
+[36m[Loader][Info]   Dyn[225]: tag=1627389977, val=0x38000000000009[0m
+[36m[Loader][Info]   Dyn[226]: tag=1, val=0x74b0[0m
+[36m[Loader][Info]   Dyn[227]: tag=1627390021, val=0x390100000074c1[0m
+[36m[Loader][Info]   Dyn[228]: tag=1627390025, val=0x390001000074c1[0m
+[36m[Loader][Info]   Dyn[229]: tag=1627389977, val=0x39000000000009[0m
+[36m[Loader][Info]   Dyn[230]: tag=1, val=0x74ce[0m
+[36m[Loader][Info]   Dyn[231]: tag=1627390021, val=0x3a0101000074e2[0m
+[36m[Loader][Info]   Dyn[232]: tag=1627390025, val=0x3a0001000074e2[0m
+[36m[Loader][Info]   Dyn[233]: tag=1627389977, val=0x3a000000000009[0m
+[36m[Loader][Info]   Dyn[234]: tag=1627390025, val=0x3b0001000074f2[0m
+[36m[Loader][Info]   Dyn[235]: tag=1627389977, val=0x3b000000000009[0m
+[36m[Loader][Info]   Dyn[236]: tag=1627390025, val=0x3c000100007501[0m
+[36m[Loader][Info]   Dyn[237]: tag=1627389977, val=0x3c000000000009[0m
+[36m[Loader][Info]   Dyn[238]: tag=1, val=0x7525[0m
+[36m[Loader][Info]   Dyn[239]: tag=1627390021, val=0x3b010100007534[0m
+[36m[Loader][Info]   Dyn[240]: tag=1627390025, val=0x3d000100007534[0m
+[36m[Loader][Info]   Dyn[241]: tag=1627389977, val=0x3d000000000009[0m
+[36m[Loader][Info]   Dyn[242]: tag=1627390019, val=0x1010000753f[0m
+[36m[Loader][Info]   Dyn[243]: tag=1627390017, val=0x7559[0m
+[36m[Loader][Info]   Dyn[244]: tag=21, val=0x0[0m
+[36m[Loader][Info]   Dyn[245]: tag=7, val=0xee13650[0m
+[36m[Loader][Info]   Dyn[246]: tag=8, val=0xcc8c28[0m
+[36m[Loader][Info]   Dyn[247]: tag=9, val=0x18[0m
+[36m[Loader][Info]   Dyn[248]: tag=1879048185, val=0x88122[0m
+[36m[Loader][Info]   Dyn[249]: tag=23, val=0xee09630[0m
+[36m[Loader][Info]   Dyn[250]: tag=2, val=0xa020[0m
+[36m[Loader][Info]   Dyn[251]: tag=3, val=0x8e34870[0m
+[36m[Loader][Info]   Dyn[252]: tag=20, val=0x7[0m
+[36m[Loader][Info]   Dyn[253]: tag=6, val=0xedff3a0[0m
+[36m[Loader][Info]   Dyn[254]: tag=11, val=0x18[0m
+[36m[Loader][Info]   Dyn[255]: tag=5, val=0xedf7e10[0m
+[36m[Loader][Info]   Dyn[256]: tag=10, val=0x758f[0m
+[36m[Loader][Info]   Dyn[257]: tag=4, val=0xfadc278[0m
+[36m[Loader][Info]   Dyn[258]: tag=32, val=0x0[0m
+[36m[Loader][Info]   Dyn[259]: tag=33, val=0x0[0m
+[36m[Loader][Info]   Dyn[260]: tag=25, val=0x0[0m
+[36m[Loader][Info]   Dyn[261]: tag=27, val=0x0[0m
+[36m[Loader][Info]   Dyn[262]: tag=26, val=0x0[0m
+[36m[Loader][Info]   Dyn[263]: tag=28, val=0x0[0m
+[36m[Loader][Info]   Dyn[264]: tag=12, val=0x10[0m
+[36m[Loader][Info]   Dyn[265]: tag=13, val=0x74edc50[0m
+[36m[Loader][Info]   Dyn[266]: tag=1627390015, val=0xa290[0m
+[36m[Loader][Info]   Dyn[267]: tag=1627390013, val=0x3638[0m
+[36m[Loader][Info]   Dyn[268]: tag=0, val=0x0[0m
+[36m[Loader][Info] Dependency: libSceNpManager.prx[0m
+[36m[Loader][Info] Dependency: libSceSaveData.native.prx[0m
+[36m[Loader][Info] Dependency: libSceSaveDataDialog.native.prx[0m
+[36m[Loader][Info] Dependency: libSceCommonDialog.prx[0m
+[36m[Loader][Info] Dependency: libScePad.prx[0m
+[36m[Loader][Info] Dependency: libSceVideoOut.prx[0m
+[36m[Loader][Info] Dependency: libSceUserService.prx[0m
+[36m[Loader][Info] Dependency: libSceNet.prx[0m
+[36m[Loader][Info] Dependency: libSceNetCtl.prx[0m
+[36m[Loader][Info] Dependency: libSceRudp.prx[0m
+[36m[Loader][Info] Dependency: libSceNpGameIntent.prx[0m
+[36m[Loader][Info] Dependency: libSceNpUniversalDataSystem.prx[0m
+[36m[Loader][Info] Dependency: libSceNpTrophy2.prx[0m
+[36m[Loader][Info] Dependency: libSceNpWebApi2.prx[0m
+[36m[Loader][Info] Dependency: libSceNpCppWebApi.prx[0m
+[36m[Loader][Info] Dependency: libSceVoiceChat.prx[0m
+[36m[Loader][Info] Dependency: libScePlayerInvitationDialog.prx[0m
+[36m[Loader][Info] Dependency: libSceJson2.prx[0m
+[36m[Loader][Info] Dependency: libSceNpSessionSignaling.prx[0m
+[36m[Loader][Info] Dependency: libSceHttp2.prx[0m
+[36m[Loader][Info] Dependency: libSceFont-module.prx[0m
+[36m[Loader][Info] Dependency: libSceFontFt-module.prx[0m
+[36m[Loader][Info] Dependency: libSceImeDialog.prx[0m
+[36m[Loader][Info] Dependency: libSceGameLiveStreaming.prx[0m
+[36m[Loader][Info] Dependency: libSceContentExport.prx[0m
+[36m[Loader][Info] Dependency: libSceContentSearch.prx[0m
+[36m[Loader][Info] Dependency: libSceAudioIn.prx[0m
+[36m[Loader][Info] Dependency: libSceSystemService.prx[0m
+[36m[Loader][Info] Dependency: libSceRemoteplay.prx[0m
+[36m[Loader][Info] Dependency: libSceShare.prx[0m
+[36m[Loader][Info] Dependency: libSceAvPlayer.native.prx[0m
+[36m[Loader][Info] Dependency: libSceAudiodec.native.prx[0m
+[36m[Loader][Info] Dependency: libSceAudioOut.prx[0m
+[36m[Loader][Info] Dependency: libSceAudioPropagation.prx[0m
+[36m[Loader][Info] Dependency: libScePngDec.prx[0m
+[36m[Loader][Info] Dependency: libScePngEnc.prx[0m
+[36m[Loader][Info] Dependency: libSceJpegDec.prx[0m
+[36m[Loader][Info] Dependency: libSceJpegEnc.prx[0m
+[36m[Loader][Info] Dependency: libkernel.prx[0m
+[36m[Loader][Info] Dependency: libSceFiber.prx[0m
+[36m[Loader][Info] Dependency: libSceRtc.prx[0m
+[36m[Loader][Info] Dependency: libSceMsgDialog.native.prx[0m
+[36m[Loader][Info] Dependency: libSceSysmodule.prx[0m
+[36m[Loader][Info] Dependency: libc.prx[0m
+[36m[Loader][Info] Dependency: libSceAppContent.prx[0m
+[36m[Loader][Info] Dependency: libSceSigninDialog.prx[0m
+[36m[Loader][Info] Dependency: libSceAgcDriver.prx[0m
+[36m[Loader][Info] Dependency: libSceAgc.prx[0m
+[36m[Loader][Info] Dependency: libSceAcm.prx[0m
+[36m[Loader][Info] Dependency: libSceNpEntitlementAccess.prx[0m
+[36m[Loader][Info] Dependency: libSceHttp.prx[0m
+[36m[Loader][Info] Dependency: libSceSsl.prx[0m
+[36m[Loader][Info] Dependency: libSceNpCommerce.prx[0m
+[36m[Loader][Info] Dependency: libSceConvertKeycode.prx[0m
+[36m[Loader][Info] Dependency: libSceIme.prx[0m
+[36m[Loader][Info] Dependency: libSceMouse.prx[0m
+[36m[Loader][Info] Dependency: libScePlayGo.prx[0m
+[36m[Loader][Info] Dependency: libSceSharePlay.prx[0m
+[36m[Loader][Info] Dependency: libSceAmpr.prx[0m
+[36m[Loader][Info] Symbol table address: 0x80edff3a0, String table address: 0x80edf7e10, strsz: 30095[0m
+[36m[Loader][Info] Loaded 1734 dynamic symbols.[0m
+[36m[Loader][Info] Loaded 558551 standard relocations.[0m
+[36m[Loader][Info] Loaded 1708 PLT/Jump relocations.[0m
+[36m[Loader][Info] Successfully mapped module: us30.0[0m
+[36m[Loader][Info] SELF: loaded inner ELF 'us30.0' (entry=0x800000070, base=0x800000000).[0m
+[36m[Kernel][Info] Needed module 'libSceNpManager.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceSaveData.native.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceSaveDataDialog.native.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceCommonDialog.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libScePad.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceVideoOut.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceUserService.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNet.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNetCtl.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceRudp.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNpGameIntent.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNpUniversalDataSystem.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNpTrophy2.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNpWebApi2.prx' not found on disk; falling back to HLE[0m
+[36m[Loader][Info] Loading ELF binary: Games/PPSA21564-app\sce_module\libSceNpCppWebApi.prx[0m
+[36m[Loader][Info] Loading SELF container: Games/PPSA21564-app\sce_module\libSceNpCppWebApi.prx[0m
+[36m[Loader][Info]   SELF Seg[0]: id=1 offset=0xa70 size=0x1fa0 memsz=0x1fa0 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[1]: id=0 offset=0x2a10 size=0x3f3240 memsz=0x3f3240 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[2]: id=3 offset=0x3f5c50 size=0xc60 memsz=0xc60 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[3]: id=1 offset=0x3f68b0 size=0x189c8c memsz=0x189c8c encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[4]: id=5 offset=0x580540 size=0x20 memsz=0x20 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[5]: id=3 offset=0x580560 size=0x2488 memsz=0x2488 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[6]: id=7 offset=0x5829f0 size=0x20 memsz=0x20 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[7]: id=7 offset=0x582a10 size=0xd8 memsz=0xd8 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[8]: id=9 offset=0x582af0 size=0x1000 memsz=0x1000 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[9]: id=8 offset=0x583af0 size=0x1fc8a0 memsz=0x1fc8a0 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[10]: id=11 offset=0x780390 size=0x20 memsz=0x20 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[11]: id=11 offset=0x7803b0 size=0x50 memsz=0x50 encrypted=0 compressed=0[0m
+[36m[Loader][Info] SELF inner ELF Header hex: 7F 45 4C 46 02 01 01 09 02 00 00 00 00 00 00 00 18 FE 3E 00 01 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 38 00 0E 00 00 00 00 00 00 00 [0m
+[36m[Loader][Info]   Phdr[0]: type=1, p_offset=0x4000, p_filesz=0x3f3240 (sum=0x3f7240)[0m
+[36m[Loader][Info]   Phdr[1]: type=1, p_offset=0x3f8000, p_filesz=0x189c8c (sum=0x581c8c)[0m
+[36m[Loader][Info]   Phdr[2]: type=1685382480, p_offset=0x3f8000, p_filesz=0x54be4 (sum=0x44cbe4)[0m
+[36m[Loader][Info]   Phdr[3]: type=1, p_offset=0x584000, p_filesz=0x2488 (sum=0x586488)[0m
+[36m[Loader][Info]   Phdr[4]: type=1685382482, p_offset=0x584000, p_filesz=0x2488 (sum=0x586488)[0m
+[36m[Loader][Info]   Phdr[5]: type=7, p_offset=0x0, p_filesz=0x0 (sum=0x0)[0m
+[36m[Loader][Info]   Phdr[6]: type=1627389954, p_offset=0x586468, p_filesz=0x20 (sum=0x586488)[0m
+[36m[Loader][Info]   Phdr[7]: type=1, p_offset=0x588000, p_filesz=0xd8 (sum=0x5880d8)[0m
+[36m[Loader][Info]   Phdr[8]: type=1, p_offset=0x589880, p_filesz=0x1fc8a0 (sum=0x786120)[0m
+[36m[Loader][Info]   Phdr[9]: type=4, p_offset=0x785db8, p_filesz=0x24 (sum=0x785ddc)[0m
+[36m[Loader][Info]   Phdr[10]: type=2, p_offset=0x785de0, p_filesz=0x340 (sum=0x786120)[0m
+[36m[Loader][Info]   Phdr[11]: type=1879047936, p_offset=0x786120, p_filesz=0x50 (sum=0x786170)[0m
+[36m[Loader][Info]   Phdr[12]: type=1879047937, p_offset=0x7861c0, p_filesz=0x27 (sum=0x7861e7)[0m
+[36m[Loader][Info]   Phdr[13]: type=4, p_offset=0x786170, p_filesz=0x48 (sum=0x7861b8)[0m
+[36m[Loader][Info] Reconstructed SELF segment id=1: file_off=0xa70 -> ELF off=0x3f8000 size=0x1fa0[0m
+[36m[Loader][Info] Reconstructed SELF segment id=0: file_off=0x2a10 -> ELF off=0x4000 size=0x3f3240[0m
+[36m[Loader][Info] Reconstructed SELF segment id=3: file_off=0x3f5c50 -> ELF off=0x584000 size=0xc60[0m
+[36m[Loader][Info] Reconstructed SELF segment id=1: file_off=0x3f68b0 -> ELF off=0x3f8000 size=0x189c8c[0m
+[33m[Loader][Warn] SELF segment id=5 skipped: phdr p_offset is 0 (size=0x20)[0m
+[36m[Loader][Info] Reconstructed SELF segment id=3: file_off=0x580560 -> ELF off=0x584000 size=0x2488[0m
+[36m[Loader][Info] Reconstructed SELF segment id=7: file_off=0x5829f0 -> ELF off=0x588000 size=0x20[0m
+[36m[Loader][Info] Reconstructed SELF segment id=7: file_off=0x582a10 -> ELF off=0x588000 size=0xd8[0m
+[36m[Loader][Info] Reconstructed SELF segment id=9: file_off=0x582af0 -> ELF off=0x785db8 size=0x1000[0m
+[36m[Loader][Info] Reconstructed SELF segment id=8: file_off=0x583af0 -> ELF off=0x589880 size=0x1fc8a0[0m
+[36m[Loader][Info] Reconstructed SELF segment id=11: file_off=0x780390 -> ELF off=0x786120 size=0x20[0m
+[36m[Loader][Info] Reconstructed SELF segment id=11: file_off=0x7803b0 -> ELF off=0x786120 size=0x50[0m
+[36m[Loader][Info] SELF: embedded ELF at 0x1a0, phnum=14, region size=7892408[0m
+[36m[Loader][Info] SELF: program_type=0x00000101, header_size=1376, meta_size=1296, file_size=7865344, segment_count=12, flags=0x0022[0m
+[36m[Loader][Info] Loading ELF binary: C:\Users\ABHISH~1\AppData\Local\Temp\us30.1[0m
+[36m[Loader][Info] Valid ELF64 x86-64 binary detected. Entry Point: 0x0[0m
+[36m[Loader][Info] PS5 SDK module type 0xFE18 detected; treating as PIE.[0m
+[36m[Loader][Info]   Inner Phdr[0]: type=1, p_offset=0x4000, p_filesz=0x3f3240, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[1]: type=1, p_offset=0x3f8000, p_filesz=0x189c8c, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[2]: type=1685382480, p_offset=0x3f8000, p_filesz=0x54be4, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[3]: type=1, p_offset=0x584000, p_filesz=0x2488, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[4]: type=1685382482, p_offset=0x584000, p_filesz=0x2488, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[5]: type=7, p_offset=0x0, p_filesz=0x0, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[6]: type=1627389954, p_offset=0x586468, p_filesz=0x20, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[7]: type=1, p_offset=0x588000, p_filesz=0xd8, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[8]: type=1, p_offset=0x589880, p_filesz=0x1fc8a0, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[9]: type=4, p_offset=0x785db8, p_filesz=0x24, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[10]: type=2, p_offset=0x785de0, p_filesz=0x340, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[11]: type=1879047936, p_offset=0x786120, p_filesz=0x50, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[12]: type=1879047937, p_offset=0x7861c0, p_filesz=0x27, file_size=0x786db8[0m
+[36m[Loader][Info]   Inner Phdr[13]: type=4, p_offset=0x786170, p_filesz=0x48, file_size=0x786db8[0m
+[36m[Loader][Info] Required memory footprint: [0x0 - 0x784000] (size: 7880704 bytes)[0m
+[36m[Loader][Info] Position Independent Executable (PIE) detected. Mapping at base base: 0x800000000[0m
+[36m[Loader][Info] .eh_frame_hdr at guest 0x8003f4000 (347108 bytes) — C++ exceptions supported.[0m
+[31m[Memory][Error] Reserve: VirtualAlloc failed at 0x800000000 size=0x790000 (err=487)[0m
+[33m[Loader][Warn] MODULE_RELOCATE title=PPSA21564 module=C:\Users\ABHISH~1\AppData\Local\Temp\us30.1 preferred=0x800000000 allocated=0x810000000 size=0x784000 reason=collision[0m
+[36m[Loader][Info] .eh_frame_hdr re-anchored to relocated base: guest 0x8103f4000[0m
+[36m[Loader][Info] Program Header 0: type=0x1 offset=0x4000 vaddr=0x0 filesz=0x3f3240 memsz=0x3f3240 flags=0x1 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x4000 p_vaddr=0x0 p_filesz=4141632 p_memsz=4141632 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 1: type=0x1 offset=0x3f8000 vaddr=0x3f4000 filesz=0x189c8c memsz=0x189c8c flags=0x4 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x3f8000 p_vaddr=0x3f4000 p_filesz=1612940 p_memsz=1612940 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 2: type=0x6474e550 offset=0x3f8000 vaddr=0x3f4000 filesz=0x54be4 memsz=0x54be4 flags=0x4 align=0x4[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6474e550 offset=0x3f8000, size=0x54be4[0m
+[36m[Loader][Info] RAW DATA: 01 1B 03 3B E4 4B 05 00 7B A9 00 00 D0 C0 C0 FF 00 4C 05 00 F0 C0 C0 FF 14 4C 05 00 10 C1 C0 FF 34 4C 05 00 30 C3 C0 FF 64 4C 05 00 40 C3 C0 FF 78 4C 05 00 50 C3 C0 FF 8C 4C 05 00 B0 C4 C0 FF C0 4C 05 00 C0 C4 C0 FF D4 4C 05 00 D0 C4 C0 FF E8 4C 05 00 40 C5 C0 FF 14 4D 05 00 50 C5 C0 FF 28 4D 05 00 60 C5 C0 FF 3C 4D 05 00 80 C5 C0 FF 50 4D 05 00 10 C6 C0 FF 7C 4D 05 00 E0 C7 C0 FF AC 4D 05 00 70 CA C0 FF DC 4D 05 00 60 CB C0 FF 08 4E 05 00 B0 CC C0 FF 34 4E 05 00 80 CD C0 FF 64 4E 05 00 00 CE C0 FF 8C 4E 05 00 50 CF C0 FF BC 4E 05 00 10 D0 C0 FF EC 4E 05 00 90 D1 C0 FF 18 4F 05 00 40 D2 C0 FF 48 4F 05 00 F0 D2 C0 FF 70 4F 05 00 60 D3 C0 FF 98 4F 05 00 D0 D3 C0 FF C0 4F 05 00 E0 D3 C0 FF D4 4F 05 00 F0 D3 C0 FF E8 4F 05 00 00 D4 C0 FF FC 4F 05 00 10 D4 C0 FF [0m
+[36m[Loader][Info] Program Header 3: type=0x1 offset=0x584000 vaddr=0x580000 filesz=0x2488 memsz=0x2488 flags=0x6 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x584000 p_vaddr=0x580000 p_filesz=9352 p_memsz=9352 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 4: type=0x6474e552 offset=0x584000 vaddr=0x580000 filesz=0x2488 memsz=0x4000 flags=0x4 align=0x1[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6474e552 offset=0x584000, size=0x2488[0m
+[36m[Loader][Info] RAW DATA: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 5: type=0x7 offset=0x0 vaddr=0x0 filesz=0x0 memsz=0x0 flags=0x4 align=0x0[0m
+[36m[Loader][Info] Program Header 6: type=0x61000002 offset=0x586468 vaddr=0x582468 filesz=0x20 memsz=0x20 flags=0x4 align=0x8[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x61000002 offset=0x586468, size=0x20[0m
+[36m[Loader][Info] RAW DATA: 20 00 00 00 00 00 00 00 BF F4 13 3C 03 00 00 00 01 00 59 11 40 00 00 09 11 04 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 7: type=0x1 offset=0x588000 vaddr=0x584000 filesz=0xd8 memsz=0x1880 flags=0x6 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x588000 p_vaddr=0x584000 p_filesz=216 p_memsz=6272 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 8: type=0x1 offset=0x589880 vaddr=0x585880 filesz=0x1fc8a0 memsz=0x1fc8a0 flags=0x0 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x589880 p_vaddr=0x585880 p_filesz=2082976 p_memsz=2082976 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 9: type=0x4 offset=0x785db8 vaddr=0x781db8 filesz=0x24 memsz=0x24 flags=0x0 align=0x4[0m
+[36m[Loader][Info] Program Header 10: type=0x2 offset=0x785de0 vaddr=0x781de0 filesz=0x340 memsz=0x340 flags=0x6 align=0x8[0m
+[36m[Loader][Info] Program Header 11: type=0x6fffff00 offset=0x786120 vaddr=0x0 filesz=0x50 memsz=0x0 flags=0x0 align=0x10[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6fffff00 offset=0x786120, size=0x50[0m
+[36m[Loader][Info] RAW DATA: 50 41 54 48 48 00 00 00 43 00 00 00 57 3A 2F 42 75 69 6C 64 2F 4A 30 33 30 39 33 37 33 37 2F 76 73 68 2F 73 64 6B 2F 74 61 72 67 65 74 2F 73 63 65 5F 6D 6F 64 75 6C 65 2F 6C 69 62 53 63 65 4E 70 43 70 70 57 65 62 41 70 69 2E 70 72 78 00 00 [0m
+[36m[Loader][Info] Program Header 12: type=0x6fffff01 offset=0x7861c0 vaddr=0x0 filesz=0x27 memsz=0x20 flags=0x0 align=0x10[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6fffff01 offset=0x7861c0, size=0x27[0m
+[36m[Loader][Info] RAW DATA: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 13: type=0x4 offset=0x786170 vaddr=0x0 filesz=0x48 memsz=0x0 flags=0x0 align=0x4[0m
+[36m[Loader][Info] Found PT_DYNAMIC: offset=0x785de0 memsz=0x340 vaddr=0x781de0[0m
+[36m[Loader][Info] PT_DYNAMIC num_entries: 52[0m
+[36m[Loader][Info] PT_DYNAMIC loaded from guest memory at 0x810781de0[0m
+[36m[Loader][Info]   Dyn[0]: tag=1, val=0xa7a91[0m
+[36m[Loader][Info]   Dyn[1]: tag=1627390021, val=0x10101000a7aa1[0m
+[36m[Loader][Info]   Dyn[2]: tag=1627390025, val=0x1000a7aac[0m
+[36m[Loader][Info]   Dyn[3]: tag=1627389977, val=0x9[0m
+[36m[Loader][Info]   Dyn[4]: tag=1, val=0xa7ab8[0m
+[36m[Loader][Info]   Dyn[5]: tag=1627390021, val=0x20101000a7ac6[0m
+[36m[Loader][Info]   Dyn[6]: tag=1627390025, val=0x10001000a7ac6[0m
+[36m[Loader][Info]   Dyn[7]: tag=1627389977, val=0x1000000000009[0m
+[36m[Loader][Info]   Dyn[8]: tag=1, val=0xa7ad0[0m
+[36m[Loader][Info]   Dyn[9]: tag=1627390021, val=0x30101000a7ae4[0m
+[36m[Loader][Info]   Dyn[10]: tag=1627390025, val=0x20001000a7ae4[0m
+[36m[Loader][Info]   Dyn[11]: tag=1627389977, val=0x2000000000009[0m
+[36m[Loader][Info]   Dyn[12]: tag=1, val=0xa7af4[0m
+[36m[Loader][Info]   Dyn[13]: tag=1627390021, val=0x40101000a7b03[0m
+[36m[Loader][Info]   Dyn[14]: tag=1627390025, val=0x30001000a7b03[0m
+[36m[Loader][Info]   Dyn[15]: tag=1627389977, val=0x3000000000009[0m
+[36m[Loader][Info]   Dyn[16]: tag=1, val=0xa7b0e[0m
+[36m[Loader][Info]   Dyn[17]: tag=1627390021, val=0x50101000a7b1c[0m
+[36m[Loader][Info]   Dyn[18]: tag=1627390025, val=0x40001000a7b1c[0m
+[36m[Loader][Info]   Dyn[19]: tag=1627389977, val=0x4000000000009[0m
+[36m[Loader][Info]   Dyn[20]: tag=1, val=0xa7b26[0m
+[36m[Loader][Info]   Dyn[21]: tag=1627390021, val=0x60101000a7b3d[0m
+[36m[Loader][Info]   Dyn[22]: tag=1627390025, val=0x50001000a7b3d[0m
+[36m[Loader][Info]   Dyn[23]: tag=1627389977, val=0x5000000000009[0m
+[36m[Loader][Info]   Dyn[24]: tag=1627390019, val=0x101000a7b50[0m
+[36m[Loader][Info]   Dyn[25]: tag=1627390017, val=0xa7b62[0m
+[36m[Loader][Info]   Dyn[26]: tag=1627390023, val=0x60001000a7b50[0m
+[36m[Loader][Info]   Dyn[27]: tag=1627389975, val=0x6000000000001[0m
+[36m[Loader][Info]   Dyn[28]: tag=7, val=0x7294b8[0m
+[36m[Loader][Info]   Dyn[29]: tag=8, val=0x4ba8[0m
+[36m[Loader][Info]   Dyn[30]: tag=9, val=0x18[0m
+[36m[Loader][Info]   Dyn[31]: tag=1879048185, val=0x321[0m
+[36m[Loader][Info]   Dyn[32]: tag=23, val=0x728c18[0m
+[36m[Loader][Info]   Dyn[33]: tag=2, val=0x8a0[0m
+[36m[Loader][Info]   Dyn[34]: tag=3, val=0x5820a8[0m
+[36m[Loader][Info]   Dyn[35]: tag=20, val=0x7[0m
+[36m[Loader][Info]   Dyn[36]: tag=6, val=0x62d428[0m
+[36m[Loader][Info]   Dyn[37]: tag=11, val=0x18[0m
+[36m[Loader][Info]   Dyn[38]: tag=5, val=0x585880[0m
+[36m[Loader][Info]   Dyn[39]: tag=10, val=0xa7ba6[0m
+[36m[Loader][Info]   Dyn[40]: tag=4, val=0x72e060[0m
+[36m[Loader][Info]   Dyn[41]: tag=32, val=0x0[0m
+[36m[Loader][Info]   Dyn[42]: tag=33, val=0x0[0m
+[36m[Loader][Info]   Dyn[43]: tag=25, val=0x0[0m
+[36m[Loader][Info]   Dyn[44]: tag=27, val=0x0[0m
+[36m[Loader][Info]   Dyn[45]: tag=26, val=0x0[0m
+[36m[Loader][Info]   Dyn[46]: tag=28, val=0x0[0m
+[36m[Loader][Info]   Dyn[47]: tag=12, val=0x10[0m
+[36m[Loader][Info]   Dyn[48]: tag=13, val=0x3f31c0[0m
+[36m[Loader][Info]   Dyn[49]: tag=1627390015, val=0xfb7f0[0m
+[36m[Loader][Info]   Dyn[50]: tag=1627390013, val=0x53d58[0m
+[36m[Loader][Info]   Dyn[51]: tag=0, val=0x0[0m
+[36m[Loader][Info] Dependency: libSceJson2.prx[0m
+[36m[Loader][Info] Dependency: libSceRtc.prx[0m
+[36m[Loader][Info] Dependency: libSceNpWebApi2.prx[0m
+[36m[Loader][Info] Dependency: libSceHttp.prx[0m
+[36m[Loader][Info] Dependency: libkernel.prx[0m
+[36m[Loader][Info] Dependency: libSceLibcInternal.prx[0m
+[36m[Loader][Info] Symbol table address: 0x81062d428, String table address: 0x810585880, strsz: 687014[0m
+[36m[Loader][Info] Loaded 42922 dynamic symbols.[0m
+[36m[Loader][Info] Loaded 807 standard relocations.[0m
+[36m[Loader][Info] Loaded 92 PLT/Jump relocations.[0m
+[36m[Loader][Info] Successfully mapped module: us30.1[0m
+[36m[Loader][Info] SELF: loaded inner ELF 'us30.1' (entry=0x810000000, base=0x810000000).[0m
+[36m[Kernel][Info] Auto-loaded PRX 'libSceNpCppWebApi.prx' as 'Games/PPSA21564-app\sce_module\libSceNpCppWebApi.prx' at guest base 0x810000000[0m
+[36m[Kernel][Info] Needed module 'libSceJson2.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceRtc.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNpWebApi2.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceHttp.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libkernel.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceLibcInternal.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceVoiceChat.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libScePlayerInvitationDialog.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceJson2.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNpSessionSignaling.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceHttp2.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceFont-module.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceFontFt-module.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceImeDialog.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceGameLiveStreaming.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceContentExport.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceContentSearch.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAudioIn.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceSystemService.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceRemoteplay.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceShare.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAvPlayer.native.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAudiodec.native.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAudioOut.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAudioPropagation.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libScePngDec.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libScePngEnc.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceJpegDec.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceJpegEnc.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libkernel.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceFiber.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceRtc.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceMsgDialog.native.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceSysmodule.prx' not found on disk; falling back to HLE[0m
+[36m[Loader][Info] Loading ELF binary: Games/PPSA21564-app\sce_module\libc.prx[0m
+[36m[Loader][Info] Loading SELF container: Games/PPSA21564-app\sce_module\libc.prx[0m
+[36m[Loader][Info]   SELF Seg[0]: id=1 offset=0xa70 size=0x8c0 memsz=0x8c0 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[1]: id=0 offset=0x1330 size=0x115bf0 memsz=0x115bf0 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[2]: id=3 offset=0x116f20 size=0x3a0 memsz=0x3a0 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[3]: id=1 offset=0x1172c0 size=0x73410 memsz=0x73410 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[4]: id=5 offset=0x18a6d0 size=0x40 memsz=0x40 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[5]: id=3 offset=0x18a710 size=0x6830 memsz=0x6830 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[6]: id=7 offset=0x190f40 size=0x20 memsz=0x20 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[7]: id=7 offset=0x190f60 size=0x3c78 memsz=0x3c78 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[8]: id=9 offset=0x194be0 size=0x1c0 memsz=0x1c0 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[9]: id=8 offset=0x194da0 size=0x35938 memsz=0x35938 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[10]: id=11 offset=0x1ca6e0 size=0x20 memsz=0x20 encrypted=0 compressed=0[0m
+[36m[Loader][Info]   SELF Seg[11]: id=11 offset=0x1ca700 size=0x58 memsz=0x58 encrypted=0 compressed=0[0m
+[36m[Loader][Info] SELF inner ELF Header hex: 7F 45 4C 46 02 01 01 09 02 00 00 00 00 00 00 00 18 FE 3E 00 01 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 50 8A 24 00 00 00 00 00 00 00 00 00 40 00 38 00 0E 00 40 00 00 00 23 00 [0m
+[36m[Loader][Info]   Phdr[0]: type=1, p_offset=0x4000, p_filesz=0x115bf0 (sum=0x119bf0)[0m
+[36m[Loader][Info]   Phdr[1]: type=1, p_offset=0x11c000, p_filesz=0x73410 (sum=0x18f410)[0m
+[36m[Loader][Info]   Phdr[2]: type=1685382480, p_offset=0x11c000, p_filesz=0x9bec (sum=0x125bec)[0m
+[36m[Loader][Info]   Phdr[3]: type=1, p_offset=0x190000, p_filesz=0x6830 (sum=0x196830)[0m
+[36m[Loader][Info]   Phdr[4]: type=1685382482, p_offset=0x190000, p_filesz=0x6830 (sum=0x196830)[0m
+[36m[Loader][Info]   Phdr[5]: type=7, p_offset=0x190000, p_filesz=0x180 (sum=0x190180)[0m
+[36m[Loader][Info]   Phdr[6]: type=1627389954, p_offset=0x196810, p_filesz=0x20 (sum=0x196830)[0m
+[36m[Loader][Info]   Phdr[7]: type=1, p_offset=0x198000, p_filesz=0x3c78 (sum=0x19bc78)[0m
+[36m[Loader][Info]   Phdr[8]: type=1, p_offset=0x19d000, p_filesz=0x35938 (sum=0x1d2938)[0m
+[36m[Loader][Info]   Phdr[9]: type=4, p_offset=0x1d2660, p_filesz=0x24 (sum=0x1d2684)[0m
+[36m[Loader][Info]   Phdr[10]: type=2, p_offset=0x1d2688, p_filesz=0x2b0 (sum=0x1d2938)[0m
+[36m[Loader][Info]   Phdr[11]: type=1879047936, p_offset=0x1d2940, p_filesz=0x58 (sum=0x1d2998)[0m
+[36m[Loader][Info]   Phdr[12]: type=1879047937, p_offset=0x1d29d0, p_filesz=0x1a (sum=0x1d29ea)[0m
+[36m[Loader][Info]   Phdr[13]: type=4, p_offset=0x1d2998, p_filesz=0x30 (sum=0x1d29c8)[0m
+[36m[Loader][Info] Reconstructed SELF segment id=1: file_off=0xa70 -> ELF off=0x11c000 size=0x8c0[0m
+[36m[Loader][Info] Reconstructed SELF segment id=0: file_off=0x1330 -> ELF off=0x4000 size=0x115bf0[0m
+[36m[Loader][Info] Reconstructed SELF segment id=3: file_off=0x116f20 -> ELF off=0x190000 size=0x3a0[0m
+[36m[Loader][Info] Reconstructed SELF segment id=1: file_off=0x1172c0 -> ELF off=0x11c000 size=0x73410[0m
+[36m[Loader][Info] Reconstructed SELF segment id=5: file_off=0x18a6d0 -> ELF off=0x190000 size=0x40[0m
+[36m[Loader][Info] Reconstructed SELF segment id=3: file_off=0x18a710 -> ELF off=0x190000 size=0x6830[0m
+[36m[Loader][Info] Reconstructed SELF segment id=7: file_off=0x190f40 -> ELF off=0x198000 size=0x20[0m
+[36m[Loader][Info] Reconstructed SELF segment id=7: file_off=0x190f60 -> ELF off=0x198000 size=0x3c78[0m
+[36m[Loader][Info] Reconstructed SELF segment id=9: file_off=0x194be0 -> ELF off=0x1d2660 size=0x1c0[0m
+[36m[Loader][Info] Reconstructed SELF segment id=8: file_off=0x194da0 -> ELF off=0x19d000 size=0x35938[0m
+[36m[Loader][Info] Reconstructed SELF segment id=11: file_off=0x1ca6e0 -> ELF off=0x1d2940 size=0x20[0m
+[36m[Loader][Info] Reconstructed SELF segment id=11: file_off=0x1ca700 -> ELF off=0x1d2940 size=0x58[0m
+[36m[Loader][Info] SELF: embedded ELF at 0x1a0, phnum=14, region size=1911274[0m
+[36m[Loader][Info] SELF: program_type=0x00000101, header_size=1376, meta_size=1296, file_size=1877856, segment_count=12, flags=0x0022[0m
+[36m[Loader][Info] Loading ELF binary: C:\Users\ABHISH~1\AppData\Local\Temp\us30.2[0m
+[36m[Loader][Info] Valid ELF64 x86-64 binary detected. Entry Point: 0x0[0m
+[36m[Loader][Info] PS5 SDK module type 0xFE18 detected; treating as PIE.[0m
+[36m[Loader][Info]   Inner Phdr[0]: type=1, p_offset=0x4000, p_filesz=0x115bf0, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[1]: type=1, p_offset=0x11c000, p_filesz=0x73410, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[2]: type=1685382480, p_offset=0x11c000, p_filesz=0x9bec, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[3]: type=1, p_offset=0x190000, p_filesz=0x6830, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[4]: type=1685382482, p_offset=0x190000, p_filesz=0x6830, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[5]: type=7, p_offset=0x190000, p_filesz=0x180, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[6]: type=1627389954, p_offset=0x196810, p_filesz=0x20, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[7]: type=1, p_offset=0x198000, p_filesz=0x3c78, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[8]: type=1, p_offset=0x19d000, p_filesz=0x35938, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[9]: type=4, p_offset=0x1d2660, p_filesz=0x24, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[10]: type=2, p_offset=0x1d2688, p_filesz=0x2b0, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[11]: type=1879047936, p_offset=0x1d2940, p_filesz=0x58, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[12]: type=1879047937, p_offset=0x1d29d0, p_filesz=0x1a, file_size=0x1d29ea[0m
+[36m[Loader][Info]   Inner Phdr[13]: type=4, p_offset=0x1d2998, p_filesz=0x30, file_size=0x1d29ea[0m
+[36m[Loader][Info] Required memory footprint: [0x0 - 0x1d4000] (size: 1916928 bytes)[0m
+[36m[Loader][Info] Position Independent Executable (PIE) detected. Mapping at base base: 0x800000000[0m
+[36m[Loader][Info] .eh_frame_hdr at guest 0x800118000 (39916 bytes) — C++ exceptions supported.[0m
+[31m[Memory][Error] Reserve: VirtualAlloc failed at 0x800000000 size=0x1e0000 (err=487)[0m
+[31m[Memory][Error] Reserve: VirtualAlloc failed at 0x810000000 size=0x1e0000 (err=487)[0m
+[33m[Loader][Warn] MODULE_RELOCATE title=PPSA21564 module=C:\Users\ABHISH~1\AppData\Local\Temp\us30.2 preferred=0x800000000 allocated=0x820000000 size=0x1d4000 reason=collision[0m
+[36m[Loader][Info] .eh_frame_hdr re-anchored to relocated base: guest 0x820118000[0m
+[36m[Loader][Info] Program Header 0: type=0x1 offset=0x4000 vaddr=0x0 filesz=0x115bf0 memsz=0x115bf0 flags=0x1 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x4000 p_vaddr=0x0 p_filesz=1137648 p_memsz=1137648 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 1: type=0x1 offset=0x11c000 vaddr=0x118000 filesz=0x73410 memsz=0x73410 flags=0x4 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x11c000 p_vaddr=0x118000 p_filesz=472080 p_memsz=472080 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 2: type=0x6474e550 offset=0x11c000 vaddr=0x118000 filesz=0x9bec memsz=0x9bec flags=0x4 align=0x4[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6474e550 offset=0x11c000, size=0x9bec[0m
+[36m[Loader][Info] RAW DATA: 01 1B 03 3B F4 31 01 00 7C 13 00 00 00 81 EE FF 10 32 01 00 60 81 EE FF 30 32 01 00 70 81 EE FF 50 32 01 00 80 81 EE FF 64 32 01 00 90 81 EE FF 78 32 01 00 C0 81 EE FF A0 32 01 00 E0 81 EE FF C0 32 01 00 60 82 EE FF E4 32 01 00 C0 82 EE FF 08 33 01 00 20 83 EE FF 2C 33 01 00 40 83 EE FF 4C 33 01 00 70 83 EE FF 6C 33 01 00 20 84 EE FF 98 33 01 00 30 85 EE FF C4 33 01 00 20 86 EE FF EC 33 01 00 70 86 EE FF 10 34 01 00 50 87 EE FF 38 34 01 00 90 87 EE FF 60 34 01 00 C0 87 EE FF 74 34 01 00 20 88 EE FF 98 34 01 00 E0 88 EE FF C0 34 01 00 90 89 EE FF EC 34 01 00 B0 89 EE FF 0C 35 01 00 D0 89 EE FF 2C 35 01 00 F0 89 EE FF 50 35 01 00 50 8E EE FF 80 35 01 00 60 8E EE FF 98 35 01 00 B0 96 EE FF C8 35 01 00 E0 A4 EE FF F8 35 01 00 A0 A5 EE FF 28 36 01 00 B0 A6 EE FF [0m
+[36m[Loader][Info] Program Header 3: type=0x1 offset=0x190000 vaddr=0x18c000 filesz=0x6830 memsz=0x6830 flags=0x6 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x190000 p_vaddr=0x18c000 p_filesz=26672 p_memsz=26672 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 4: type=0x6474e552 offset=0x190000 vaddr=0x18c000 filesz=0x6830 memsz=0x8000 flags=0x4 align=0x1[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6474e552 offset=0x190000, size=0x6830[0m
+[36m[Loader][Info] RAW DATA: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 7F 7F 7F 7F 7F 7F 7F 7F 7F 7F 7F 7F 7F 7F 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 5: type=0x7 offset=0x190000 vaddr=0x18c000 filesz=0x180 memsz=0x468 flags=0x4 align=0x10[0m
+[36m[Loader][Info] Program Header 6: type=0x61000002 offset=0x196810 vaddr=0x192810 filesz=0x20 memsz=0x20 flags=0x4 align=0x8[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x61000002 offset=0x196810, size=0x20[0m
+[36m[Loader][Info] RAW DATA: 20 00 00 00 00 00 00 00 BF F4 13 3C 03 00 00 00 01 00 59 11 40 00 00 09 11 04 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 7: type=0x1 offset=0x198000 vaddr=0x194000 filesz=0x3c78 memsz=0x9000 flags=0x6 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x198000 p_vaddr=0x194000 p_filesz=15480 p_memsz=36864 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 8: type=0x1 offset=0x19d000 vaddr=0x19d000 filesz=0x35938 memsz=0x35938 flags=0x0 align=0x4000[0m
+[36m[Loader][Info] PT_LOAD p_offset=0x19d000 p_vaddr=0x19d000 p_filesz=219448 p_memsz=219448 sizeof(Elf64_Phdr)=56[0m
+[36m[Loader][Info] Program Header 9: type=0x4 offset=0x1d2660 vaddr=0x1d2660 filesz=0x24 memsz=0x24 flags=0x0 align=0x4[0m
+[36m[Loader][Info] Program Header 10: type=0x2 offset=0x1d2688 vaddr=0x1d2688 filesz=0x2b0 memsz=0x2b0 flags=0x6 align=0x8[0m
+[36m[Loader][Info] Program Header 11: type=0x6fffff00 offset=0x1d2940 vaddr=0x0 filesz=0x58 memsz=0x0 flags=0x0 align=0x10[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6fffff00 offset=0x1d2940, size=0x58[0m
+[36m[Loader][Info] RAW DATA: 50 41 54 48 50 00 00 00 4C 00 00 00 57 3A 2F 42 75 69 6C 64 2F 4A 30 33 30 39 33 37 31 38 2F 73 79 73 2F 69 6E 74 65 72 6E 61 6C 2F 75 73 65 72 6D 6F 64 65 2F 73 72 63 2F 6C 69 62 63 2F 50 72 6F 73 70 65 72 6F 5F 52 65 6C 65 61 73 65 2F 6C 69 62 63 2E 70 72 78 00 [0m
+[36m[Loader][Info] Program Header 12: type=0x6fffff01 offset=0x1d29d0 vaddr=0x0 filesz=0x1a memsz=0x20 flags=0x0 align=0x10[0m
+[36m[Loader][Info] PS5_PHDR found: type=0x6fffff01 offset=0x1d29d0, size=0x1a[0m
+[36m[Loader][Info] RAW DATA: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 [0m
+[36m[Loader][Info] Program Header 13: type=0x4 offset=0x1d2998 vaddr=0x0 filesz=0x30 memsz=0x0 flags=0x0 align=0x4[0m
+[36m[Loader][Info] Found PT_DYNAMIC: offset=0x1d2688 memsz=0x2b0 vaddr=0x1d2688[0m
+[36m[Loader][Info] PT_DYNAMIC num_entries: 43[0m
+[36m[Loader][Info] PT_DYNAMIC loaded from guest memory at 0x8201d2688[0m
+[36m[Loader][Info]   Dyn[0]: tag=1, val=0xbde1[0m
+[36m[Loader][Info]   Dyn[1]: tag=1627390021, val=0x101010000bdef[0m
+[36m[Loader][Info]   Dyn[2]: tag=1627390025, val=0x10000bdef[0m
+[36m[Loader][Info]   Dyn[3]: tag=1627389977, val=0x9[0m
+[36m[Loader][Info]   Dyn[4]: tag=1, val=0xbdf9[0m
+[36m[Loader][Info]   Dyn[5]: tag=1627390021, val=0x201010000be10[0m
+[36m[Loader][Info]   Dyn[6]: tag=1627390025, val=0x100010000be23[0m
+[36m[Loader][Info]   Dyn[7]: tag=1627389977, val=0x1000000000009[0m
+[36m[Loader][Info]   Dyn[8]: tag=1, val=0xbe39[0m
+[36m[Loader][Info]   Dyn[9]: tag=1627390021, val=0x301010000be4d[0m
+[36m[Loader][Info]   Dyn[10]: tag=1627390025, val=0x200010000be4d[0m
+[36m[Loader][Info]   Dyn[11]: tag=1627389977, val=0x2000000000009[0m
+[36m[Loader][Info]   Dyn[12]: tag=14, val=0xbe5d[0m
+[36m[Loader][Info]   Dyn[13]: tag=1627390019, val=0x1010000be66[0m
+[36m[Loader][Info]   Dyn[14]: tag=1627390017, val=0xbe6b[0m
+[36m[Loader][Info]   Dyn[15]: tag=1627390023, val=0x300010000be66[0m
+[36m[Loader][Info]   Dyn[16]: tag=1627389975, val=0x3000000000001[0m
+[36m[Loader][Info]   Dyn[17]: tag=1627390023, val=0x400010000beb7[0m
+[36m[Loader][Info]   Dyn[18]: tag=1627389975, val=0x4000000000001[0m
+[36m[Loader][Info]   Dyn[19]: tag=7, val=0x1bb678[0m
+[36m[Loader][Info]   Dyn[20]: tag=8, val=0x110e8[0m
+[36m[Loader][Info]   Dyn[21]: tag=9, val=0x18[0m
+[36m[Loader][Info]   Dyn[22]: tag=1879048185, val=0xb59[0m
+[36m[Loader][Info]   Dyn[23]: tag=23, val=0x1babb0[0m
+[36m[Loader][Info]   Dyn[24]: tag=2, val=0xac8[0m
+[36m[Loader][Info]   Dyn[25]: tag=3, val=0x192260[0m
+[36m[Loader][Info]   Dyn[26]: tag=20, val=0x7[0m
+[36m[Loader][Info]   Dyn[27]: tag=6, val=0x1a8ec8[0m
+[36m[Loader][Info]   Dyn[28]: tag=11, val=0x18[0m
+[36m[Loader][Info]   Dyn[29]: tag=5, val=0x19d000[0m
+[36m[Loader][Info]   Dyn[30]: tag=10, val=0xbec3[0m
+[36m[Loader][Info]   Dyn[31]: tag=4, val=0x1cc760[0m
+[36m[Loader][Info]   Dyn[32]: tag=32, val=0x192808[0m
+[36m[Loader][Info]   Dyn[33]: tag=33, val=0x8[0m
+[36m[Loader][Info]   Dyn[34]: tag=25, val=0x0[0m
+[36m[Loader][Info]   Dyn[35]: tag=27, val=0x0[0m
+[36m[Loader][Info]   Dyn[36]: tag=26, val=0x0[0m
+[36m[Loader][Info]   Dyn[37]: tag=28, val=0x0[0m
+[36m[Loader][Info]   Dyn[38]: tag=12, val=0x10[0m
+[36m[Loader][Info]   Dyn[39]: tag=13, val=0x115b70[0m
+[36m[Loader][Info]   Dyn[40]: tag=1627390015, val=0x11ce8[0m
+[36m[Loader][Info]   Dyn[41]: tag=1627390013, val=0x5f00[0m
+[36m[Loader][Info]   Dyn[42]: tag=0, val=0x0[0m
+[36m[Loader][Info] Dependency: libkernel.prx[0m
+[36m[Loader][Info] Dependency: libSceLibcInternal.prx[0m
+[36m[Loader][Info] Dependency: libSceSysmodule.prx[0m
+[36m[Loader][Info] SONAME: libc.prx[0m
+[36m[Loader][Info] Symbol table address: 0x8201a8ec8, String table address: 0x82019d000, strsz: 48835[0m
+[36m[Loader][Info] Loaded 3039 dynamic symbols.[0m
+[36m[Loader][Info] Loaded 2911 standard relocations.[0m
+[36m[Loader][Info] Loaded 115 PLT/Jump relocations.[0m
+[36m[Loader][Info] Successfully mapped module: us30.2[0m
+[36m[Loader][Info] SELF: loaded inner ELF 'us30.2' (entry=0x820000000, base=0x820000000).[0m
+[36m[Kernel][Info] Auto-loaded PRX 'libc.prx' as 'Games/PPSA21564-app\sce_module\libc.prx' at guest base 0x820000000[0m
+[36m[Kernel][Info] Needed module 'libkernel.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceLibcInternal.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceSysmodule.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAppContent.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceSigninDialog.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAgcDriver.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAgc.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAcm.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNpEntitlementAccess.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceHttp.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceSsl.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceNpCommerce.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceConvertKeycode.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceIme.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceMouse.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libScePlayGo.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceSharePlay.prx' not found on disk; falling back to HLE[0m
+[36m[Kernel][Info] Needed module 'libSceAmpr.prx' not found on disk; falling back to HLE[0m
+[33m[Loader][Warn] ModuleGraph: 58 missing dependencies (will resolve to HLE at runtime): libSceAcm.prx, libSceAgc.prx, libSceAgcDriver.prx, libSceAmpr.prx, libSceAppContent.prx, libSceAudioIn.prx, libSceAudioOut.prx, libSceAudioPropagation.prx, libSceAudiodec.native.prx, libSceAvPlayer.native.prx, libSceCommonDialog.prx, libSceContentExport.prx, libSceContentSearch.prx, libSceConvertKeycode.prx, libSceFiber.prx, libSceFont-module.prx, libSceFontFt-module.prx, libSceGameLiveStreaming.prx, libSceHttp.prx, libSceHttp2.prx, libSceIme.prx, libSceImeDialog.prx, libSceJpegDec.prx, libSceJpegEnc.prx, libSceJson2.prx, libSceLibcInternal.prx, libSceMouse.prx, libSceMsgDialog.native.prx, libSceNet.prx, libSceNetCtl.prx, libSceNpCommerce.prx, libSceNpEntitlementAccess.prx, libSceNpGameIntent.prx, libSceNpManager.prx, libSceNpSessionSignaling.prx, libSceNpTrophy2.prx, libSceNpUniversalDataSystem.prx, libSceNpWebApi2.prx, libScePad.prx, libScePlayGo.prx, libScePlayerInvitationDialog.prx, libScePngDec.prx, libScePngEnc.prx, libSceRemoteplay.prx, libSceRtc.prx, libSceRudp.prx, libSceSaveData.native.prx, libSceSaveDataDialog.native.prx, libSceShare.prx, libSceSharePlay.prx, libSceSigninDialog.prx, libSceSsl.prx, libSceSysmodule.prx, libSceSystemService.prx, libSceUserService.prx, libSceVideoOut.prx, libSceVoiceChat.prx, libkernel.prx[0m
+[36m[Kernel][Info] Module dependency 'libSceAcm.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAgc.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAgcDriver.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAmpr.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAppContent.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAudioIn.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAudioOut.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAudioPropagation.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAudiodec.native.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceAvPlayer.native.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceCommonDialog.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceContentExport.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceContentSearch.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceConvertKeycode.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceFiber.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceFont-module.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceFontFt-module.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceGameLiveStreaming.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceHttp.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceHttp2.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceIme.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceImeDialog.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceJpegDec.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceJpegEnc.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceJson2.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceLibcInternal.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceMouse.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceMsgDialog.native.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNet.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNetCtl.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNpCommerce.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNpEntitlementAccess.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNpGameIntent.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNpManager.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNpSessionSignaling.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNpTrophy2.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNpUniversalDataSystem.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceNpWebApi2.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libScePad.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libScePlayGo.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libScePlayerInvitationDialog.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libScePngDec.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libScePngEnc.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceRemoteplay.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceRtc.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceRudp.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceSaveData.native.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceSaveDataDialog.native.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceShare.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceSharePlay.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceSigninDialog.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceSsl.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceSysmodule.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceSystemService.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceUserService.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceVideoOut.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libSceVoiceChat.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Module dependency 'libkernel.prx' has no loadable module; served by HLE[0m
+[36m[Kernel][Info] Linking module us30.1 at base address 0x810000000...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID ''. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ZT4ODD2Ts9o#F#G'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'WJ3rqFwymew#B#C'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '99bMGglFW3I#B#C'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'OOY9+ObfKec#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'HwP3aM+c85c#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'zpiPsH7dbFQ#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'egOOvrnF6mI#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '3EI-OSJ65Xc#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'lQOCF84lvzw#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hksbskNToEA#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'vvzWO-DvG1s#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'YuOW3dDAKYc#D#E'. Creating cross-module stub...[0m
+[36m[Kernel][Info] Module us30.1 linked successfully.[0m
+[36m[Kernel][Info] Patched 1 syscall instructions in executable segments.[0m
+[36m[HLE][Info] Guest .eh_frame_hdr registered at 0x8103f4000 (347108 bytes, 1 table(s))[0m
+[36m[Kernel][Info] Linking module us30.2 at base address 0x820000000...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'djxxOmW6-aw#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'VADc3MNQ3cM#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'IafI2PxcPnQ#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'EHsF2i9FXPM#B#C'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '-YTW+qXc3CQ#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '3k6kx-zOOSQ#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'c7ZnT7V1B98#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'VAzswvTOCzI#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'cfwBSQyr5Ys#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'crb5j7mkk1c#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '4fU5yvOkVG4#C#D'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hHlZQUnlxSM#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0Cq8ipKr9n0#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '52NcYU9+lEo#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'WlyEA-sLDf0#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'bIHoZCTomsI#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'XD3mDeybCnk#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'adh--6nIqTk#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'iPtZRWICjrM#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Hc4CaR6JBL0#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'q2y-wDIVWZA#A#B'. Creating cross-module stub...[0m
+[36m[Kernel][Info] Module us30.2 linked successfully.[0m
+[36m[Kernel][Info] Patched 3 syscall instructions in executable segments.[0m
+[36m[HLE][Info] Guest .eh_frame_hdr registered at 0x820118000 (39916 bytes, 2 table(s))[0m
+[36m[Kernel][Info] Linking module us30.0 at base address 0x800000000...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'JT+t00a3TxA#A#B'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '+r3rMFwItV4#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'oQySEUfgXRA#B#C'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'QwOO7vegnV8#B#C'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wiT9jeC7xPw#B#C'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'cduy9v4YmT4#B#C'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'WAzWTZm1H+I#B#C'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'vDLMoJLde8I#E#F'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'znaWI0gpuo8#E#F'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '1FZBKy8HeNU#F#G'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'HuViW4HnrOw#F#G'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'qWYHOFwqCxY#G#H'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '-3Y5GO+-i78#G#H'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'bErx49PgxyY#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '304ooNZxWDY#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'kOj1HiAGE54#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '9wO9XrMsNhc#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'gvD1greCu0A#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '2mKX2Spso7I#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '9vA2aW+CHuA#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'SF47kB2MNTo#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'PIWqhn9oSxc#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hoOAofhhRvE#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'HQOwnfMGipQ#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '8Kcp5d-q1Uo#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Q4qBuN-c0ZM#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '45ggEzakPJQ#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'zJGf8xjFnQE#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'beRjXBn-z+o#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Inp1lfL+Jdw#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'drjIbDbA7UQ#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'TSM6whtekok#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'OXXX4mUk3uk#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ZVw46bsasAk#H#I'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Z4wwCFiBELQ#I#J'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'CAbbX6BuQZ0#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'OMYRTU0uc4w#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'KaPL3fbTLCA#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'szEVu+edXV4#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'l4SLBpKUDK4#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0yzYdZf0IwE#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'SUEVes8gvmw#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wIJsiqY+BMk#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '3hBvwqEwqj8#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'rZqWV3eXgOA#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '6PBNpsgyaxw#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'amuBfI-AQc4#J#K'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0HBYxYAjmf0#K#L'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'XY14n3jNIpE#L#M'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 's6W4Zl4Slgk#L#M'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '56QLTqx911s#L#M'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Fidd8vWgyVE#L#M'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'xvsP5Yz6FmY#L#M'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'AzD4irAcKE4#L#M'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wB7IWzGp2v0#L#M'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '47UAEuQl+iI#L#M'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hOnIlcGrO6g#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'MsaFhR+lPE4#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'fY3QqeNkF8k#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'QafxeZM3WK4#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'AAj9X+4aGYA#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'lxtHJMwBsaU#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'KJdPcOGmK58#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'NNVf18SlbT8#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'fIATVMo4Y1w#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '9X9+cneTGUU#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'sk54bi6FtYM#N#O'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'y7MgGX889Mo#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'po9eImAEhY4#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '7bu++dneYUU#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'eEMpsX1fGHU#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'zbKF-ejbR0Q#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ajXKK3BOVc8#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0rKMjtnMATU#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hR8-CKMl2JQ#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'X3BWlTuErbk#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'S+mOdmysfhw#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Ptmkf9UnWBg#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'q75YGaxUT3s#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'sW3km27c12M#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hpG+mR4EbpE#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'spdS-hedavE#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'j43P62s5SX4#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'CscDZAFA5+c#P#Q'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'kFhuwHrIUqs#Q#R'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Zo52g0A1XDw#Q#R'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'gDm5a6GSE94#Q#R'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'AhqlQ8cngrk#Q#R'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'JP-PtKMiI1E#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '9uP25i6ipno#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ZCd6IYoD3Bc#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hoINmSMlYjI#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wM4LO2iK3s8#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'dFCphqnd+a4#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'xhAcaIwnrgk#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '5AZPp99ogrc#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'iZeYfOxtMRg#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'fSb2oQTNrgA#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '195ad-jAsTU#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'HJ8GpRT1aiw#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Ncel8t2Rrpc#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'XL8+BUqjB1w#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '+isUKw4zud4#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'w5+VCznos5E#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'sn4HNCtNRzY#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'VbFjEs--uiA#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wLsJlmgEIaI#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ivMCitpSQNk#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'DlWmn2ZQuWY#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'bcH5EnFE2xY#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '9yLjn46Ypfs#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wcgr5mte7T8#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'WXF2ihRF+B8#R#S'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Z9Q9LzQDXf0#S#T'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'aBuX0PX-T7I#S#T'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'n1fn2KFeLDA#S#T'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'r4XacqHvkn4#S#T'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'CqJuNXo5yiM#S#T'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'yJw2m6UWDYU#S#T'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'cQkBH-pXhF0#S#T'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'OTilStjd9L8#S#T'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'o0DBQpFE13o#T#U'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mmyOCxQMVYQ#T#U'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'rbqZig38AT8#T#U'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'QygCNNmbGss#T#U'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '+wCt7fCijgk#T#U'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'c8D9qIjo8EY#T#U'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '9XYJwCf3lEA#T#U'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'pDom5-078DA#T#U'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'CUKn5pX-NVY#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'MO24vDhmS4E#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'gdUCnU0gHdI#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'IQtleGLL5pQ#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'exAxkyVLt0s#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'oaJ1BpN2FQk#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'n590hj5Oe-k#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'kAenWy1Zw5o#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'zN3+nuA0SFQ#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '1+DgKL0haWQ#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'fljdejMcG1c#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'o1vIEHeb6tw#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'whrS4oksXc4#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'LHDoRWVFGqk#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Avv7OApgCJk#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'N1EBMeGhf7E#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'BkjBP+YC19w#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'OqQKX0h5COw#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hq5LffQjz-s#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'imxVx8lm+KM#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'SSCaczu2aMQ#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'C-4Qw5Srlyw#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wyKFUOWdu3Q#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '6DFUkCwQLa8#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'vzHs3C8lWJk#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'PEjv7CVDRYs#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'nlU2VnfpqTM#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'JzCH3SCFnAU#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'KXUpebrFk1U#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '1QjhKxrsOB8#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'fD5rqhEXKYQ#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '3OdRkSjOcog#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'cKYtVmeSTcw#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '3BrWWFU+4ts#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'W-2WOXEHGck#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'XIGorvLusDQ#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '8-zmgsxkBek#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'lz9y9UFO2UU#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'eCRMCSk96NU#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'TMtqoFQjjbA#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'v0phZwa4R5o#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'JQKWIsS9joE#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'SaRlqtqaCew#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mz2iTY0MK4A#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '6vGCkkQJOcI#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'SsRbbCiWoGw#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '+FYcYefsVX0#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'WaSFJoRWXaI#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mxgmMj-Mq-o#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'f4Onl7efPEY#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '7rogx92EEyc#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ObkDGDBsVtw#U#V'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'oM+XCzVG3oM#V#W'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Xx974EW-QFY#V#W'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'tb3cZTCl8Ps#Y#Z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'FCygF4Ec4so#Y#Z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0GnN4QCgIfs#Y#Z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'AOWqIYsgVHs#Y#Z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '+KDWny9Y-6k#Y#Z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'nya-R5gDYhM#a#b'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'BohEAQ7DlUE#a#b'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'LozEOU8+anM#a#b'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Jh6WbHhnI68#a#b'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '5NE8Sjc7VC8#a#b'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '3RQ5aQfnstU#b#c'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mPpPxv5CZt4#b#c'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'BOwybKVa3Do#c#d'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'KnsfHKmZqFA#d#e'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Sygnk9dr5WQ#d#e'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0IL1keINExQ#d#e'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'GQTObcITIXI#d#e'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ErH6tKS7fzE#d#e'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'OVths0xGfho#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'av8Z++94rs0#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ZC17w3vB5Lo#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ET4Gr-Uu07s#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ODJK2sn9w4A#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'd8FcbzfAdQw#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'w5moABNwnRY#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '9y5v+fGN4Wk#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hdTyRzCXQeQ#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'XC9wM+xULz8#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'k-q+xOxdc3E#e#f'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'aII9h5nli9U#g#h'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'R7d0F1g2qsU#g#h'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'PE2zHMqLSHs#g#h'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '8XTArSPyWHk#g#h'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'XKCN4gpeYsM#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'VlBT16890mA#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ZQXE-xS6MTE#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'kIdb+iQUzCs#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '5vzOS2pHMFc#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'aNEqtSHdUSo#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'CPLV6G-eXmk#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'WXMhENV2NcA#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'b-dYXrjSNZU#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'S0JwP2AFTTE#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'x5VPqg5iyAk#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'd84otraxt2s#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '-wsUTr31yeg#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'aKJZx7wCma8#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '7xyAxrusLko#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'G+QLTfyLMYk#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ht-QXT3zGxo#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wkseM3LWPuc#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hhz9pITnC8k#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'eEeKqFeNI3o#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '8bI5h8req30#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'PBcrVpEqUVY#h#i'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'U6h4e5JRPaQ#i#j'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'QbD+eENEwo8#i#j'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '-6srIGbLTIU#i#j'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'm0uW+8pFyaw#i#j'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'WC216DD3El4#i#j'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'RUrWdwTWZy8#j#k'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'xgDjJKpcyHo#j#k'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '7aGTPfrqT9s#j#k'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '9030RnBDoh4#j#k'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mkgXxsoxWHg#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'IKP8typ0QUk#m#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'pDuPEf3m4fI#m#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '+U1R4WtXvoc#m#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'cDW233RAwWo#m#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'YCV5dGGBcCo#m#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mlYGfmqE3fQ#u#u'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'JlpJVoRWv7U#u#u'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Bw31liTFT3A#u#u'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'LXlmS6PvJdU#u#u'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'o69RpYO-Mu0#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'fTx66l5iWIA#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'RLN3gRlXJLE#x#x'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'u70oWo92SYQ#x#x'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '8fe55ktlNVo#x#x'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ZIXln2K3XMk#x#x'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'jBgBjAj02R8#x#x'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'X+4jdIS75P0#a#b'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'm-I92Ab50W8#1#1'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'LR5cwFMMCVE#1#1'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mUuUOWI-C+0#2#2'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'vIsoJsLvvlM#2#2'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'UaLjloJinow#6#6'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'D-CzAxQL0XI#8#H'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'DOwXL+FQMEY#0#0'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'htyBOoWeS58#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'qgxDBjorUxs#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'P6A3ytpsiYc#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '6381dWF+xsQ#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'wYhXVfS2Et4#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '1e2BNwI-XzE#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0a2TBNfE3BU#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'yuO2H2Uvnos#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'P5pdoykPYTk#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '59tL1AQBb8U#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'qe7oZ+v4PWA#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'qISjDHrxONc#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Aeu5wVKkF9w#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'PDxS48xGQLs#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 's2-NPIvz+iA#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '-xm7kZQNpHI#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'EY28T2bkN7k#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'hvG6GfBMXg8#z#z'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'DLORcroUqbc#7#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'n1-v6FgU7MQ#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ApkYaHb8Sek#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'QzB4O+bJQyA#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'WT-5NKy42fw#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'VB-BtuIW8Xc#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'w5fcCG+t31g#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'i3HWvW35jao#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'C+Khtbbx2g8#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'eYAh2vlCY-U#r#n'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'VEDMaQmJZng#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'RPCAhx-aabE#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'gzndltBEzWc#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'DLfoNxTFNVk#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'cQb8Zr8Q0Y0#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'j0+3uJMxYJY#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'bt3LHR9xjK4#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 't4ExS+SwLjs#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'enZm-6GjWqw#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'jK+yuYCI7MA#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'GmOguNIsuKk#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'tNn5WBkta60#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'pFQ9UHpO52s#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '4UkZbYKVF7c#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'sWbST0oQKsc#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '4quckD2y7Pg#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'f12ObAMEi9A#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'dXPaz65HNmk#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mv0O8Zg0woU#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'mZSbNJVJpV8#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Jg-AgkdJHkk#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'BVmR1H8l+XI#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'YPxkUDhgoNI#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Eul7AGEpjLo#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'bFEs0Gs6D2A#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'X169CE6G3Y4#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0BMj1hgG+kE#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'ClnsFLLLcss#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '4fgtGfXDrFc#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'gAtc79UTt5E#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'JYd9g9L+TmE#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '2Hw8gjMdwSY#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'I-Qm+MEso5c#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'NNIZ-FMyz3M#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Xp85BP3+BBI#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'qesF88X4DRg#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '7nXGDGMXSqo#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'DXmgc5op8Yw#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'rddQYXM0CjM#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'kdFImtTD0hc#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'qvbdJc7bG+s#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'iwTNhyaemnw#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'tmfr97+ED5I#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'VGkEj4d6-Kg#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '3OfeY4pzDV0#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '0RdLmAh7WVo#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'pbnNnahE8vk#9#7'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'AhGvpITrf4M#v#v'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'fPSCdQxgpSw#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'T6xuVw0KUJo#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'dolOmWH+huQ#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'fd5Bp5tGTgo#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'Abendgtz+3o#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 't7PlZ9nt5Lc#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'bxGoVxpdSPQ#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'qzMN2XKGA4k#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '-RnpfpxIhec#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID 'qj7QZpgr9Uw#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '1rZSWUv1IRc#w#w'. Creating cross-module stub...[0m
+[33m[HLE][Warn] ResolveAny: Unresolved NID '-KRzWekV120#w#w'. Creating cross-module stub...[0m
+[36m[Kernel][Info] Module us30.0 linked successfully.[0m
+[36m[Kernel][Info] Found main() via code scan at VA 0x80027d3b0 (plt+0xe3)[0m
+[36m[HLE][Info] Guest main() address set: 0x80027d3b0[0m
+[36m[Kernel][Info] Guest main() at: 0x80027d3b0[0m
+[36m[HLE][Info] DT_INIT address set: 0x800000010[0m
+[36m[Kernel][Info] DT_INIT at guest VA: 0x800000010[0m
+[36m[Kernel][Info] Memory starting at guest base (0x800000000) BEFORE protection:
+CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC 
+55 48 89 E5 41 56 53 48 8D 1D 52 00 00 00 48 3B 
+1D 7B 47 E3 08 73 1E 4C 8D 35 42 00 00 00 EB 09 
+48 83 C3 08 4C 39 F3 73 0C 48 8B 03 48 85 C0 74 
+EF FF D0 EB EB 48 8D 1D 1C C3 E3 08 EB 06 66 90 
+48 83 C3 F8 48 8B 03 48 85 C0 74 F4 48 83 F8 FF 
+74 04 FF D0 EB EA 5B 41 5E 5D C3 00 00 00 00 00 
+55 48 89 E5 41 57 41 56 53 50 44 8B 37 48 89 F3 
+4C 8D 7F 08 E8 07 71 4E 07 48 89 DF E8 0F 71 4E 
+07 48 8D 3D B8 DB 4E 07 E8 03 71 4E 07 E8 6E FF 
+FF FF 44 89 F7 4C 89 FE 31 D2 E8 61 CB 27 00 89 
+C7 89 C3 E8 F8 70 4E 07 89 DF E8 01 71 4E 07 0F 
+0B CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC 
+0F B6 0F 84 C9 74 1F 48 FF C7 B8 C5 9D 1C 81 90 
+0F B6 C9 31 C1 69 C1 93 01 00 01 0F B6 0F 48 FF 
+C7 84 C9 75 EB C3 B8 C5 9D 1C 81 C3 CC CC CC CC 
+[0m
+[36m[Kernel][Info] Patched 1539 syscall instructions in executable segments.[0m
+[36m[HLE][Info] Guest .eh_frame_hdr registered at 0x8074f0000 (2501588 bytes, 3 table(s))[0m
+[36m[General][Info] Starting guest execution loop...[0m
+[36m[Kernel][Info] Starting execution of us30.0 at Entry Point: 0x800000070[0m
+[36m[Kernel][Info] Entry point code: 554889E5415741565350448B374889F34C8D7F08E807714E074889DFE80F714E[0m
+[36m[Kernel][Info] Memory starting at guest base (0x800000000):
+CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC 
+55 48 89 E5 41 56 53 48 8D 1D 52 00 00 00 48 3B 
+1D 7B 47 E3 08 73 1E 4C 8D 35 42 00 00 00 EB 09 
+48 83 C3 08 4C 39 F3 73 0C 48 8B 03 48 85 C0 74 
+EF FF D0 EB EB 48 8D 1D 1C C3 E3 08 EB 06 66 90 
+48 83 C3 F8 48 8B 03 48 85 C0 74 F4 48 83 F8 FF 
+74 04 FF D0 EB EA 5B 41 5E 5D C3 00 00 00 00 00 
+55 48 89 E5 41 57 41 56 53 50 44 8B 37 48 89 F3 
+4C 8D 7F 08 E8 07 71 4E 07 48 89 DF E8 0F 71 4E 
+07 48 8D 3D B8 DB 4E 07 E8 03 71 4E 07 E8 6E FF 
+FF FF 44 89 F7 4C 89 FE 31 D2 E8 61 CB 27 00 89 
+C7 89 C3 E8 F8 70 4E 07 89 DF E8 01 71 4E 07 0F 
+0B CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC 
+0F B6 0F 84 C9 74 1F 48 FF C7 B8 C5 9D 1C 81 90 
+0F B6 C9 31 C1 69 C1 93 01 00 01 0F B6 0F 48 FF 
+C7 84 C9 75 EB C3 B8 C5 9D 1C 81 C3 CC CC CC CC 
+[0m
+[36m[Kernel][Info] Dumped libc.prx text segment to i:\Personal\Windows\pcsx5\libc_text_dump.bin[0m
+[36m[Kernel][Info] Guest stack frame configured on dedicated stack at sp = 0x194028eff00[0m
+[36m[Kernel][Info] Found PT_SCE_PROC_PARAM at 0x808e3c388, protecting it for diagnostics.[0m
+[36m[Kernel][Info] Protecting auxv page at 0x194028ef000 for diagnostics.[0m
+[31m[Kernel][Error] FATAL: auxv page is STILL READABLE after PROT_NONE! test_read = 0[0m
+[36m[Kernel][Info] VEH Exception Triggered: Code: 0xC0000005, RIP: 0x800000054, OS Thread: 37980[0m
+[31m[Kernel][Error] [DIAGNOSTIC] SceProcParam READ TRAP: RIP=0x800000054, ADDR=0x808e3c368, OFFSET=0xffffffffffffffe0[0m
+[31m[Kernel][Error]    INSTR: 48 8B 03 48 85 C0 74 F4[0m
+[31m[Kernel][Error]    RAX=0 RBX=808e3c368 RCX=1c6fd22290800000 RDX=f RSI=7ff8b56a350b RDI=8074edc50[0m
+[31m[Kernel][Error]    R8=7ff8b577c8a0 R9=48f R10=54 R11=fffffffff3af1853 R12=0[0m
+[36m[Kernel][Info] VEH Exception Triggered: Code: 0x80000004, RIP: 0x800000057, OS Thread: 37980[0m
+[36m[HLE][Info] GUEST-STDOUT[2]: Terminating due to uncaught exception 'bad allocation' of type St9bad_alloc
+[0m
+[31m[HLE][Error] ==================================================[0m
+[31m[HLE][Error] UNSUPPORTED GUEST OPERATION (RESOLVE_ANY STUB)[0m
+[31m[HLE][Error] MODULE: unknown[0m
+[31m[HLE][Error] NID: cfwBSQyr5Ys#A#B[0m
+[31m[HLE][Error] SYMBOL: cfwBSQyr5Ys#A#B[0m
+[31m[HLE][Error] GUEST_RIP: 0x820018cb9[0m
+[31m[HLE][Error] GUEST_RSP: 0x194028efd88[0m
+[31m[HLE][Error] STUB_CLASS: 6[0m
+[31m[HLE][Error] RDI: 0x820198c40[0m
+[31m[HLE][Error] RSI: 0x400[0m
+[31m[HLE][Error] RDX: 0x82015c540[0m
+[31m[HLE][Error] RCX: 0x820156e01[0m
+[31m[HLE][Error] R8: 0x7ffffffffffffffc[0m
+[31m[HLE][Error] R9: 0x0[0m
+[31m[HLE][Error] ==================================================[0m
+[36m[Kernel][Info] VEH Exception Triggered: Code: 0xC0000028, RIP: 0x7ff9d2412d2f, OS Thread: 37980[0m
+[31m[Kernel][Error] Guest stack scan (potential return addresses):[0m
+[31m[Kernel][Error] Guest memory scan (leaked host pointers):[0m
+[31m[Kernel][Error]   [0x80025fa10] = 0x7fffff81687f (guest offset 0x25fa10)[0m
+[31m[Kernel][Error]   [0x8002600a8] = 0x7ffffa813875 (guest offset 0x2600a8)[0m
+[31m[Kernel][Error]   [0x800260578] = 0x7ffff88141c0 (guest offset 0x260578)[0m
+[31m[Kernel][Error]   [0x8003a4048] = 0x7fffe1810feb (guest offset 0x3a4048)[0m
+[31m[Kernel][Error]   [0x8003a4718] = 0x7fffe2810feb (guest offset 0x3a4718)[0m
+[31m[Kernel][Error]   [0x8003a6b18] = 0x7fffe2810feb (guest offset 0x3a6b18)[0m
+[31m[Kernel][Error]   [0x800460540] = 0x7ffff9814800 (guest offset 0x460540)[0m
+[31m[Kernel][Error]   [0x800460570] = 0x7fffe2811c72 (guest offset 0x460570)[0m
+[31m[Kernel][Error]   [0x80046ff00] = 0x7fffe6810676 (guest offset 0x46ff00)[0m
+[31m[Kernel][Error]   [0x80046ff80] = 0x7ffffe810000 (guest offset 0x46ff80)[0m
+[31m[Kernel][Error]   [0x8004700e8] = 0x7fffe6811676 (guest offset 0x4700e8)[0m
+[31m[Kernel][Error]   [0x800470168] = 0x7ffffe810000 (guest offset 0x470168)[0m
+[31m[Kernel][Error]   [0x8004701d8] = 0x7fff3d00007f (guest offset 0x4701d8)[0m
+[31m[Kernel][Error]   [0x8004702b8] = 0x7fffe1810249 (guest offset 0x4702b8)[0m
+[31m[Kernel][Error]   [0x8004704f8] = 0x7ffff9810000 (guest offset 0x4704f8)[0m
+[31m[Kernel][Error]   [0x800470658] = 0x7ffffe810000 (guest offset 0x470658)[0m
+[31m[Kernel][Error]   [0x8004706d0] = 0x7fffe6810c76 (guest offset 0x4706d0)[0m
+[31m[Kernel][Error]   [0x800486ea8] = 0x7fff25f88944 (guest offset 0x486ea8)[0m
+[31m[Kernel][Error]   [0x800487348] = 0x7fff25f88944 (guest offset 0x487348)[0m
+[31m[Kernel][Error]   [0x800487838] = 0x7fff25f88944 (guest offset 0x487838)[0m
+[31m[Kernel][Error]   [0x800487d18] = 0x7fff25f88944 (guest offset 0x487d18)[0m
+[31m[Kernel][Error]   [0x800487fc8] = 0x7fffe181690c (guest offset 0x487fc8)[0m
+[31m[Kernel][Error]   [0x8004881b8] = 0x7fff25e88944 (guest offset 0x4881b8)[0m
+[31m[Kernel][Error]   [0x800488300] = 0x7fff256004b7 (guest offset 0x488300)[0m
+[31m[Kernel][Error]   [0x800488d98] = 0x7fffe181610c (guest offset 0x488d98)[0m
+[31m[Kernel][Error]   [0x8004897e8] = 0x7ffffe814800 (guest offset 0x4897e8)[0m
+[31m[Kernel][Error]   [0x8004964f8] = 0x7fff254104b7 (guest offset 0x4964f8)[0m
+[31m[Kernel][Error]   [0x8004967d8] = 0x7fff254104b7 (guest offset 0x4967d8)[0m
+[31m[Kernel][Error]   [0x800496ab8] = 0x7fff254104b7 (guest offset 0x496ab8)[0m
+[31m[Kernel][Error]   [0x800496d98] = 0x7fff254104b7 (guest offset 0x496d98)[0m
+[31m[Kernel][Error]   [0x800497078] = 0x7fff254104b7 (guest offset 0x497078)[0m
+[31m[Kernel][Error]   [0x800497358] = 0x7fff254104b7 (guest offset 0x497358)[0m
+[31m[Kernel][Error] VEH Unhandled Exception: Code: 0xC0000028, RIP: 0x7ff9d2412d2f, Module: C:\WINDOWS\SYSTEM32\ntdll.dll, Offset: 0x12d2f[0m
+[31m[Kernel][Error]   Boot timeline:[0m
+[31m[Kernel][Error]     Creating Vulkan swapchain[0m
+[31m[Kernel][Error]     GPU subsystem ready[0m
+[31m[Kernel][Error]     Loading module: eboot.bin[0m
+[31m[Kernel][Error]     Loading PRX: libSceNpCppWebApi.prx[0m
+[31m[Kernel][Error]     Loading PRX: libc.prx[0m
+[31m[Kernel][Error]     Module loaded: us30.0[0m
+[31m[Kernel][Error]     Starting guest execution[0m
+[31m[Kernel][Error]   HLE trace: libkernel::tn3VlD0hG60#k#N (id=225) from guest RIP 0x8200009d9 args=(0x820194500, 0x820156e6f, 0x6f6c6c6120646162, 0x69746163)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::9UK1vLZQft4#y#J (id=223) from guest RIP 0x8200009b9 args=(0x820194500, 0x1, 0x1, 0x820194480)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::tn3VlD0hG60#k#N (id=225) from guest RIP 0x8200009d9 args=(0x820194500, 0x820156138, 0xffffffffffea8e27, 0x8200042cb)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::tn3VlD0hG60#k#N (id=225) from guest RIP 0x8200009d9 args=(0x820194500, 0x820156138, 0x0, 0x28aba49)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::9UK1vLZQft4#y#J (id=223) from guest RIP 0x8200009b9 args=(0x820194500, 0x820158b92, 0x194028efd90, 0x3000000010)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::9UK1vLZQft4#y#J (id=223) from guest RIP 0x8200009b9 args=(0x820194500, 0x1, 0x9, 0x820194480)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::tn3VlD0hG60#k#N (id=225) from guest RIP 0x8200009d9 args=(0x820194500, 0x820158b92, 0x6570797420666f20, 0x820004320)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::9UK1vLZQft4#y#J (id=223) from guest RIP 0x8200009b9 args=(0x820194500, 0x1, 0xc, 0x820194480)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::tn3VlD0hG60#k#N (id=225) from guest RIP 0x8200009d9 args=(0x820194500, 0x82015c540, 0x615f646162397453, 0x636f6c6c)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::9UK1vLZQft4#y#J (id=223) from guest RIP 0x8200009b9 args=(0x820194500, 0x1, 0x1, 0x820194480)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::9UK1vLZQft4#y#J (id=223) from guest RIP 0x8200009b9 args=(0x820194500, 0x820158b9d, 0xffffffffffea8e0a, 0x8200042cb)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::FxVZqBAA7ks (id=128) from guest RIP 0x8200106e9 args=(0x2, 0x8201982d0, 0x4c, 0x0)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::tn3VlD0hG60#k#N (id=225) from guest RIP 0x8200009d9 args=(0x820194500, 0x8201982d0, 0x82019831c, 0x1c6fd22290800000)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::tn3VlD0hG60#k#N (id=225) from guest RIP 0x8200009d9 args=(0x820194500, 0x8201982d0, 0xf, 0x0)[0m
+[31m[Kernel][Error]   HLE trace: libkernel::tn3VlD0hG60#k#N (id=225) from guest RIP 0x8200009d9 args=(0x820194500, 0x8201982d0, 0x0, 0x28aba49)[0m
+[31m[Kernel][Error]   HLE trace: unknown::cfwBSQyr5Ys#A#B (id=1724) from guest RIP 0x820018cb9 args=(0x820198c40, 0x400, 0x82015c540, 0x820156e01)[0m
+[36m[General][Info] Per-title config overrides active for PPSA21564 (pcsx5_config/titles/PPSA21564.json): log level Debug, strict imports off[0m

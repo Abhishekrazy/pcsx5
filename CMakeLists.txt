@@ -534,6 +534,61 @@ if(BUILD_TESTING)
     add_test(NAME hle_import_report COMMAND hle_import_report_tests)
 
     # ------------------------------------------------------------------------
+    # HLE auto-stub tests — exercises the unknown symbol fallback and Guest
+    # crash/exit behavior.
+    # ------------------------------------------------------------------------
+    add_executable(hle_stub_tests
+        tests/hle_stub_tests.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/input/input_bot.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+        src/hle/libsysmodule.cpp
+        src/hle/guest_printf.cpp
+        src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
+        src/hle/libjson.cpp
+        src/hle/libaudioout.cpp
+        src/hle/libappcontent.cpp
+        src/hle/librtc.cpp
+        src/hle/libfiber.cpp
+        src/hle/libregmgr.cpp
+        src/hle/libnotification.cpp
+        src/hle/libnet.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(hle_stub_tests PRIVATE src)
+    target_compile_options(hle_stub_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(hle_stub_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
+    add_test(NAME hle_stub COMMAND hle_stub_tests)
+
+
+    # ------------------------------------------------------------------------
     # Reports tests — CompatSummary jsonl history, regression verdict,
     # aggregated markdown report.
     # ------------------------------------------------------------------------

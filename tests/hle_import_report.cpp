@@ -151,7 +151,18 @@ void TestJsonExport() {
     HleDispatch(known_id, 0, 0, 0, 0, 0, 0, 0x1000, 0);
     HleDispatch(known_id, 0, 0, 0, 0, 0, 0, 0x1000, 0);
     HleDispatch(known_id, 0, 0, 0, 0, 0, 0, 0x1ABC, 0);
-    HleDispatch(stub_id,  0, 0, 0, 0, 0, 0, 0x2000, 0);
+    
+    // UNKNOWN stubs trigger ExitGuestProcess to prevent silent bugs.
+    // Catch it so we can verify the JSON report.
+    HLE::SetMainGuestThreadId(::GetCurrentThreadId());
+    HLE::ArmGuestExitEnv(true);
+#pragma warning(push)
+#pragma warning(disable: 4611)
+    if (setjmp(HLE::GuestExitEnv()) == 0) {
+#pragma warning(pop)
+        HleDispatch(stub_id,  0, 0, 0, 0, 0, 0, 0x2000, 0);
+    }
+    HLE::ArmGuestExitEnv(false);
 
     const std::string json_text = HLE::ExportImportReportJson();
     nlohmann::json doc = nlohmann::json::parse(json_text, nullptr, false);

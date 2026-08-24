@@ -156,12 +156,16 @@ struct Config {
 // Service API
 // ---------------------------------------------------------------------------
 
-// Bind the service to a directory (created if missing).  Calling Initialize
-// twice with different directories is supported but discouraged.  Loads the
-// global config immediately.  Idempotent.
+// Bind the service to a directory (created if missing). Calling Initialize
+// with a new directory replaces the active configuration. Loads the global
+// config immediately.
 void Initialize(const std::string& config_dir);
 
-// True if Initialize has been called.  All other functions assert on this
+// Reset the configuration service to uninitialized state (clears directory,
+// cached global and per-title configs). Used for clean shutdown and tests.
+void Reset();
+
+// True if Initialize has been called. All other functions assert on this
 // (except SetForTitle which queues the value).
 bool IsInitialized();
 

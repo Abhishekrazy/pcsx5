@@ -18,10 +18,8 @@ u64 PosixWrite(const GuestArgs& args);
 u64 PosixFstat(const GuestArgs& args);
 u64 PosixStat(const GuestArgs& args);
 
-// sceKernelMapDirectMemory / sceKernelMapDirectMemory2.  The "2" variant
-// takes an extra memoryType argument (rdx) that shifts protection/flags/
-// directMemoryStart down one register each and passes alignment as the 7th
-// (stack) argument via GuestArgs::stack_args.
+// sceKernelAllocateDirectMemory / sceKernelMapDirectMemory / sceKernelMapDirectMemory2.
+u64 SceKernelAllocateDirectMemory(const GuestArgs& args);
 u64 SceKernelMapDirectMemory(const GuestArgs& args);
 u64 SceKernelMapDirectMemory2(const GuestArgs& args);
 

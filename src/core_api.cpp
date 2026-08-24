@@ -227,7 +227,7 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     }
     if (cfg.logging.json_output) LogConfig::SetJsonOutput(true);
     for (int i = 0; i < 6; ++i) {
-        LogConfig::SetLevel(static_cast<LogCategory>(i), LogLevel::Debug);
+        LogConfig::SetLevel(static_cast<LogCategory>(i), cfg.logging.min_level);
     }
     LogConfig::SetDedup(false);
     LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);
@@ -671,6 +671,7 @@ PCSX5_API void pcsx5_shutdown(void) {
     }
 
     LOG_INFO(General, "pcsx5 shutdown cleanly.");
+    ConfigService::Reset();
     g_state.initialized = false;
     g_state.loaded = false;
 }

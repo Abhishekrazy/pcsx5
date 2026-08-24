@@ -261,7 +261,47 @@ namespace Loader {
         }
 
         // Map segments
-        for (const auto& phdr : phdrs) {
+        for (int i = 0; i < ehdr.e_phnum; ++i) {
+            const auto& phdr = phdrs[i];
+            LOG_INFO(Loader, "Program Header %d: type=0x%x offset=0x%llx vaddr=0x%llx filesz=0x%llx memsz=0x%llx flags=0x%x align=0x%llx", 
+                     i, phdr.p_type, phdr.p_offset, phdr.p_vaddr, phdr.p_filesz, phdr.p_memsz, phdr.p_flags, phdr.p_align);
+            if (phdr.p_type >= 0x60000000) {
+                LOG_INFO(Loader, "PS5_PHDR found: type=0x%x offset=0x%llx, size=0x%llx", phdr.p_type, phdr.p_offset, phdr.p_filesz);
+                
+                // Save current position
+                auto old_pos = file.tellg();
+                
+                file.seekg(phdr.p_offset, std::ios::beg);
+                u64 read_size = (phdr.p_filesz > 256) ? 256 : phdr.p_filesz; // Cap at 256 bytes for trace
+                std::vector<u8> raw_data(read_size);
+                file.read(reinterpret_cast<char*>(raw_data.data()), read_size);
+                
+                // Restore position
+                file.seekg(old_pos, std::ios::beg);
+
+                std::string hex_dump = "";
+                for (u64 j = 0; j < read_size; ++j) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "%02X ", raw_data[j]);
+                    hex_dump += buf;
+                }
+                LOG_INFO(Loader, "RAW DATA: %s", hex_dump.c_str());
+            }
+
+            if (phdr.p_type == 0x61000001) {
+                // Save PT_SCE_PROC_PARAM for reference
+                MappedSegment seg;
+                seg.address = base_address + phdr.p_vaddr;
+                seg.size = phdr.p_memsz;
+                seg.type = phdr.p_type;
+                seg.file_offset = phdr.p_offset;
+                seg.file_size = phdr.p_filesz;
+                seg.mem_size = phdr.p_memsz;
+                seg.vaddr = phdr.p_vaddr;
+                seg.flags = phdr.p_flags;
+                out_module.segments.push_back(seg);
+            }
+
             if (phdr.p_type != PT_LOAD) continue;
 
             guest_addr_t seg_start = base_address + phdr.p_vaddr;
@@ -459,6 +499,20 @@ namespace Loader {
                         case DT_FINI:
                             out_module.fini_address =
                                 base_address + dyn.d_un.d_ptr;
+                            break;
+                        case DT_INIT_ARRAY:
+                            out_module.init_array_address =
+                                base_address + dyn.d_un.d_ptr;
+                            break;
+                        case DT_FINI_ARRAY:
+                            out_module.fini_array_address =
+                                base_address + dyn.d_un.d_ptr;
+                            break;
+                        case DT_INIT_ARRAYSZ:
+                            out_module.init_array_size = dyn.d_un.d_val;
+                            break;
+                        case DT_FINI_ARRAYSZ:
+                            out_module.fini_array_size = dyn.d_un.d_val;
                             break;
                     }
                 }
