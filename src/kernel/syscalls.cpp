@@ -85,6 +85,10 @@ static bool ReadGuestString(guest_addr_t addr, char* dest, size_t max_size) {
 }
 
 static bool SafeReadBuffer(guest_addr_t addr, void* dest, u64 size) {
+    // Prevent non-canonical addresses from triggering #GP faults.
+    if (addr > 0x00007FFFFFFFFFFF) {
+        return false;
+    }
     __try {
         Memory::ReadBuffer(addr, dest, size);
         return true;
@@ -184,6 +188,9 @@ void RegisterSyscallHandler(u32 syscall_number, SyscallHandler handler) {
 }
 
 s64 HandleSyscall(u32 syscall_number, CONTEXT* context) {
+    LOG_ERROR(Kernel, "[DIAGNOSTIC] SYSCALL %u (RAX) args: %llx, %llx, %llx, %llx", 
+              syscall_number, context->Rdi, context->Rsi, context->Rdx, context->R10);
+              
     if (syscall_number >= 512) {
         LOG_WARN(Kernel, "Unknown syscall number: %u", syscall_number);
         return -ENOSYS;

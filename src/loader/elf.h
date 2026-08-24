@@ -86,7 +86,10 @@ namespace Loader {
     constexpr s64 DT_DEBUG        = 21;
     constexpr s64 DT_TEXTREL      = 22;
     constexpr s64 DT_JMPREL       = 23;
-    constexpr s64 DT_BIND_NOW     = 24;
+    constexpr s64 DT_INIT_ARRAY   = 25;
+    constexpr s64 DT_FINI_ARRAY   = 26;
+    constexpr s64 DT_INIT_ARRAYSZ = 27;
+    constexpr s64 DT_FINI_ARRAYSZ = 28;
 
     // Relocation Types for x86-64
     constexpr u32 R_X86_64_NONE      = 0;
@@ -256,9 +259,13 @@ namespace Loader {
         u64  tls_align     = 0;
         u64  tls_template_offset = 0; // file offset of TLS template
 
-        // DT_INIT / DT_FINI
+        // DT_INIT / DT_FINI / DT_INIT_ARRAY / DT_FINI_ARRAY
         guest_addr_t init_address = 0;
         guest_addr_t fini_address = 0;
+        guest_addr_t init_array_address = 0;
+        guest_addr_t fini_array_address = 0;
+        u64 init_array_size = 0;
+        u64 fini_array_size = 0;
 
         // DT_SONAME (only meaningful for ET_DYN)
         std::string soname;

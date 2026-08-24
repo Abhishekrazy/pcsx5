@@ -205,6 +205,13 @@ bool SafeReadMem(u64 addr, void* dst, size_t n) {
         std::memcpy(dst, reinterpret_cast<const void*>(addr), n);
         return true;
     }
+    
+    // Prevent non-canonical addresses from triggering #GP faults, which
+    // cause VehHandler to misidentify the crash as a guest sentinel fault.
+    if (addr > 0x00007FFFFFFFFFFF) {
+        return false;
+    }
+    
     __try {
         std::memcpy(dst, reinterpret_cast<const void*>(addr), n);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -2331,6 +2338,21 @@ void RegisterLibLibc() {
         RegisterSymbol(module, "Ujf3KzMvRmI#T#T", MemalignImpl);     // memalign
         RegisterSymbol(module, "2Btkg8k24Zg#T#T", AlignedAllocImpl); // aligned_alloc
         RegisterSymbol(module, "cVSk9y8URbc#T#T", PosixMemalignImpl);// posix_memalign
+        
+        // Instrument C++ allocators
+        auto CppNewImpl = [](const GuestArgs& args) -> u64 {
+            LOG_ERROR(HLE, "GUEST ALLOCATION INSTRUMENTATION: operator new(size=%llu) called", args.arg1);
+            return 0; // Return 0 to naturally trigger std::bad_alloc in the guest caller
+        };
+        auto CppDeleteImpl = [](const GuestArgs& args) -> u64 {
+            LOG_ERROR(HLE, "GUEST ALLOCATION INSTRUMENTATION: operator delete(ptr=0x%llx) called", args.arg1);
+            return 0;
+        };
+
+        RegisterSymbol(module, "GORJdiJn4Jc#T#T", CppNewImpl);    // _Znwm
+        RegisterSymbol(module, "AKEXnLaADX1#T#T", CppNewImpl);    // _Znam
+        RegisterSymbol(module, "CLtnTrRw3+T#T#T", CppDeleteImpl); // _ZdlPv
+        RegisterSymbol(module, "u8PSs0GTrBi#T#T", CppDeleteImpl); // _ZdaPv
     }
 
     // Replace the leaky page-per-call libkernel registrations (malloc, free,
@@ -2663,6 +2685,14 @@ void RegisterLibLibc() {
 
     // C++ ABI / unwind surface (__cxa_*, _Unwind_*, guard variables).
     RegisterCxxAbiSymbols();
+}
+
+void ResetLibcHeap() {
+    std::lock_guard<std::mutex> lock(g_heap_mutex);
+    g_heap_free.clear();
+    g_heap_bump = 0;
+    g_heap_end  = 0;
+    g_last_strtod_ptr = 0;
 }
 
 } // namespace HLE

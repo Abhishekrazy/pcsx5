@@ -91,6 +91,7 @@ std::unordered_map<u32, std::shared_ptr<VideoOutPort>>  g_vo_ports;
 u32                                                     g_next_vo_handle = 0x4000;
 
 // Vblank pump: one host thread, 60 Hz edge sequence.
+std::thread             g_vblank_thread;
 std::mutex              g_vblank_mtx;
 std::condition_variable g_vblank_cv;
 std::atomic<u64>        g_vblank_edge_seq{0};
@@ -127,17 +128,30 @@ void SignalVblank(const std::shared_ptr<VideoOutPort>& port) {
 void VblankPumpLoop() {
     const auto interval = std::chrono::duration<double>(1.0 / kVblankHz);
     auto next_edge = std::chrono::steady_clock::now() + interval;
-    while (!g_vblank_stop.load(std::memory_order_relaxed)) {
+    while (!g_vblank_stop.load(std::memory_order_acquire)) {
         // R1.3: VRR mode — skip the fixed-interval sleep; instead wait
         // on the condition variable (notified on flip).  The display's
         // VRR engine (FreeSync/G-SYNC) handles the timing.
-        if (g_vrr_active.load(std::memory_order_relaxed)) {
+        if (g_vrr_active.load(std::memory_order_acquire)) {
             std::unique_lock<std::mutex> lk(g_vblank_mtx);
-            g_vblank_cv.wait_for(lk, std::chrono::milliseconds(100));
+            g_vblank_cv.wait_for(lk, std::chrono::milliseconds(100), [&] {
+                return g_vblank_stop.load(std::memory_order_acquire);
+            });
         } else {
-            std::this_thread::sleep_until(next_edge);
-            next_edge += std::chrono::duration_cast<
-                std::chrono::steady_clock::duration>(interval);
+            std::unique_lock<std::mutex> lk(g_vblank_mtx);
+            g_vblank_cv.wait_until(lk, next_edge, [&] {
+                return g_vblank_stop.load(std::memory_order_acquire);
+            });
+            auto now = std::chrono::steady_clock::now();
+            if (next_edge <= now) {
+                next_edge = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(interval);
+            } else {
+                next_edge += std::chrono::duration_cast<std::chrono::steady_clock::duration>(interval);
+            }
+        }
+
+        if (g_vblank_stop.load(std::memory_order_acquire)) {
+            break;
         }
 
         g_vblank_edge_seq.fetch_add(1, std::memory_order_release);
@@ -159,18 +173,47 @@ void VblankPumpLoop() {
     }
 }
 
+} // namespace
+
 void EnsureVblankPumpStarted() {
     bool expected = false;
     if (!g_vblank_started.compare_exchange_strong(expected, true)) {
         return;
     }
-    g_vblank_stop.store(false, std::memory_order_relaxed);
-    // Registered at runtime, so it runs before namespace-scope static
-    // destructors: cleanly ends the pump loop in processes that exit through
-    // main() (unit tests) instead of ExitProcess (the emulator itself).
-    std::atexit(+[] { g_vblank_stop.store(true, std::memory_order_relaxed); });
-    std::thread(VblankPumpLoop).detach();
+    g_vblank_stop.store(false, std::memory_order_release);
+    std::lock_guard<std::mutex> lk(g_vblank_mtx);
+    if (g_vblank_thread.joinable()) {
+        g_vblank_thread.join();
+    }
+    g_vblank_thread = std::thread(VblankPumpLoop);
 }
+
+void ResetVideoOut() {
+    g_vblank_stop.store(true, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lk(g_vblank_mtx);
+        g_vblank_cv.notify_all();
+    }
+    if (g_vblank_thread.joinable()) {
+        g_vblank_thread.join();
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_vo_mutex);
+        g_vo_ports.clear();
+        g_next_vo_handle = 0x4000;
+    }
+    g_vblank_edge_seq.store(0, std::memory_order_release);
+    g_vrr_active.store(false, std::memory_order_release);
+    g_vblank_started.store(false, std::memory_order_release);
+    g_vblank_stop.store(false, std::memory_order_release);
+}
+
+bool IsVblankPumpRunning() {
+    return g_vblank_started.load(std::memory_order_acquire) &&
+           !g_vblank_stop.load(std::memory_order_acquire);
+}
+
+namespace {
 
 // Shared tail of SubmitFlip/sceVideoOutFlip: bump counters, fire events,
 // present the framebuffer.
@@ -454,9 +497,13 @@ void RegisterLibVideoOut() {
         const u64 entry = g_vblank_edge_seq.load(std::memory_order_acquire);
         std::unique_lock<std::mutex> lk(g_vblank_mtx);
         g_vblank_cv.wait_for(lk, std::chrono::milliseconds(100), [&] {
-            return g_vblank_edge_seq.load(std::memory_order_acquire) != entry;
+            return g_vblank_edge_seq.load(std::memory_order_acquire) != entry ||
+                   g_vblank_stop.load(std::memory_order_acquire);
         });
         lk.unlock();
+        if (g_vblank_stop.load(std::memory_order_acquire)) {
+            return 0;
+        }
         SignalVblank(port);
         return 0;
     };

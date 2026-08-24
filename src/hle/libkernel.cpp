@@ -118,6 +118,26 @@ namespace HLE {
         return true;
     }
 
+    void ResetPhysPool() {
+        guest_addr_t base = 0;
+        {
+            std::lock_guard<std::mutex> lk(g_phys_mutex);
+            base = g_phys_pool_base;
+            g_phys_pool_base = 0;
+            g_phys_pool_offset = 0x10000;
+            g_phys_pool_committed = 0;
+        }
+        if (base) {
+            Memory::ForgetResource(base);
+            if (!VirtualFree(reinterpret_cast<void*>(base), 0, MEM_RELEASE)) {
+                LOG_WARN(HLE, "ResetPhysPool: VirtualFree failed at 0x%llx (err=%lu)",
+                         base, GetLastError());
+            } else {
+                LOG_INFO(HLE, "PhysPool: released 2 GB pool at 0x%llx", base);
+            }
+        }
+    }
+
     // PS5 protection values may carry CPU/GPU visibility bits (0x10/0x20) in
     // the high nibble on top of PROT_READ/WRITE/EXEC (0x1/0x2/0x4).  Strip
     // everything except the RWX bits for host protection translation and warn
@@ -278,6 +298,40 @@ namespace HLE {
         }
         Memory::Write<u64>(addr_ptr, mapped_va);
         LOG_INFO(HLE, "sceKernelMapDirectMemory -> va: 0x%llx", mapped_va);
+        return 0;
+    }
+
+    u64 SceKernelAllocateDirectMemory(const GuestArgs& args) {
+        u64 search_start = args.arg1;
+        u64 search_end   = args.arg2;
+        u64 length       = args.arg3;
+        u64 alignment    = args.arg4;
+        u32 mem_type     = static_cast<u32>(args.arg5);
+        guest_addr_t out_ptr = args.arg6;
+        (void)search_start; (void)search_end; (void)mem_type;
+
+        LOG_INFO(HLE, "sceKernelAllocateDirectMemory(len: 0x%llx, align: 0x%llx, type: %u, out: 0x%llx)",
+                 length, alignment, mem_type, out_ptr);
+
+        if (!out_ptr) return 0x800D0004; // EINVAL
+
+        u64 alloc_size = (length < 0x1000) ? 0x1000 : length;
+        if (alignment < 0x1000) alignment = 0x1000;
+        u64 aligned_size = (alloc_size + alignment - 1) & ~(alignment - 1);
+
+        std::lock_guard<std::mutex> lk(g_phys_mutex);
+        if (!EnsurePhysPool()) return 0x800D0006;
+
+        u64 phys_offset = (g_phys_pool_offset + alignment - 1) & ~(alignment - 1);
+        if (phys_offset + aligned_size > PHYS_POOL_SIZE) {
+            LOG_ERROR(HLE, "sceKernelAllocateDirectMemory: out of physical pool space!");
+            return 0x800D0006;
+        }
+        g_phys_pool_offset = phys_offset + aligned_size;
+        if (!EnsurePhysCommitted(phys_offset + aligned_size)) return 0x800D0006;
+
+        Memory::Write<u64>(out_ptr, phys_offset);
+        LOG_INFO(HLE, "sceKernelAllocateDirectMemory -> physOffset: 0x%llx (size: 0x%llx)", phys_offset, aligned_size);
         return 0;
     }
 
@@ -615,7 +669,7 @@ namespace HLE {
 
         // =====================================================================
         // XKRegsFpEpk#T#T  ===  PS5 __libc_start_main / sceLibcInitialize
-        // Called by _start after TLS setup and DT_INIT:
+        // Called by _start after TLS setup and DT_INIT (or via dynamic linker):
         //   XKRegsFpEpk(argc, argv, envp)  -> should NEVER return to _start
         // We find the game's main() via HLE::GetGuestMainAddress() (set at load time
         // by scanning the symbol table for "main"), then call it via InvokeGuestFunction.
@@ -623,9 +677,8 @@ namespace HLE {
         RegisterSymbol("libkernel", "XKRegsFpEpk#T#T", [](const GuestArgs& args) -> u64 {
             // XKRegsFpEpk is the PS5's __libc_start_main.  It is called from
             // _start with (argc, argv, envp) and must:
-            //   1. Run DT_INIT (global constructors)
-            //   2. Call main(argc, argv, envp)
-            //   3. Call exit() with main's return value
+            //   1. Call main(argc, argv, envp)
+            //   2. Call exit() with main's return value
             //
             // The CPU dispatcher (Kernel::Execute) starts at the ELF entry
             // point (_start), NOT at main.  The previous implementation treated
@@ -638,21 +691,14 @@ namespace HLE {
                 // unreachable
             }
 
-            // Step 1: run DT_INIT (global constructors).
-            guest_addr_t dt_init = GetDtInitAddress();
-            if (dt_init) {
-                LOG_INFO(HLE, "XKRegsFpEpk: running DT_INIT at 0x%llx", dt_init);
-                InvokeGuestFunction(dt_init, 0, 0, 0);
-            }
-
-            // Step 2: call main(argc, argv, envp).
+            // Step 1: call main(argc, argv, envp).
             // InvokeGuestFunction maps (rdi, rsi, rdx) → (arg1, arg2, arg3)
             // which matches the SysV ABI for main(int argc, char** argv, char** envp).
             LOG_INFO(HLE, "XKRegsFpEpk: calling main(argc=%llu, argv=0x%llx)", args.arg1, args.arg2);
             u64 result = InvokeGuestFunction(main_va, args.arg1, args.arg2, args.arg3);
             LOG_INFO(HLE, "main() returned with status %llu", result);
 
-            // Step 3: exit with main's return value.
+            // Step 2: exit with main's return value.
             HLE::ExitGuestProcess(static_cast<u32>(result));
             // unreachable — ExitGuestProcess is [[noreturn]]
         });
@@ -1102,10 +1148,12 @@ namespace HLE {
         });
 
         // _init_env (bzQExy189ZI#T#T) — libc environment init, called at startup
-        RegisterSymbol("libkernel", "bzQExy189ZI#T#T", [](const GuestArgs& /*args*/) -> u64 {
+        // [Diagnostic] Disabled to trace real libc.prx execution of _init_env
+        /* RegisterSymbol("libkernel", "bzQExy189ZI#T#T", [](const GuestArgs& args) -> u64 {
             LOG_DEBUG(HLE, "libkernel::_init_env() -> 0 (success)");
             return 0;
-        });
+        }); */
+
 
         // atexit (8G2LB+A3rzg#T#T) — register process-exit callback
         RegisterSymbol("libkernel", "8G2LB+A3rzg#T#T", [](const GuestArgs& args) -> u64 {
@@ -1282,44 +1330,8 @@ namespace HLE {
         // handler can commit pool pages on first touch.
 
         // sceKernelAllocateDirectMemory (rTXw65xmLIA#S#N)
-        RegisterSymbol("libkernel", "rTXw65xmLIA#S#N", [](const GuestArgs& args) -> u64 {
-            u64 search_start = args.arg1;
-            u64 search_end   = args.arg2;
-            u64 length       = args.arg3;
-            u64 alignment    = args.arg4;
-            u32 mem_type     = static_cast<u32>(args.arg5);
-            guest_addr_t out_ptr = args.arg6;
-            (void)search_start; (void)search_end; (void)mem_type;
-
-            LOG_INFO(HLE, "sceKernelAllocateDirectMemory(len: 0x%llx, align: 0x%llx, type: %u, out: 0x%llx)",
-                     length, alignment, mem_type, out_ptr);
-
-            if (!out_ptr) return 0x800D0004; // EINVAL
-
-            u64 alloc_size = (length < 0x1000) ? 0x1000 : length;
-            if (alignment < 0x1000) alignment = 0x1000;
-            // Round up to alignment
-            u64 aligned_size = (alloc_size + alignment - 1) & ~(alignment - 1);
-
-            std::lock_guard<std::mutex> lk(g_phys_mutex);
-            if (!EnsurePhysPool()) return 0x800D0006;
-
-            // Align the current offset
-            u64 phys_offset = (g_phys_pool_offset + alignment - 1) & ~(alignment - 1);
-            if (phys_offset + aligned_size > PHYS_POOL_SIZE) {
-                LOG_ERROR(HLE, "sceKernelAllocateDirectMemory: out of physical pool space!");
-                return 0x800D0006;
-            }
-            g_phys_pool_offset = phys_offset + aligned_size;
-            // Commit-ahead in large chunks so MapDirectMemory / guest first
-            // touch never hit the per-64KiB demand-commit fault path.
-            if (!EnsurePhysCommitted(phys_offset + aligned_size)) return 0x800D0006;
-
-            // Write the physical OFFSET (not a host address!) back to the game
-            Memory::Write<u64>(out_ptr, phys_offset);
-            LOG_INFO(HLE, "sceKernelAllocateDirectMemory -> physOffset: 0x%llx (size: 0x%llx)", phys_offset, aligned_size);
-            return 0;
-        });
+        RegisterSymbol("libkernel", "rTXw65xmLIA#S#N", SceKernelAllocateDirectMemory);
+        RegisterSymbol("libkernel", "sceKernelAllocateDirectMemory", SceKernelAllocateDirectMemory);
 
         RegisterSymbol("libkernel", "L-Q3LEjIbgA#S#N", SceKernelMapDirectMemory);
         // NOTE: NID 7oxv3PPCumo is sceKernelReserveVirtualRange (verified via

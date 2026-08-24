@@ -2658,6 +2658,23 @@ void RegisterLibAgc() {
     RegisterSymbol("libSceAgc", "sceAgcDriverInitialize", AgcDriverInitialize);
     RegisterSymbol("libSceAgc", "1kZFcktOm+s", AgcDriverInitialize);
 
+    auto AgcSuspendPoint = [](const GuestArgs& args) -> u64 {
+        const guest_addr_t out_ptr = args.arg1;
+        const guest_addr_t ctx_ptr = args.arg2;
+        LOG_DEBUG(HLE, "sceAgcSuspendPoint(out: 0x%llx, ctx: 0x%llx, rdx: 0x%llx, rcx: 0x%llx, r8: 0x%llx)",
+                  out_ptr, ctx_ptr, args.arg3, args.arg4, args.arg5);
+        
+        // The guest allocates this on the stack. We zero it to avoid non-deterministic behavior.
+        // Assuming size is at least 16 bytes based on standard AGC structures.
+        if (out_ptr) {
+            Memory::Write<u64>(out_ptr, 0);
+            Memory::Write<u64>(out_ptr + 8, 0);
+        }
+        return 0; // AGC_OK
+    };
+    RegisterSymbol("libSceAgc", "sceAgcSuspendPoint", AgcSuspendPoint);
+    RegisterSymbol("libSceAgc", "h9z6+0hEydk", AgcSuspendPoint);
+
     auto AgcDriverUninitialize = [](const GuestArgs& args) -> u64 {
         (void)args;
         LOG_INFO(HLE, "sceAgcDriverUninitialize() -> 0");

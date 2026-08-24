@@ -88,17 +88,24 @@ namespace HLE {
     void RegisterLibNotification();
     void RegisterLibNet();
 
+    static std::unordered_map<std::string, StubContract> g_stub_contracts;
     static std::unordered_map<std::string, HleSymbol> g_symbol_registry;
     static std::unordered_map<u64, HleSymbol>         g_id_index;       // fast O(1) dispatch
     static std::unordered_map<u64, ImportStats>       g_stats;          // per-symbol runtime stats
     static std::unordered_set<u64>                    g_stubbed_ids;    // symbols that were auto-stubbed
     static std::mutex                                  g_stats_mutex;
+    static std::unordered_set<std::string>             g_stub_log_keys;  // stubs logged this run
+    static std::mutex                                  g_stub_log_mutex;
     static guest_addr_t g_thunk_page_base   = 0;
     static u64          g_thunk_page_offset = 0;
     static constexpr u64 THUNK_SIZE         = 32;
     static constexpr u64 THUNK_PAGE_SIZE    = 1 * 1024 * 1024; // 1MB = 32768 slots
     static std::shared_mutex g_hle_mutex;  // I3.4: shared_lock for dispatch, exclusive for registration
     static bool        g_strict_import_mode = false;  // Phase-0 test mode toggle
+
+    // Guest RIP of the in-flight HLE call, set by HleDispatch so the stub
+    // logger can attribute a call site (invaluable for unknown-NID stubs).
+    static thread_local u64 g_current_guest_rip = 0;
 
     // Cooperative guest shutdown state (see hle.h).  Written by the main
     // thread's window loop (RequestStop) / Kernel::Execute (thread id), read
@@ -227,9 +234,10 @@ namespace HLE {
     } g_trace;
 
     // Guest addresses set by the loader after module is mapped
+    // Guest addresses set by the loader after module is mapped
     static guest_addr_t g_guest_main_addr  = 0;
     static guest_addr_t g_dt_init_addr     = 0;
-
+    static std::vector<PrxInitRecord> g_prx_init_queue;
     // -------------------------------------------------------------------------
     // NID normalization: strip the trailing "#X#Y" variant suffix so that
     // e.g.  bzQExy189ZI#j#j  resolves to  bzQExy189ZI#T#T  if we registered
@@ -306,10 +314,31 @@ namespace HLE {
             }
             const std::string mod_copy = module;
             const std::string name_copy = e.name;
+            const std::string friendly = e.name;
             RegisterSymbol(mod_copy, name_copy,
-                           [mod_copy, name_copy](const GuestArgs& /*args*/) -> u64 {
+                           [mod_copy, name_copy, friendly](const GuestArgs& args) -> u64 {
+                               StubContract contract = GetStubContract(name_copy);
+                               if (contract.classification == StubClass::UNKNOWN || contract.classification == StubClass::NEVER_SAFE) {
+                                   LOG_ERROR(HLE, "==================================================");
+                                   LOG_ERROR(HLE, "UNSUPPORTED GUEST OPERATION (NID DB STUB)");
+                                   LOG_ERROR(HLE, "MODULE: %s", mod_copy.c_str());
+                                   LOG_ERROR(HLE, "NID: %s", name_copy.c_str());
+                                   LOG_ERROR(HLE, "SYMBOL: %s", friendly.c_str());
+                                   LOG_ERROR(HLE, "GUEST_RIP: 0x%llx", g_current_guest_rip);
+                                   LOG_ERROR(HLE, "GUEST_RSP: 0x%llx", args.stack_args ? (args.stack_args - 8) : 0);
+                                   LOG_ERROR(HLE, "STUB_CLASS: %d", (int)contract.classification);
+                                   LOG_ERROR(HLE, "RDI: 0x%llx", args.arg1);
+                                   LOG_ERROR(HLE, "RSI: 0x%llx", args.arg2);
+                                   LOG_ERROR(HLE, "RDX: 0x%llx", args.arg3);
+                                   LOG_ERROR(HLE, "RCX: 0x%llx", args.arg4);
+                                   LOG_ERROR(HLE, "R8: 0x%llx", args.arg5);
+                                   LOG_ERROR(HLE, "R9: 0x%llx", args.arg6);
+                                   LOG_ERROR(HLE, "==================================================");
+                                   SetGuestCrashed(0xE0000001, g_current_guest_rip);
+                                   ExitGuestProcess(1);
+                               }
                                LogStubCallOnce(mod_copy, name_copy);
-                               return 0;
+                               return contract.default_return_policy;
                            });
             ++added;
         }
@@ -369,10 +398,12 @@ namespace HLE {
 
     void Shutdown() {
         LOG_INFO(HLE, "Shutting down HLE subsystem...");
+        ResetVideoOut();
         if (g_thunk_page_base) {
             Memory::Unmap(g_thunk_page_base, THUNK_PAGE_SIZE);
             g_thunk_page_base = 0;
         }
+        g_thunk_page_offset = 0;
         std::lock_guard<std::shared_mutex> lock(g_hle_mutex);
         g_symbol_registry.clear();
         g_id_index.clear();
@@ -380,7 +411,28 @@ namespace HLE {
             std::lock_guard<std::mutex> sl(g_stats_mutex);
             g_stats.clear();
             g_stubbed_ids.clear();
+            g_trace.Clear();
+            {
+                std::lock_guard<std::mutex> ll(g_stub_log_mutex);
+                g_stub_log_keys.clear();
+            }
         }
+        g_stop_requested.store(false, std::memory_order_release);
+        g_main_guest_thread_id.store(0, std::memory_order_release);
+        g_guest_exit_env_armed.store(false, std::memory_order_release);
+        g_guest_exit_code = 0;
+        {
+            std::lock_guard<std::mutex> cl(g_crash_mutex);
+            g_guest_crashed.store(false, std::memory_order_release);
+            g_crash_exception_code = 0;
+            g_crash_rip = 0;
+            g_crash_message[0] = '\0';
+        }
+        g_guest_main_addr = 0;
+        g_dt_init_addr = 0;
+        ClearPrxInitQueue();
+        ResetLibcHeap();
+        ResetPhysPool();
     }
 
     // -------------------------------------------------------------------------
@@ -402,6 +454,25 @@ namespace HLE {
     }
 
     static std::string ResolveFriendlyName(const std::string& raw);
+
+    void RegisterStubContract(const StubContract& contract) {
+        std::lock_guard<std::mutex> sl(g_stats_mutex);
+        g_stub_contracts[contract.name] = contract;
+    }
+
+    StubContract GetStubContract(const std::string& name) {
+        std::lock_guard<std::mutex> sl(g_stats_mutex);
+        auto it = g_stub_contracts.find(name);
+        if (it != g_stub_contracts.end()) return it->second;
+        
+        // Default contract for unknown stubs
+        StubContract contract{};
+        contract.name = name;
+        contract.classification = StubClass::UNKNOWN;
+        contract.default_return_policy = 0;
+        contract.is_dangerous = true;
+        return contract;
+    }
 
     static void RecordStats(const HleSymbol& sym, const GuestArgs& args, guest_addr_t guest_rip) {
         std::lock_guard<std::mutex> sl(g_stats_mutex);
@@ -439,14 +510,6 @@ namespace HLE {
         }
         return raw;
     }
-
-    // Keys (module::name) whose stub call has already been logged this run.
-    static std::unordered_set<std::string> g_stub_log_keys;
-    static std::mutex                        g_stub_log_mutex;
-
-    // Guest RIP of the in-flight HLE call, set by HleDispatch so the stub
-    // logger can attribute a call site (invaluable for unknown-NID stubs).
-    static thread_local u64 g_current_guest_rip = 0;
 
     void LogStubCallOnce(const std::string& module_name, const std::string& name) {
         const std::string key = module_name + "::" + name;
@@ -666,9 +729,24 @@ namespace HLE {
         }
         LOG_WARN(HLE, "Unresolved symbol requested: %s. Creating stub...", key.c_str());
         lock.unlock();
-        RegisterSymbol(module_name, name, [module_name, name](const GuestArgs& /*args*/) -> u64 {
+        RegisterSymbol(module_name, name, [module_name, name](const GuestArgs& args) -> u64 {
+            StubContract contract = GetStubContract(name);
+            if (contract.classification == StubClass::UNKNOWN || contract.classification == StubClass::NEVER_SAFE) {
+                std::string friendly = ResolveFriendlyName(name);
+                LOG_ERROR(HLE, "==================================================");
+                LOG_ERROR(HLE, "UNSUPPORTED GUEST OPERATION (RESOLVE STUB)");
+                LOG_ERROR(HLE, "MODULE: %s", module_name.c_str());
+                LOG_ERROR(HLE, "NID: %s", name.c_str());
+                LOG_ERROR(HLE, "SYMBOL: %s", friendly.c_str());
+                LOG_ERROR(HLE, "GUEST_RIP: 0x%llx", g_current_guest_rip);
+                LOG_ERROR(HLE, "GUEST_RSP: 0x%llx", args.stack_args ? (args.stack_args - 8) : 0);
+                LOG_ERROR(HLE, "STUB_CLASS: %d", (int)contract.classification);
+                LOG_ERROR(HLE, "==================================================");
+                SetGuestCrashed(0xE0000001, g_current_guest_rip);
+                ExitGuestProcess(1);
+            }
             LogStubCallOnce(module_name, name);
-            return 0;
+            return contract.default_return_policy;
         });
 
         lock.lock();
@@ -721,9 +799,30 @@ namespace HLE {
         std::string stub_key = "unknown::" + name;
         LOG_WARN(HLE, "ResolveAny: Unresolved NID '%s'. Creating cross-module stub...", name.c_str());
         lock.unlock();
-        RegisterSymbol("unknown", name, [name](const GuestArgs& /*args*/) -> u64 {
+        RegisterSymbol("unknown", name, [name](const GuestArgs& args) -> u64 {
+            StubContract contract = GetStubContract(name);
+            if (contract.classification == StubClass::UNKNOWN || contract.classification == StubClass::NEVER_SAFE) {
+                std::string friendly = ResolveFriendlyName(name);
+                LOG_ERROR(HLE, "==================================================");
+                LOG_ERROR(HLE, "UNSUPPORTED GUEST OPERATION (RESOLVE_ANY STUB)");
+                LOG_ERROR(HLE, "MODULE: unknown");
+                LOG_ERROR(HLE, "NID: %s", name.c_str());
+                LOG_ERROR(HLE, "SYMBOL: %s", friendly.c_str());
+                LOG_ERROR(HLE, "GUEST_RIP: 0x%llx", g_current_guest_rip);
+                LOG_ERROR(HLE, "GUEST_RSP: 0x%llx", args.stack_args ? (args.stack_args - 8) : 0);
+                LOG_ERROR(HLE, "STUB_CLASS: %d", (int)contract.classification);
+                LOG_ERROR(HLE, "RDI: 0x%llx", args.arg1);
+                LOG_ERROR(HLE, "RSI: 0x%llx", args.arg2);
+                LOG_ERROR(HLE, "RDX: 0x%llx", args.arg3);
+                LOG_ERROR(HLE, "RCX: 0x%llx", args.arg4);
+                LOG_ERROR(HLE, "R8: 0x%llx", args.arg5);
+                LOG_ERROR(HLE, "R9: 0x%llx", args.arg6);
+                LOG_ERROR(HLE, "==================================================");
+                SetGuestCrashed(0xE0000001, g_current_guest_rip);
+                ExitGuestProcess(1);
+            }
             LogStubCallOnce("unknown", name);
-            return 0;
+            return contract.default_return_policy;
         });
         lock.lock();
         auto found = g_symbol_registry.find(stub_key);
@@ -735,6 +834,8 @@ namespace HLE {
     }
 
     bool HasRealImplementation(const std::string& name) {
+        if (name.find("bzQExy189ZI") != std::string::npos) return false; // Force real libc.prx
+
         std::shared_lock<std::shared_mutex> lock(g_hle_mutex);
         if (name.empty()) return false;
         const std::string req_base = NidBase(name);
@@ -790,6 +891,19 @@ namespace HLE {
 
     guest_addr_t GetDtInitAddress() {
         return g_dt_init_addr;
+    }
+
+    void QueuePrxInitAddress(const std::string& name, guest_addr_t base, guest_addr_t dt_init, guest_addr_t init_array_addr, u64 init_array_size) {
+        g_prx_init_queue.push_back({name, base, dt_init, init_array_addr, init_array_size, InitState::NotInitialized});
+        LOG_INFO(HLE, "Queued PRX initialization for '%s' at 0x%llx (array: 0x%llx, size: %llu)", name.c_str(), dt_init, init_array_addr, init_array_size);
+    }
+
+    void ClearPrxInitQueue() {
+        g_prx_init_queue.clear();
+    }
+
+    std::vector<PrxInitRecord>& GetPrxInitQueue() {
+        return g_prx_init_queue;
     }
 
     static bool SafeRead(void* dest, const void* src, size_t size) {

@@ -373,6 +373,82 @@ void TestMultiProfileAccessors() {
            "FindUserProfile unknown id -> nullptr");
 }
 
+// ---------------------------------------------------------------------------
+// 10. Initialization lifecycle: IsInitialized, Reset, clean state transitions
+// ---------------------------------------------------------------------------
+void TestInitializationLifecycle() {
+    std::fprintf(stdout, "[TEST] Initialization lifecycle and Reset\n");
+    const std::string dir1 = ScratchDir("life1");
+    const std::string dir2 = ScratchDir("life2");
+    std::filesystem::remove_all(dir1);
+    std::filesystem::remove_all(dir2);
+
+    ConfigService::Reset();
+    EXPECT(!ConfigService::IsInitialized(), "initially not initialized after Reset");
+    EXPECT_STR_EQ(ConfigService::Directory(), std::string(""), "empty directory after Reset");
+
+    ConfigService::Initialize(dir1);
+    EXPECT(ConfigService::IsInitialized(), "initialized after Initialize(dir1)");
+    EXPECT_STR_EQ(ConfigService::Directory(), dir1, "directory matches dir1");
+
+    auto& g = ConfigService::MutableGlobal();
+    g.graphics.width = 2560;
+    EXPECT_EQ(ConfigService::Global().graphics.width, 2560, "in-memory mutation reflected");
+
+    ConfigService::Reset();
+    EXPECT(!ConfigService::IsInitialized(), "not initialized after Reset");
+    EXPECT_STR_EQ(ConfigService::Directory(), std::string(""), "directory empty after Reset");
+    // Global() on uninitialized state auto-initializes to default fallback
+    EXPECT_EQ(ConfigService::Global().graphics.width, 1280, "reset restored compiled-in default width");
+
+    ConfigService::Reset();
+    ConfigService::Initialize(dir2);
+    EXPECT(ConfigService::IsInitialized(), "initialized after Initialize(dir2)");
+    EXPECT_STR_EQ(ConfigService::Directory(), dir2, "directory matches dir2");
+    EXPECT_EQ(ConfigService::Global().graphics.width, 1280, "fresh directory has default width");
+}
+
+// ---------------------------------------------------------------------------
+// 11. Repeated initialization and directory switching
+// ---------------------------------------------------------------------------
+void TestRepeatedInitializationAndStability() {
+    std::fprintf(stdout, "[TEST] Repeated initialization and directory switching\n");
+    const std::string dirA = ScratchDir("switch_a");
+    const std::string dirB = ScratchDir("switch_b");
+    std::filesystem::remove_all(dirA);
+    std::filesystem::remove_all(dirB);
+
+    // Initialize dirA with custom global and per-title settings
+    ConfigService::Initialize(dirA);
+    {
+        auto& g = ConfigService::MutableGlobal();
+        g.graphics.width = 1920;
+        EXPECT(ConfigService::SaveGlobal(), "save global A");
+
+        auto& t = ConfigService::MutableForTitle("TITLE_A");
+        t.graphics.width = 3840;
+        EXPECT(ConfigService::SavePerTitle("TITLE_A"), "save title A in dirA");
+    }
+
+    // Initialize dirB with different settings
+    ConfigService::Initialize(dirB);
+    EXPECT_STR_EQ(ConfigService::Directory(), dirB, "switched to dirB");
+    EXPECT_EQ(ConfigService::Global().graphics.width, 1280, "dirB has default width");
+    EXPECT(ConfigService::ForTitle("TITLE_A") == nullptr, "dirA per-title override not visible in dirB");
+    {
+        auto& g = ConfigService::MutableGlobal();
+        g.graphics.width = 1600;
+        EXPECT(ConfigService::SaveGlobal(), "save global B");
+    }
+
+    // Switch back to dirA: verify dirA's disk state is cleanly reloaded
+    ConfigService::Initialize(dirA);
+    EXPECT_STR_EQ(ConfigService::Directory(), dirA, "switched back to dirA");
+    EXPECT_EQ(ConfigService::Global().graphics.width, 1920, "dirA global width restored from disk");
+    EXPECT(ConfigService::ForTitle("TITLE_A") != nullptr, "dirA per-title override restored from disk");
+    EXPECT_EQ(ConfigService::EffectiveFor("TITLE_A").graphics.width, 3840, "effective title width restored");
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
@@ -386,6 +462,8 @@ int main() {
     TestSaveDataCryptoRoundTrip();
     TestSaveDataCryptoMalformed();
     TestMultiProfileAccessors();
+    TestInitializationLifecycle();
+    TestRepeatedInitializationAndStability();
 
     std::fprintf(stdout, "Config: %d check(s), %d failure(s)\n", g_checks, g_failures);
     // Always clean up the scratch directories so a previous failing run

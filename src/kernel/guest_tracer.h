@@ -17,6 +17,7 @@
 
 #include "../common/types.h"
 #include <windows.h> // PCONTEXT, DWORD
+#include <string>
 
 namespace Kernel {
 
@@ -33,6 +34,9 @@ struct GuestTracer {
     // Called from the VEH on the main guest-crash path (guest RIP) so the
     // tracer can arm TF / decide to trace for the current thread.
     static void NotifyGuestRip(u64 rip, PCONTEXT ctx);
+
+    // Add a named breakpoint
+    static void AddBreakpoint(u64 address, const std::string& name);
 
     // Convenience: true iff tracing is currently enabled for this run.
     static bool Enabled();

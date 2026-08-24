@@ -109,8 +109,11 @@ namespace GPU {
     static PFN_XInputGetState g_XInputGetState = nullptr;
     static PFN_XInputSetState g_XInputSetState = nullptr;
     static HMODULE g_xinput_dll = nullptr;
+    static bool g_xinput_inited = false;
 
     static void InitializeXInput() {
+        if (g_xinput_inited) return;
+        g_xinput_inited = true;
         const char* dlls[] = { "xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll" };
         for (const auto& dll : dlls) {
             g_xinput_dll = LoadLibraryA(dll);
@@ -619,6 +622,9 @@ namespace GPU {
             }
         }
 
+        // Initialize XInput platform controller support.
+        InitializeXInput();
+
         // Draw and present the boot screen immediately ("first frame").  The
         // stage log already holds every milestone posted before the window
         // existed (config, NID db, subsystem init), so they show up here.
@@ -658,6 +664,26 @@ namespace GPU {
             g_XInputGetState = nullptr;
             g_XInputSetState = nullptr;
         }
+        g_xinput_inited = false;
+        {
+            std::lock_guard<std::mutex> lock(g_pad_mutex);
+            g_pad_state = PadButtonState{ 0, 127, 127, 127, 127, 0, 0, {0, 0} };
+            g_keyboard_buttons = 0;
+        }
+        g_fullscreen = false;
+        g_saved_x = 0;
+        g_saved_y = 0;
+        g_saved_w = 0;
+        g_saved_h = 0;
+        g_fb_width = 1920;
+        g_fb_height = 1080;
+        g_fb_format = 0;
+        g_headless = false;
+        g_embed_mode = false;
+        g_window_created_cb = nullptr;
+        g_window_created_cb_user = nullptr;
+        StopInputRecording();
+        g_recorder_frame.store(0, std::memory_order_relaxed);
         g_dib_buffer.clear();
     }
 
@@ -868,10 +894,8 @@ namespace GPU {
         // function only refreshes the pad state (keyboard + XInput).
 
         // Initialize XInput if not already done
-        static bool xinput_inited = false;
-        if (!xinput_inited) {
+        if (!g_xinput_inited) {
             InitializeXInput();
-            xinput_inited = true;
         }
 
         PadButtonState new_state = { 0, 127, 127, 127, 127, 0, 0, {0, 0} };

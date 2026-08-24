@@ -49,26 +49,30 @@ constexpr const char* kGameEboot =
     "I:/Personal/Windows/pcsx5/Games/PPSA02929-app0/eboot.bin.esbak";
 
 constexpr const char* kDumpPath =
-    "I:/Personal/Windows/pcsx5/Games/PPSA02929-app0/imports.txt";
+    "imports.txt";
 
 constexpr const char* kSummaryPath =
-    "I:/Personal/Windows/pcsx5/Games/PPSA02929-app0/imports_summary.txt";
+    "imports_summary.txt";
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    if (argc < 2) {
+        printf("Usage: %s <path_to_eboot.bin>\nUsing default: %s\n", argv[0], kGameEboot);
+    }
+    const char* input_eboot = (argc > 1) ? argv[1] : kGameEboot;
     std::setvbuf(stderr, nullptr, _IONBF, 0);
 
     LogConfig::SetLevel(LogCategory::Loader, LogLevel::Warn);
     LogConfig::SetLevel(LogCategory::Memory, LogLevel::Warn);
 
-    const std::filesystem::path src(kGameEboot);
+    const std::filesystem::path src(input_eboot);
     if (!std::filesystem::exists(src)) {
         std::fprintf(stderr,
                      "[SKIP] %s not present on this host.  Skipping "
                      "dump_imports.\n",
-                     kGameEboot);
+                     input_eboot);
         // Return 0 so ctest still passes — this is a "real-game
          // specific" test, not a portability check.
         return 0;

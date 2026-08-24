@@ -658,6 +658,13 @@ void Initialize(const std::string& config_dir) {
     g_initialized = true;
 }
 
+void Reset() {
+    g_dir.clear();
+    g_global = Config::Defaults();
+    g_per_title.clear();
+    g_initialized = false;
+}
+
 bool IsInitialized() { return g_initialized; }
 const std::string& Directory() { return g_dir; }
 
