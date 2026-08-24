@@ -87,6 +87,9 @@ namespace Kernel {
     // range contains `addr`, or null.
     void RegisterLoadedModule(const Loader::LoadedModule& module);
     const Loader::LoadedModule* FindModuleForAddr(guest_addr_t addr);
+    
+    // Returns the address of the PT_SCE_PROC_PARAM segment for the main executable
+    guest_addr_t GetMainModuleProcessParam();
 
     // Resolve system calls (syscall instructions)
     void HandleSyscall(u32 syscall_number, guest_addr_t context);

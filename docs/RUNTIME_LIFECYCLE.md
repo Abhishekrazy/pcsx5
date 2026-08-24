@@ -14,5 +14,5 @@ The emulator transfers control to the eboot.bin entry point (_start), which is r
 - Calling its own DT_INIT and global constructors.
 - Invoking main(argc, argv, envp) via XKRegsFpEpk or native runtime equivalent.
 
-### 3. Current Boundary: libc PRX Construction
-Currently, the runtime encounters an architectural barrier inside libc.prx's DT_INIT. The constructor invokes sceKernelDebugRaiseException(0xa0020013), indicating that the PRX initialization environment lacks required kernel Thread or TLS state that libc inherently expects during its boot sequence.
+### 3. Current Boundary: Direct Memory Allocation
+The runtime successfully completes `libc.prx` initialization using the authentic `SceProcParam` provided by `KernelGetProcParam`. `libc` transparently boots its own allocator and TLS structures. Execution transfers seamlessly to `eboot.bin`'s `_start`, initializes the C++ runtime, and enters the game engine, where it currently halts at the first unimplemented memory allocation stub: `sceKernelMapNamedDirectMemory`.
