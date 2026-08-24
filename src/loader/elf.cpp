@@ -288,7 +288,7 @@ namespace Loader {
                 LOG_INFO(Loader, "RAW DATA: %s", hex_dump.c_str());
             }
 
-            if (phdr.p_type == 0x61000001) {
+            if (phdr.p_type == PT_SCE_PROC_PARAM) {
                 // Save PT_SCE_PROC_PARAM for reference
                 MappedSegment seg;
                 seg.address = base_address + phdr.p_vaddr;

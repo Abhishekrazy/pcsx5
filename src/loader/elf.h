@@ -26,17 +26,16 @@ namespace Loader {
     // PS5 game executables and in SELF-extracted inner ELFs.  The loader
     // skips them with a debug log so a real game ELF can be loaded
     // without crashing on unknown p_type values.
-    //   0x61000001 - PT_SCE_RELRO (read-only relocations)
-    //   0x61000010 - PT_SCE_COMMENT
-    //   0x6FFFFF00 - PT_SCE_PROC_PARAM
-    //   0x6FFFFF01 - PT_SCE_MODULE_PARAM
-    //   0x6474E550 - PT_GNU_RELRO (read-only-after-relocations)
-    //   0x6474E551 - PT_GNU_PROPERTY
-    //   0x6474E552 - PT_GNU_STACK (executable-stack note)
+    //   0x61000000 - PT_SCE_RELA
+    //   0x61000001 - PT_SCE_PROC_PARAM
+    //   0x61000002 - PT_SCE_MODULE_PARAM
+    //   0x61000010 - PT_SCE_RELRO
+    //   0x6FFFFF00 - PT_SCE_PATH
     // We accept (and ignore) the common ones we know about.
-    constexpr u32 PT_SCE_PROC_PARAM   = 0x6FFFFF00;
-    constexpr u32 PT_SCE_MODULE_PARAM = 0x6FFFFF01;
-    constexpr u32 PT_SCE_RELRO        = 0x61000001;
+    constexpr u32 PT_SCE_PROC_PARAM   = 0x61000001;
+    constexpr u32 PT_SCE_MODULE_PARAM = 0x61000002;
+    constexpr u32 PT_SCE_RELRO        = 0x61000010;
+    constexpr u32 PT_SCE_PATH         = 0x6FFFFF00;
     constexpr u32 PT_GNU_RELRO        = 0x6474E550;
     constexpr u32 PT_GNU_PROPERTY     = 0x6474E551;
     constexpr u32 PT_GNU_STACK        = 0x6474E552;

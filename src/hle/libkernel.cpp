@@ -10,6 +10,7 @@
 #include "../memory/memory.h"
 #include "../common/log.h"
 #include "../gpu/gpu.h"
+#include "../loader/elf.h"
 #include <unordered_map>
 #include <mutex>
 #include <atomic>
@@ -747,19 +748,86 @@ namespace HLE {
             return 0;
         });
 
+        RegisterSymbol("libkernel", "sceKernelDebugRaiseException#T#T", [](const GuestArgs& args) -> u64 {
+            u64 rsp = args.stack_args ? (args.stack_args - 8) : 0;
+            u64 guest_rip = rsp ? Memory::Read<u64>(rsp) : 0;
+            
+            LOG_ERROR(HLE, "==================================================");
+            LOG_ERROR(HLE, "sceKernelDebugRaiseException(0x%llx) called!", args.arg1);
+            LOG_ERROR(HLE, "GUEST_RIP: 0x%llx", guest_rip);
+            LOG_ERROR(HLE, "GUEST_RSP: 0x%llx", rsp);
+            
+            // Dump stack memory for backtrace
+            if (rsp) {
+                LOG_ERROR(HLE, "Stack trace (return addresses):");
+                for (int i = 0; i < 32; ++i) {
+                    u64 addr = rsp + (i * 8);
+                    u64 val = Memory::Read<u64>(addr);
+                    if (val > 0x800000000 && val < 0x900000000) {
+                        LOG_ERROR(HLE, "  [%02d] rsp+0x%03x = 0x%llx", i, i * 8, val);
+                    }
+                }
+            }
+            
+            // Dump both PLT stubs
+            if (guest_rip > 0x800000000) {
+                u64 plt_stub_debug = guest_rip - 5 + 0x115333 + 5; 
+                
+                LOG_ERROR(HLE, "Real crashing function around RIP 0x%llx:", guest_rip);
+                u8 buf[128];
+                if (Memory::IsReadable(guest_rip - 64, 128)) {
+                    Memory::ReadBuffer(guest_rip - 64, buf, 128);
+                    char hex[512] = {0};
+                    for (int i = 0; i < 128; ++i) sprintf_s(hex + i * 3, sizeof(hex) - i * 3, "%02X ", buf[i]);
+                    LOG_ERROR(HLE, "  Code: %s", hex);
+                }
+                
+                LOG_ERROR(HLE, "DebugRaiseException PLT stub at 0x%llx:", plt_stub_debug);
+                if (Memory::IsReadable(plt_stub_debug, 32)) {
+                    Memory::ReadBuffer(plt_stub_debug, buf, 32);
+                    char hex[128] = {0};
+                    for (int i = 0; i < 16; ++i) sprintf_s(hex + i * 3, sizeof(hex) - i * 3, "%02X ", buf[i]);
+                    LOG_ERROR(HLE, "  Code: %s", hex);
+                }
+                
+                if (Memory::IsReadable(plt_stub_debug + 2, 4)) {
+                    u32 jmp_off = Memory::Read<u32>(plt_stub_debug + 2);
+                    u64 got_debug = plt_stub_debug + 6 + jmp_off;
+                    u64 got_val_debug = Memory::Read<u64>(got_debug);
+                    LOG_ERROR(HLE, "GOT entry for DebugRaiseException at 0x%llx = 0x%llx", got_debug, got_val_debug);
+                }
+            }
+            
+            LOG_ERROR(HLE, "==================================================");
+            
+            // Do not bypass the exception, just exit like the stub would.
+            HLE::SetGuestCrashed(0xE0000001, guest_rip);
+            HLE::ExitGuestProcess(1);
+        });
+
         // =====================================================================
         // Kyty-port: boot-critical stubs — games call these during _start / CRT init.
         // =====================================================================
         // elf_phdr_match_addr (Fjc4-n1+y2g) — check if addr falls in a module's phdr.
         RegisterSymbol("libkernel", "Fjc4-n1+y2g#T#T", [](const GuestArgs& a) -> u64 {
-            LOG_DEBUG(HLE, "elf_phdr_match_addr(addr=0x%llx) -> 0", a.arg1);
-            return 0;
+            LOG_ERROR(HLE, "elf_phdr_match_addr(addr=0x%llx) called!", a.arg1);
+            
+            // Allocate a dummy struct in host memory and return it. 
+            // Guest pointers are 1:1 with host pointers in this emulator architecture.
+            static u8* dummy_struct = nullptr;
+            if (!dummy_struct) {
+                dummy_struct = new u8[0x100]();
+                // libc.prx checks [rax + 0x38] (tls_modid). Return a non-zero value.
+                *reinterpret_cast<u64*>(dummy_struct + 0x38) = 1; 
+            }
+            
+            return reinterpret_cast<u64>(dummy_struct);
         });
         // KernelGetProcParam (959qrazPIrg) — return the process parameter (procParam).
-        // Used by the loader to get system info.  Return 0 to indicate none available.
         RegisterSymbol("libkernel", "959qrazPIrg#T#T", [](const GuestArgs&) -> u64 {
-            LOG_DEBUG(HLE, "KernelGetProcParam() -> 0");
-            return 0;
+            u64 proc_param = Kernel::GetMainModuleProcessParam();
+            LOG_DEBUG(HLE, "KernelGetProcParam() -> 0x%llx", proc_param);
+            return proc_param;
         });
         // tls_get_addr (vNe1w4diLCs) — __tls_get_addr(desc) where desc =
         // `{ size_t ti_module; size_t ti_offset; }` (ELF TLS descriptor, arg1=rdi).

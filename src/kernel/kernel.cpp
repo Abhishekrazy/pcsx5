@@ -252,6 +252,21 @@ namespace Kernel {
         return nullptr;
     }
 
+    guest_addr_t GetMainModuleProcessParam() {
+        std::lock_guard<std::mutex> lock(g_module_registry_mutex);
+        if (g_loaded_modules.empty()) return 0;
+        
+        // The main module is usually the first one
+        for (const auto& m : g_loaded_modules) {
+            for (const auto& seg : m.segments) {
+                if (seg.type == Loader::PT_SCE_PROC_PARAM) {
+                    return seg.address;
+                }
+            }
+        }
+        return 0;
+    }
+
     static std::string NormalizePrxPath(const std::filesystem::path& path) {
         std::string key = std::filesystem::absolute(path).lexically_normal().string();
         for (auto& ch : key) ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
@@ -607,12 +622,19 @@ namespace Kernel {
             u32 sym_idx = static_cast<u32>(rel.r_info >> 32);
             u32 rel_type = static_cast<u32>(rel.r_info & 0xFFFFFFFF);
 
+            if (module.name.find(".2") != std::string::npos && (u64)rel.r_offset == 0x1922F8) {
+                u64 plt_target = module.base_address + rel.r_offset;
+                LOG_INFO(Kernel, "[RELOC-MATCH] type=%d off=0x%llx (0x%llx) sym_idx=%d", 
+                         rel_type, (u64)rel.r_offset, plt_target, sym_idx);
+            }
+            
             guest_addr_t resolved_addr = 0;
             if (sym_idx < module.symbols.size()) {
                 const auto& sym = module.symbols[sym_idx];
                 if (sym.st_shndx == 0) { // SHN_UNDEF
                     std::string sym_name = &module.string_table[sym.st_name];
                     resolved_addr = resolve_external(sym_name);
+                    
                     if (resolved_addr == 0 && HLE::IsStrictImportMode()) return false;
                 } else {
                     resolved_addr = module.base_address + sym.st_value;
