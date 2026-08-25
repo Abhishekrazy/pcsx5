@@ -327,10 +327,12 @@ extern "C" u64 InvokeGuestFunction(u64 guest_func_va, u64 rdi_arg, u64 rsi_arg, 
 // rcx = guest_func_va, rdx = pointer to an array of 6 u64 SysV arguments
 // (rdi, rsi, rdx, rcx, r8, r9).  Returns: rax = guest return value.
 extern "C" u64 InvokeGuestFunction6(u64 guest_func_va, const u64* args6);
-extern "C" u64 InvokeGuestOnStack(u64 guest_func_va, u64 guest_rsp);
+extern "C" u64 InvokeGuestOnStack(u64 guest_func_va, u64 guest_rsp, u64 rdi_arg);
 
 // Per-thread host stack pointer helpers called by dispatcher.asm.
 // Each guest/host thread gets its own private copy via __declspec(thread).
 extern "C" uintptr_t GetHostStackPointer();
 extern "C" void SetHostStackPointer(uintptr_t rsp);
+
+
 

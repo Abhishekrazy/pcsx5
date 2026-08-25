@@ -122,6 +122,29 @@ void CPUState::ToContext(PCONTEXT ctx) const {
     ctx->FltSave.MxCsr = mxcsr;
 }
 
+// Helper to invoke guest function with SEH protection
+static u64 InvokeGuestFunctionSafe(guest_addr_t entry, guest_addr_t guest_sp, guest_addr_t argument, u64 id) {
+    u64 ret = 0;
+#ifdef _WIN32
+    PNT_TIB tib = (PNT_TIB)NtCurrentTeb();
+    PVOID host_stack_base = tib->StackBase;
+    PVOID host_stack_limit = tib->StackLimit;
+    tib->StackBase = (PVOID)(guest_sp + 0x800000);
+    tib->StackLimit = (PVOID)(guest_sp - 0x800000);
+#endif
+    __try {
+        ret = InvokeGuestOnStack(entry, guest_sp, argument);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        LOG_ERROR(Cpu, "Guest thread %llu crashed and was terminated by SEH", id);
+        ret = static_cast<u64>(-1);
+    }
+#ifdef _WIN32
+    tib->StackBase = host_stack_base;
+    tib->StackLimit = host_stack_limit;
+#endif
+    return ret;
+}
+
 // ---------------------------------------------------------------------------
 // GuestThread host entry point
 // ---------------------------------------------------------------------------
@@ -169,6 +192,8 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
 
     LOG_INFO(Cpu, "Guest thread %llu starting at entry=0x%llx, arg=0x%llx", id, entry, argument);
 
+    guest_addr_t guest_sp = self->stack_base + self->stack_size - 16;
+
     // Save and clear the host's GS-based TLS slot pointers before entering
     // guest code (KytyPS5 pattern, pthread.cpp lines 783-807).  The guest
     // should never access GS (PS5 uses FS-based TLS), but running native
@@ -184,7 +209,8 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
 
     // Execute the guest thread entry point.
     // The guest function receives its argument in rdi (SysV ABI first arg).
-    u64 ret = InvokeGuestFunction(entry, argument, 0, 0);
+    u64 ret = InvokeGuestFunctionSafe(entry, guest_sp, argument, id);
+
     // Restore host GS TLS slot pointers after guest execution.
     __writegsqword(0x08, saved_gs_08);
     __writegsqword(0x10, saved_gs_10);
@@ -561,3 +587,6 @@ void RegisterDefaultSyscalls() {
 }
 
 } // namespace CpuCore
+
+
+

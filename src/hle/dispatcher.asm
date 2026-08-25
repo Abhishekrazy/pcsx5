@@ -305,7 +305,7 @@ InvokeGuestFunction6 proc
 InvokeGuestFunction6 endp
 ;=============================================================================
 ; InvokeGuestOnStack
-; Windows ABI: rcx=entry, rdx=guest_rsp
+; Windows ABI: rcx=entry, rdx=guest_rsp, r8=rdi_arg
 ; Returns: rax = guest return value
 ;=============================================================================
 InvokeGuestOnStack proc
@@ -318,6 +318,7 @@ InvokeGuestOnStack proc
     
     mov  rbx, rcx           ; entry_point
     mov  r12, rdx           ; guest_rsp
+    mov  r14, r8            ; rdi_arg
 
     ; Update per-thread host RSP so HleCommonDispatcher can switch back if needed
     lea  rcx, [rsp]
@@ -329,8 +330,8 @@ InvokeGuestOnStack proc
     ; Switch to guest stack
     mov  rsp, r12
     
-    ; Clear args
-    xor  rdi, rdi
+    ; Setup args
+    mov  rdi, r14           ; arg1
     xor  rsi, rsi
     xor  rdx, rdx
     xor  rcx, rcx
@@ -353,3 +354,4 @@ InvokeGuestOnStack proc
 InvokeGuestOnStack endp
 
 end
+
