@@ -471,6 +471,7 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
     std::thread guest_thread([&]() {
         g_state.run_success = Kernel::Execute(g_state.main_module, &g_state.guest_exit_code);
         guest_done.store(true, std::memory_order_release);
+        printf("Finished guest_thread lambda\n");
     });
     // Store a duplicate handle with TERMINATE access so pcsx5_force_stop works.
     {

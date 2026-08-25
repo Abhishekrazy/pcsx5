@@ -76,6 +76,7 @@ void TestUnknownStubCrash() {
         EXPECT(false, "HleDispatch should not return for UNKNOWN stubs");
     } else {
         crashed = true;
+        printf("CAUGHT LONGJMP!\n"); fflush(stdout);
     }
     HLE::ArmGuestExitEnv(false);
 
@@ -133,6 +134,7 @@ void TestStubContracts() {
         EXPECT(false, "HleDispatch should not return for NEVER_SAFE stubs");
     } else {
         crashed = true;
+        printf("CAUGHT LONGJMP!\n"); fflush(stdout);
     }
     HLE::ArmGuestExitEnv(false);
     
