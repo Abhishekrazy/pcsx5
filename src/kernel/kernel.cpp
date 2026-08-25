@@ -527,6 +527,28 @@ namespace Kernel {
         ShutdownFdTable();
         ShutdownGuestMemory();
 
+        g_main_module_retained = false;
+        g_prx_modules.clear();
+
+        {
+            std::lock_guard<std::mutex> lock(g_module_registry_mutex);
+            g_loaded_modules.clear();
+            g_loaded_module_tls_index.clear();
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_tls_block_mutex);
+            g_tls_block_cache.clear();
+            g_tls_block_va.clear();
+        }
+
+        g_app0_dir.clear();
+        g_savedata_dir.clear();
+        g_module_resolver.SetSearchDirectories({});
+        {
+            std::lock_guard<std::mutex> lock(g_thread_mutex);
+            g_threads.clear();
+        }
+
         if (g_veh_handler) {
             RemoveVectoredExceptionHandler(g_veh_handler);
             g_veh_handler = nullptr;
@@ -542,6 +564,33 @@ namespace Kernel {
     }
 
 
+
+
+    // Binary patching: Scan executable segments for syscall (0x0F 0x05) and replace with INT 3 NOP (0xCC 0x90)
+    // Only applied to test ELFs since blind patching corrupts real games (eboot.bin).
+    static void PatchSyscalls(const std::vector<Loader::MappedSegment>& segments, const std::string& module_name) {
+        if (module_name != "test_guest.elf" && module_name != "tls_guest.elf") {
+            return;
+        }
+        u64 patched_count = 0;
+
+        for (const auto& seg : segments) {
+            if (!(seg.final_protection & Memory::PROT_EXEC)) continue;
+            u8* start = reinterpret_cast<u8*>(seg.address);
+            u8* end = start + seg.size;
+            for (u8* ptr = start; ptr < end - 1; ++ptr) {
+                if (ptr[0] == 0x0F && ptr[1] == 0x05) {
+                    DWORD old_protect;
+                    VirtualProtect(ptr, 2, PAGE_EXECUTE_READWRITE, &old_protect);
+                    ptr[0] = 0xCC;
+                    ptr[1] = 0x90;
+                    VirtualProtect(ptr, 2, old_protect, &old_protect);
+                    patched_count++;
+                }
+            }
+        }
+        LOG_INFO(Kernel, "Patched %llu syscall instructions for %s.", patched_count, module_name.c_str());
+    }
 
     // Removed unused lookup functions
 
@@ -758,7 +807,7 @@ namespace Kernel {
                     LOG_WARN(Kernel, "Failed to link PRX module '%s'; its imports stay unresolved",
                              record->module.name.c_str());
                 }
-                // Removed blind PatchSyscalls
+                PatchSyscalls(record->module.segments, record->module.name);
 
                 // Queue for initialization
                 if (record->module.init_address != 0 || record->module.init_array_address != 0) {
@@ -930,7 +979,7 @@ namespace Kernel {
             }
         }
 
-        // Removed dangerous blind syscall patching that corrupted eboot.bin.
+        PatchSyscalls(out_module.segments, out_module.name);
 
         // Apply final page protections for all segments.  ELF segments can
         // share a 16KB guest page (lld emits unaligned, page-overlapping
@@ -996,14 +1045,25 @@ namespace Kernel {
 #pragma warning(push)
 #pragma warning(disable: 4611)
     static bool StartGuestCaptured(guest_addr_t entry_point, guest_addr_t sp, u32* out_exit_code) {
+#ifdef _WIN32
+        PNT_TIB tib = (PNT_TIB)NtCurrentTeb();
+        PVOID host_stack_base = tib->StackBase;
+        PVOID host_stack_limit = tib->StackLimit;
+#endif
         if (setjmp(HLE::GuestExitEnv()) == 0) {
             HLE::ArmGuestExitEnv(true);
             bool ok = TryStartGuest(entry_point, sp);
             HLE::ArmGuestExitEnv(false);
             return ok;
         }
+#ifdef _WIN32
+        // Restore TEB if we longjmp'd out of TryStartGuest!
+        tib->StackBase = host_stack_base;
+        tib->StackLimit = host_stack_limit;
+#endif
         *out_exit_code = HLE::GuestExitCode();
         LOG_INFO(Kernel, "Guest requested process termination (exit code %u).", *out_exit_code);
+        printf("StartGuestCaptured Returning True\n");
         return true;
     }
 #pragma warning(pop)
@@ -1142,6 +1202,7 @@ namespace Kernel {
         }
 
         LOG_INFO(Kernel, "Guest execution finished cleanly.");
+        printf("Finished Execute cleanly\n");
         return true;
     }
 

@@ -156,6 +156,7 @@ void TestJsonExport() {
     // Catch it so we can verify the JSON report.
     HLE::SetMainGuestThreadId(::GetCurrentThreadId());
     HLE::ArmGuestExitEnv(true);
+    std::fprintf(stdout, "EXPECT THREAD ID: %lu\n", ::GetCurrentThreadId()); std::fflush(stdout);
 #pragma warning(push)
 #pragma warning(disable: 4611)
     if (setjmp(HLE::GuestExitEnv()) == 0) {
@@ -163,6 +164,7 @@ void TestJsonExport() {
         HleDispatch(stub_id,  0, 0, 0, 0, 0, 0, 0x2000, 0);
     }
     HLE::ArmGuestExitEnv(false);
+    std::fprintf(stdout, "WE SURVIVED SETJMP!\n"); std::fflush(stdout);
 
     const std::string json_text = HLE::ExportImportReportJson();
     nlohmann::json doc = nlohmann::json::parse(json_text, nullptr, false);
