@@ -541,37 +541,7 @@ namespace Kernel {
         }
     }
 
-    // Binary patching: Scan executable segments for "syscall" (0x0F 0x05) and replace with "INT 3; NOP" (0xCC 0x90)
-    static void PatchSyscalls(const std::vector<Loader::MappedSegment>& segments) {
-        u64 patched_count = 0;
 
-        for (const auto& seg : segments) {
-            // Only scan executable segments
-            if (!(seg.final_protection & Memory::PROT_EXEC)) continue;
-
-            u8* start = reinterpret_cast<u8*>(seg.address);
-            u8* end = start + seg.size;
-
-            for (u8* ptr = start; ptr < end - 1; ++ptr) {
-                // Find "syscall" instruction: 0x0F 0x05
-                if (ptr[0] == 0x0F && ptr[1] == 0x05) {
-                    DWORD old_protect;
-                    // Make segment temporarily writable if it isn't
-                    VirtualProtect(ptr, 2, PAGE_EXECUTE_READWRITE, &old_protect);
-                    
-                    // Replace with INT 3 (0xCC) and NOP (0x90)
-                    ptr[0] = 0xCC;
-                    ptr[1] = 0x90;
-                    
-                    // Restore protection
-                    VirtualProtect(ptr, 2, old_protect, &old_protect);
-                    patched_count++;
-                }
-            }
-        }
-
-        LOG_INFO(Kernel, "Patched %llu syscall instructions in executable segments.", patched_count);
-    }
 
     // Removed unused lookup functions
 
@@ -788,7 +758,7 @@ namespace Kernel {
                     LOG_WARN(Kernel, "Failed to link PRX module '%s'; its imports stay unresolved",
                              record->module.name.c_str());
                 }
-                PatchSyscalls(record->module.segments);
+                // Removed blind PatchSyscalls
 
                 // Queue for initialization
                 if (record->module.init_address != 0 || record->module.init_array_address != 0) {
@@ -960,8 +930,7 @@ namespace Kernel {
             }
         }
 
-        // Scan and patch "syscall" instructions to trap them via VEH
-        PatchSyscalls(out_module.segments);
+        // Removed dangerous blind syscall patching that corrupted eboot.bin.
 
         // Apply final page protections for all segments.  ELF segments can
         // share a 16KB guest page (lld emits unaligned, page-overlapping
@@ -994,14 +963,27 @@ namespace Kernel {
     extern "C" void StartGuest(u64 entry_point, u64 stack_pointer);
 
     static bool TryStartGuest(guest_addr_t entry_point, guest_addr_t sp) {
+#ifdef _WIN32
+        PNT_TIB tib = (PNT_TIB)NtCurrentTeb();
+        PVOID host_stack_base = tib->StackBase;
+        PVOID host_stack_limit = tib->StackLimit;
+        // Spoof bounds around the dedicated guest stack
+        tib->StackBase = (PVOID)(sp + 0x800000);
+        tib->StackLimit = (PVOID)(sp - 0x800000);
+#endif
+        bool ok = true;
         __try {
             StartGuest(entry_point, sp);
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
             LOG_ERROR(Kernel, "Unhandled hardware exception occurred inside guest execution!");
-            return false;
+            ok = false;
         }
-        return true;
+#ifdef _WIN32
+        tib->StackBase = host_stack_base;
+        tib->StackLimit = host_stack_limit;
+#endif
+        return ok;
     }
 
     // Cooperative guest exit: HleDispatch observes the window-close stop flag
@@ -1034,12 +1016,12 @@ namespace Kernel {
         g_main_module_copy    = main_module;
         g_main_module_retained = true;
 
-        // Dump first 32 bytes at the entry point for boot diagnostics.
+        // Dump first 64 bytes at the entry point for boot diagnostics.
         {
-            u8 entry_code[32] = {};
+            u8 entry_code[64] = {};
             Memory::ReadBuffer(main_module.entry_point, entry_code, sizeof(entry_code));
-            char hex[96] = {};
-            for (int i = 0; i < 32; ++i)
+            char hex[192] = {};
+            for (int i = 0; i < 64; ++i)
                 sprintf_s(hex + i * 2, sizeof(hex) - i * 2, "%02X", entry_code[i]);
             LOG_INFO(Kernel, "Entry point code: %s", hex);
         }
@@ -1124,7 +1106,7 @@ namespace Kernel {
             if (prx.dt_init) {
                 LOG_INFO(Kernel, "MODULE_INIT_BEGIN module=%s address=0x%llx dependency_depth=%d", 
                          prx.module_name.c_str(), prx.dt_init, depth);
-                ::InvokeGuestOnStack(prx.dt_init, sp - 1024);
+                ::InvokeGuestOnStack(prx.dt_init, sp - 1024, 0);
                 LOG_INFO(Kernel, "MODULE_INIT_END module=%s address=0x%llx result=success", 
                          prx.module_name.c_str(), prx.dt_init);
             }
@@ -1136,7 +1118,7 @@ namespace Kernel {
                 for (u64 i = 0; i < count; ++i) {
                     guest_addr_t func = Memory::Read<u64>(prx.init_array_address + (i * 8));
                     if (func) {
-                        ::InvokeGuestOnStack(func, sp - 1024);
+                        ::InvokeGuestOnStack(func, sp - 1024, 0);
                     }
                 }
                 LOG_INFO(Kernel, "MODULE_INIT_END module=%s init_array=0x%llx result=success", 
@@ -1624,6 +1606,15 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         if (exception_record->ExceptionCode != 0xE06D7363) {
             LOG_INFO(Kernel, "VEH Exception Triggered: Code: 0x%X, RIP: 0x%llx, OS Thread: %lu",
                      exception_record->ExceptionCode, context->Rip, ::GetCurrentThreadId());
+            
+            // Dump instruction bytes at host RIP
+            if (Memory::IsReadable(context->Rip, 16)) {
+                u8 inst[16];
+                Memory::ReadBuffer(context->Rip, inst, 16);
+                LOG_INFO(Kernel, "VEH Instruction Bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+                         inst[0], inst[1], inst[2], inst[3], inst[4], inst[5], inst[6], inst[7],
+                         inst[8], inst[9], inst[10], inst[11], inst[12], inst[13], inst[14], inst[15]);
+            }
         }
 
         // ---- GUEST NULL-CALL attribution (durable diagnostic) -------------
@@ -1749,6 +1740,27 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 u32 syscall_number = static_cast<u32>(context->Rax);
                 context->Rax = HandleSyscall(syscall_number, context);
 
+                context->Rip += 2;
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        }
+
+        // Handle PS5 direct syscalls (int 0x41)
+        if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+            u8* ip = reinterpret_cast<u8*>(context->Rip);
+            u8 sig[2];
+            if (ip && SafeRead(sig, ip, 2) && sig[0] == 0xCD && sig[1] == 0x41) {
+                u32 syscall_number = static_cast<u32>(context->Rax);
+                LOG_WARN(Kernel, "Guest invoked raw syscall %u via int 0x41", syscall_number);
+                if (syscall_number == 1) { // sys_exit
+                    fflush(stdout); fflush(stderr); LogConfig::FlushDedup();
+                    ::TerminateProcess(::GetCurrentProcess(), static_cast<u32>(context->Rdi));
+                } else if (syscall_number == 431) { // sys_thr_exit
+                    ::TerminateThread(::GetCurrentThread(), 0);
+                } else {
+                    LOG_ERROR(Kernel, "Unhandled raw syscall %u via int 0x41", syscall_number);
+                    context->Rax = 0;
+                }
                 context->Rip += 2;
                 return EXCEPTION_CONTINUE_EXECUTION;
             }
@@ -2295,3 +2307,14 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
     }
 }
 // namespace Kernel
+
+
+
+
+
+
+
+
+
+
+
