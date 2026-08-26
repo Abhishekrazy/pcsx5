@@ -49,7 +49,7 @@ namespace HLE {
     // fault handler can reach it.
     // -----------------------------------------------------------------------
     namespace {
-        constexpr u64  PHYS_POOL_SIZE = 2ULL * 1024 * 1024 * 1024; // 2 GB pool
+        constexpr u64  PHYS_POOL_SIZE = 16ULL * 1024 * 1024 * 1024; // 16 GB pool
         // Commit-ahead granularity.  Allocation requests bump the phys offset
         // without touching pages; we commit the pool in large chunks ahead of
         // the bump pointer so that neither sceKernelMapDirectMemory nor a
@@ -931,6 +931,21 @@ namespace HLE {
             LOG_DEBUG(HLE, "KernelRtldSetApplicationHeapAPI(0x%llx) -> 0", a.arg1);
             return 0;
         });
+        RegisterSymbol("libkernel", "TqIu8K3Q5h8#S#N", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "O0FqD1eG0uI#S#N", [](const GuestArgs&) -> u64 { return 0; });
+
+        // Thread attributes
+        auto PthreadAttrStub = [](const GuestArgs&) -> u64 { return 0; };
+        RegisterSymbol("libkernel", "Bvn74vj6oLo", PthreadAttrStub); // scePthreadAttrSetstack
+        RegisterSymbol("libkernel", "Bvn74vj6oLo#T#T", PthreadAttrStub);
+        RegisterSymbol("libkernel", "Bvn74vj6oLo#S#N", PthreadAttrStub);
+        RegisterSymbol("libkernel", "scePthreadAttrSetstack", PthreadAttrStub);
+        
+        RegisterSymbol("libkernel", "UTXzJbWhhTE", PthreadAttrStub); // scePthreadAttrSetstacksize
+        RegisterSymbol("libkernel", "UTXzJbWhhTE#T#T", PthreadAttrStub);
+        RegisterSymbol("libkernel", "UTXzJbWhhTE#S#N", PthreadAttrStub);
+        RegisterSymbol("libkernel", "scePthreadAttrSetstacksize", PthreadAttrStub);
+
         // KernelGetSanitizerMallocReplaceExternal (py6L8jiVAN8) — ASan support.
         RegisterSymbol("libkernel", "py6L8jiVAN8#T#T", [](const GuestArgs&) -> u64 {
             LOG_DEBUG(HLE, "KernelGetSanitizerMallocReplaceExternal() -> 0");
@@ -941,6 +956,37 @@ namespace HLE {
             LOG_DEBUG(HLE, "KernelGetSanitizerNewReplaceExternal() -> 0");
             return 0;
         });
+        // sceKernelIsAddressSanitizerEnabled (jh+8XiK4LeE) — ASan support.
+        RegisterSymbol("libkernel", "jh+8XiK4LeE", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "sceKernelIsAddressSanitizerEnabled() -> 0");
+            return 0;
+        });
+        RegisterSymbol("libkernel", "sceKernelIsAddressSanitizerEnabled", [](const GuestArgs&) -> u64 {
+            LOG_DEBUG(HLE, "sceKernelIsAddressSanitizerEnabled() -> 0");
+            return 0;
+        });
+        
+        // sceKernelGetGPI (4oXYe9Xmk0Q)
+        RegisterSymbol("libkernel", "4oXYe9Xmk0Q", [](const GuestArgs& args) -> u64 {
+            LOG_WARN(HLE, "sceKernelGetGPI(0x%llx, 0x%llx, 0x%llx)", args.arg1, args.arg2, args.arg3);
+            return 0;
+        });
+        RegisterSymbol("libkernel", "sceKernelGetGPI", [](const GuestArgs& args) -> u64 {
+            LOG_WARN(HLE, "sceKernelGetGPI(0x%llx, 0x%llx, 0x%llx)", args.arg1, args.arg2, args.arg3);
+            return 0;
+        });
+        
+        // sceKernelConvertUtcToLocaltime (-o5uEDpN+oY)
+        RegisterSymbol("libkernel", "-o5uEDpN+oY", [](const GuestArgs& args) -> u64 {
+            LOG_WARN(HLE, "sceKernelConvertUtcToLocaltime(0x%llx, 0x%llx)", args.arg1, args.arg2);
+            return 0;
+        });
+        RegisterSymbol("libkernel", "sceKernelConvertUtcToLocaltime", [](const GuestArgs& args) -> u64 {
+            LOG_WARN(HLE, "sceKernelConvertUtcToLocaltime(0x%llx, 0x%llx)", args.arg1, args.arg2);
+            return 0;
+        });
+        RegisterSymbol("libkernel", "YQ0navp+YIc#T#T", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "x1X76arYMxU#S#N", [](const GuestArgs&) -> u64 { return 0; });
         // PthreadEqual (3PtV6p3QNX4) — compare two thread IDs.
         RegisterSymbol("libkernel", "3PtV6p3QNX4#T#T", [](const GuestArgs& a) -> u64 {
             LOG_DEBUG(HLE, "PthreadEqual(t1=%llu, t2=%llu) -> %d", a.arg1, a.arg2, a.arg1 == a.arg2 ? 1 : 0);
@@ -1001,7 +1047,7 @@ namespace HLE {
             return 0;
         });
         RegisterSymbol("libkernel", "scePthreadAttrSetstacksize", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadAttrSetstacksize(attr=0x%llx, size=0x%llx) -> OK", args.arg1, args.arg2);
+            LOG_INFO(HLE, "scePthreadAttrSetstacksize(attr=0x%llx, size=0x%llx) -> OK", args.arg1, args.arg2);
             return 0;
         });
         RegisterSymbol("libkernel", "scePthreadAttrSetdetachstate", [](const GuestArgs& args) -> u64 {
@@ -1026,7 +1072,10 @@ namespace HLE {
             return 0;
         });
         RegisterSymbol("libkernel", "pthread_attr_destroy", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_setstacksize", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libkernel", "pthread_attr_setstacksize", [](const GuestArgs& args) -> u64 {
+            if (args.arg1) Memory::Write<u64>(args.arg1 + 8, args.arg2);
+            return 0; 
+        });
         RegisterSymbol("libkernel", "pthread_attr_setstack", [](const GuestArgs&) -> u64 { return 0; });
         RegisterSymbol("libkernel", "pthread_attr_getstacksize", [](const GuestArgs&) -> u64 { return 0; });
         RegisterSymbol("libkernel", "pthread_attr_getstack", [](const GuestArgs&) -> u64 { return 0; });
@@ -1074,7 +1123,7 @@ namespace HLE {
         auto PthreadExitImpl = [](const GuestArgs& args) -> u64 {
             u64 exit_value = args.arg1;
             LOG_INFO(HLE, "scePthreadExit(value=0x%llx)", exit_value);
-            ExitThread(static_cast<DWORD>(exit_value));
+            Kernel::ExitThread(exit_value);
             __assume(0); // ExitThread never returns
         };
         RegisterSymbol("libkernel", "scePthreadExit", PthreadExitImpl);
@@ -1288,15 +1337,25 @@ namespace HLE {
             
             LOG_DEBUG(HLE, "libkernel::memset(dest: 0x%llx, ch: %u, count: %llu)", dest, ch, count);
             if (dest && count > 0) {
-                if (!Memory::IsWritable(dest, count)) {
-                    Memory::CommitOnFault(dest);
-                    if (!Memory::IsWritable(dest, count)) {
-                        LOG_WARN(HLE, "libkernel::memset: dest range not writable (0x%llx, %llu) — skipped",
-                                 dest, count);
-                        return dest;
+                u64 current_dest = dest;
+                u64 remaining = count;
+                while (remaining > 0) {
+                    u64 page_offset = current_dest & 0xFFF;
+                    u64 chunk = 0x1000 - page_offset;
+                    if (chunk > remaining) chunk = remaining;
+                    
+                    if (!Memory::IsWritable(current_dest, chunk)) {
+                        Memory::CommitOnFault(current_dest);
+                        if (!Memory::IsWritable(current_dest, chunk)) {
+                            LOG_WARN(HLE, "libkernel::memset: dest range not writable (0x%llx, %llu) - skipped chunk", current_dest, chunk);
+                            break;
+                        }
                     }
+                    std::memset(reinterpret_cast<void*>(current_dest), static_cast<int>(ch & 0xFF), chunk);
+                    
+                    current_dest += chunk;
+                    remaining -= chunk;
                 }
-                std::memset(reinterpret_cast<void*>(dest), static_cast<int>(ch & 0xFF), count);
             }
             return dest;
         });
@@ -1413,6 +1472,31 @@ namespace HLE {
         // stack) — see SceKernelMapDirectMemory2 above.
         RegisterSymbol("libkernel", "BQQniolj9tQ", SceKernelMapDirectMemory2);
         RegisterSymbol("libkernel", "sceKernelMapDirectMemory2", SceKernelMapDirectMemory2);
+        // Named variant (last argument is name string)
+        RegisterSymbol("libkernel", "NcaWUxfMNIQ", SceKernelMapDirectMemory);
+        RegisterSymbol("libkernel", "sceKernelMapNamedDirectMemory", SceKernelMapDirectMemory);
+
+        // sceKernelSetVirtualRangeName (DGMG3JshrZU)
+        RegisterSymbol("libkernel", "DGMG3JshrZU", [](const GuestArgs& args) -> u64 {
+            guest_addr_t name_ptr = args.arg3;
+            if (name_ptr) {
+                std::string name = ReadGuestCString(name_ptr);
+                LOG_INFO(HLE, "sceKernelSetVirtualRangeName(start: 0x%llx, len: 0x%llx, name: '%s')", args.arg1, args.arg2, name.c_str());
+            } else {
+                LOG_INFO(HLE, "sceKernelSetVirtualRangeName(start: 0x%llx, len: 0x%llx, name: null)", args.arg1, args.arg2);
+            }
+            return 0;
+        });
+        RegisterSymbol("libkernel", "sceKernelSetVirtualRangeName", [](const GuestArgs& args) -> u64 {
+            guest_addr_t name_ptr = args.arg3;
+            if (name_ptr) {
+                std::string name = ReadGuestCString(name_ptr);
+                LOG_INFO(HLE, "sceKernelSetVirtualRangeName(start: 0x%llx, len: 0x%llx, name: '%s')", args.arg1, args.arg2, name.c_str());
+            } else {
+                LOG_INFO(HLE, "sceKernelSetVirtualRangeName(start: 0x%llx, len: 0x%llx, name: null)", args.arg1, args.arg2);
+            }
+            return 0;
+        });
 
         // sceKernelReserveVirtualRange (7oxv3PPCumo)
         auto ReserveVirtualRangeImpl = [](const GuestArgs& args) -> u64 {
@@ -1595,6 +1679,12 @@ namespace HLE {
             MEMORY_BASIC_INFORMATION mbi_s{}, mbi_d{};
             bool s_valid = (VirtualQuery(reinterpret_cast<LPCVOID>(src), &mbi_s, sizeof(mbi_s)) != 0 && mbi_s.State == MEM_COMMIT);
             bool d_valid = (VirtualQuery(reinterpret_cast<LPCVOID>(dest), &mbi_d, sizeof(mbi_d)) != 0 && mbi_d.State == MEM_COMMIT);
+            if (s_valid) {
+                s_valid = (mbi_s.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+            }
+            if (d_valid) {
+                d_valid = (mbi_d.Protect & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+            }
             if (!s_valid || !d_valid) {
                 LOG_WARN(HLE, "libkernel::%s: skipping copy with uncommitted memory (src_valid=%d dest_valid=%d src=0x%llx dest=0x%llx count=%llu)",
                          which, (int)s_valid, (int)d_valid, src, dest, count);
@@ -1637,11 +1727,37 @@ namespace HLE {
         RegisterSymbol("libkernel", "0E5HFqWCBSA#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t old_ptr = args.arg1;
             u64 new_size         = args.arg2;
-            if (new_size == 0) return 0;
+            if (new_size == 0) {
+                return 0;
+            }
             guest_addr_t mem = 0;
             if (Memory::Map(0, (new_size + 0xFFF) & ~0xFFFULL,
                             Memory::PROT_READ | Memory::PROT_WRITE, &mem) != Memory::Status::Ok) {
                 return 0;
+            }
+            if (old_ptr) {
+                // Safely copy up to new_size, stopping at the first uncommitted page
+                u64 current_src = old_ptr;
+                u64 current_dest = mem;
+                u64 remaining = new_size;
+                while (remaining > 0) {
+                    u64 page_offset = current_src & 0xFFF;
+                    u64 chunk = 0x1000 - page_offset;
+                    if (chunk > remaining) chunk = remaining;
+                    
+                    if (!Memory::IsReadable(current_src, chunk)) {
+                        break; // Reached end of committed old_ptr memory
+                    }
+                    if (!Memory::IsWritable(current_dest, chunk)) {
+                        break; // Should not happen since we just mapped mem
+                    }
+                    std::memmove(reinterpret_cast<void*>(current_dest),
+                                 reinterpret_cast<const void*>(current_src), chunk);
+                    
+                    current_src += chunk;
+                    current_dest += chunk;
+                    remaining -= chunk;
+                }
             }
             LOG_DEBUG(HLE, "libkernel::realloc(ptr: 0x%llx, size: %llu) -> 0x%llx", old_ptr, new_size, mem);
             return mem;
@@ -1882,10 +1998,40 @@ namespace HLE {
             guest_addr_t buf = args.arg1;
             u64 size  = args.arg2;
             u64 count = args.arg3;
-            FILE* f   = reinterpret_cast<FILE*>(args.arg4);
-            if (!f || !buf) return 0;
-            return fwrite(reinterpret_cast<const void*>(buf), size, count, f);
+            if (!buf) return 0;
+            
+            // Do NOT call host fwrite with guest FILE*!
+            // Just read the guest string and print it to the emulator log if it's text.
+            u64 total_bytes = size * count;
+            if (total_bytes > 0 && total_bytes < 10000) {
+                if (Memory::IsReadable(buf, total_bytes)) {
+                    std::string s(total_bytes, '\0');
+                    Memory::ReadBuffer(buf, s.data(), total_bytes);
+                    LOG_INFO(HLE, "[GUEST_FWRITE]: %s", s.c_str());
+                }
+            }
+            return count; // Pretend we wrote everything
         });
+
+        // fflush
+        RegisterSymbol("libc", "fflush", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libc", "6LDBEaH-R00", [](const GuestArgs&) -> u64 { return 0; }); // libc fflush NID
+        RegisterSymbol("libc", "6LDBEaH-R00#T#T", [](const GuestArgs&) -> u64 { return 0; });
+
+        // feof (always return 1/EOF for fake files)
+        RegisterSymbol("libc", "feof", [](const GuestArgs&) -> u64 { return 1; });
+        RegisterSymbol("libc", "LxcEU+ICu8U", [](const GuestArgs&) -> u64 { return 1; });
+        RegisterSymbol("libc", "LxcEU+ICu8U#T#T", [](const GuestArgs&) -> u64 { return 1; });
+
+        // fgets (always return 0/NULL for fake files)
+        RegisterSymbol("libc", "fgets", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libc", "KdP-nULpuGw", [](const GuestArgs&) -> u64 { return 0; });
+        RegisterSymbol("libc", "KdP-nULpuGw#T#T", [](const GuestArgs&) -> u64 { return 0; });
+
+        // fgetc (always return -1/EOF for fake files)
+        RegisterSymbol("libc", "fgetc", [](const GuestArgs&) -> u64 { return (u64)-1; });
+        RegisterSymbol("libc", "w3S10hD3pAA", [](const GuestArgs&) -> u64 { return (u64)-1; });
+        RegisterSymbol("libc", "w3S10hD3pAA#T#T", [](const GuestArgs&) -> u64 { return (u64)-1; });
 
         // printf (hcuQgD53UxM#T#T) — just log to stderr
         RegisterSymbol("libkernel", "hcuQgD53UxM#T#T", [](const GuestArgs& args) -> u64 {
@@ -2126,7 +2272,15 @@ namespace HLE {
                 }
             }
 
-            constexpr u64 kGuestStackSize = 1024 * 1024;
+            u64 kGuestStackSize = 2 * 1024 * 1024; // default 2MB
+            if (attr_ptr) {
+                u64 requested = Memory::Read<u64>(attr_ptr + 8);
+                if (requested > 0 && requested < 256 * 1024 * 1024) {
+                    kGuestStackSize = requested;
+                }
+            }
+            kGuestStackSize = (kGuestStackSize + 0xFFF) & ~0xFFFULL; // align to page
+            
             void* guest_stack = VirtualAlloc(nullptr, kGuestStackSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (!guest_stack) {
                 LOG_ERROR(HLE, "scePthreadCreate(NID): VirtualAlloc failed for guest stack");
@@ -2174,8 +2328,8 @@ namespace HLE {
             }
 
             if (tid_out) Memory::Write<u64>(tid_out, tid);
-            LOG_INFO(HLE, "scePthreadCreate(NID)(entry=0x%llx, arg=0x%llx, name='%s') -> tid=%llu",
-                     entry_ptr, start_arg, name.c_str(), tid);
+            LOG_INFO(HLE, "scePthreadCreate(NID)(entry=0x%llx, arg=0x%llx, name='%s') -> tid=%llu (stack_size=%llu)",
+                     entry_ptr, start_arg, name.c_str(), tid, kGuestStackSize);
             return 0;
         };
         RegisterSymbol("libkernel", "6UgtwV+0zb4#T#T", PthreadCreateImpl);
@@ -2280,14 +2434,25 @@ namespace HLE {
             u32 ch = static_cast<u32>(args.arg2);
             u64 n = args.arg3;
             if (dst && n > 0 && n < 0x10000000ULL) {
-                if (!Memory::IsWritable(dst, n)) {
-                    Memory::CommitOnFault(dst);
-                    if (!Memory::IsWritable(dst, n)) {
-                        LOG_WARN(HLE, "libkernel::memset: dest range not writable (0x%llx, %llu) — skipped", dst, n);
-                        return dst;
+                u64 current_dest = dst;
+                u64 remaining = n;
+                while (remaining > 0) {
+                    u64 page_offset = current_dest & 0xFFF;
+                    u64 chunk = 0x1000 - page_offset;
+                    if (chunk > remaining) chunk = remaining;
+                    
+                    if (!Memory::IsWritable(current_dest, chunk)) {
+                        Memory::CommitOnFault(current_dest);
+                        if (!Memory::IsWritable(current_dest, chunk)) {
+                            LOG_WARN(HLE, "libkernel::memset: dest range not writable (0x%llx, %llu) - skipped chunk", current_dest, chunk);
+                            break;
+                        }
                     }
+                    std::memset(reinterpret_cast<void*>(current_dest), static_cast<int>(ch & 0xFF), chunk);
+                    
+                    current_dest += chunk;
+                    remaining -= chunk;
                 }
-                std::memset(reinterpret_cast<void*>(dst), static_cast<int>(ch & 0xFF), n);
             }
             return dst;
         });
@@ -2436,6 +2601,29 @@ namespace HLE {
                 return 0;
             });
         }
+
+        auto FallbackStub = [](const GuestArgs& args) -> u64 {
+            LOG_INFO(HLE, "unknown::stub(args: 0x%llx, 0x%llx, 0x%llx)", args.arg1, args.arg2, args.arg3);
+            return 0;
+        };
+        RegisterSymbol("unknown", "amuBfI-AQc4", FallbackStub);
+        RegisterSymbol("unknown", "SUEVes8gvmw", FallbackStub);
+        RegisterSymbol("unknown", "6PBNpsgyaxw", FallbackStub);
+        RegisterSymbol("unknown", "JT+t00a3TxA", FallbackStub);
+        RegisterSymbol("unknown", "dolOmWH+huQ", FallbackStub);
+        RegisterSymbol("unknown", "fd5Bp5tGTgo", FallbackStub);
+        RegisterSymbol("unknown", "mPpPxv5CZt4", FallbackStub);
+        RegisterSymbol("unknown", "sk54bi6FtYM", FallbackStub);
+        RegisterSymbol("unknown", "pDuPEf3m4fI", FallbackStub);
+        RegisterSymbol("unknown", "whrS4oksXc4", FallbackStub);
+        RegisterSymbol("unknown", "oM+XCzVG3oM", FallbackStub);
+        RegisterSymbol("unknown", "n590hj5Oe-k", FallbackStub);
+        RegisterSymbol("unknown", "SsRbbCiWoGw", FallbackStub);
+        RegisterSymbol("unknown", "mz2iTY0MK4A", FallbackStub);
+        RegisterSymbol("unknown", "CUKn5pX-NVY", FallbackStub);
+        RegisterSymbol("unknown", "0GnN4QCgIfs", FallbackStub);
+        RegisterSymbol("unknown", "Sygnk9dr5WQ", FallbackStub);
+        RegisterSymbol("unknown", "3RQ5aQfnstU", FallbackStub);
     }
 }
 // namespace HLE
