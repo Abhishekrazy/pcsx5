@@ -43,14 +43,14 @@ bool g_initialized = false;
 // allocations themselves were adopted into Memory tracking at creation
 // (libkernel scePthreadCreate); drop the tracking records here so Query
 // doesn't report freed host pages as live.
-void FreeThreadGuestMemory(GuestThread& thread) {
+static void FreeThreadGuestMemory(GuestThread& thread) {
     if (thread.stack_base) {
         VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(thread.stack_base)), 0, MEM_RELEASE);
         Memory::ForgetResource(thread.stack_base);
         thread.stack_base = 0;
     }
     if (thread.tls_base) {
-        VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(thread.tls_base)), 0, MEM_RELEASE);
+        VirtualFree(reinterpret_cast<void*>(static_cast<uintptr_t>(thread.tls_base - 0x10000)), 0, MEM_RELEASE);
         // tls_base points kTlsHeadroom INTO the adopted block; the record's
         // base is the block start.
         Memory::ForgetResource(thread.tls_base - 0x10000);
@@ -204,6 +204,8 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
     // The saved values are restored after InvokeGuestFunction returns.
     const u64 saved_gs_08 = __readgsqword(0x08);
     const u64 saved_gs_10 = __readgsqword(0x10);
+    self->saved_gs_08 = saved_gs_08;
+    self->saved_gs_10 = saved_gs_10;
     __writegsqword(0x08, 0);
     __writegsqword(0x10, 0);
 
@@ -216,7 +218,7 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
     __writegsqword(0x10, saved_gs_10);
 
     LOG_INFO(Cpu, "Guest thread %llu exited with 0x%llx", id, ret);
-    HandleThreadExit(id, ret);
+    CpuCore::HandleThreadExit(id, ret);
     return static_cast<unsigned long>(ret);
 }
 
@@ -224,6 +226,10 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
 // CpuCore
 // ---------------------------------------------------------------------------
 namespace CpuCore {
+
+void HandleThreadExit(u64 thread_id, u64 exit_code) {
+    ::HandleThreadExit(thread_id, exit_code);
+}
 
 bool Initialize() {
     if (g_initialized) {
