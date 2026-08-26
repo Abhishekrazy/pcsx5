@@ -1,8 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "hle.h"
-namespace Kernel { void ExitThread(unsigned long long status); }
-#include <thread>
-
 #include "../memory/memory.h"
 #include "../common/log.h"
 #include "../common/nid.h"
@@ -186,13 +183,14 @@ namespace HLE {
             g_guest_exit_code = exit_code;
             longjmp(g_guest_exit_env, 1);
         }
-        g_guest_exit_code = exit_code;
-        HLE::RequestStop();
-        Kernel::ExitThread(exit_code);
-        
-        while (true) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
+        // Off the main guest thread there is no armed setjmp buffer; fall
+        // back to terminating the process immediately to avoid letting other
+        // active threads crash during host CRT exit teardown.
+#ifdef _WIN32
+        ::TerminateProcess(::GetCurrentProcess(), exit_code);
+#else
+        std::exit(static_cast<int>(exit_code));
+#endif
     }
 
     // ---------------------------------------------------------------------
