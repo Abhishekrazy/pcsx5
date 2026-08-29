@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Windows;
+using Squirrel;
 
 namespace Pcsx5Ui
 {
@@ -8,6 +9,8 @@ namespace Pcsx5Ui
     {
         public App()
         {
+            SquirrelAwareApp.HandleEvents();
+
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
                 try

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using Squirrel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -333,6 +334,9 @@ namespace Pcsx5Ui
                         MaybeShowFirstRunSetup();
                     });
                 });
+
+                // Check for updates asynchronously
+                Task.Run(async () => await CheckForUpdates());
             }
             catch (Exception ex)
             {
@@ -342,6 +346,36 @@ namespace Pcsx5Ui
                     File.WriteAllText(Path.Combine(logsDir, "ui_crash_log.txt"), ex.ToString());
                 } catch { }
                 MessageBox.Show(ex.ToString(), "UI Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task CheckForUpdates()
+        {
+            try
+            {
+                using var mgr = new Squirrel.UpdateManager("https://github.com/Abhishekrazy/pcsx5");
+                var updateInfo = await mgr.CheckForUpdate();
+                if (updateInfo != null && updateInfo.ReleasesToApply.Any())
+                {
+                    await mgr.UpdateApp();
+                    Dispatcher.Invoke(() =>
+                    {
+                        var result = MessageBox.Show("An update was installed in the background. Restart now to apply?", 
+                            "Update Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                        if (result == MessageBoxResult.Yes)
+                        {
+                            Squirrel.UpdateManager.RestartApp();
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                try {
+                    string logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+                    Directory.CreateDirectory(logsDir);
+                    File.AppendAllText(Path.Combine(logsDir, "ui_crash_log.txt"), $"[{DateTime.UtcNow}] Update check failed: {ex}\n");
+                } catch { }
             }
         }
 
