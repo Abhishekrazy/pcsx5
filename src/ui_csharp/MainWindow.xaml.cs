@@ -150,7 +150,6 @@ namespace Pcsx5Ui
                                      _session?.State == GameSessionState.Extracting;
 
         // Pause menu state
-        private bool _isPaused = false;
         private bool _pauseMenuVisible = false;
         private int _pauseMenuIndex = 0; // 0=Resume 1=Console 2=Stop
 
@@ -1279,7 +1278,7 @@ namespace Pcsx5Ui
             // Try to extract RIP from logs/crash_log.txt if it exists
             string ripInfo = "See logs/crash_log.txt for full dump";
             try {
-                string baseDir = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".";
+                string baseDir = System.AppContext.BaseDirectory;
                 string crashLogPath = System.IO.Path.Combine(baseDir, "logs", "crash_log.txt");
                 // Fallback to base dir check if they run standing standalone
                 if (!System.IO.File.Exists(crashLogPath)) {
