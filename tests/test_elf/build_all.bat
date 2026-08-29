@@ -14,10 +14,8 @@ if "%~1"=="" (
 )
 
 REM Add common LLVM install paths so MSBuild custom steps find clang.
-set "LLVM_DIRS=C:\Program Files\LLVM\bin;C:\Program Files (x86)\LLVM\bin"
-for %%d in (%LLVM_DIRS%) do (
-    if exist "%%d\clang.exe" set "PATH=%%d;%PATH%"
-)
+if exist "C:\Program Files\LLVM\bin\clang.exe" set "PATH=C:\Program Files\LLVM\bin;%PATH%"
+if exist "C:\Program Files (x86)\LLVM\bin\clang.exe" set "PATH=C:\Program Files (x86)\LLVM\bin;%PATH%"
 
 where clang >nul 2>&1
 if errorlevel 1 (

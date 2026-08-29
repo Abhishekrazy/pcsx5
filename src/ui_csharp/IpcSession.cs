@@ -37,7 +37,6 @@ namespace Pcsx5Ui
         private MemoryMappedFile _mmf;
         private MemoryMappedViewAccessor _view;
         private NamedPipeServerStream _pipe;
-        private Thread _pipeWriterThread;
         private Thread _framePollerThread;
         private CancellationTokenSource _cts;
         private volatile bool _cleanedUp;
