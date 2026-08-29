@@ -622,7 +622,9 @@ bool VkPresentResize(VkContext* ctx, u32 width, u32 height) {
 void VkPresentShutdown(VkContext* ctx) {
     std::lock_guard<std::mutex> lk(g_present_mutex);
     if (!ctx || !ctx->device) return;
-    ctx->fn.DeviceWaitIdle(ctx->device);
+    if (ctx->fn.DeviceWaitIdle) {
+        ctx->fn.DeviceWaitIdle(ctx->device);
+    }
     if (g_ps.staging) ctx->fn.DestroyBuffer(ctx->device, g_ps.staging, nullptr);
     if (g_ps.staging_mem) ctx->fn.FreeMemory(ctx->device, g_ps.staging_mem, nullptr);
     if (g_ps.tex) ctx->fn.DestroyImage(ctx->device, g_ps.tex, nullptr);

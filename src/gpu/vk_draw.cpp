@@ -112,8 +112,10 @@ std::mutex g_draw_mutex;
 
 void DestroyHostBuffer(HostBuffer& b) {
     VkContext* ctx = g_ds.ctx;
-    if (b.buf) ctx->fn.DestroyBuffer(ctx->device, b.buf, nullptr);
-    if (b.mem) ctx->fn.FreeMemory(ctx->device, b.mem, nullptr);
+    if (ctx && ctx->device) {
+        if (b.buf && ctx->fn.DestroyBuffer) ctx->fn.DestroyBuffer(ctx->device, b.buf, nullptr);
+        if (b.mem && ctx->fn.FreeMemory) ctx->fn.FreeMemory(ctx->device, b.mem, nullptr);
+    }
     b = HostBuffer{};
 }
 
@@ -1183,9 +1185,11 @@ bool VkDrawIsReady() {
 void VkDrawShutdown() {
     std::lock_guard<std::mutex> lk(g_draw_mutex);
     VkContext* ctx = g_ds.ctx;
-    if (!ctx) return;
+    if (!ctx || !ctx->device) return;
     FlushBatch(); // submit any recorded-but-unflushed draws before teardown
-    ctx->fn.DeviceWaitIdle(ctx->device);
+    if (ctx->fn.DeviceWaitIdle) {
+        ctx->fn.DeviceWaitIdle(ctx->device);
+    }
     for (auto& [k, p] : g_ds.pipelines) ctx->fn.DestroyPipeline(ctx->device, p, nullptr);
     for (auto& [k, l] : g_ds.pipe_layouts) ctx->fn.DestroyPipelineLayout(ctx->device, l, nullptr);
     for (auto& [k, l] : g_ds.set_layouts) ctx->fn.DestroyDescriptorSetLayout(ctx->device, l, nullptr);

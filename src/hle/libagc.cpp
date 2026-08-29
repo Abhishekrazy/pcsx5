@@ -1661,11 +1661,41 @@ void RegisterLibAgc() {
         return 0;
     });
 
-    RegisterSymbol("libSceAgc", "sceAgcRegisterContext", [](const GuestArgs& args) -> u64 {
-        u64 ctx = args.arg1;
-        LOG_INFO(HLE, "sceAgcRegisterContext(context: 0x%llx) called", ctx);
+    static std::atomic<u32> g_next_agc_owner_handle{1};
+    static std::atomic<u32> g_next_agc_resource_handle{1};
+
+    auto AgcDriverRegisterOwner = [](const GuestArgs& args) -> u64 {
+        guest_addr_t out_handle = args.arg1;
+        guest_addr_t name_ptr = args.arg2;
+        u32 handle = g_next_agc_owner_handle.fetch_add(1);
+        if (out_handle) {
+            Memory::Write<u32>(out_handle, handle);
+        }
+        LOG_INFO(HLE, "sceAgcDriverRegisterOwner(out: 0x%llx, name: 0x%llx) -> handle %u", out_handle, name_ptr, handle);
         return 0;
-    });
+    };
+    RegisterSymbol("libSceAgc", "sceAgcDriverRegisterOwner", AgcDriverRegisterOwner);
+    RegisterSymbol("libSceAgc", "X-Nm5KLREeg", AgcDriverRegisterOwner);
+    RegisterSymbol("libSceAgcDriver", "sceAgcDriverRegisterOwner", AgcDriverRegisterOwner);
+    RegisterSymbol("libSceAgcDriver", "X-Nm5KLREeg", AgcDriverRegisterOwner);
+
+    auto AgcDriverRegisterResource = [](const GuestArgs& args) -> u64 {
+        guest_addr_t out_handle = args.arg1;
+        u32 owner = static_cast<u32>(args.arg2);
+        guest_addr_t code = args.arg3;
+        u32 size = static_cast<u32>(args.arg4);
+        u32 handle = g_next_agc_resource_handle.fetch_add(1);
+        if (out_handle) {
+            Memory::Write<u32>(out_handle, handle);
+        }
+        LOG_INFO(HLE, "sceAgcDriverRegisterResource(out: 0x%llx, owner: %u, code: 0x%llx, size: %u) -> handle %u",
+                 out_handle, owner, code, size, handle);
+        return 0;
+    };
+    RegisterSymbol("libSceAgc", "sceAgcDriverRegisterResource", AgcDriverRegisterResource);
+    RegisterSymbol("libSceAgc", "W5z4eZrjEas", AgcDriverRegisterResource);
+    RegisterSymbol("libSceAgcDriver", "sceAgcDriverRegisterResource", AgcDriverRegisterResource);
+    RegisterSymbol("libSceAgcDriver", "W5z4eZrjEas", AgcDriverRegisterResource);
 
     // sceAgcRegisterDisplay / sceAgcRegisterConfiguration — not present in
     // SharpEmu; plausible success contract: accept and remember nothing.
@@ -1790,9 +1820,9 @@ void RegisterLibAgc() {
         }
         g_agc_shaders_by_code[code] = header;
 
-        LOG_INFO(HLE, "sceAgcCreateShader(dest: 0x%llx, header: 0x%llx, code: 0x%llx) -> 0x%llx",
-                 dest, header, code, header);
-        return header;
+        LOG_INFO(HLE, "sceAgcCreateShader(dest: 0x%llx, header: 0x%llx, code: 0x%llx) -> 0",
+                 dest, header, code);
+        return 0;
     };
     RegisterSymbol("libSceAgc", "sceAgcCreateShader", AgcCreateShader);
     RegisterSymbol("libSceAgc", "f3dg2CSgRKY", AgcCreateShader);
