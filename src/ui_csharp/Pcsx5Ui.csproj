@@ -30,6 +30,7 @@
   <ItemGroup>
     <!-- WASAPI access for the DualSense USB Audio Class endpoints
          (Controller Setup speaker/mic testers). -->
+    <PackageReference Include="Clowd.Squirrel" Version="2.11.1" />
     <PackageReference Include="NAudio" Version="2.3.0" />
   </ItemGroup>
 
