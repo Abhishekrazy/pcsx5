@@ -27,6 +27,8 @@ enum class InstructionKind {
     Insertq,  // F2 [REX.R/B] 0F 78 /r ib(len) ib(idx)  — INSERTQ xmm, xmm, imm8, imm8
     Monitorx, // 0F 01 FA
     Mwaitx,   // 0F 01 FB
+    Clzero,   // 0F 01 FC
+    Rdpru,    // 0F 01 FD
     // BMI1 / BMI2 / ABM instructions
     Andn,     // VEX.NDS.LZ.0F.W0 38 /r  — ANDN r32/r64, r32/r64, r/m32/r/m64
     Blsi,     // VEX.NDD.LZ.0F.W0 F3 /3  — BLSI r32/r64, r/m32/r/m64

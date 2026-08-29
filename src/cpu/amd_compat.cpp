@@ -198,6 +198,7 @@ bool Decode(const u8* bytes, size_t size, DecodedInstruction* out) {
     }
 
     // MONITORX (0F 01 FA) and MWAITX (0F 01 FB): fixed 3-byte encodings.
+    // CLZERO (0F 01 FC) and RDPRU (0F 01 FD)
     if (bytes[0] == 0x0F && bytes[1] == 0x01) {
         if (bytes[2] == 0xFA) {
             *out = DecodedInstruction{InstructionKind::Monitorx, 3, 0, 0, 0, 0};
@@ -205,6 +206,14 @@ bool Decode(const u8* bytes, size_t size, DecodedInstruction* out) {
         }
         if (bytes[2] == 0xFB) {
             *out = DecodedInstruction{InstructionKind::Mwaitx, 3, 0, 0, 0, 0};
+            return true;
+        }
+        if (bytes[2] == 0xFC) {
+            *out = DecodedInstruction{InstructionKind::Clzero, 3, 0, 0, 0, 0};
+            return true;
+        }
+        if (bytes[2] == 0xFD) {
+            *out = DecodedInstruction{InstructionKind::Rdpru, 3, 0, 0, 0, 0};
             return true;
         }
         return false;

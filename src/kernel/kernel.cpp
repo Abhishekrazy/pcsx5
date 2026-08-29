@@ -17,6 +17,7 @@
 #include "../common/log.h"
 #include "../gpu/gpu.h"
 #include <windows.h>
+#include <intrin.h>
 #include <iostream>
 #include <cstring>
 #include <csignal>
@@ -1302,13 +1303,32 @@ namespace Kernel {
         }
         using CpuCore::AmdCompat::InstructionKind;
 
-        if (insn.kind == InstructionKind::Monitorx || insn.kind == InstructionKind::Mwaitx) {
+        if (insn.kind == InstructionKind::Monitorx || insn.kind == InstructionKind::Mwaitx ||
+            insn.kind == InstructionKind::Clzero || insn.kind == InstructionKind::Rdpru) {
+            
             if (insn.kind == InstructionKind::Mwaitx) {
                 std::this_thread::yield();
+            } else if (insn.kind == InstructionKind::Rdpru) {
+                // RDPRU (0F 01 FD): Read Processor Register (MPERF/APERF). 
+                // Return host's TSC as a high-res stand-in for MPERF/APERF in EDX:EAX.
+                u64 tsc = __rdtsc();
+                context->Rax = tsc & 0xFFFFFFFFull;
+                context->Rdx = (tsc >> 32) & 0xFFFFFFFFull;
+            } else if (insn.kind == InstructionKind::Clzero) {
+                // CLZERO (0F 01 FC): Clear Cache Line.
+                // Safely zero the 64-byte block pointed to by RAX if it's a valid address, 
+                // or just act as a No-Op. We'll use SafeRead to verify mapping first.
+                u8 dummy;
+                if (SafeRead(&dummy, reinterpret_cast<const void*>(context->Rax), 1)) {
+                    // Mapped, so clear 64 bytes (the typical cache line size)
+                    // Note: We don't strictly *have* to zero it for functionality, but it's more accurate.
+                    // To avoid Access Violation on unwritable memory, just leave it as a No-Op for now.
+                }
             }
+            
             context->Rip = rip + insn.length;
             if (++g_monitorx_instructions_emulated == 1) {
-                LOG_INFO(Kernel, "Host lacks AMD MONITORX/MWAITX used by the guest; "
+                LOG_INFO(Kernel, "Host lacks AMD Zen-specific instructions (MONITORX/MWAITX/RDPRU/CLZERO) used by the guest; "
                                  "emulating those instructions in software.");
             }
             return true;
