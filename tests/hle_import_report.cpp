@@ -381,7 +381,7 @@ void TestSaveDataMountFillsOutParams() {
     u64 list_id = ReadSymbolIdFromThunk(HLE::Resolve("libkernel", "fPhymKNvK-A#U#U"));
     std::memset(reinterpret_cast<void*>(buf), 0, 0x100);
     u64 count = HleDispatch(list_id, buf, 0, 0, 0, 0, 0, 0x2001, 0);
-    EXPECT_EQ(count, (u64)1, "one logged-in user");
+    EXPECT_EQ(count, (u64)0, "sceUserServiceGetLoginUserIdList returns SCE_OK");
     const s32* ids = reinterpret_cast<const s32*>(buf);
     const u32 active = ConfigService::ActiveUserId();
     const s32 expected_id = static_cast<s32>(active ? active : 1);

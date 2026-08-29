@@ -404,28 +404,27 @@ void RegisterLibNp() {
     // ------------------------------------------------------------------
     // libSceNpUniversalDataSystem — event-posting pipeline, all accepted.
     // ------------------------------------------------------------------
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemInitialize", TrophyOkImpl);
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemCreateContext",
-                   [](const GuestArgs& args) -> u64 {
-                       return WriteIdAndReturnOk(args.arg1, g_np_next_context,
-                                                 "sceNpUniversalDataSystemCreateContext");
-                   });
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemCreateHandle",
-                   [](const GuestArgs& args) -> u64 {
-                       return WriteIdAndReturnOk(args.arg1, g_np_next_handle,
-                                                 "sceNpUniversalDataSystemCreateHandle");
-                   });
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemCreateEvent",
-                   [](const GuestArgs& args) -> u64 {
-                       return WriteIdAndReturnOk(args.arg1, g_np_next_handle,
-                                                 "sceNpUniversalDataSystemCreateEvent");
-                   });
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemRegisterContext", TrophyOkImpl);
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemPostEvent", TrophyOkImpl);
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemDestroyEvent", TrophyOkImpl);
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemDestroyHandle", TrophyOkImpl);
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemEventPropertyObjectSetString", TrophyOkImpl);
-    RegisterSymbol("libSceNpUniversalDataSystem", "sceNpUniversalDataSystemEventPropertyObjectSetArray", TrophyOkImpl);
+    auto RegUDS = [&](const std::string& name, const std::string& nid, HleHandler handler) {
+        RegisterSymbol("libSceNpUniversalDataSystem", name, handler);
+        RegisterSymbol("libkernel", nid, handler);
+    };
+
+    RegUDS("sceNpUniversalDataSystemInitialize", "sjaobBgqeB4", TrophyOkImpl);
+    RegUDS("sceNpUniversalDataSystemCreateContext", "5zBnau1uIEo", [](const GuestArgs& args) -> u64 {
+        return WriteIdAndReturnOk(args.arg1, g_np_next_context, "sceNpUniversalDataSystemCreateContext");
+    });
+    RegUDS("sceNpUniversalDataSystemCreateHandle", "hT0IAEvN+M0", [](const GuestArgs& args) -> u64 {
+        return WriteIdAndReturnOk(args.arg1, g_np_next_handle, "sceNpUniversalDataSystemCreateHandle");
+    });
+    RegUDS("sceNpUniversalDataSystemCreateEvent", "p+GcLqwpL9M", [](const GuestArgs& args) -> u64 {
+        return WriteIdAndReturnOk(args.arg1, g_np_next_handle, "sceNpUniversalDataSystemCreateEvent");
+    });
+    RegUDS("sceNpUniversalDataSystemRegisterContext", "tpFJ8LIKvPw", TrophyOkImpl);
+    RegUDS("sceNpUniversalDataSystemPostEvent", "CzkKf7ahIyU", TrophyOkImpl);
+    RegUDS("sceNpUniversalDataSystemDestroyEvent", "wG+84pnNIuo", TrophyOkImpl);
+    RegUDS("sceNpUniversalDataSystemDestroyHandle", "AUIHb7jUX3I", TrophyOkImpl);
+    RegUDS("sceNpUniversalDataSystemEventPropertyObjectSetString", "MfDb+4Nln64", TrophyOkImpl);
+    RegUDS("sceNpUniversalDataSystemEventPropertyObjectSetArray", "Wxbg5x3pTXA", TrophyOkImpl);
 
     // ------------------------------------------------------------------
     // libSceNpCommon basics — id comparison helpers; 0 = equal/ordered.

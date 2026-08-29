@@ -54,6 +54,56 @@ void RegisterLibNet() {
     RegisterSymbol("libSceNet", "sceNetInit",     NetInitImpl);
     RegisterSymbol("libSceNet", "sceNetInit#T#T", NetInitImpl);
 
+    // sceNetPoolCreate
+    auto NetPoolCreate = [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "sceNetPoolCreate(name: 0x%llx, size: 0x%llx, flags: 0x%llx) -> 0", args.arg1, args.arg2, args.arg3);
+        return 0; // Return positive pool ID or 0 for success
+    };
+    RegisterSymbol("libSceNet", "sceNetPoolCreate", NetPoolCreate);
+    RegisterSymbol("libSceNet", "dgJBaeJnGpo", NetPoolCreate);
+
+    // sceSslInit
+    auto SslInit = [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "sceSslInit(size: 0x%llx) -> 0", args.arg1);
+        return 0;
+    };
+    RegisterSymbol("libSceSsl", "sceSslInit", SslInit);
+    RegisterSymbol("libSceSsl", "hdpVEUDFW3s", SslInit);
+
+    // sceHttp2Init
+    auto Http2Init = [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "sceHttp2Init(pool: 0x%llx) -> 0", args.arg1);
+        return 0; // Return positive HTTP context or 0
+    };
+    RegisterSymbol("libSceHttp2", "sceHttp2Init", Http2Init);
+    RegisterSymbol("libSceHttp2", "3JCe3lCbQ8A", Http2Init);
+
+    // sceNpWebApi2Initialize
+    auto NpWebApi2Init = [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "sceNpWebApi2Initialize(pool: 0x%llx) -> 0", args.arg1);
+        return 0;
+    };
+    RegisterSymbol("libSceNpWebApi2", "sceNpWebApi2Initialize", NpWebApi2Init);
+    RegisterSymbol("libSceNpWebApi2", "+o9816YQhqQ", NpWebApi2Init);
+    
+    // sceNpWebApi2PushEventCreateHandle
+    RegisterSymbol("libSceNpWebApi2", "WV1GwM32NgY", [](const GuestArgs&) -> u64 { return 0; });
+    RegisterSymbol("libSceNpWebApi2", "sceNpWebApi2PushEventCreateHandle", [](const GuestArgs&) -> u64 { return 0; });
+
+    // libSceNpCppWebApi initialize
+    RegisterSymbol("libSceNpCppWebApi", "UYPxv8MIzGo", [](const GuestArgs&) -> u64 {
+        LOG_INFO(HLE, "sce::Np::CppWebApi::Common::initialize() -> 0");
+        return 0;
+    });
+    RegisterSymbol("libSceNpCppWebApi", "_ZN3sce2Np9CppWebApi6Common10initializeERKNS2_10InitParamsERNS2_10LibContextE", [](const GuestArgs&) -> u64 {
+        LOG_INFO(HLE, "sce::Np::CppWebApi::Common::initialize() -> 0");
+        return 0;
+    });
+
+    // sceNpEntitlementAccessInitialize
+    RegisterSymbol("libSceNpEntitlementAccess", "jO8DM8oyego", [](const GuestArgs&) -> u64 { return 0; });
+    RegisterSymbol("libSceNpEntitlementAccess", "sceNpEntitlementAccessInitialize", [](const GuestArgs&) -> u64 { return 0; });
+
     // sceNetTerm — shutdown network subsystem.
     auto NetTermImpl = [](const GuestArgs&) -> u64 {
         g_net_initialized = false;

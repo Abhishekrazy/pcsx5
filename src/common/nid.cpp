@@ -181,7 +181,7 @@ struct NidNameEntry {
     std::string_view name;      // canonical symbol name
 };
 
-constexpr std::array<NidNameEntry, 8> kKnownNidNames = {{
+constexpr std::array<NidNameEntry, 9> kKnownNidNames = {{
     // ---- libkernel (the top references we observed in PPSA02929) ----
     // NIDs verified against the PS5 name->NID SHA1 scheme (see
     // tools/nid_scan.cpp).  (The values used before — pZ9WXcClPO8,
@@ -190,6 +190,7 @@ constexpr std::array<NidNameEntry, 8> kKnownNidNames = {{
     {"L-Q3LEjIbgA", "libkernel", "sceKernelMapDirectMemory"},
     {"IWIBBdTHit4", "libkernel", "sceKernelMapFlexibleMemory"},
     {"xaxE6OHpkiM", "libkernel", "sceKernelAllocateFlexibleMemory"},
+    {"188x57JYp0g", "libkernel", "sceKernelCreateSema"},
     // ---- libSceAgc (graphics core) ---------------------------------
     {"1kZFcktOm+s", "libSceAgc", "sceAgcDriverInitialize"},
     {"-L+-8F0+gBc", "libSceAgc", "sceAgcDriverUninitialize"},

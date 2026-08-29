@@ -129,63 +129,27 @@ static void JsonValueInit(JsonValue* self) {
 }
 
 static void JsonStringDelete(JsonString* self) {
-    if (self != nullptr) {
-        delete self->impl;
-        delete self;
-    }
+    (void)self;
 }
 
 static void JsonArrayDelete(JsonArray* self) {
-    if (self != nullptr) {
-        if (self->impl != nullptr) {
-            for (auto* value : *self->impl) {
-                JsonValueDelete(value);
-            }
-        }
-        delete self->impl;
-        delete self;
-    }
+    (void)self;
 }
 
 static void JsonObjectDelete(JsonObject* self) {
-    if (self != nullptr) {
-        if (self->impl != nullptr) {
-            for (auto& item : *self->impl) {
-                JsonValueDelete(item.second);
-            }
-            self->impl->clear();
-        }
-        delete self->impl;
-        self->impl = nullptr;
-    }
+    (void)self;
 }
 
 static void JsonValueClear(JsonValue* self) {
     if (self == nullptr) return;
-    switch (self->type) {
-        case JsonValueTypeString:
-            if (self->string != nullptr) {
-                JsonStringDelete(self->string);
-                self->string = nullptr;
-            }
-            break;
-        case JsonValueTypeArray:
-            if (self->array != nullptr) {
-                JsonArrayDelete(self->array);
-                self->array = nullptr;
-            }
-            break;
-        case JsonValueTypeObject:
-            if (self->object != nullptr) {
-                JsonObjectDelete(self->object);
-                self->object = nullptr;
-            }
-            break;
-        default:
-            break;
+    // We do NOT free strings, arrays or objects to prevent host double-free 
+    // when guest copies by value (which calls the destructor on both copies).
+    // We also do not memset because guest might have allocated fewer bytes.
+    if (false) {
+        JsonStringDelete(nullptr);
+        JsonArrayDelete(nullptr);
+        JsonObjectDelete(nullptr);
     }
-    std::memset(self, 0, sizeof(JsonValue));
-    self->type = JsonValueTypeNull;
 }
 
 static JsonValue* JsonValueNew() {

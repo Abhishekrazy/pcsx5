@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-dream_tool.py - automation for the Dreaming Sarah (PPSA02929) bring-up loop.
+dream_tool.py - automation for the Dreaming Sarah (PPSA21564) bring-up loop.
 
 Collapses the repetitive build / headless-run / trace-analyze / disassemble
 cycle into one script so an agent (or human) fires one command instead of many.
@@ -18,7 +18,7 @@ import os, re, subprocess, sys, time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLI = os.path.join(REPO, "build", "bin", "Release", "pcsx5_cli.exe")
-EBOOT = os.path.join(REPO, "Games", "PPSA02929-app0", "eboot.bin")
+EBOOT = os.path.join(REPO, "Games", "PPSA21564-app", "eboot.bin")
 CFG = os.path.join(REPO, "pcsx5_config")
 WORK = os.path.join(REPO, ".work")
 BASE = 0x810000000
@@ -80,7 +80,7 @@ def boot(trace=False, timeout=100, logpath=None):
     if os.path.exists(tr):
         os.remove(tr)
     lp = logpath or os.path.join(WORK, "dreamboot.log")
-    cmd = ('cmd /c set PCSX5_GUEST_TRACE=%s&& "%s" --headless --title-id=PPSA02929 '
+    cmd = ('cmd /c set PCSX5_GUEST_TRACE=%s&& "%s" --headless --title-id=PPSA21564 '
            '--config-dir="%s" --log-file="%s" "%s" 2>&1' %
            ("1" if trace else "", CLI, CFG, lp, EBOOT))
     t = time.time()

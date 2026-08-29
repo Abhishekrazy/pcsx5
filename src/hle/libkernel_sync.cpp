@@ -18,6 +18,10 @@
 #include <unordered_set>
 #include <vector>
 
+extern u64 LibcHeapAlloc(u64 size, u64 align);
+extern void LibcHeapFree(u64 ptr);
+
+
 // ---------------------------------------------------------------------------
 // Real libkernel synchronization primitives, event queues, and process clock.
 //
@@ -39,6 +43,7 @@
 // ---------------------------------------------------------------------------
 
 namespace HLE {
+
 
 namespace {
 
@@ -283,6 +288,13 @@ u64 g_next_mutex_token = 1;
 GuestMutex* LookupOrCreateMutex(guest_addr_t var, bool create_if_missing) {
     u64 token = 0;
     const bool read_ok = SafeReadU64(var, token);
+    
+    if (read_ok && token != 0 && token != 1 && (token & kTokenTagMask) != kMutexTokenTag) {
+        std::lock_guard<std::mutex> lk(g_mutex_map_lock);
+        auto it = g_mutexes.find(token);
+        if (it != g_mutexes.end()) return it->second.get();
+    }
+    
     if (read_ok && (token & kTokenTagMask) == kMutexTokenTag) {
         std::lock_guard<std::mutex> lk(g_mutex_map_lock);
         auto it = g_mutexes.find(token);
@@ -291,11 +303,18 @@ GuestMutex* LookupOrCreateMutex(guest_addr_t var, bool create_if_missing) {
     if (!create_if_missing) return nullptr;
     std::lock_guard<std::mutex> lk(g_mutex_map_lock);
     // Double check after acquiring lock
-    if (SafeReadU64(var, token) && (token & kTokenTagMask) == kMutexTokenTag) {
-        auto it = g_mutexes.find(token);
-        if (it != g_mutexes.end()) return it->second.get();
+    if (SafeReadU64(var, token)) {
+        if (token != 0 && token != 1 && (token & kTokenTagMask) != kMutexTokenTag) {
+            auto it = g_mutexes.find(token);
+            if (it != g_mutexes.end()) return it->second.get();
+        }
+        if ((token & kTokenTagMask) == kMutexTokenTag) {
+            auto it = g_mutexes.find(token);
+            if (it != g_mutexes.end()) return it->second.get();
+        }
     }
-    const u64 new_token = kMutexTokenTag | g_next_mutex_token++;
+    
+    const u64 new_token = LibcHeapAlloc(128, 8);
     auto obj = std::make_unique<GuestMutex>();
     if (read_ok && token == 1) obj->type = MutexType::AdaptiveNp;
     GuestMutex* raw = obj.get();
@@ -375,12 +394,18 @@ u64 g_next_posix_sem_token = 1;
 
 static PosixSem* LookupOrCreatePosixSem(guest_addr_t var, bool create, s32 init_value = 0) {
     u64 token = 0;
-    if (SafeReadU64(var, token) && (token & kTokenTagMask) == kSemTokenTag) {
-        auto it = g_posix_sems.find(token);
-        if (it != g_posix_sems.end()) return it->second.get();
+    if (SafeReadU64(var, token)) {
+        if (token != 0 && (token & kTokenTagMask) != kSemTokenTag) {
+            auto it = g_posix_sems.find(token);
+            if (it != g_posix_sems.end()) return it->second.get();
+        }
+        if ((token & kTokenTagMask) == kSemTokenTag) {
+            auto it = g_posix_sems.find(token);
+            if (it != g_posix_sems.end()) return it->second.get();
+        }
     }
     if (!create) return nullptr;
-    u64 new_token = kSemTokenTag | g_next_posix_sem_token++;
+    u64 new_token = LibcHeapAlloc(128, 8);
     auto obj = std::make_unique<PosixSem>();
     obj->count = init_value;
     PosixSem* raw = obj.get();
@@ -559,12 +584,18 @@ u64 ScePthreadMutexInit(const GuestArgs& args) {
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
     const MutexType type = LookupMutexAttrType(attr);
     std::lock_guard<std::mutex> lk(g_mutex_map_lock);
-    const u64 token = kMutexTokenTag | g_next_mutex_token++;
+    
+    // PPSA21564 (and likely other libcxx users) expect the mutex handle to be a valid pointer 
+    // to a memory region because inline fast-paths dereference it. 
+    // We allocate 128 bytes from the guest heap to satisfy these reads/writes.
+    const u64 token = LibcHeapAlloc(128, 8);
+    if (!token) return SCE_KERNEL_ERROR_ENOMEM;
+    
     auto obj = std::make_unique<GuestMutex>();
     obj->type = type;
     g_mutexes[token] = std::move(obj);
     SafeWriteU64(var, token);
-    LOG_DEBUG(HLE, "scePthreadMutexInit(0x%llx) -> token 0x%llx", var, token);
+    LOG_DEBUG(HLE, "scePthreadMutexInit(0x%llx) -> token 0x%llx (guest heap)", var, token);
     return 0;
 }
 
@@ -625,8 +656,14 @@ u64 ScePthreadMutexDestroy(const GuestArgs& args) {
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
     u64 token = 0;
     std::lock_guard<std::mutex> lk(g_mutex_map_lock);
-    if (SafeReadU64(var, token) && (token & kTokenTagMask) == kMutexTokenTag) {
-        g_mutexes.erase(token);
+    if (SafeReadU64(var, token) && token != 0) {
+        auto it = g_mutexes.find(token);
+        if (it != g_mutexes.end()) {
+            g_mutexes.erase(it);
+            if ((token & kTokenTagMask) != kMutexTokenTag) {
+                LibcHeapFree(token);
+            }
+        }
     } else {
         LOG_WARN(HLE, "scePthreadMutexDestroy(0x%llx): unknown mutex", var);
     }
@@ -907,11 +944,14 @@ u64 ScePthreadSemInit(const GuestArgs& args) {
 u64 ScePthreadSemDestroy(const GuestArgs& args) {
     const guest_addr_t sem_ptr = args.arg1;
     if (!sem_ptr) return SCE_KERNEL_ERROR_EINVAL;
-
     u64 token = 0;
     std::lock_guard<std::mutex> lk(g_posix_sem_map_lock);
-    if (SafeReadU64(sem_ptr, token) && (token & kTokenTagMask) == kSemTokenTag) {
-        g_posix_sems.erase(token);
+    if (SafeReadU64(sem_ptr, token) && token != 0) {
+        auto it = g_posix_sems.find(token);
+        if (it != g_posix_sems.end()) {
+            g_posix_sems.erase(it);
+            if ((token & kTokenTagMask) != kSemTokenTag) LibcHeapFree(token);
+        }
     }
     SafeWriteU64(sem_ptr, 0);
     return 0;

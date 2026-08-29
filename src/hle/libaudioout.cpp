@@ -273,8 +273,7 @@ void CloseWaveBackend(AudioOutPort& port) {
 
 // Convert one guest buffer (mono/stereo/8ch, s16 or float32) to stereo
 // PCM16 with volume scaling.  Shared by the waveOut and WASAPI backends.
-void ConvertToStereoS16(const AudioOutPort& port, const u8* src, s16* dst) {
-    const u32 frames = port.buffer_length;
+void ConvertToStereoS16(const AudioOutPort& port, const u8* src, s16* dst, u32 frames) {
     const float vol = port.volume * GetConfiguredVolume();
     const int in_ch = port.channels;
     for (u32 f = 0; f < frames; ++f) {
@@ -299,8 +298,7 @@ void ConvertToStereoS16(const AudioOutPort& port, const u8* src, s16* dst) {
 
 // Convert the guest buffer to stereo PCM16, then submit it to waveOut.
 // Blocks (paced by WOM_DONE) when too many buffers are queued.
-void SubmitToBackend(AudioOutPort& port, const u8* src) {
-    const u32 frames = port.buffer_length;
+void SubmitToBackend(AudioOutPort& port, const u8* src, u32 frames) {
     const size_t out_bytes = static_cast<size_t>(frames) * 2 * sizeof(s16);
 
     OutBuffer* buf = nullptr;
@@ -320,7 +318,7 @@ void SubmitToBackend(AudioOutPort& port, const u8* src) {
         ++port.in_flight;
     }
 
-    ConvertToStereoS16(port, src, reinterpret_cast<s16*>(buf->data.data()));
+    ConvertToStereoS16(port, src, reinterpret_cast<s16*>(buf->data.data()), frames);
 
     if (!buf->prepared) {
         std::memset(&buf->hdr, 0, sizeof(buf->hdr));
@@ -531,9 +529,9 @@ void CloseWasapiBackend(AudioOutPort& port) {
 // Convert the guest buffer to stereo PCM16 and enqueue it for the WASAPI
 // render thread.  Blocks when the queue is full (paced by the render
 // thread's consumption at device rate).
-void SubmitToWasapi(AudioOutPort& port, const u8* src) {
-    std::vector<s16> block(static_cast<size_t>(port.buffer_length) * 2);
-    ConvertToStereoS16(port, src, block.data());
+void SubmitToWasapi(AudioOutPort& port, const u8* src, u32 frames) {
+    std::vector<s16> block(static_cast<size_t>(frames) * 2);
+    ConvertToStereoS16(port, src, block.data(), frames);
     // I5.2: lock-free ring buffer push — spin-wait when full (pacing).
     // No mutex needed; the ring buffer is SPSC and lock-free.
     while (port.wasapi.ring.full())
@@ -655,7 +653,7 @@ void CloseXAudio2Backend(AudioOutPort& port) {
 
 // Convert the guest buffer to stereo PCM16 and submit it to the source
 // voice.  Blocks (paced by OnBufferEnd) when every pool block is queued.
-void SubmitToXAudio2(AudioOutPort& port, const u8* src) {
+void SubmitToXAudio2(AudioOutPort& port, const u8* src, u32 frames) {
     Xa2Block* block = nullptr;
     {
         std::unique_lock<std::mutex> lock(port.mu);
@@ -665,10 +663,13 @@ void SubmitToXAudio2(AudioOutPort& port, const u8* src) {
         ++port.xa2.in_flight;
     }
 
-    ConvertToStereoS16(port, src, block->data.data());
+    if (block->data.size() < static_cast<size_t>(frames) * 2) {
+        block->data.resize(static_cast<size_t>(frames) * 2);
+    }
+    ConvertToStereoS16(port, src, block->data.data(), frames);
 
     XAUDIO2_BUFFER buf{};
-    buf.AudioBytes = static_cast<UINT32>(block->data.size() * sizeof(s16));
+    buf.AudioBytes = static_cast<UINT32>(frames * 2 * sizeof(s16));
     buf.pAudioData = reinterpret_cast<const BYTE*>(block->data.data());
     buf.pContext   = block;
     if (FAILED(port.xa2.voice->SubmitSourceBuffer(&buf))) {
@@ -680,7 +681,7 @@ void SubmitToXAudio2(AudioOutPort& port, const u8* src) {
 }
 
 // No host device: sleep so the *next* output() completes at real-time rate.
-void PaceSilence(AudioOutPort& port) {
+void PaceSilence(AudioOutPort& port, u32 frames) {
     using clock = std::chrono::steady_clock;
     const auto now = clock::now();
     if (port.next_silent_output < now) {
@@ -689,7 +690,7 @@ void PaceSilence(AudioOutPort& port) {
     const auto delay = port.next_silent_output - now;
     port.next_silent_output += std::chrono::duration_cast<clock::duration>(
         std::chrono::duration<double>(
-            static_cast<double>(port.buffer_length) / port.frequency));
+            static_cast<double>(frames) / port.frequency));
     if (delay > std::chrono::steady_clock::duration::zero()) {
         std::this_thread::sleep_for(delay);
     }
@@ -736,6 +737,10 @@ void RegisterLibAudioOut() {
             return kErrorInvalidArgument;
         }
 
+        // Clamp massive buffer_lengths caused by PS5 ABI mismatches (e.g. stack pointers)
+        u32 clamped_length = buffer_length;
+        if (clamped_length > 65536) clamped_length = 65536;
+
         std::lock_guard<std::mutex> lock(g_ports_mutex);
         int slot = -1;
         for (int i = 0; i < kMaxPorts; ++i) {
@@ -753,7 +758,7 @@ void RegisterLibAudioOut() {
         port.handle          = slot + 1;
         port.user_id         = user_id;
         port.type            = type;
-        port.buffer_length   = buffer_length;
+        port.buffer_length   = clamped_length;
         port.frequency       = frequency;
         port.format          = format;
         port.channels        = channels;
@@ -819,13 +824,16 @@ void RegisterLibAudioOut() {
             port = FindPort(handle);
         }
         if (!port) return kErrorInvalidArgument;
+        const u32 param_frames = static_cast<u32>(args.arg3);
+        const u32 frames = (param_frames > 0) ? param_frames : port->buffer_length;
+
         if (!src) {
             // NULL source = one buffer period of silence; keep pacing only.
-            if (!BackendActive(*port)) PaceSilence(*port);
+            if (!BackendActive(*port)) PaceSilence(*port, frames);
             return 0;
         }
 
-        const size_t byte_len = static_cast<size_t>(port->buffer_length) *
+        const size_t byte_len = static_cast<size_t>(frames) *
                                 port->channels * port->bytes_per_sample;
 
         // I5.3: Zero-copy — use Memory::Translate to get a direct pointer to
@@ -849,19 +857,19 @@ void RegisterLibAudioOut() {
         }
 
         if (!BackendActive(*port)) {
-            PaceSilence(*port);
+            PaceSilence(*port, frames);
             return 0;
         }
         if (port->xa2.voice) {
-            SubmitToXAudio2(*port, guest_ptr);
+            SubmitToXAudio2(*port, guest_ptr, frames);
         } else if (port->wasapi.client) {
-            SubmitToWasapi(*port, guest_ptr);
+            SubmitToWasapi(*port, guest_ptr, frames);
         } else {
             // I5.3: Zero-copy — pass guest_ptr directly to SubmitToBackend.
             // ConvertToStereoS16 reads from guest memory and writes into the
             // OutBuffer (which persists until WOM_DONE), so no intermediate
             // heap copy is needed.
-            SubmitToBackend(*port, guest_ptr);
+            SubmitToBackend(*port, guest_ptr, frames);
         }
         return 0;
     };

@@ -51,7 +51,17 @@ HANDLE CreateThreadEx(guest_addr_t entry, guest_addr_t stack, u64 stack_size, gu
 }
 
 void ExitThread(u64 status) {
-    CpuCore::UnregisterThread(CpuCore::GetCurrentThreadId());
+    u64 tid = CpuCore::GetCurrentThreadId();
+    GuestThread* thread = CpuCore::GetThreadById(tid);
+    if (thread) {
+        // Restore host TEB bounds so Windows teardown (DllMain, etc.) doesn't AV
+        __writegsqword(0x08, thread->saved_gs_08);
+        __writegsqword(0x10, thread->saved_gs_10);
+    }
+    // Cleanup guest memory, TLS, and wake event handles
+    CpuCore::HandleThreadExit(tid, status);
+    
+    // Terminate host thread
     ::ExitThread(static_cast<DWORD>(status));
 }
 

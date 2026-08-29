@@ -402,6 +402,18 @@ if(BUILD_TESTING)
     target_compile_options(memory_query_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME memory_query COMMAND memory_query_tests)
 
+    # ------------------------------------------------------------------------
+    # Guest memory access correctness & page-crossing tests (Task 25)
+    # ------------------------------------------------------------------------
+    add_executable(guest_memory_access_tests
+        tests/guest_memory_access_tests.cpp
+        src/common/log.cpp
+        src/memory/memory.cpp
+    )
+    target_include_directories(guest_memory_access_tests PRIVATE src)
+    target_compile_options(guest_memory_access_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME guest_memory_access COMMAND guest_memory_access_tests)
+
     # Guest image write-tracker tests (SharpEmu #447 port): write-generation
     # invariants backing the vk_draw texture-cache refresh.
     add_executable(memory_write_tracker_tests
@@ -1400,6 +1412,56 @@ add_executable(dump_imports
     target_link_libraries(hle_phase3_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
     add_test(NAME hle_phase3 COMMAND hle_phase3_tests)
 
+    add_executable(nid_resolution_tests
+        tests/nid_resolution_tests.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+        src/gpu/input/input_bot.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        ${SHADER_TRANSLATE_SRC}
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+        src/hle/libsysmodule.cpp
+        src/hle/guest_printf.cpp
+        src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
+        src/hle/libjson.cpp
+        src/hle/libaudioout.cpp
+        src/hle/libappcontent.cpp
+        src/hle/librtc.cpp
+        src/hle/libfiber.cpp
+        src/hle/libregmgr.cpp
+        src/hle/libnotification.cpp
+        src/hle/libnet.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(nid_resolution_tests PRIVATE src)
+    target_compile_options(nid_resolution_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(nid_resolution_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
+    add_test(NAME nid_resolution COMMAND nid_resolution_tests)
+
     # ------------------------------------------------------------------------
     # L1 — audio + pad HLE tests: libSceAudioOut port state machine
     # (Init/Open/Output paced silence/SetVolume/GetPortState/Close,
@@ -1591,7 +1653,60 @@ add_executable(dump_imports
     # begin/end-catch bookkeeping, guard variables, _Unwind context accessors
     # (tests/libcxxabi_tests.cpp, surface implemented in src/hle/liblibc.cpp).
     # ------------------------------------------------------------------------
-    add_executable(libcxxabi_tests
+    add_executable(worker_libc_abi_tests
+        tests/worker_libc_abi_tests.cpp
+        src/common/log.cpp
+        src/common/crypto.cpp
+        src/config/config.cpp
+        src/common/nid.cpp
+        src/memory/memory.cpp
+        src/loader/elf.cpp
+        src/loader/module_resolver.cpp
+        src/loader/module_graph.cpp
+        ${KERNEL_SRC}
+        ${CPU_SRC}
+        src/gpu/vulkan_backend.cpp
+    src/gpu/input/input_bot.h
+    src/gpu/input/input_bot.cpp
+        src/gpu/vk_context.cpp
+        src/gpu/vk_present.cpp
+        src/gpu/gfx10_state.cpp
+        src/gpu/vk_draw.cpp
+        ${SHADER_TRANSLATE_SRC}
+        src/hle/hle.cpp
+        src/hle/libkernel.cpp
+        src/hle/libkernel_sync.cpp
+        src/hle/libpad.cpp
+        src/hle/libvideoout.cpp
+        src/hle/libagc.cpp
+        src/hle/libscepad.cpp
+        src/hle/libsavedata.cpp
+        src/hle/libuser_service.cpp
+        src/hle/libsysmodule.cpp
+        src/hle/guest_printf.cpp
+        src/hle/liblibc.cpp
+        src/hle/libsystem_service.cpp
+        src/hle/libnp.cpp
+        src/hle/libkeystone.cpp
+        src/hle/libatrac9.cpp
+        src/hle/libjson.h
+        src/hle/libjson.cpp
+        src/hle/libaudioout.cpp
+    src/hle/libappcontent.cpp
+    src/hle/librtc.cpp
+    src/hle/libfiber.cpp
+    src/hle/libregmgr.cpp
+    src/hle/libnotification.cpp
+    src/hle/libnet.cpp
+        ${DISPATCHER_SRC}
+    )
+    target_include_directories(worker_libc_abi_tests PRIVATE src)
+    target_compile_options(worker_libc_abi_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(worker_libc_abi_tests PRIVATE glfw Vulkan::Headers nlohmann_json::nlohmann_json atrac9)
+    add_test(NAME worker_libc COMMAND worker_libc_abi_tests)
+
+
+add_executable(libcxxabi_tests
         tests/libcxxabi_tests.cpp
         src/common/log.cpp
         src/common/crypto.cpp
@@ -1843,3 +1958,6 @@ add_executable(dump_imports
     )
 
 endif()
+
+
+

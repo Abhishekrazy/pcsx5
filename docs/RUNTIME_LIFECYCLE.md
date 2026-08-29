@@ -22,3 +22,9 @@ When a worker thread completes its task, it calls scePthreadExit. This invokes K
 1. **TEB Restoration**: The host TEB StackBase (GS:0x08) and StackLimit (GS:0x10) are restored to their original values. This prevents VCRUNTIME140D.dll from encountering an Access Violation during DLL_THREAD_DETACH.
 2. **Resource Cleanup**: CpuCore::HandleThreadExit is called, which properly frees the guest stack, guest TLS, and clears the thread's is_running flag.
 3. **Graceful OS Exit**: Only after emulator teardown is complete does the thread invoke ::ExitThread, ensuring the host process state remains uncorrupted.
+
+### 5. Memory Access & Page-Crossing Safety (Task 25 Verified)
+All memory accesses across subsystem boundaries (HLE, Kernel, Loader, GPU) utilize page-aware guarded memory primitives:
+1. **OS Ground-Truth Commit Checking**: `Memory::Query` queries `VirtualQuery` for non-pool allocations, ensuring that sub-range commits do not falsely mark uncommitted reservation pages as committed.
+2. **Demand-Commit on Fault**: Reserved memory (`MEM_RESERVE`) is committed on-demand when accessed by guest memory primitives. Truly unmapped memory (`MEM_FREE`) halts cleanly without relying on host SEH handlers (which are skipped on non-primary guest worker stacks).
+3. **Thread-Safe Pool Allocator**: Direct-mapped pool allocations and releases execute atomically under `g_regions_mutex` with free-list recycling.

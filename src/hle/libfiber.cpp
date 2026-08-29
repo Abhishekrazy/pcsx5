@@ -115,6 +115,8 @@ void RegisterLibFiber() {
     };
     RegisterSymbol("libSceFiber", "sceFiberInitialize",     InitializeImpl);
     RegisterSymbol("libSceFiber", "sceFiberInitialize#T#T", InitializeImpl);
+    RegisterSymbol("libSceFiber", "_sceFiberInitializeImpl", InitializeImpl);
+    RegisterSymbol("libSceFiber", "_sceFiberInitializeImpl#T#T", InitializeImpl);
 
     // sceFiberRun — "run" the fiber (simplified: mark running, return immediately).
     // Full context switch requires running the guest entry on the fiber stack, which

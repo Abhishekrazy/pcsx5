@@ -18,6 +18,15 @@ constexpr u64 ORBIS_OK = 0;
 void RegisterLibAppContent() {
     LOG_INFO(HLE, "Registering libSceAppContent HLE symbols...");
 
+    // sceAppContentInitialize
+    auto InitializeImpl = [](const GuestArgs& /*args*/) -> u64 {
+        LOG_DEBUG(HLE, "sceAppContentInitialize() -> 0");
+        return ORBIS_OK; // ORBIS_OK
+    };
+    RegisterSymbol("libSceAppContent",     "sceAppContentInitialize",     InitializeImpl);
+    RegisterSymbol("libSceAppContent",     "sceAppContentInitialize#T#T", InitializeImpl);
+
+
     // sceAppContentInitParam — must be called before any other AppContent function.
     // We accept and ignore the parameter struct.
     auto InitParamImpl = [](const GuestArgs& args) -> u64 {
@@ -111,6 +120,103 @@ void RegisterLibAppContent() {
                    });
     RegisterSymbol("libSceAppContent", "sceAppContentDownloadDataMount#T#T",
                    [](const GuestArgs&) -> u64 { return ORBIS_OK; });
+
+    // sceAppContentAppParamGetInt
+    auto AppContentAppParamGetInt = [](const GuestArgs& args) -> u64 {
+        const guest_addr_t out_ptr = args.arg2;
+        if (out_ptr) {
+            Memory::Write<s32>(out_ptr, 0); // Give 0 as default parameter
+        }
+        LOG_INFO(HLE, "sceAppContentAppParamGetInt(id: %llu, out: 0x%llx) -> 0", args.arg1, out_ptr);
+        return 0;
+    };
+    RegisterSymbol("libSceAppContent", "sceAppContentAppParamGetInt", AppContentAppParamGetInt);
+    
+    // libSceIme 
+    auto KeyboardOpen = [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "sceImeKeyboardOpen(uid: 0x%llx, cb: 0x%llx) -> 0", args.arg1, args.arg2);
+        return 0; 
+    };
+    RegisterSymbol("libSceIme", "sceImeKeyboardOpen", KeyboardOpen);
+    RegisterSymbol("libSceIme", "eaFXjfJv3xs", KeyboardOpen);
+
+    // libSceMouse
+    auto MouseInit = [](const GuestArgs&) -> u64 {
+        LOG_INFO(HLE, "sceMouseInit() -> 0");
+        return 0;
+    };
+    RegisterSymbol("libSceMouse", "sceMouseInit", MouseInit);
+    RegisterSymbol("libSceMouse", "Qs0wWulgl7U", MouseInit);
+
+    auto MouseOpen = [](const GuestArgs& args) -> u64 {
+        LOG_INFO(HLE, "sceMouseOpen(userId: %d, type: %d, index: %d) -> 1 (handle)", args.arg1, args.arg2, args.arg3);
+        return 1; // Return a valid looking handle (e.g., 1)
+    };
+    RegisterSymbol("libSceMouse", "sceMouseOpen", MouseOpen);
+    RegisterSymbol("libSceMouse", "RaqxZIf6DvE", MouseOpen);
+
+    // libSceShareUtility
+    auto ShareInitialize = [](const GuestArgs&) -> u64 {
+        LOG_INFO(HLE, "sceShareInitialize() -> 0");
+        return 0;
+    };
+    RegisterSymbol("libSceShareUtility", "sceShareInitialize", ShareInitialize);
+    RegisterSymbol("libSceShareUtility", "nBDD66kiFW8", ShareInitialize);
+
+    // libScePlayGo
+    auto PlayGoInitialize = [](const GuestArgs&) -> u64 {
+        LOG_INFO(HLE, "scePlayGoInitialize() -> 0");
+        return 0;
+    };
+    RegisterSymbol("libScePlayGo", "scePlayGoInitialize", PlayGoInitialize);
+    RegisterSymbol("libScePlayGo", "ts6GlZOKRrE", PlayGoInitialize);
+
+    auto PlayGoOpen = [](const GuestArgs& args) -> u64 {
+        if (args.arg1) Memory::Write<s32>(args.arg1, 1); // handle?
+        LOG_INFO(HLE, "scePlayGoOpen(out: 0x%llx) -> 0", args.arg1);
+        return 0;
+    };
+    RegisterSymbol("libScePlayGo", "scePlayGoOpen", PlayGoOpen);
+    RegisterSymbol("libScePlayGo", "M1Gma1ocrGE", PlayGoOpen);
+
+    auto PlayGoSetInstallSpeed = [](const GuestArgs&) -> u64 {
+        LOG_INFO(HLE, "scePlayGoSetInstallSpeed() -> 0");
+        return 0;
+    };
+    RegisterSymbol("libScePlayGo", "scePlayGoSetInstallSpeed", PlayGoSetInstallSpeed);
+    RegisterSymbol("libScePlayGo", "4AAcTU9R3XM", PlayGoSetInstallSpeed);
+
+    auto PlayGoGetChunkId = [](const GuestArgs& args) -> u64 {
+        if (args.arg2) Memory::Write<u32>(args.arg2, 0); // RSI
+        if (args.arg4) Memory::Write<u32>(args.arg4, 0); // RCX
+        LOG_INFO(HLE, "scePlayGoGetChunkId() -> 0");
+        return 0;
+    };
+    RegisterSymbol("libScePlayGo", "scePlayGoGetChunkId", PlayGoGetChunkId);
+    RegisterSymbol("libScePlayGo", "73fF1MFU8hA", PlayGoGetChunkId);
+
+    auto PlayGoGetToDoList = [](const GuestArgs& args) -> u64 {
+        if (args.arg2) Memory::Write<u32>(args.arg2, 0); // RSI
+        if (args.arg4) Memory::Write<u32>(args.arg4, 0); // RCX
+        LOG_INFO(HLE, "scePlayGoGetToDoList() -> 0");
+        return 0;
+    };
+    RegisterSymbol("libScePlayGo", "scePlayGoGetToDoList", PlayGoGetToDoList);
+    RegisterSymbol("libScePlayGo", "Nn7zKwnA5q0", PlayGoGetToDoList);
+
+    auto PlayGoClose = [](const GuestArgs&) -> u64 {
+        LOG_INFO(HLE, "scePlayGoClose() -> 0");
+        return 0;
+    };
+    RegisterSymbol("libScePlayGo", "scePlayGoClose", PlayGoClose);
+    RegisterSymbol("libScePlayGo", "Uco1I0dlDi8", PlayGoClose);
+
+    auto PlayGoTerminate = [](const GuestArgs&) -> u64 {
+        LOG_INFO(HLE, "scePlayGoTerminate() -> 0");
+        return 0;
+    };
+    RegisterSymbol("libScePlayGo", "scePlayGoTerminate", PlayGoTerminate);
+    RegisterSymbol("libScePlayGo", "MPe0EeBGM-E", PlayGoTerminate);
 }
 
 } // namespace HLE

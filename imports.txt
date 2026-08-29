@@ -1,4 +1,4 @@
-# Imports extracted from i:\Personal\Windows\pcsx5\Games\PPSA21564-app\eboot.bin
+# Imports extracted from Games\PPSA21564-app\eboot.bin
 # Format: <library_guess>\t<symbol>\t<resolved_name?>\t<rela_refs>\t<plt_refs>
 # library_guess = first DT_NEEDED ('libSceNpManager.prx')
 libSceNpManager.prx	+0xECQcI0KY#O#P	(unknown)	0	1

@@ -427,15 +427,13 @@ void TestOwnershipContract() {
                 __FILE__, __LINE__, "Query committed half");
     EXPECT(info.is_committed && !info.is_reserved,
            "committed pages report committed");
-    // KNOWN coarse-granularity limitation: the region table tracks commit
-    // state per whole Region, so committing half flips the record and the
-    // uncommitted tail also reports committed (host pages are genuinely
-    // still reserved — only the tracking is coarse).  Pin current behavior
-    // with a comment rather than an assertion of the ideal.
+    // Page-accurate commit state: Memory::Query consults OS ground truth for
+    // non-pool allocations, so the uncommitted tail correctly reports not committed
+    // and is_reserved == true.
     CheckStatus(Memory::Query(0x880000000ULL + PAGE_SIZE * 3, &info), Status::Ok,
                 __FILE__, __LINE__, "Query uncommitted half");
-    EXPECT(info.is_committed,
-           "uncommitted tail reports committed (coarse region tracking, known)");
+    EXPECT(!info.is_committed && info.is_reserved,
+           "uncommitted tail correctly reports reserved and not committed");
 
     // Overlapping reservation must fail deterministically.
     guest_addr_t dup = 0;

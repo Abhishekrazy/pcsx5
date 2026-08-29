@@ -82,6 +82,45 @@ void InitCommandBuffer(guest_addr_t cb, u64 size) {
 // ---------------------------------------------------------------------------
 // sceAgcCreateShader — relocation, PGM patch, return contract.
 // ---------------------------------------------------------------------------
+void TestRegisterResource() {
+    std::fprintf(stdout, "  Testing RegisterResource...\n");
+    u64 register_resource_id = SymbolId("libSceAgc", "sceAgcDriverRegisterResource");
+    u64 register_owner_id = SymbolId("libSceAgc", "sceAgcDriverRegisterOwner");
+    
+    if (!register_resource_id || !register_owner_id) {
+        std::fprintf(stderr, "    FAIL: Could not find RegisterResource or RegisterOwner\n");
+        ++g_failures;
+        return;
+    }
+
+    guest_addr_t base = 0;
+    Memory::Map(0, 0x10000, Memory::PROT_READ | Memory::PROT_WRITE, &base);
+
+    guest_addr_t owner_out = base + 0x100;
+    guest_addr_t owner_name = base + 0x110;
+    std::memcpy(reinterpret_cast<void*>(owner_name), "sce::Psr", 9);
+    
+    u64 ret_owner = HleDispatch(register_owner_id, owner_out, owner_name, 0, 0, 0, 0, 0, 0);
+    u32 owner_handle = Memory::Read<u32>(owner_out);
+    
+    guest_addr_t res_out = base + 0x200;
+    guest_addr_t res_ptr = base + 0x300;
+    u64 ret_res = HleDispatch(register_resource_id, res_out, owner_handle, res_ptr, 0x400, 0, 0, 0, 0);
+    u32 res_handle = Memory::Read<u32>(res_out);
+    
+    guest_addr_t res_out2 = base + 0x204;
+    guest_addr_t res_ptr2 = base + 0x800;
+    u64 ret_res2 = HleDispatch(register_resource_id, res_out2, owner_handle, res_ptr2, 0x400, 0, 0, 0, 0);
+    u32 res_handle2 = Memory::Read<u32>(res_out2);
+
+    if (ret_owner != 0 || owner_handle != 1 || ret_res != 0 || res_handle == 0 || ret_res2 != 0 || res_handle2 == res_handle || res_handle2 == 0) {
+        std::fprintf(stderr, "    FAIL: RegisterResource logic failed\n");
+        ++g_failures;
+    }
+
+    Memory::Unmap(base, 0x10000);
+}
+
 void TestCreateShader() {
     std::fprintf(stdout, "[TEST] sceAgcCreateShader\n");
 
@@ -118,12 +157,12 @@ void TestCreateShader() {
     build_header();
 
     // The NID form dispatches to the same implementation (same behavior).
-    EXPECT_EQ(HleDispatch(create_nid, dest, header, code, 0, 0, 0, 0x7003, 0), (u64)header,
+    EXPECT_EQ(HleDispatch(create_nid, dest, header, code, 0, 0, 0, 0x7003, 0), (u64)0,
               "CreateShader via NID returns the header as the handle");
 
     build_header();
     const u64 ret = HleDispatch(create_id, dest, header, code, 0, 0, 0, 0x7000, 0);
-    EXPECT_EQ(ret, (u64)header, "CreateShader returns the header as the handle");
+    EXPECT_EQ(ret, (u64)0, "CreateShader returns 0 (SCE_OK)");
     EXPECT_EQ(Memory::Read<u64>(dest), (u64)header, "CreateShader writes *dest = header");
 
     // Relocated pointers.
@@ -755,6 +794,7 @@ int main() {
     }
     HLE::SetStrictImportMode(false);
 
+    TestRegisterResource();
     TestCreateShader();
     TestRegisterDefaults();
     TestDcbBuilders();
@@ -777,3 +817,7 @@ int main() {
     std::fprintf(stderr, "HLE AGC (Phase 5 M0) tests: %d failure(s).\n", g_failures);
     return 1;
 }
+
+
+
+

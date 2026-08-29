@@ -131,8 +131,17 @@ struct StubEmitter {
 // push/pop/mov/xchg are used) and preserve every register except the access
 // destination (reads) — matching the semantics of the emulated instruction.
 // Returns the stub size in bytes, or 0 when the access form is unsupported.
-u32 EmitStub(u8* out, const AccessInfo& a) {
+u32 EmitStub(u8* out, const AccessInfo& a, u64 return_rip) {
     StubEmitter e{out};
+    
+    // Helper to emit the final jump back to the instruction after the patched site.
+    auto emit_return_jmp = [&]() {
+        e.byte(0xE9); // JMP rel32
+        // rel32 is calculated from the end of the JMP instruction (e.p + 4)
+        s32 ret_rel = static_cast<s32>(return_rip - (reinterpret_cast<u64>(e.p) + 4));
+        e.u32le(ret_rel);
+    };
+
     switch (a.opcode) {
         case 0x8B: { // mov dst, fs:[disp]
             if (a.reg == 0) { // dst == rax: no save needed
@@ -145,7 +154,7 @@ u32 EmitStub(u8* out, const AccessInfo& a) {
                 e.bytes({0x48, 0x87, 0x04, 0x24});     // xchg rax, [rsp]
                 e.emit_pop(a.reg);                     // pop dst
             }
-            e.byte(0xC3);                              // ret
+            emit_return_jmp();
             break;
         }
         case 0x89: { // mov fs:[disp], src
@@ -162,7 +171,7 @@ u32 EmitStub(u8* out, const AccessInfo& a) {
                 e.emit_store_reg(a.is_64bit, a.reg, a.displacement);
                 e.byte(0x58);                          // pop rax
             }
-            e.byte(0xC3);                              // ret
+            emit_return_jmp();
             break;
         }
         case 0xC7: { // mov fs:[disp], imm32
@@ -173,7 +182,7 @@ u32 EmitStub(u8* out, const AccessInfo& a) {
             e.u32le(static_cast<u32>(a.displacement));
             e.u32le(a.imm32);
             e.byte(0x58);                              // pop rax
-            e.byte(0xC3);                              // ret
+            emit_return_jmp();
             break;
         }
         default:
@@ -314,10 +323,11 @@ bool TryPatchSite(u64 rip, const AccessInfo& access) {
         return false;
     }
     u8* stub = g_stub_region + offset;
-    const u32 stub_size = EmitStub(stub, access);
+    const u64 return_rip = rip + access.instr_len;
+    const u32 stub_size = EmitStub(stub, access, return_rip);
     if (stub_size == 0) return false;
 
-    // Range-check the rel32 call from this site to the stub.
+    // Range-check the rel32 jump from this site to the stub.
     const s64 rel = static_cast<s64>(reinterpret_cast<u64>(stub)) -
                     static_cast<s64>(rip) - 5;
     if (rel < INT32_MIN || rel > INT32_MAX) {
@@ -325,7 +335,7 @@ bool TryPatchSite(u64 rip, const AccessInfo& access) {
         return false;
     }
 
-    // Save the original bytes, then overwrite with `call stub` + NOPs.
+    // Save the original bytes, then overwrite with `jmp stub` + NOPs.
     PatchRecord rec;
     rec.len = access.instr_len;
     rec.stub = reinterpret_cast<u64>(stub);
@@ -334,7 +344,7 @@ bool TryPatchSite(u64 rip, const AccessInfo& access) {
     }
 
     u8 patch[16] = {};
-    patch[0] = 0xE8;
+    patch[0] = 0xE9; // JMP rel32 instead of CALL to preserve the Red Zone
     const s32 rel32 = static_cast<s32>(rel);
     std::memcpy(patch + 1, &rel32, 4);
     for (u32 i = 5; i < rec.len; ++i) patch[i] = 0x90;

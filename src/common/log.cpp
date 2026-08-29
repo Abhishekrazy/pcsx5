@@ -37,14 +37,16 @@ std::ofstream         g_file_stream;
 std::string           g_file_path;
 LogConfig::LogCallback g_log_callback = nullptr;
 void*                 g_log_callback_user = nullptr;
-LogLevel              g_min_levels[7] = {
-    LogLevel::Info,  // Loader
-    LogLevel::Info,  // Memory
-    LogLevel::Info,  // Kernel
-    LogLevel::Debug, // HLE
-    LogLevel::Info,  // GPU
-    LogLevel::Info,  // Cpu
-    LogLevel::Info,  // General
+LogLevel              g_min_levels[9] = {
+    LogLevel::Info,  // Loader (0)
+    LogLevel::Info,  // Memory (1)
+    LogLevel::Info,  // Kernel (2)
+    LogLevel::Debug, // HLE (3)
+    LogLevel::Info,  // GPU (4)
+    LogLevel::Info,  // Cpu (5)
+    LogLevel::Info,  // Media (6)
+    LogLevel::Info,  // Diagnostics (7)
+    LogLevel::Info,  // General (8)
 };
 
 // ---------------------------------------------------------------------------
@@ -102,7 +104,7 @@ std::atomic<bool> g_dedup_never_on{false};   // fast path for SetDedup(false)
 std::mutex        g_dedup_mutex;
 u64               g_dedup_window_us = 1'000'000; // default 1 s
 LogLevel          g_dedup_max_level = LogLevel::Critical; // dedup everything
-bool              g_dedup_category_mask[7] = {true,true,true,true,true,true,true};
+bool              g_dedup_category_mask[9] = {true,true,true,true,true,true,true,true,true};
 
 // Composite key: "<cat>|<level>|<message>".  Catches identical formatted text.
 struct DedupPending {
@@ -123,7 +125,7 @@ constexpr size_t kMaxDedupKeys = 16384;
 
 static bool DedupAppliesTo(LogCategory cat, LogLevel lvl) {
     const int idx = static_cast<int>(cat);
-    if (idx < 0 || idx >= 7) return true;
+    if (idx < 0 || idx >= 9) return true;
     return g_dedup_category_mask[idx] && static_cast<int>(lvl) <= static_cast<int>(g_dedup_max_level);
 }
 
@@ -155,14 +157,15 @@ u64 ProcessUptimeMicros() {
 // ---------------------------------------------------------------------------
 const char* LogCategoryName(LogCategory c) {
     switch (c) {
-        case LogCategory::Loader:  return "Loader";
-        case LogCategory::Memory:  return "Memory";
-        case LogCategory::Kernel:  return "Kernel";
-        case LogCategory::HLE:     return "HLE";
-        case LogCategory::GPU:     return "GPU";
-        case LogCategory::Cpu:     return "Cpu";
-        case LogCategory::Media:   return "Media";
-        case LogCategory::General: return "General";
+        case LogCategory::Loader:      return "Loader";
+        case LogCategory::Memory:      return "Memory";
+        case LogCategory::Kernel:      return "Kernel";
+        case LogCategory::HLE:         return "HLE";
+        case LogCategory::GPU:         return "GPU";
+        case LogCategory::Cpu:         return "Cpu";
+        case LogCategory::Media:       return "Media";
+        case LogCategory::Diagnostics: return "Diagnostics";
+        case LogCategory::General:     return "General";
     }
     return "Unknown";
 }
@@ -193,7 +196,7 @@ const char* LevelAnsiColor(LogLevel l) {
 
 bool IsCategoryEnabled(LogCategory c, LogLevel l) {
     const int idx = static_cast<int>(c);
-    if (idx < 0 || idx >= 7) return true;
+    if (idx < 0 || idx >= 9) return true;
     // "Suppress messages below `level`" (see LogConfig::SetLevel): a record
     // is emitted iff its severity is at or above the category minimum.
     return static_cast<int>(l) >= static_cast<int>(g_min_levels[idx]);
@@ -284,13 +287,13 @@ void SetFileOutput(const std::string& path, bool append) {
 
 void SetLevel(LogCategory category, LogLevel level) {
     const int idx = static_cast<int>(category);
-    if (idx < 0 || idx >= 7) return;
+    if (idx < 0 || idx >= 9) return;
     g_min_levels[idx] = level;
 }
 
 LogLevel GetLevel(LogCategory category) {
     const int idx = static_cast<int>(category);
-    if (idx < 0 || idx >= 7) return LogLevel::Info;
+    if (idx < 0 || idx >= 9) return LogLevel::Info;
     return g_min_levels[idx];
 }
 
@@ -314,7 +317,7 @@ void SetDedupMaxLevel(LogLevel level) {
 
 void SetDedupCategory(LogCategory c, bool enabled) {
     const int idx = static_cast<int>(c);
-    if (idx >= 0 && idx < 7) g_dedup_category_mask[idx] = enabled;
+    if (idx >= 0 && idx < 9) g_dedup_category_mask[idx] = enabled;
 }
 
 void FlushDedup() {

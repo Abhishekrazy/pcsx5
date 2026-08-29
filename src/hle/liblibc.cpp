@@ -1678,7 +1678,7 @@ auto CxaThrowImpl = [](const GuestArgs& args) -> u64 {
                 if (!cok || c == '\0') break;
                 tname[i] = (c >= 32 && c < 127) ? c : '?';
             }
-            LOG_INFO(HLE, "__cxa_throw type: '%s' (tinfo=0x%llx)", tname, tinfo);
+            LOG_INFO(HLE, "[Thread %lu] __cxa_throw type: '%s' (tinfo=0x%llx)", GetCurrentThreadId(), tname, tinfo);
         } else {
             LOG_INFO(HLE, "__cxa_throw tinfo=0x%llx unreadable name (dtor=0x%llx)", tinfo, dtor);
         }
@@ -2216,6 +2216,9 @@ void RegisterCxxAbiSymbols() {
 
 } // namespace
 
+
+u64 LibcHeapAlloc(u64 size, u64 align) { return HeapAlloc(size, align); }
+void LibcHeapFree(u64 ptr) { HeapFree(ptr); }
 s32* HLE::GuestErrnoPtr() { return &t_guest_errno; }
 void HLE::SetGuestErrno(s32 value) { t_guest_errno = value; }
 
@@ -2233,7 +2236,7 @@ void HLE::SetGuestEhFrameHdr(guest_addr_t addr, u64 size) {
 }
 
 void RegisterLibLibc() {
-    LOG_INFO(HLE, "Registering libc/libSceLibcInternal heap HLE symbols...");
+    LOG_INFO(HLE, "Registering libc/libSceLibcInternal heap HLE symbols...");LOG_INFO(HLE, "Registering libc/libSceLibcInternal heap HLE symbols...");
 
     auto MallocImpl = [](const GuestArgs& args) -> u64 {
         const u64 size = args.arg1;
@@ -2392,7 +2395,13 @@ void RegisterLibLibc() {
     // serve as a stable, process-constant canary value (consistent reads
     // across all functions, so stack checks never spuriously fail).
     auto StackChkFailImpl = [](const GuestArgs& /*args*/) -> u64 {
-        LOG_ERROR(HLE, "__stack_chk_fail called! Guest stack corruption detected (or bad canary).");
+        auto trace = HLE::GetImportTrace(5);
+        u64 caller_rip = trace.empty() ? 0 : trace.back().caller_rip;
+        LOG_ERROR(HLE, "__stack_chk_fail called! Guest stack corruption detected (or bad canary) from RIP 0x%llx.", caller_rip);
+        for (const auto& t : trace) {
+            LOG_ERROR(HLE, "  Recent HLE call: %s::%s from RIP 0x%llx (args: 0x%llx, 0x%llx, 0x%llx)",
+                      t.module_name.c_str(), t.name.c_str(), t.caller_rip, t.arg1, t.arg2, t.arg3);
+        }
         return 0;
     };
     for (const char* module : {"libSceLibcInternal", "libc"}) {
@@ -2434,9 +2443,7 @@ void RegisterLibLibc() {
         const u64 n = args.arg3;
         if (n == 0) return 0;
         if (!a || !b || n > 0x10000000ULL) return (u64)(s64)-1;
-        const int cmp = std::memcmp(reinterpret_cast<const void*>(a),
-                                    reinterpret_cast<const void*>(b), n);
-        return (u64)(s64)cmp;
+        return static_cast<u64>(static_cast<s64>(Memory::GuardedMemcmp(a, b, n)));
     };
 
     // time() — real wall-clock time (a return-0 stub here breaks RNG seeding).
@@ -2539,6 +2546,12 @@ void RegisterLibLibc() {
         const long long v = std::strtoll(reinterpret_cast<const char*>(args.arg1),
                                          &end, static_cast<int>(args.arg3));
         if (args.arg2) Memory::Write<u64>(args.arg2, reinterpret_cast<u64>(end));
+        
+        char preview[24] = {};
+        const char* src = reinterpret_cast<const char*>(args.arg1);
+        for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
+        if (args.arg1 > 0x10000) LOG_INFO(HLE, "strtoll(0x%llx,'%s') -> %lld (end+%ld)", args.arg1, preview, v, end - src);
+        
         return static_cast<u64>(v);
     };
     auto StrtoullImpl = [](const GuestArgs& args) -> u64 {
@@ -2547,24 +2560,15 @@ void RegisterLibLibc() {
         const unsigned long long v = std::strtoull(reinterpret_cast<const char*>(args.arg1),
                                                    &end, static_cast<int>(args.arg3));
         if (args.arg2) Memory::Write<u64>(args.arg2, reinterpret_cast<u64>(end));
+        
+        char preview[24] = {};
+        const char* src = reinterpret_cast<const char*>(args.arg1);
+        for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
+        if (args.arg1 > 0x10000) LOG_INFO(HLE, "strtoull(0x%llx,'%s') -> %llu (end+%ld)", args.arg1, preview, v, end - src);
+        
         return static_cast<u64>(v);
     };
-    auto StrtolImpl = [](const GuestArgs& args) -> u64 {
-        if (!args.arg1) return 0;
-        char* end = nullptr;
-        const long v = std::strtol(reinterpret_cast<const char*>(args.arg1),
-                                   &end, static_cast<int>(args.arg3));
-        if (args.arg2) Memory::Write<u64>(args.arg2, reinterpret_cast<u64>(end));
-        return static_cast<u64>(static_cast<s64>(v));
-    };
-    auto StrtoulImpl = [](const GuestArgs& args) -> u64 {
-        if (!args.arg1) return 0;
-        char* end = nullptr;
-        const unsigned long v = std::strtoul(reinterpret_cast<const char*>(args.arg1),
-                                             &end, static_cast<int>(args.arg3));
-        if (args.arg2) Memory::Write<u64>(args.arg2, reinterpret_cast<u64>(end));
-        return static_cast<u64>(v);
-    };
+
     auto StrtodImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1) return 0;
         g_last_strtod_ptr = args.arg1;
@@ -2592,13 +2596,36 @@ void RegisterLibLibc() {
         if (args.arg2) Memory::Write<u64>(args.arg2, reinterpret_cast<u64>(end));
         u32 bits = 0;
         std::memcpy(&bits, &v, sizeof(bits));
+        {
+            char preview[24] = {};
+            const char* src = reinterpret_cast<const char*>(args.arg1);
+            for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
+            if (args.arg1 > 0x10000) LOG_INFO(HLE, "strtof(0x%llx,'%s') -> %g (end+%ld)", args.arg1, preview, v,
+                     static_cast<long>(end - reinterpret_cast<const char*>(args.arg1)));
+        }
         return static_cast<u64>(bits);
     };
     auto MemchrImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1 || !args.arg3) return 0;
-        const void* hit = std::memchr(reinterpret_cast<const void*>(args.arg1),
-                                      static_cast<int>(args.arg2), args.arg3);
-        return hit ? reinterpret_cast<u64>(hit) : 0;
+        const u64 n = args.arg3;
+        guest_addr_t cur = args.arg1;
+        constexpr u64 kHostPage = 4096;
+        u64 checked = 0;
+        while (checked < n) {
+            u64 off = cur & (kHostPage - 1);
+            u64 chunk = kHostPage - off;
+            if (checked + chunk > n) chunk = n - checked;
+            if (!Memory::IsReadable(cur, chunk)) {
+                Memory::CommitOnFault(cur);
+                if (!Memory::IsReadable(cur, chunk)) break;
+            }
+            const void* hit = std::memchr(reinterpret_cast<const void*>(cur),
+                                          static_cast<int>(args.arg2), chunk);
+            if (hit) return reinterpret_cast<u64>(hit);
+            cur += chunk;
+            checked += chunk;
+        }
+        return 0;
     };
     auto GettimeofdayImpl = [](const GuestArgs& args) -> u64 {
         if (args.arg1) {
@@ -2613,33 +2640,54 @@ void RegisterLibLibc() {
 
     auto StrchrImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1) return 0;
-        const char* hit = std::strchr(reinterpret_cast<const char*>(args.arg1), static_cast<int>(args.arg2));
-        return hit ? reinterpret_cast<u64>(hit) : 0;
+        guest_addr_t cur = args.arg1;
+        const int target = static_cast<int>(args.arg2) & 0xFF;
+        constexpr u64 kHostPage = 4096;
+        while (true) {
+            u64 off = cur & (kHostPage - 1);
+            u64 chunk = kHostPage - off;
+            if (!Memory::IsReadable(cur, chunk)) {
+                Memory::CommitOnFault(cur);
+                if (!Memory::IsReadable(cur, chunk)) break;
+            }
+            const char* p = reinterpret_cast<const char*>(cur);
+            for (u64 i = 0; i < chunk; ++i) {
+                if ((p[i] & 0xFF) == target) return cur + i;
+                if (p[i] == '\0') {
+                    return (target == 0) ? (cur + i) : 0;
+                }
+            }
+            cur += chunk;
+        }
+        return 0;
     };
     auto StrrchrImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1) return 0;
-        const char* hit = std::strrchr(reinterpret_cast<const char*>(args.arg1), static_cast<int>(args.arg2));
-        return hit ? reinterpret_cast<u64>(hit) : 0;
+        const u64 len = Memory::GuardedStrlen(args.arg1);
+        const int target = static_cast<int>(args.arg2) & 0xFF;
+        if (target == 0) return args.arg1 + len;
+        for (u64 i = len; i > 0; --i) {
+            u8 b = 0;
+            if (Memory::GuardedRead(&b, args.arg1 + i - 1, 1) && b == static_cast<u8>(target)) {
+                return args.arg1 + i - 1;
+            }
+        }
+        return 0;
     };
     auto StrcatImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1 || !args.arg2) return args.arg1;
-        char* dst = reinterpret_cast<char*>(args.arg1);
-        const char* src = reinterpret_cast<const char*>(args.arg2);
-        const size_t dst_len = std::strlen(dst);
-        const size_t src_len = std::strlen(src);
-        std::memcpy(dst + dst_len, src, src_len + 1);
+        const u64 dst_len = Memory::GuardedStrlen(args.arg1);
+        Memory::GuardedStrcpy(args.arg1 + dst_len, args.arg2);
         return args.arg1;
     };
     auto StrncatImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1 || !args.arg2 || !args.arg3) return args.arg1;
-        char* dst = reinterpret_cast<char*>(args.arg1);
-        const char* src = reinterpret_cast<const char*>(args.arg2);
-        const size_t dst_len = std::strlen(dst);
-        const size_t n = static_cast<size_t>(args.arg3);
-        size_t src_len = std::strlen(src);
-        if (src_len > n) src_len = n;
-        std::memcpy(dst + dst_len, src, src_len);
-        dst[dst_len + src_len] = '\0';
+        const u64 dst_len = Memory::GuardedStrlen(args.arg1);
+        const u64 n = args.arg3;
+        Memory::GuardedStrncpy(args.arg1 + dst_len, args.arg2, n);
+        // Ensure null-terminated
+        u8 zero = 0;
+        Memory::GuardedWrite(args.arg1 + dst_len + n, &zero, 1);
         return args.arg1;
     };
 
@@ -2648,8 +2696,8 @@ void RegisterLibLibc() {
         RegisterSymbol(module, "VOBg+iNwB-4", StrtollImpl);  // strtoll
         RegisterSymbol(module, "strtoull", StrtoullImpl);
         RegisterSymbol(module, "5OqszGpy7Mg", StrtoullImpl); // strtoull
-        RegisterSymbol(module, "strtol", StrtolImpl);
-        RegisterSymbol(module, "strtoul", StrtoulImpl);
+        RegisterSymbol(module, "strtol", StrtollImpl);
+        RegisterSymbol(module, "strtoul", StrtoullImpl);
         RegisterSymbol(module, "strtod", StrtodImpl);
         RegisterSymbol(module, "2vDqwBlpF-o", StrtodImpl);   // strtod
         RegisterSymbol(module, "strtof", StrtofImpl);

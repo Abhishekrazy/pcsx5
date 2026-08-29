@@ -25,7 +25,7 @@ To strictly adhere to `GEMINI.md` (no speculative PS5 behavior, evidence before 
 When the guest accesses these protected memory regions, we will intercept the fault, dump the RIP and registers (such as RAX/RCX/RDX, which will hold the comparison tags and offsets), and resume execution to map out the exact consumption pattern before the `bad_alloc` occurs.
 
 ## 3. Investigation Log
-Analysis of `diag_trap12.txt` from a previous run reveals the following sequence:
+Analysis of `docs/evidence/2026-08/task-09-auxv/diag_trap12.txt` from a previous run reveals the following sequence:
 1. `SceProcParam` trap (PAGE_GUARD) triggered at `RIP=0x800000054`.
 2. The read was at offset `-0x20` from `SceProcParam`, executed by a backwards scanning loop:
    ```asm

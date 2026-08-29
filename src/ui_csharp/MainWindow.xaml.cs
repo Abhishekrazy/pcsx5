@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -316,7 +316,6 @@ namespace Pcsx5Ui
                 ParseCommandLineArgs();
                 LoadConfig();
                 ApplyUiScale();
-                LoadGames();
                 InitializeControllerPolling();
 
                 // Start Discord RPC and load translations
@@ -326,8 +325,15 @@ namespace Pcsx5Ui
                 // Set default tab to Library
                 TabLibrary_Click(this, null);
 
-                // Ask for the games folder on first launch
-                MaybeShowFirstRunSetup();
+                // Asynchronously scan games so the launcher window opens instantly
+                Task.Run(() =>
+                {
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        LoadGames();
+                        MaybeShowFirstRunSetup();
+                    });
+                });
             }
             catch (Exception ex)
             {
@@ -1356,34 +1362,56 @@ namespace Pcsx5Ui
         private void UpdateBootPhaseUI(BootPhase phase, string detail)
         {
             if (BootPhaseTitle == null) return;
+            string badge = "Step 1 of 6";
+            string title = "INITIALIZING CORE & VIRTUAL MEMORY";
+            string desc = detail;
+            int percent = 15;
+
             switch (phase)
             {
                 case BootPhase.Initializing:
-                    BootPhaseTitle.Text = "Initializing";
-                    BootProgressBar.Value = 10;
+                    badge = "Step 1 of 6";
+                    title = "INITIALIZING CORE & VIRTUAL MEMORY";
+                    desc = string.IsNullOrEmpty(detail) ? "Allocating 128GB guest virtual address space..." : detail;
+                    percent = 15;
                     break;
                 case BootPhase.ExtractingPkg:
-                    BootPhaseTitle.Text = "Extracting PKG";
-                    BootProgressBar.Value = 25;
+                    badge = "Step 2 of 6";
+                    title = "EXTRACTING GAME PACKAGE & ASSETS";
+                    desc = string.IsNullOrEmpty(detail) ? "Mounting PFS container and decrypting streams..." : detail;
+                    percent = 30;
                     break;
                 case BootPhase.LoadingElf:
-                    BootPhaseTitle.Text = "Loading Executable";
-                    BootProgressBar.Value = 45;
+                    badge = "Step 3 of 6";
+                    title = "PARSING ELF EXECUTABLE & SEGMENTS";
+                    desc = string.IsNullOrEmpty(detail) ? "Mapping program segments and dynamic relocations..." : detail;
+                    percent = 50;
                     break;
                 case BootPhase.LinkingModules:
-                    BootPhaseTitle.Text = "Linking Modules";
-                    BootProgressBar.Value = 65;
+                    badge = "Step 4 of 6";
+                    title = "RESOLVING HLE SYSTEM MODULES & NIDS";
+                    desc = string.IsNullOrEmpty(detail) ? "Binding libkernel, AGC graphics, and audio dispatchers..." : detail;
+                    percent = 70;
                     break;
                 case BootPhase.StartingCpu:
-                    BootPhaseTitle.Text = "Starting CPU";
-                    BootProgressBar.Value = 85;
+                    badge = "Step 5 of 6";
+                    title = "INITIALIZING VULKAN & GUEST THREADS";
+                    desc = string.IsNullOrEmpty(detail) ? "Spawning worker threads and arming exception handlers..." : detail;
+                    percent = 85;
                     break;
                 case BootPhase.Running:
-                    BootPhaseTitle.Text = "Starting Game";
-                    BootProgressBar.Value = 100;
+                    badge = "Step 6 of 6";
+                    title = "LAUNCHING MAIN EXECUTION LOOP";
+                    desc = string.IsNullOrEmpty(detail) ? "Executing guest EBOOT.BIN and rendering frames..." : detail;
+                    percent = 100;
                     break;
             }
-            if (BootPhaseDetail != null) BootPhaseDetail.Text = detail;
+
+            if (BootStepBadge != null) BootStepBadge.Text = badge;
+            if (BootPhaseTitle != null) BootPhaseTitle.Text = title;
+            if (BootPhaseDetail != null) BootPhaseDetail.Text = desc;
+            if (BootProgressBar != null) BootProgressBar.Value = percent;
+            if (BootProgressPercentText != null) BootProgressPercentText.Text = $"{percent}%";
         }
 
         private void HideBootOverlay()
@@ -1550,12 +1578,10 @@ namespace Pcsx5Ui
                     if (!_gameFolders.Contains(path))
                     {
                         _gameFolders.Add(path);
-                        RefreshGameFoldersList();
                         LoadGames();
                         SaveConfig();
                         LogConsole($"Folder added: {path}");
                         FooterStatus.Text = $"Folder added: {System.IO.Path.GetFileName(path)}";
-
                     }
                 }
             }
@@ -2379,82 +2405,619 @@ namespace Pcsx5Ui
             AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Visible;
-            // LogsView removed
             UpdateTabHighlight(TabSettingsBtn);
             UpdateSettingsUiFromConfig();
             ResetSettingsView();
         }
 
-        // Card navigation within Settings (drill-down hierarchy like PS5)
-        private void SettingsNav_Click(object sender, MouseButtonEventArgs e)
+        private int _settingsLevel = 1; // 1 = Main Categories Hub, 2 = Category Rows Overview, 3 = Dedicated Sub-Page
+        private string _activeSettingsCategory = "Graphics";
+        private string _activeSettingKey = "";
+
+        private List<Button> GetHubCategoryButtons()
         {
-            if (sender is FrameworkElement card)
+            return new List<Button>
             {
-                string category = card.Tag?.ToString() ?? "";
-                if (string.IsNullOrEmpty(category)) return;
+                HubBtn_Graphics,
+                HubBtn_Audio,
+                HubBtn_Input,
+                HubBtn_Folders,
+                HubBtn_Emulation,
+                HubBtn_Logging,
+                HubBtn_UI,
+                HubBtn_About
+            };
+        }
 
-                // Hide the main menu content
-                SettingsMainMenuContent.Visibility = Visibility.Collapsed;
-
-                // Show back navigation header
-                SettingsHeader.Visibility = Visibility.Visible;
-                SettingsSubTitle.Text = $"Settings > {category}";
-
-                // Hide all cards first
-                SettingsGameDirsCard.Visibility = Visibility.Collapsed;
-                SettingsGraphicsCard.Visibility = Visibility.Collapsed;
-                SettingsAudioCard.Visibility = Visibility.Collapsed;
-                SettingsInputCard.Visibility = Visibility.Collapsed;
-                SettingsEmulationCard.Visibility = Visibility.Collapsed;
-                SettingsLoggingCard.Visibility = Visibility.Collapsed;
-                SettingsUiCard.Visibility = Visibility.Collapsed;
-
-                // Show only the selected category card(s)
-                switch (category)
-                {
-                    case "Graphics":
-                        SettingsGraphicsCard.Visibility = Visibility.Visible;
-                        break;
-                    case "Audio":
-                        SettingsAudioCard.Visibility = Visibility.Visible;
-                        break;
-                    case "Input":
-                        SettingsInputCard.Visibility = Visibility.Visible;
-                        break;
-                    case "Emulation":
-                        SettingsEmulationCard.Visibility = Visibility.Visible;
-                        break;
-                    case "Logging":
-                        SettingsLoggingCard.Visibility = Visibility.Visible;
-                        break;
-                    case "UI":
-                        SettingsUiCard.Visibility = Visibility.Visible;
-                        SettingsGameDirsCard.Visibility = Visibility.Visible; // game folders also shown here
-                        break;
-                }
+        private void CategoryBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string category)
+            {
+                OpenSettingsCategory(category);
             }
         }
 
-        private void SettingsBack_Click(object sender, RoutedEventArgs e)
+        private void BtnSettingsBack_Click(object sender, RoutedEventArgs e)
         {
-            ResetSettingsView();
+            if (_settingsLevel == 3)
+            {
+                OpenSettingsCategory(_activeSettingsCategory);
+            }
+            else if (_settingsLevel == 2)
+            {
+                ResetSettingsView();
+            }
+            else if (_settingsLevel == 1)
+            {
+                TabLibrary_Click(this, null);
+            }
         }
 
         private void ResetSettingsView()
         {
-            // Show main menu content
-            SettingsMainMenuContent.Visibility = Visibility.Visible;
-            // Hide back header
-            SettingsHeader.Visibility = Visibility.Collapsed;
+            _settingsLevel = 1;
+            if (SettingsHubView != null) SettingsHubView.Visibility = Visibility.Visible;
+            if (SettingsCategoryView != null) SettingsCategoryView.Visibility = Visibility.Collapsed;
+            if (SettingsSubPageView != null) SettingsSubPageView.Visibility = Visibility.Collapsed;
 
-            // Hide all detail cards
-            SettingsGameDirsCard.Visibility = Visibility.Collapsed;
-            SettingsGraphicsCard.Visibility = Visibility.Collapsed;
-            SettingsAudioCard.Visibility = Visibility.Collapsed;
-            SettingsInputCard.Visibility = Visibility.Collapsed;
-            SettingsEmulationCard.Visibility = Visibility.Collapsed;
-            SettingsLoggingCard.Visibility = Visibility.Collapsed;
-            SettingsUiCard.Visibility = Visibility.Collapsed;
+            if (HubBtn_Graphics != null)
+            {
+                HubBtn_Graphics.Focus();
+                HubBtn_Graphics.BringIntoView();
+            }
+        }
+
+        private string GetCategoryTitle(string category)
+        {
+            return category switch
+            {
+                "Graphics" => "Display & Video",
+                "Audio" => "Audio Output",
+                "Input" => "Accessories & Controllers",
+                "Folders" => "Storage & Game Folders",
+                "Emulation" => "System & Emulation (HLE)",
+                "Logging" => "Diagnostics & Logging",
+                "UI" => "UI & Personalization",
+                "About" => "System Information",
+                _ => "Settings"
+            };
+        }
+
+        private struct SettingDefinition
+        {
+            public string Key;
+            public string Title;
+            public string Description;
+            public Func<string> GetValueBadge;
+            public string Type; // "choice", "toggle", "slider", "custom"
+        }
+
+        private List<SettingDefinition> GetCategorySettings(string category)
+        {
+            var list = new List<SettingDefinition>();
+            switch (category)
+            {
+                case "Graphics":
+                    list.Add(new SettingDefinition { Key = "gpu_renderer", Title = "Renderer Backend", Description = "Graphics API for rendering PS5 shaders and pipeline", GetValueBadge = () => _config.graphics.renderer == 0 ? "Vulkan 1.3" : "OpenGL", Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "gpu_fullscreen", Title = "Start in Fullscreen", Description = "Launch games directly in borderless fullscreen mode", GetValueBadge = () => _config.graphics.fullscreen ? "Yes (Enabled)" : "No (Disabled)", Type = "toggle" });
+                    list.Add(new SettingDefinition { Key = "gpu_res_scale", Title = "Internal Resolution Scale", Description = "Multiplier for internal render target resolution", GetValueBadge = () => $"{_config.graphics.resolution_scale:0.00}x", Type = "slider" });
+                    list.Add(new SettingDefinition { Key = "gpu_window_size", Title = "Windowed Resolution", Description = "Default launcher dimensions for windowed execution", GetValueBadge = () => $"{_config.graphics.width} x {_config.graphics.height}", Type = "choice" });
+                    break;
+                case "Audio":
+                    list.Add(new SettingDefinition { Key = "snd_backend", Title = "Audio Output Backend", Description = "Low-latency driver for positional audio stream", GetValueBadge = () => _config.audio.backend == 1 ? "WASAPI (Recommended)" : (_config.audio.backend == 2 ? "XAudio2" : "Null Driver"), Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "snd_volume", Title = "Master Volume", Description = "Global audio output volume multiplier", GetValueBadge = () => $"{(int)(_config.audio.volume * 100)}%", Type = "slider" });
+                    list.Add(new SettingDefinition { Key = "snd_buffer", Title = "Buffer Latency (ms)", Description = "Audio buffer latency (lower = less delay, higher = smooth)", GetValueBadge = () => $"{_config.audio.buffer_ms} ms", Type = "slider" });
+                    list.Add(new SettingDefinition { Key = "snd_title_music", Title = "Title Screen Music", Description = "Play game soundtrack when selecting in library", GetValueBadge = () => _config.ui.title_music_enabled ? "Yes (Enabled)" : "No (Disabled)", Type = "toggle" });
+                    break;
+                case "Input":
+                    list.Add(new SettingDefinition { Key = "in_backend", Title = "Gamepad Input Driver", Description = "Driver interface for DualSense/Xbox controllers", GetValueBadge = () => _config.input.backend == 0 ? "DualSense Direct HID / SDL" : "XInput Emulation", Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "in_deadzone", Title = "Stick Deadzone", Description = "Stick drift prevention threshold for analog sticks", GetValueBadge = () => $"{(int)(_config.input.deadzone * 100)}%", Type = "slider" });
+                    list.Add(new SettingDefinition { Key = "in_rumble", Title = "Vibration & Haptics", Description = "Enable force feedback and DualSense haptic actuators", GetValueBadge = () => _config.input.rumble ? "Yes (Enabled)" : "No (Disabled)", Type = "toggle" });
+                    break;
+                case "Folders":
+                    list.Add(new SettingDefinition { Key = "storage_folders", Title = "Game Scan Directories", Description = "Manage folders scanned on startup to discover PS5 games", GetValueBadge = () => $"{_gameFolders.Count} Folders Configured", Type = "custom" });
+                    list.Add(new SettingDefinition { Key = "storage_crash_dir", Title = "Crash Bundle Directory", Description = "Target location for minidumps and crash diagnostic bundles", GetValueBadge = () => _config.crash.bundle_dir, Type = "choice" });
+                    break;
+                case "Emulation":
+                    list.Add(new SettingDefinition { Key = "hle_strict", Title = "Strict Symbol Imports", Description = "Abort on unknown symbol stubs (turn off for high compatibility)", GetValueBadge = () => _config.hle.strict_imports ? "Yes (Strict)" : "No (Permissive)", Type = "toggle" });
+                    list.Add(new SettingDefinition { Key = "hle_trace", Title = "Function Call Tracing", Description = "Log entry and exit points for guest library symbols", GetValueBadge = () => _config.hle.trace_calls ? "Yes (Enabled)" : "No (Disabled)", Type = "toggle" });
+                    list.Add(new SettingDefinition { Key = "hle_trace_cap", Title = "Trace Buffer Capacity", Description = "Maximum number of recent import calls retained for crash dumps", GetValueBadge = () => $"{_config.hle.trace_capacity} Entries", Type = "slider" });
+                    list.Add(new SettingDefinition { Key = "hle_dump", Title = "Write Crash Minidumps", Description = "Save diagnostic memory snapshot and disassembly on exceptions", GetValueBadge = () => _config.crash.write_minidump ? "Yes (Enabled)" : "No (Disabled)", Type = "toggle" });
+                    break;
+                case "Logging":
+                    list.Add(new SettingDefinition { Key = "log_level", Title = "Log Verbosity Level", Description = "Minimum threshold for console and diagnostic file output", GetValueBadge = () => _config.logging.min_level, Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "log_append", Title = "Append to Existing Log", Description = "Keep previous boot log history instead of overwriting", GetValueBadge = () => _config.logging.file_append ? "Yes (Enabled)" : "No (Disabled)", Type = "toggle" });
+                    list.Add(new SettingDefinition { Key = "log_json", Title = "Format as Structured JSON", Description = "Format logs as machine-parseable JSON for automated tests", GetValueBadge = () => _config.logging.json_output ? "Yes (Enabled)" : "No (Disabled)", Type = "toggle" });
+                    break;
+                case "UI":
+                    list.Add(new SettingDefinition { Key = "ui_language", Title = "Interface Language", Description = "Dashboard text and user interface localization", GetValueBadge = () => _config.ui.language, Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "ui_scale", Title = "UI Scale (Display Size)", Description = "Scale factor for high-DPI monitors and large TV screens", GetValueBadge = () => $"{_config.ui.scale * 100:0}%", Type = "choice" });
+                    break;
+                case "About":
+                    list.Add(new SettingDefinition { Key = "about_core", Title = "Core Architecture", Description = "PCSX5 Windows x64 Native Core (C++20)", GetValueBadge = () => "v0.4.2-alpha", Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "about_vulkan", Title = "Graphics Engine", Description = "Vulkan 1.3 / Direct SPIR-V Translation", GetValueBadge = () => "Active", Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "about_audio", Title = "Audio Subsystem", Description = "WASAPI Zero-Copy Direct Audio Stream", GetValueBadge = () => "Active", Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "about_input", Title = "DualSense Driver", Description = "Direct Windows HID with Adaptive Trigger support", GetValueBadge = () => "Active", Type = "choice" });
+                    break;
+            }
+            return list;
+        }
+
+        private void OpenSettingsCategory(string category)
+        {
+            _activeSettingsCategory = category;
+            _settingsLevel = 2;
+            if (SettingsHubView != null) SettingsHubView.Visibility = Visibility.Collapsed;
+            if (SettingsCategoryView != null) SettingsCategoryView.Visibility = Visibility.Visible;
+            if (SettingsSubPageView != null) SettingsSubPageView.Visibility = Visibility.Collapsed;
+
+            if (SettingsCategoryViewHeaderTitle != null)
+                SettingsCategoryViewHeaderTitle.Text = GetCategoryTitle(category);
+
+            PopulateCategoryRows(category);
+        }
+
+        private void PopulateCategoryRows(string category)
+        {
+            if (SettingsCategoryRowsPanel == null) return;
+            SettingsCategoryRowsPanel.Children.Clear();
+
+            var settings = GetCategorySettings(category);
+            Button firstBtn = null;
+
+            foreach (var s in settings)
+            {
+                var rowBtn = new Button
+                {
+                    Style = (Style)FindResource("Ps5SettingRowStyle"),
+                    Tag = s.Key,
+                    Focusable = true,
+                    Margin = new Thickness(0, 4, 0, 4)
+                };
+
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+
+                var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                textStack.Children.Add(new TextBlock { Text = s.Title, FontSize = 14, FontWeight = FontWeights.Bold, Foreground = Brushes.White });
+                textStack.Children.Add(new TextBlock { Text = s.Description, FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(0xB0, 0xA0, 0xA0, 0xA5)), Margin = new Thickness(0, 3, 0, 0) });
+                Grid.SetColumn(textStack, 0);
+                grid.Children.Add(textStack);
+
+                // Value Badge Pill
+                var badgeBorder = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(0x28, 0x00, 0x99, 0xFF)),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x99, 0xFF)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(12, 4, 12, 4),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(16, 0, 0, 0)
+                };
+                var badgeText = new TextBlock
+                {
+                    Text = s.GetValueBadge(),
+                    FontSize = 12,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x40, 0xC0, 0xFF))
+                };
+                badgeBorder.Child = badgeText;
+                Grid.SetColumn(badgeBorder, 1);
+                grid.Children.Add(badgeBorder);
+
+                var chevron = new TextBlock
+                {
+                    Text = "›",
+                    FontSize = 18,
+                    Foreground = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF)),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(chevron, 2);
+                grid.Children.Add(chevron);
+
+                rowBtn.Content = grid;
+                string capturedKey = s.Key;
+                rowBtn.Click += (snd, ea) => OpenSettingsSubPage(capturedKey);
+
+                SettingsCategoryRowsPanel.Children.Add(rowBtn);
+                if (firstBtn == null) firstBtn = rowBtn;
+            }
+
+            if (firstBtn != null)
+            {
+                firstBtn.Focus();
+                firstBtn.BringIntoView();
+            }
+        }
+
+        private void OpenSettingsSubPage(string settingKey)
+        {
+            _activeSettingKey = settingKey;
+            _settingsLevel = 3;
+            if (SettingsHubView != null) SettingsHubView.Visibility = Visibility.Collapsed;
+            if (SettingsCategoryView != null) SettingsCategoryView.Visibility = Visibility.Collapsed;
+            if (SettingsSubPageView != null) SettingsSubPageView.Visibility = Visibility.Visible;
+
+            PopulateSubPage(settingKey);
+        }
+
+        private void PopulateSubPage(string settingKey)
+        {
+            if (SettingsSubPageContentContainer == null) return;
+            SettingsSubPageContentContainer.Children.Clear();
+
+            var settings = GetCategorySettings(_activeSettingsCategory);
+            var def = settings.FirstOrDefault(s => s.Key == settingKey);
+            if (string.IsNullOrEmpty(def.Key)) return;
+
+            if (SettingsSubPageParentTitle != null) SettingsSubPageParentTitle.Text = GetCategoryTitle(_activeSettingsCategory);
+            if (SettingsSubPageTitle != null) SettingsSubPageTitle.Text = def.Title;
+            if (SettingsSubPageDescription != null) SettingsSubPageDescription.Text = def.Description;
+
+            if (def.Type == "toggle")
+            {
+                // PS5 YES / NO TOGGLE PILLS
+                bool isEnabled = false;
+                Action<bool> setter = null;
+
+                if (settingKey == "gpu_fullscreen") { isEnabled = _config.graphics.fullscreen; setter = v => _config.graphics.fullscreen = v; }
+                else if (settingKey == "snd_title_music") { isEnabled = _config.ui.title_music_enabled; setter = v => _config.ui.title_music_enabled = v; }
+                else if (settingKey == "in_rumble") { isEnabled = _config.input.rumble; setter = v => _config.input.rumble = v; }
+                else if (settingKey == "hle_strict") { isEnabled = _config.hle.strict_imports; setter = v => _config.hle.strict_imports = v; }
+                else if (settingKey == "hle_trace") { isEnabled = _config.hle.trace_calls; setter = v => _config.hle.trace_calls = v; }
+                else if (settingKey == "hle_dump") { isEnabled = _config.crash.write_minidump; setter = v => _config.crash.write_minidump = v; }
+                else if (settingKey == "log_append") { isEnabled = _config.logging.file_append; setter = v => _config.logging.file_append = v; }
+                else if (settingKey == "log_json") { isEnabled = _config.logging.json_output; setter = v => _config.logging.json_output = v; }
+
+                var togglePanel = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+
+                // Yes Option
+                var btnYes = CreateOptionChoiceButton("Yes (Enabled)", "Enable this feature for active game sessions.", isEnabled, () => {
+                    setter?.Invoke(true);
+                    SaveConfig();
+                    PopulateSubPage(settingKey);
+                });
+
+                // No Option
+                var btnNo = CreateOptionChoiceButton("No (Disabled)", "Disable this feature and use default system behavior.", !isEnabled, () => {
+                    setter?.Invoke(false);
+                    SaveConfig();
+                    PopulateSubPage(settingKey);
+                });
+
+                togglePanel.Children.Add(btnYes);
+                togglePanel.Children.Add(btnNo);
+                SettingsSubPageContentContainer.Children.Add(togglePanel);
+
+                var focusedBtn = isEnabled ? btnYes : btnNo;
+                focusedBtn.Focus();
+            }
+            else if (def.Type == "slider")
+            {
+                // PS5 SLIDER PAGE WITH LIVE BADGE READOUT
+                double currentVal = 1.0;
+                double minVal = 0.0;
+                double maxVal = 1.0;
+                double stepVal = 0.1;
+                Func<double, string> formatVal = v => $"{v}";
+                Action<double> sliderSetter = null;
+
+                if (settingKey == "gpu_res_scale")
+                {
+                    currentVal = _config.graphics.resolution_scale;
+                    minVal = 0.5; maxVal = 2.0; stepVal = 0.25;
+                    formatVal = v => $"{v:0.00}x (Native Multiplier)";
+                    sliderSetter = v => _config.graphics.resolution_scale = v;
+                }
+                else if (settingKey == "snd_volume")
+                {
+                    currentVal = _config.audio.volume;
+                    minVal = 0.0; maxVal = 1.0; stepVal = 0.05;
+                    formatVal = v => $"{(int)(v * 100)}% Volume";
+                    sliderSetter = v => _config.audio.volume = v;
+                }
+                else if (settingKey == "snd_buffer")
+                {
+                    currentVal = _config.audio.buffer_ms;
+                    minVal = 10; maxVal = 200; stepVal = 5;
+                    formatVal = v => $"{(int)v} ms Latency";
+                    sliderSetter = v => _config.audio.buffer_ms = (int)v;
+                }
+                else if (settingKey == "in_deadzone")
+                {
+                    currentVal = _config.input.deadzone;
+                    minVal = 0.0; maxVal = 0.5; stepVal = 0.05;
+                    formatVal = v => $"{(int)(v * 100)}% Deadzone";
+                    sliderSetter = v => _config.input.deadzone = v;
+                }
+                else if (settingKey == "hle_trace_cap")
+                {
+                    currentVal = _config.hle.trace_capacity;
+                    minVal = 64; maxVal = 1024; stepVal = 64;
+                    formatVal = v => $"{(int)v} Entries";
+                    sliderSetter = v => _config.hle.trace_capacity = (int)v;
+                }
+
+                var sliderCard = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x10, 0x14, 0x1E)),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
+                    BorderThickness = new Thickness(1.5),
+                    CornerRadius = new CornerRadius(14),
+                    Padding = new Thickness(24, 20, 24, 20),
+                    Margin = new Thickness(0, 10, 0, 0)
+                };
+
+                var sliderStack = new StackPanel();
+                var readoutText = new TextBlock
+                {
+                    Text = formatVal(currentVal),
+                    FontSize = 24,
+                    FontWeight = FontWeights.ExtraBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x00, 0x99, 0xFF)),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 0, 0, 16)
+                };
+                sliderStack.Children.Add(readoutText);
+
+                var sld = new Slider
+                {
+                    Minimum = minVal,
+                    Maximum = maxVal,
+                    Value = currentVal,
+                    TickFrequency = stepVal,
+                    IsSnapToTickEnabled = true,
+                    Height = 24,
+                    Margin = new Thickness(0, 0, 0, 20),
+                    Focusable = true
+                };
+                sld.ValueChanged += (snd, ea) =>
+                {
+                    readoutText.Text = formatVal(sld.Value);
+                    sliderSetter?.Invoke(sld.Value);
+                    SaveConfig();
+                };
+                sliderStack.Children.Add(sld);
+
+                var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+                var btnDec = new Button { Content = "◀  - Step", Style = (Style)FindResource("ModernButtonStyle"), Width = 110, Height = 34, Margin = new Thickness(0, 0, 8, 0) };
+                btnDec.Click += (snd, ea) => sld.Value = Math.Max(minVal, sld.Value - stepVal);
+
+                var btnInc = new Button { Content = "+ Step  ▶", Style = (Style)FindResource("ModernButtonStyle"), Width = 110, Height = 34, Margin = new Thickness(8, 0, 8, 0) };
+                btnInc.Click += (snd, ea) => sld.Value = Math.Min(maxVal, sld.Value + stepVal);
+
+                var btnReset = new Button { Content = "↺  Reset Default", Style = (Style)FindResource("SecondaryButtonStyle"), Width = 130, Height = 34, Margin = new Thickness(8, 0, 0, 0) };
+                btnReset.Click += (snd, ea) =>
+                {
+                    if (settingKey == "gpu_res_scale") sld.Value = 1.0;
+                    else if (settingKey == "snd_volume") sld.Value = 1.0;
+                    else if (settingKey == "snd_buffer") sld.Value = 50;
+                    else if (settingKey == "in_deadzone") sld.Value = 0.15;
+                    else if (settingKey == "hle_trace_cap") sld.Value = 256;
+                };
+
+                btnRow.Children.Add(btnDec);
+                btnRow.Children.Add(btnInc);
+                btnRow.Children.Add(btnReset);
+                sliderStack.Children.Add(btnRow);
+
+                sliderCard.Child = sliderStack;
+                SettingsSubPageContentContainer.Children.Add(sliderCard);
+                sld.Focus();
+            }
+            else if (settingKey == "storage_folders")
+            {
+                // GAME DIRECTORIES FOLDERS MANAGER
+                var dirCard = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x10, 0x14, 0x1E)),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
+                    BorderThickness = new Thickness(1.5),
+                    CornerRadius = new CornerRadius(14),
+                    Padding = new Thickness(20, 16, 20, 16),
+                    Margin = new Thickness(0, 10, 0, 0)
+                };
+                var dirStack = new StackPanel();
+
+                var listBorder = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF)),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(8),
+                    Margin = new Thickness(0, 0, 0, 14)
+                };
+                var lb = new ListBox
+                {
+                    MinHeight = 120,
+                    MaxHeight = 200,
+                    Background = Brushes.Transparent,
+                    Foreground = Brushes.White,
+                    BorderThickness = new Thickness(0)
+                };
+                foreach (var f in _gameFolders) lb.Items.Add(f);
+                listBorder.Child = lb;
+                dirStack.Children.Add(listBorder);
+
+                var btnStack = new StackPanel { Orientation = Orientation.Horizontal };
+                var btnAdd = new Button { Content = "➕  Add Directory", Style = (Style)FindResource("ModernButtonStyle"), Width = 150, Height = 34, Margin = new Thickness(0, 0, 10, 0) };
+                btnAdd.Click += (snd, ea) =>
+                {
+                    var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Select Game Folder" };
+                    if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.FolderName) && !_gameFolders.Contains(dialog.FolderName))
+                    {
+                        _gameFolders.Add(dialog.FolderName);
+                        SaveConfig();
+                        PopulateSubPage(settingKey);
+                        LoadGames();
+                    }
+                };
+
+                var btnRemove = new Button { Content = "🗑️  Remove Selected", Style = (Style)FindResource("SecondaryButtonStyle"), Width = 160, Height = 34 };
+                btnRemove.Click += (snd, ea) =>
+                {
+                    if (lb.SelectedItem is string selPath && _gameFolders.Contains(selPath))
+                    {
+                        _gameFolders.Remove(selPath);
+                        SaveConfig();
+                        PopulateSubPage(settingKey);
+                        LoadGames();
+                    }
+                };
+
+                btnStack.Children.Add(btnAdd);
+                btnStack.Children.Add(btnRemove);
+                dirStack.Children.Add(btnStack);
+
+                dirCard.Child = dirStack;
+                SettingsSubPageContentContainer.Children.Add(dirCard);
+                btnAdd.Focus();
+            }
+            else
+            {
+                // MULTI-CHOICE RADIO PICKER (Vulkan, Languages, Log levels, Scales, Window Sizes)
+                var optionsPanel = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+                Button firstOptionBtn = null;
+
+                if (settingKey == "gpu_renderer")
+                {
+                    var opt1 = CreateOptionChoiceButton("Vulkan 1.3 (Direct Hardware Acceleration)", "Native SPIR-V shader compiler with asynchronous compute and queue execution.", _config.graphics.renderer == 0, () => {
+                        _config.graphics.renderer = 0; SaveConfig(); PopulateSubPage(settingKey);
+                    });
+                    var opt2 = CreateOptionChoiceButton("OpenGL (Compatibility Fallback)", "Fallback graphics driver for hardware without Vulkan 1.3 support.", _config.graphics.renderer == 1, () => {
+                        _config.graphics.renderer = 1; SaveConfig(); PopulateSubPage(settingKey);
+                    });
+                    optionsPanel.Children.Add(opt1);
+                    optionsPanel.Children.Add(opt2);
+                    firstOptionBtn = (_config.graphics.renderer == 0) ? opt1 : opt2;
+                }
+                else if (settingKey == "gpu_window_size")
+                {
+                    var sizes = new[] { ("1280 x 720 (HD 720p)", 1280, 720), ("1920 x 1080 (Full HD 1080p)", 1920, 1080), ("2560 x 1440 (QHD 1440p)", 2560, 1440), ("3840 x 2160 (4K UHD 2160p)", 3840, 2160) };
+                    foreach (var s in sizes)
+                    {
+                        bool isSel = (_config.graphics.width == s.Item2 && _config.graphics.height == s.Item3);
+                        var btn = CreateOptionChoiceButton(s.Item1, $"Standard aspect ratio render surface window.", isSel, () => {
+                            _config.graphics.width = s.Item2; _config.graphics.height = s.Item3; SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
+                else if (settingKey == "snd_backend")
+                {
+                    var opt1 = CreateOptionChoiceButton("WASAPI (Exclusive & Shared Low Latency)", "Direct Windows WASAPI audio driver recommended for all titles.", _config.audio.backend == 1, () => {
+                        _config.audio.backend = 1; SaveConfig(); PopulateSubPage(settingKey);
+                    });
+                    var opt2 = CreateOptionChoiceButton("XAudio2 (DirectX Standard Driver)", "Compatibility audio output driver with standard mixing.", _config.audio.backend == 2, () => {
+                        _config.audio.backend = 2; SaveConfig(); PopulateSubPage(settingKey);
+                    });
+                    var opt3 = CreateOptionChoiceButton("Null Driver (Mute Audio Output)", "Disables audio rendering for automated benchmarks and CI runs.", _config.audio.backend == 0, () => {
+                        _config.audio.backend = 0; SaveConfig(); PopulateSubPage(settingKey);
+                    });
+                    optionsPanel.Children.Add(opt1);
+                    optionsPanel.Children.Add(opt2);
+                    optionsPanel.Children.Add(opt3);
+                    firstOptionBtn = opt1;
+                }
+                else if (settingKey == "in_backend")
+                {
+                    var opt1 = CreateOptionChoiceButton("DualSense Native HID / SDL", "Direct low-latency controller input with haptic feedback.", _config.input.backend == 0, () => {
+                        _config.input.backend = 0; SaveConfig(); PopulateSubPage(settingKey);
+                    });
+                    var opt2 = CreateOptionChoiceButton("XInput Controller Driver", "Xbox / generic gamepad compatibility layer.", _config.input.backend == 1, () => {
+                        _config.input.backend = 1; SaveConfig(); PopulateSubPage(settingKey);
+                    });
+                    optionsPanel.Children.Add(opt1);
+                    optionsPanel.Children.Add(opt2);
+                    firstOptionBtn = opt1;
+                }
+                else if (settingKey == "log_level")
+                {
+                    var levels = new[] { "Trace", "Debug", "Info", "Warning", "Error", "Fatal" };
+                    foreach (var lvl in levels)
+                    {
+                        bool isSel = string.Equals(_config.logging.min_level, lvl, StringComparison.OrdinalIgnoreCase);
+                        var btn = CreateOptionChoiceButton(lvl, $"Log events with severity {lvl} and higher.", isSel, () => {
+                            _config.logging.min_level = lvl; SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
+                else if (settingKey == "ui_scale")
+                {
+                    var scales = new[] { ("80%", 0.8), ("100% (Default)", 1.0), ("125%", 1.25), ("150%", 1.5), ("175%", 1.75), ("200%", 2.0) };
+                    foreach (var sc in scales)
+                    {
+                        bool isSel = Math.Abs(_config.ui.scale - sc.Item2) < 0.01;
+                        var btn = CreateOptionChoiceButton(sc.Item1, $"Scale UI elements by {sc.Item1}.", isSel, () => {
+                            _config.ui.scale = sc.Item2; ApplyUiScale(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
+                else if (settingKey == "ui_language")
+                {
+                    var langs = new[] { ("English (United States)", "en-US"), ("Deutsch (Deutschland)", "de-DE"), ("Español (España)", "es-ES"), ("Français (France)", "fr-FR"), ("Italiano (Italia)", "it-IT"), ("日本語 (日本)", "ja-JP"), ("한국어 (대한민국)", "ko-KR"), ("Português (Brasil)", "pt-BR"), ("Русский (Россия)", "ru-RU"), ("简体中文 (中国)", "zh-CN"), ("繁體中文 (台灣)", "zh-TW") };
+                    foreach (var lng in langs)
+                    {
+                        bool isSel = string.Equals(_config.ui.language, lng.Item2, StringComparison.OrdinalIgnoreCase);
+                        var btn = CreateOptionChoiceButton(lng.Item1, $"Language Code: {lng.Item2}", isSel, () => {
+                            _config.ui.language = lng.Item2; TranslateUi(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
+
+                SettingsSubPageContentContainer.Children.Add(optionsPanel);
+                if (firstOptionBtn != null) firstOptionBtn.Focus();
+            }
+        }
+
+        private Button CreateOptionChoiceButton(string title, string description, bool isSelected, Action onClick)
+        {
+            var btn = new Button
+            {
+                Style = (Style)FindResource("Ps5OptionItemStyle"),
+                Focusable = true,
+                Margin = new Thickness(0, 5, 0, 5)
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
+
+            var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            stack.Children.Add(new TextBlock { Text = title, FontSize = 14, FontWeight = FontWeights.Bold, Foreground = Brushes.White });
+            stack.Children.Add(new TextBlock { Text = description, FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(0x90, 0xA0, 0xA0, 0xA5)), Margin = new Thickness(0, 2, 0, 0) });
+            Grid.SetColumn(stack, 0);
+            grid.Children.Add(stack);
+
+            if (isSelected)
+            {
+                var check = new TextBlock
+                {
+                    Text = "✔",
+                    FontSize = 18,
+                    FontWeight = FontWeights.ExtraBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x00, 0x99, 0xFF)),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(check, 1);
+                grid.Children.Add(check);
+            }
+
+            btn.Content = grid;
+            btn.Click += (s, e) => onClick?.Invoke();
+            return btn;
         }
 
         
@@ -2505,33 +3068,8 @@ namespace Pcsx5Ui
                 if (!string.IsNullOrEmpty(selectedPath) && !_gameFolders.Contains(selectedPath))
                 {
                     _gameFolders.Add(selectedPath);
-                    RefreshGameFoldersList();
                     LoadGames(); // Re-scan games automatically
                     SaveConfig(); // Save configuration
-                }
-            }
-        }
-
-        private void BtnRemoveFolder_Click(object sender, RoutedEventArgs e)
-        {
-            if (GameFoldersListBox.SelectedItem != null)
-            {
-                string selected = GameFoldersListBox.SelectedItem.ToString();
-                _gameFolders.Remove(selected);
-                RefreshGameFoldersList();
-                LoadGames(); // Re-scan games automatically
-                SaveConfig(); // Save configuration
-            }
-        }
-
-        private void RefreshGameFoldersList()
-        {
-            if (GameFoldersListBox != null)
-            {
-                GameFoldersListBox.Items.Clear();
-                foreach (var folder in _gameFolders)
-                {
-                    GameFoldersListBox.Items.Add(folder);
                 }
             }
         }
@@ -2581,7 +3119,6 @@ namespace Pcsx5Ui
             _gameFolders.Clear();
             _gameFolders.Add(_firstRunSelectedFolder);
             FirstRunOverlay.Visibility = Visibility.Collapsed;
-            RefreshGameFoldersList();
             SaveConfig();
             LoadGames();
             LogConsole("Games folder set to " + _firstRunSelectedFolder);
@@ -2594,48 +3131,11 @@ namespace Pcsx5Ui
         }
 
         // --- UI SCALE ---
-        private bool _suppressUiScaleEvent = false;
-
         private void ApplyUiScale()
         {
             double scale = _config.ui.scale;
             if (scale < 0.5 || scale > 3.0) scale = 1.0;
             MainLayoutRoot.LayoutTransform = new ScaleTransform(scale, scale);
-        }
-
-        private void UiScaleCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressUiScaleEvent) return;
-            if (UiScaleCombo.SelectedItem is ComboBoxItem item &&
-                double.TryParse(item.Tag?.ToString(), System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out double scale))
-            {
-                _config.ui.scale = scale;
-                ApplyUiScale();
-            }
-        }
-
-        private void SelectUiScaleComboItem()
-        {
-            _suppressUiScaleEvent = true;
-            try
-            {
-                foreach (ComboBoxItem item in UiScaleCombo.Items)
-                {
-                    if (double.TryParse(item.Tag?.ToString(), System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out double tag) &&
-                        Math.Abs(tag - _config.ui.scale) < 0.001)
-                    {
-                        UiScaleCombo.SelectedItem = item;
-                        return;
-                    }
-                }
-                UiScaleCombo.SelectedIndex = 1; // 100%
-            }
-            finally
-            {
-                _suppressUiScaleEvent = false;
-            }
         }
 
         // --- GAMEPAD NAV & PS BUTTON POLLING ---
@@ -3021,37 +3521,7 @@ namespace Pcsx5Ui
         }
 
 
-        private List<Control> GetSettingsControls()
-        {
-            return new List<Control>
-            {
-                GameFoldersListBox,
-                BtnAddFolder,
-                BtnRemoveFolder,
-                GpuRendererCombo,
-                GpuFullscreenCheck,
-                GpuResScaleSlider,
-                GpuWidthText,
-                GpuHeightText,
-                SndBackendCombo,
-                SndVolumeSlider,
-                SndBufferSlider,
-                SndTitleMusicCheck,
-                InBackendCombo,
-                InDeadzoneSlider,
-                InRumbleCheck,
-                HleStrictCheck,
-                HleTraceCheck,
-                HleTraceCapSlider,
-                HleWriteDumpCheck,
-                LogMinLevelCombo,
-                LogFileAppendCheck,
-                LogJsonCheck,
-                UiLanguageCombo,
-                UiScaleCombo,
-                SaveSettingsBtn
-            };
-        }
+
 
         private List<Control> GetControllerSetupControls()
         {
@@ -3093,75 +3563,151 @@ namespace Pcsx5Ui
 
         private void HandleSettingsGamepadNav(bool up, bool down, bool left, bool right, bool a, bool b)
         {
-            var controls = GetSettingsControls().Where(c => c != null && c.IsVisible).ToList();
-            if (controls.Count == 0) return;
-
-            int focusedIdx = controls.FindIndex(c => c.IsKeyboardFocused);
-
-            if (up || down)
+            if (_settingsLevel == 1)
             {
-                int newIdx = (focusedIdx == -1) ? 0 : (down ? (focusedIdx + 1) % controls.Count : (focusedIdx - 1 + controls.Count) % controls.Count);
-                controls[newIdx].Focus();
-                controls[newIdx].BringIntoView();
-                return;
+                // Level 1: Main Category Hub (8 Tiles)
+                if (FooterGamepadHints != null)
+                    FooterGamepadHints.Text = "🎮 [L1/R1 / L2/R2] Tabs  •  [D-Pad] Categories  •  [✕] Enter  •  [◯] Back to Library";
+
+                var hubButtons = GetHubCategoryButtons().Where(btn => btn != null && btn.IsVisible).ToList();
+                if (hubButtons.Count == 0) return;
+
+                int focusedIdx = hubButtons.FindIndex(btn => btn.IsKeyboardFocused);
+                if (focusedIdx == -1) focusedIdx = 0;
+
+                if (up || down || left || right)
+                {
+                    int nextIdx = focusedIdx;
+                    if (down) nextIdx = Math.Min(hubButtons.Count - 1, focusedIdx + 2);
+                    else if (up) nextIdx = Math.Max(0, focusedIdx - 2);
+                    else if (right) nextIdx = Math.Min(hubButtons.Count - 1, focusedIdx + 1);
+                    else if (left) nextIdx = Math.Max(0, focusedIdx - 1);
+
+                    hubButtons[nextIdx].Focus();
+                    hubButtons[nextIdx].BringIntoView();
+                    return;
+                }
+
+                if (a)
+                {
+                    hubButtons[focusedIdx].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    return;
+                }
+
+                if (b)
+                {
+                    TabLibrary_Click(this, null);
+                    return;
+                }
             }
-
-            if (focusedIdx >= 0 && focusedIdx < controls.Count)
+            else if (_settingsLevel == 2)
             {
-                var focused = controls[focusedIdx];
-                if (focused is ComboBox combo)
+                // Level 2: Category Rows Overview
+                if (FooterGamepadHints != null)
+                    FooterGamepadHints.Text = "🎮 [D-Pad ↑↓] Select Setting  •  [✕] Open Option  •  [◯] Back to Settings Hub";
+
+                if (SettingsCategoryRowsPanel == null) return;
+                var rowButtons = SettingsCategoryRowsPanel.Children.OfType<Button>().ToList();
+                if (rowButtons.Count == 0) return;
+
+                int focusedIdx = rowButtons.FindIndex(btn => btn.IsKeyboardFocused);
+
+                if (up || down)
                 {
-                    if (left || right)
+                    int nextIdx = (focusedIdx == -1) ? 0 : (down ? (focusedIdx + 1) % rowButtons.Count : (focusedIdx - 1 + rowButtons.Count) % rowButtons.Count);
+                    rowButtons[nextIdx].Focus();
+                    rowButtons[nextIdx].BringIntoView();
+                    return;
+                }
+
+                if (a && focusedIdx >= 0 && focusedIdx < rowButtons.Count)
+                {
+                    rowButtons[focusedIdx].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    return;
+                }
+
+                if (b || left)
+                {
+                    ResetSettingsView();
+                    return;
+                }
+            }
+            else if (_settingsLevel == 3)
+            {
+                // Level 3: Dedicated Sub-Page (Pickers, Sliders, Toggles, Directory List)
+                if (FooterGamepadHints != null)
+                    FooterGamepadHints.Text = "🎮 [D-Pad ↑↓] Select  •  [D-Pad ←→] Adjust Slider  •  [✕] Choose  •  [◯] Back to Category";
+
+                if (SettingsSubPageContentContainer == null) return;
+                var focusables = SettingsSubPageContentContainer.Children
+                    .OfType<FrameworkElement>()
+                    .SelectMany(GetFocusableDescendants)
+                    .ToList();
+
+                if (focusables.Count == 0) return;
+
+                int focusedIdx = focusables.FindIndex(c => c.IsKeyboardFocused);
+
+                if (up || down)
+                {
+                    int nextIdx = (focusedIdx == -1) ? 0 : (down ? (focusedIdx + 1) % focusables.Count : (focusedIdx - 1 + focusables.Count) % focusables.Count);
+                    focusables[nextIdx].Focus();
+                    focusables[nextIdx].BringIntoView();
+                    return;
+                }
+
+                if (focusedIdx >= 0 && focusedIdx < focusables.Count)
+                {
+                    var focused = focusables[focusedIdx];
+                    if (focused is Slider slider)
                     {
-                        if (combo.Items.Count > 0)
+                        if (left || right)
                         {
-                            int idx = combo.SelectedIndex;
-                            combo.SelectedIndex = left ? Math.Max(0, idx - 1) : Math.Min(combo.Items.Count - 1, idx + 1);
+                            double step = slider.TickFrequency > 0 ? slider.TickFrequency : 0.1;
+                            slider.Value = left ? Math.Max(slider.Minimum, slider.Value - step) : Math.Min(slider.Maximum, slider.Value + step);
+                            return;
                         }
                     }
-                    else if (a)
+                    else if (focused is Button btn)
                     {
-                        combo.IsDropDownOpen = !combo.IsDropDownOpen;
-                    }
-                    else if (b && combo.IsDropDownOpen)
-                    {
-                        combo.IsDropDownOpen = false;
-                    }
-                }
-                else if (focused is Slider slider)
-                {
-                    if (left || right)
-                    {
-                        double step = slider.TickFrequency > 0 ? slider.TickFrequency : (slider.Maximum - slider.Minimum) / 10.0;
-                        if (step <= 0) step = 0.05;
-                        slider.Value = left ? Math.Max(slider.Minimum, slider.Value - step) : Math.Min(slider.Maximum, slider.Value + step);
-                    }
-                }
-                else if (focused is CheckBox cb)
-                {
-                    if (a)
-                    {
-                        cb.IsChecked = !(cb.IsChecked == true);
-                    }
-                }
-                else if (focused is Button btn)
-                {
-                    if (a)
-                    {
-                        btn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    }
-                }
-                else if (focused is TextBox tb)
-                {
-                    if (left || right)
-                    {
-                        if (int.TryParse(tb.Text, out var v))
+                        if (a)
                         {
-                            int step = 50;
-                            tb.Text = (left ? Math.Max(100, v - step) : Math.Min(3840, v + step)).ToString();
+                            btn.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            return;
                         }
                     }
                 }
+
+                if (b)
+                {
+                    OpenSettingsCategory(_activeSettingsCategory);
+                    return;
+                }
+            }
+        }
+
+        private IEnumerable<FrameworkElement> GetFocusableDescendants(FrameworkElement root)
+        {
+            if (root is Button b && b.Focusable) yield return b;
+            else if (root is Slider s && s.Focusable) yield return s;
+            else if (root is ListBox l && l.Focusable) yield return l;
+            else if (root is Panel p)
+            {
+                foreach (FrameworkElement child in p.Children)
+                {
+                    foreach (var desc in GetFocusableDescendants(child))
+                        yield return desc;
+                }
+            }
+            else if (root is ContentControl cc && cc.Content is FrameworkElement fe)
+            {
+                foreach (var desc in GetFocusableDescendants(fe))
+                    yield return desc;
+            }
+            else if (root is Border bd && bd.Child is FrameworkElement bfe)
+            {
+                foreach (var desc in GetFocusableDescendants(bfe))
+                    yield return desc;
             }
         }
 
@@ -3272,11 +3818,20 @@ namespace Pcsx5Ui
                 if ((dsState.Buttons & HostGamepadButtons.Down) != 0) buttons |= 0x0002;
                 if ((dsState.Buttons & HostGamepadButtons.Left) != 0) buttons |= 0x0004;
                 if ((dsState.Buttons & HostGamepadButtons.Right) != 0) buttons |= 0x0008;
-                if ((dsState.Buttons & HostGamepadButtons.Cross) != 0) buttons |= 0x1000;
-                if ((dsState.Buttons & HostGamepadButtons.Circle) != 0) buttons |= 0x2000;
+                if ((dsState.Buttons & HostGamepadButtons.Options) != 0) buttons |= 0x0010;
+                if ((dsState.Buttons & HostGamepadButtons.Back) != 0 || (dsState.Buttons & HostGamepadButtons.TouchPad) != 0) buttons |= 0x0020;
+                if ((dsState.Buttons & HostGamepadButtons.L3) != 0) buttons |= 0x0040;
+                if ((dsState.Buttons & HostGamepadButtons.R3) != 0) buttons |= 0x0080;
                 if ((dsState.Buttons & HostGamepadButtons.L1) != 0) buttons |= 0x0100;
                 if ((dsState.Buttons & HostGamepadButtons.R1) != 0) buttons |= 0x0200;
-                if ((dsState.Buttons & HostGamepadButtons.Options) != 0 || (dsState.Buttons & HostGamepadButtons.TouchPad) != 0) buttons |= 0x0400;
+                if ((dsState.Buttons & HostGamepadButtons.PlayStation) != 0) buttons |= 0x0400;
+                if ((dsState.Buttons & HostGamepadButtons.Cross) != 0) buttons |= 0x1000;
+                if ((dsState.Buttons & HostGamepadButtons.Circle) != 0) buttons |= 0x2000;
+                if ((dsState.Buttons & HostGamepadButtons.Square) != 0) buttons |= 0x4000;
+                if ((dsState.Buttons & HostGamepadButtons.Triangle) != 0) buttons |= 0x8000;
+
+                state.Gamepad.bLeftTrigger = (byte)((dsState.Buttons & HostGamepadButtons.L2) != 0 ? 255 : 0);
+                state.Gamepad.bRightTrigger = (byte)((dsState.Buttons & HostGamepadButtons.R2) != 0 ? 255 : 0);
 
                 lx = (short)((dsState.LeftX - 128) * 256);
                 ly = (short)(-(dsState.LeftY - 128) * 256);
@@ -3310,6 +3865,8 @@ namespace Pcsx5Ui
             }
 
             ushort prevButtons = _prevInputState.Gamepad.wButtons;
+            byte prevLT = _prevInputState.Gamepad.bLeftTrigger;
+            byte prevRT = _prevInputState.Gamepad.bRightTrigger;
 
             // Detect Button Press transitions (pressed now, but was not pressed in previous state)
             bool upPressed = ((buttons & 0x0001) != 0) && ((prevButtons & 0x0001) == 0);
@@ -3317,16 +3874,33 @@ namespace Pcsx5Ui
             bool leftPressed = ((buttons & 0x0004) != 0) && ((prevButtons & 0x0004) == 0);
             bool rightPressed = ((buttons & 0x0008) != 0) && ((prevButtons & 0x0008) == 0);
 
-            bool aPressed = ((buttons & 0x1000) != 0) && ((prevButtons & 0x1000) == 0); // Cross/A
-            bool bPressed = ((buttons & 0x2000) != 0) && ((prevButtons & 0x2000) == 0); // Circle/B
-            bool psPressed = ((buttons & 0x0400) != 0) && ((prevButtons & 0x0400) == 0); // PS Button / Guide
+            bool aPressed = ((buttons & 0x1000) != 0) && ((prevButtons & 0x1000) == 0); // Cross/A (Confirm / Enter)
+            bool bPressed = ((buttons & 0x2000) != 0) && ((prevButtons & 0x2000) == 0); // Circle/B (Back / Cancel / Return)
+            bool xPressed = ((buttons & 0x4000) != 0) && ((prevButtons & 0x4000) == 0); // Square/X (Details / Secondary)
+            bool yPressed = ((buttons & 0x8000) != 0) && ((prevButtons & 0x8000) == 0); // Triangle/Y (Menu / Tools)
+
             bool l1Pressed = ((buttons & 0x0100) != 0) && ((prevButtons & 0x0100) == 0); // L1 / Tab Left
             bool r1Pressed = ((buttons & 0x0200) != 0) && ((prevButtons & 0x0200) == 0); // R1 / Tab Right
-            bool yPressed = ((buttons & 0x8000) != 0) && ((prevButtons & 0x8000) == 0); // Triangle/Y
+            bool l2Pressed = (state.Gamepad.bLeftTrigger > 30) && (prevLT <= 30);         // L2 / Trigger Tab Left
+            bool r2Pressed = (state.Gamepad.bRightTrigger > 30) && (prevRT <= 30);        // R2 / Trigger Tab Right
 
-            // Map Left Thumbstick and D-Pad with a cooldown to support smooth continuous scrolling when held
+            bool l3Pressed = ((buttons & 0x0040) != 0) && ((prevButtons & 0x0040) == 0); // L3 (Left Stick Click)
+            bool r3Pressed = ((buttons & 0x0080) != 0) && ((prevButtons & 0x0080) == 0); // R3 (Right Stick Click)
+            bool l3Held = (buttons & 0x0040) != 0;
+            bool r3Held = (buttons & 0x0080) != 0;
+
+            bool optionsPressed = ((buttons & 0x0010) != 0) && ((prevButtons & 0x0010) == 0); // Options / Start
+            bool optionsHeld = (buttons & 0x0010) != 0;
+            bool backPressed = ((buttons & 0x0020) != 0) && ((prevButtons & 0x0020) == 0); // Share / Back / TouchPad
+            bool backHeld = (buttons & 0x0020) != 0;
+
+            bool psPressed = ((buttons & 0x0400) != 0) && ((prevButtons & 0x0400) == 0); // PS Button / Guide
+            bool psHeld = (buttons & 0x0400) != 0;
+            bool l1Held = (buttons & 0x0100) != 0;
+            bool r1Held = (buttons & 0x0200) != 0;
+
+            // Map Left Thumbstick with analog deadzone and cooldown
             const int stickThreshold = 15000;
-
             if ((DateTime.Now - _lastAnalogNav).TotalMilliseconds > 220)
             {
                 if (lx < -stickThreshold || (buttons & 0x0004) != 0) { leftPressed = true; _lastAnalogNav = DateTime.Now; }
@@ -3335,7 +3909,54 @@ namespace Pcsx5Ui
                 else if (ly < -stickThreshold || (buttons & 0x0002) != 0) { downPressed = true; _lastAnalogNav = DateTime.Now; }
             }
 
-            // PS Button Action (Home Button)
+            // ── SHORTCUT 1: FORCE STOP GAME (PS + Options OR PS + L1 + R1 OR PS + L3 + R3) ──
+            bool forceKillCombo = (psPressed && optionsHeld) || (optionsPressed && psHeld) ||
+                                  (psPressed && l1Held && r1Held) || (psPressed && l3Held && r3Held);
+            if (forceKillCombo && (_coreRunning || _session?.State == GameSessionState.Running || _session?.State == GameSessionState.Booting))
+            {
+                LogConsole("⚡ FORCE STOP: Terminating game immediately via controller shortcut (PS+Options / PS+L1+R1 / PS+L3+R3).");
+                try { _session?.Kill(); } catch { }
+                try { CoreBridge.pcsx5_force_stop(); } catch { }
+                Dispatcher.Invoke(() => {
+                    StopButton_Click(this, null);
+                    if (FooterStatus != null) FooterStatus.Text = "⚡ Game Terminated (Force Stop)";
+                });
+                _prevInputState = state;
+                return;
+            }
+
+            // ── SHORTCUT 2: TOGGLE CONSOLE DRAWER (L3 + R3 OR Share/Touchpad + Triangle) ──
+            bool consoleToggleCombo = (l3Pressed && r3Held) || (r3Pressed && l3Held) || (l3Pressed && r3Pressed) ||
+                                      (backHeld && yPressed) || (backPressed && (buttons & 0x8000) != 0);
+            if (consoleToggleCombo)
+            {
+                Dispatcher.Invoke(() => {
+                    SetGameConsoleVisible(!_gameConsoleVisible);
+                    LogConsole($"Console drawer {(_gameConsoleVisible ? "opened" : "closed")} via controller shortcut (L3+R3 / Share+Triangle).");
+                });
+                _prevInputState = state;
+                return;
+            }
+
+            // ── CONSOLE DRAWER GAMEPAD NAVIGATION (When drawer is open) ──
+            if (_gameConsoleVisible)
+            {
+                Dispatcher.Invoke(() => {
+                    if (FooterGamepadHints != null)
+                        FooterGamepadHints.Text = "🎮 [D-Pad ↑↓] Scroll Logs  •  [✕] Copy to Clipboard  •  [◯] Close Console  •  [L3+R3] Toggle";
+                    if (upPressed) ConsoleOutputBox.LineUp();
+                    else if (downPressed) ConsoleOutputBox.LineDown();
+                    else if (aPressed) CopyConsole_Click(this, null);
+                    else if (bPressed) SetGameConsoleVisible(false);
+                });
+                if (bPressed || aPressed || upPressed || downPressed)
+                {
+                    _prevInputState = state;
+                    return;
+                }
+            }
+
+            // ── PS BUTTON ACTION (Home / Dashboard / Graceful Stop) ──
             if (psPressed)
             {
                 if (_coreRunning)
@@ -3343,7 +3964,7 @@ namespace Pcsx5Ui
                     try
                     {
                         CoreBridge.pcsx5_stop();
-                        LogConsole("PS Button: Stop requested for running game.");
+                        LogConsole("PS Button: Graceful stop requested for running game.");
                     }
                     catch { }
                 }
@@ -3364,12 +3985,11 @@ namespace Pcsx5Ui
                 return;
             }
 
-            // If game is running, only route to in-game overlays
+            // ── IN-GAME OVERLAY ROUTING (When Core is running) ──
             if (_coreRunning)
             {
                 Dispatcher.Invoke(() =>
                 {
-                    // Pause menu navigation when game is running
                     if (_pauseMenuVisible)
                     {
                         if (FooterGamepadHints != null)
@@ -3397,7 +4017,7 @@ namespace Pcsx5Ui
 
             Dispatcher.Invoke(() =>
             {
-                // Overlay Dialog Traps — priority order matters
+                // Overlay Dialog Traps
                 if (FolderPickerOverlay != null && FolderPickerOverlay.Visibility == Visibility.Visible)
                 {
                     if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [✕] Open Folder Browser  •  [◯] Cancel";
@@ -3426,8 +4046,8 @@ namespace Pcsx5Ui
                     return;
                 }
 
-                // Shoulder buttons tab cycling
-                if (l1Pressed || r1Pressed)
+                // ── TAB CYCLING WITH BUMPERS (L1 / R1) & TRIGGERS (L2 / R2) ──
+                if (l1Pressed || r1Pressed || l2Pressed || r2Pressed)
                 {
                     Button[] tabs = { TabLibraryBtn, TabAnalyzerBtn, TabControllerBtn, TabSettingsBtn };
                     int activeIndexTab = 0;
@@ -3435,11 +4055,10 @@ namespace Pcsx5Ui
                     else if (AnalyzerView.Visibility == Visibility.Visible) activeIndexTab = 1;
                     else if (ControllerView.Visibility == Visibility.Visible) activeIndexTab = 2;
                     else if (SettingsView.Visibility == Visibility.Visible) activeIndexTab = 3;
-                    // tab removed activeIndexTab = 4;
 
                     int nextIndex = activeIndexTab;
-                    if (l1Pressed) nextIndex = (activeIndexTab - 1 + tabs.Length) % tabs.Length;
-                    else if (r1Pressed) nextIndex = (activeIndexTab + 1) % tabs.Length;
+                    if (l1Pressed || l2Pressed) nextIndex = (activeIndexTab - 1 + tabs.Length) % tabs.Length;
+                    else if (r1Pressed || r2Pressed) nextIndex = (activeIndexTab + 1) % tabs.Length;
 
                     switch (nextIndex)
                     {
@@ -3447,16 +4066,17 @@ namespace Pcsx5Ui
                         case 1: TabAnalyzer_Click(this, null); break;
                         case 2: TabController_Click(this, null); break;
                         case 3: TabSettings_Click(this, null); break;
-                        
                     }
                     _prevInputState = state;
                     return;
                 }
 
-                // Navigation per Active Tab
+                // ── NAVIGATION PER ACTIVE TAB ──
                 if (LibraryView.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad] Select Game  •  [✕] Play Game  •  [△] Analyzer  •  [◯] Stop";
+                    if (FooterGamepadHints != null)
+                        FooterGamepadHints.Text = "🎮 [L1/R1 / L2/R2] Tabs  •  [D-Pad] Select Game  •  [✕] Play Game  •  [△] Analyzer  •  [◯] Stop  •  [L3+R3] Console";
+
                     if (_games.Count > 0)
                     {
                         if (leftPressed || rightPressed)
@@ -3474,16 +4094,19 @@ namespace Pcsx5Ui
                             }
                         }
 
+                        // Cross (✕ / A) -> Launch Game
                         if (aPressed && LaunchButton.IsEnabled && _selectedGame != null)
                         {
                             LaunchButton_Click(this, null);
                         }
 
+                        // Circle (◯ / B) -> Stop Game
                         if (bPressed && StopButton.Visibility == Visibility.Visible)
                         {
                             StopButton_Click(this, null);
                         }
 
+                        // Triangle (△ / Y) -> Analyzer
                         if (yPressed && _selectedGame != null)
                         {
                             TabAnalyzer_Click(this, null);
@@ -3492,80 +4115,23 @@ namespace Pcsx5Ui
                 }
                 else if (SettingsView.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad Up/Down] Change Setting  •  [D-Pad Left/Right] Adjust Value  •  [✕] Toggle/Select";
                     HandleSettingsGamepadNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
                 }
                 else if (ControllerView.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad] Navigate  •  [✕] Rebind / Action  •  [◯] Cancel";
+                    if (FooterGamepadHints != null)
+                        FooterGamepadHints.Text = "🎮 [L1/R1 / L2/R2] Tabs  •  [D-Pad] Navigate  •  [✕] Rebind / Action  •  [◯] Cancel";
                     HandleControllerSetupGamepadNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
                 }
                 else if (AnalyzerView.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad Up/Down] Select Executable  •  [✕] Analyze All";
+                    if (FooterGamepadHints != null)
+                        FooterGamepadHints.Text = "🎮 [L1/R1 / L2/R2] Tabs  •  [D-Pad Up/Down] Select Executable  •  [✕] Analyze All";
                     HandleAnalyzerGamepadNav(upPressed, downPressed, aPressed);
-                }
-                // tab removed
-                {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [L1/R1] Tabs  •  [D-Pad Up/Down] Scroll Output  •  [✕] Copy Logs";
-                    HandleLogsGamepadNav(upPressed, downPressed, aPressed);
                 }
             });
 
             _prevInputState = state;
-        }
-
-        // Real-Time Settings Slider Text updates
-        private void GpuResScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (GpuResScaleText != null)
-            {
-                GpuResScaleText.Text = $"{e.NewValue:F2}x";
-            }
-        }
-
-        private void SndVolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (SndVolumeText != null)
-            {
-                SndVolumeText.Text = $"{(int)(e.NewValue * 100)}%";
-            }
-        }
-
-        private void SndBufferSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (SndBufferText != null)
-            {
-                SndBufferText.Text = $"{(int)e.NewValue} ms";
-            }
-        }
-
-        private void InDeadzoneSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (InDeadzoneText != null)
-            {
-                InDeadzoneText.Text = $"{(int)(e.NewValue * 100)}%";
-            }
-        }
-
-        private void HleTraceCapSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            if (HleTraceCapText != null)
-            {
-                HleTraceCapText.Text = ((int)e.NewValue).ToString();
-            }
-        }
-
-        private void SndTitleMusicCheck_Click(object sender, RoutedEventArgs e)
-        {
-            if (SndTitleMusicCheck.IsChecked == false)
-            {
-                _mediaPlayer.Stop();
-            }
-            else if (_selectedGame != null)
-            {
-                TriggerTitleMusic(_selectedGame);
-            }
         }
 
         private void TranslateUi()
@@ -3579,7 +4145,6 @@ namespace Pcsx5Ui
                 TabAnalyzerBtn.Content = I18n.Tr("sidebar.tools");
                 TabControllerBtn.Content = I18n.Tr("sidebar.input");
                 TabSettingsBtn.Content = I18n.Tr("system.header");
-                
 
                 // Game library shelf header
                 if (LibraryHeaderTextBlock != null)
@@ -3588,13 +4153,6 @@ namespace Pcsx5Ui
                 // Search placeholder
                 if (SearchPlaceholder != null)
                     SearchPlaceholder.Text = I18n.Tr("library.search_hint");
-
-                // Logs header
-                // LogsHeader removed
-
-                // Language / localization settings section keeps the sidebar.language label
-                if (UiLocalizationHeaderTextBlock != null)
-                    UiLocalizationHeaderTextBlock.Text = I18n.Tr("sidebar.language").ToUpperInvariant();
 
                 // Launch/Stop buttons
                 if (LaunchButton != null)
@@ -3731,136 +4289,12 @@ namespace Pcsx5Ui
 
         private void UpdateSettingsUiFromConfig()
         {
-            try
-            {
-                // Directories
-                RefreshGameFoldersList();
-
-                // UI Language
-                string lang = _config.ui.language ?? "en-US";
-                foreach (ComboBoxItem item in UiLanguageCombo.Items)
-                {
-                    if (item.Tag?.ToString() == lang)
-                    {
-                        UiLanguageCombo.SelectedItem = item;
-                        break;
-                    }
-                }
-
-                // UI Scale
-                SelectUiScaleComboItem();
-
-                // Graphics
-                GpuRendererCombo.SelectedIndex = Math.Clamp(_config.graphics.renderer, 0, 1);
-                GpuFullscreenCheck.IsChecked = _config.graphics.fullscreen;
-                GpuResScaleSlider.Value = Math.Clamp(_config.graphics.resolution_scale, 0.5, 2.0);
-                GpuResScaleText.Text = $"{_config.graphics.resolution_scale:F2}x";
-                GpuWidthText.Text = _config.graphics.width.ToString();
-                GpuHeightText.Text = _config.graphics.height.ToString();
-
-                // Audio
-                SndBackendCombo.SelectedIndex = Math.Clamp(_config.audio.backend, 0, 2);
-                SndVolumeSlider.Value = Math.Clamp(_config.audio.volume, 0.0, 1.0);
-                SndVolumeText.Text = $"{(int)(_config.audio.volume * 100)}%";
-                SndBufferSlider.Value = Math.Clamp(_config.audio.buffer_ms, 10, 200);
-                SndBufferText.Text = $"{_config.audio.buffer_ms} ms";
-                SndTitleMusicCheck.IsChecked = _config.ui.title_music_enabled;
-
-                // Input
-                InBackendCombo.SelectedIndex = Math.Clamp(_config.input.backend, 0, 1);
-                InDeadzoneSlider.Value = Math.Clamp(_config.input.deadzone, 0.0, 0.5);
-                InDeadzoneText.Text = $"{(int)(_config.input.deadzone * 100)}%";
-                InRumbleCheck.IsChecked = _config.input.rumble;
-
-                // HLE
-                HleStrictCheck.IsChecked = _config.hle.strict_imports;
-                HleTraceCheck.IsChecked = _config.hle.trace_calls;
-                HleTraceCapSlider.Value = Math.Clamp(_config.hle.trace_capacity, 64, 1024);
-                HleTraceCapText.Text = _config.hle.trace_capacity.ToString();
-                HleWriteDumpCheck.IsChecked = _config.crash.write_minidump;
-
-                // Logging
-                int minLevelIdx = 2; // Default to Info
-                string level = _config.logging.min_level?.ToLower() ?? "info";
-                switch (level)
-                {
-                    case "trace": minLevelIdx = 0; break;
-                    case "debug": minLevelIdx = 1; break;
-                    case "info": minLevelIdx = 2; break;
-                    case "warning":
-                    case "warn": minLevelIdx = 3; break;
-                    case "error": minLevelIdx = 4; break;
-                    case "fatal": minLevelIdx = 5; break;
-                }
-                LogMinLevelCombo.SelectedIndex = minLevelIdx;
-                LogFileAppendCheck.IsChecked = _config.logging.file_append;
-                LogJsonCheck.IsChecked = _config.logging.json_output;
-            }
-            catch (Exception ex)
-            {
-                LogConsole("Error updating settings UI: " + ex.Message);
-            }
-        }
-
-        private void SaveConfigFromUi()
-        {
-            try
-            {
-                // UI Language
-                if (UiLanguageCombo.SelectedItem is ComboBoxItem selectedLang)
-                {
-                    string selectedTag = selectedLang.Tag?.ToString() ?? "en-US";
-                    if (_config.ui.language != selectedTag)
-                    {
-                        _config.ui.language = selectedTag;
-                        TranslateUi();
-                    }
-                }
-
-                // Graphics
-                _config.graphics.renderer = GpuRendererCombo.SelectedIndex;
-                _config.graphics.fullscreen = GpuFullscreenCheck.IsChecked ?? false;
-                _config.graphics.resolution_scale = GpuResScaleSlider.Value;
-                if (int.TryParse(GpuWidthText.Text, out int w)) _config.graphics.width = w;
-                if (int.TryParse(GpuHeightText.Text, out int h)) _config.graphics.height = h;
-
-                // Audio
-                _config.audio.backend = SndBackendCombo.SelectedIndex;
-                _config.audio.volume = SndVolumeSlider.Value;
-                _config.audio.buffer_ms = (int)SndBufferSlider.Value;
-                _config.ui.title_music_enabled = SndTitleMusicCheck.IsChecked ?? true;
-
-                // Input
-                _config.input.backend = InBackendCombo.SelectedIndex;
-                _config.input.deadzone = InDeadzoneSlider.Value;
-                _config.input.rumble = InRumbleCheck.IsChecked ?? true;
-
-                // HLE
-                _config.hle.strict_imports = HleStrictCheck.IsChecked ?? false;
-                _config.hle.trace_calls = HleTraceCheck.IsChecked ?? false;
-                _config.hle.trace_capacity = (int)HleTraceCapSlider.Value;
-                _config.crash.write_minidump = HleWriteDumpCheck.IsChecked ?? true;
-
-                // Logging
-                string[] levels = { "Trace", "Debug", "Info", "Warning", "Error", "Fatal" };
-                if (LogMinLevelCombo.SelectedIndex >= 0 && LogMinLevelCombo.SelectedIndex < levels.Length)
-                {
-                    _config.logging.min_level = levels[LogMinLevelCombo.SelectedIndex];
-                }
-                _config.logging.file_append = LogFileAppendCheck.IsChecked ?? false;
-                _config.logging.json_output = LogJsonCheck.IsChecked ?? false;
-
-                SaveConfig();
-            }
-            catch (Exception ex)
-            {
-                LogConsole("Error saving settings from UI: " + ex.Message);
-            }
+            // Dynamic PlayStation 5 multi-page settings automatically read from _config in real time
         }
 
         private void SaveSettingsBtn_Click(object sender, RoutedEventArgs e)
         {
-            SaveConfigFromUi();
+            SaveConfig();
             ResetSettingsView();
         }
 
