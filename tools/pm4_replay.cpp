@@ -410,9 +410,13 @@ int Replay(const fs::path& cap_dir, const fs::path& golden_dir,
     if (!GPU::Initialize()) {
         if (IsGoldenRequired()) {
             std::fprintf(stderr, "FATAL: GPU::Initialize failed (golden required)\n");
+            HLE::Shutdown();
+            Memory::Shutdown();
             return 1;
         }
         std::fprintf(stdout, "PM4_GOLDEN_SKIP: no GPU/window on this host\n");
+        HLE::Shutdown();
+        Memory::Shutdown();
         return 0;
     }
 
@@ -477,11 +481,16 @@ int Replay(const fs::path& cap_dir, const fs::path& golden_dir,
         GPU::VkPresentSetReadbackHook(nullptr, nullptr);
         if (IsGoldenRequired()) {
             std::fprintf(stderr, "FAIL: no frames read back (no Vulkan present path)\n");
+            GPU::Shutdown();
+            HLE::Shutdown();
+            Memory::Shutdown();
             return 1;
         }
         std::fprintf(stdout, "PM4_GOLDEN_SKIP: no frames presented "
                      "(no usable Vulkan device)\n");
         GPU::Shutdown();
+        HLE::Shutdown();
+        Memory::Shutdown();
         return 0;
     }
     CHECK(g_frames.size() == expected_flips, "one readback frame per flip");
