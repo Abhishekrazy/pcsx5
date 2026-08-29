@@ -25,7 +25,9 @@ void PrintUsage() {
     std::printf("          [--log-file=<path>] [--crash-dir=<path>]\n");
     std::printf("          [--config-dir=<path>] [--title-id=<id>] <path_to_eboot.bin_or_elf>\n");
     std::printf("  pcsx5_cli.exe --extract-pkg <file.pkg> <outdir>\n");
+    std::printf("  pcsx5_cli.exe --update\n");
     std::printf("\nOptions:\n");
+    std::printf("  --update                     Check for updates and apply them in the background via Squirrel.\n");
     std::printf("  --extract-pkg <pkg> <outdir> Extract a (fake-signed) PKG into <outdir> and exit.\n");
     std::printf("  --strict-imports             Fail (return non-zero) on unresolved imports.\n");
     std::printf("  --report=<path>              Write a JSON compatibility summary to <path>.\n");
@@ -49,6 +51,11 @@ void PrintUsage() {
 // drives init -> load -> run -> shutdown.  All emulator phases live in
 // core_api.cpp; this file only owns argument parsing and process exit codes.
 int main(int argc, char* argv[]) {
+    // Handle squirrel hooks for the auto-updater to prevent starting the emulator
+    if (argc >= 2 && strncmp(argv[1], "--squirrel-", 11) == 0) {
+        return 0;
+    }
+
     // Disable stdout/stderr buffering for instant logging on crash
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
@@ -91,6 +98,17 @@ int main(int argc, char* argv[]) {
             }
             extract_pkg_path   = argv[++i];
             extract_pkg_outdir = argv[++i];
+        } else if (a == "--update") {
+            std::filesystem::path update_exe = std::filesystem::current_path().parent_path() / "Update.exe";
+            if (std::filesystem::exists(update_exe)) {
+                std::printf("Checking for updates via Squirrel...\n");
+                std::wstring args = L"--update https://github.com/Abhishekrazy/pcsx5";
+                ShellExecuteW(nullptr, L"open", update_exe.wstring().c_str(), args.c_str(), nullptr, SW_SHOWDEFAULT);
+                return 0;
+            } else {
+                std::printf("Update.exe not found. Are you running a portable build?\n");
+                return 1;
+            }
         } else if (a == "--strict-imports") {
             options.strict_imports = 1;
         } else if (a.rfind("--report=", 0) == 0) {
