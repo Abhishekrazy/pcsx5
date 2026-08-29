@@ -1430,7 +1430,6 @@ namespace Pcsx5Ui
         private void ShowPauseMenu()
         {
             if (PauseMenuOverlay == null) return;
-            _isPaused = true;
             _pauseMenuVisible = true;
             _pauseMenuIndex = 0;
             _session?.Pause();
@@ -1453,7 +1452,6 @@ namespace Pcsx5Ui
 
         private void ResumeFromPause()
         {
-            _isPaused = false;
             HidePauseMenu();
             _session?.Resume();
             FooterStatus.Text = _selectedGame != null ? $"Running: {_selectedGame.Title}" : "Running";
