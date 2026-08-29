@@ -129,3 +129,4 @@ ppsa*_kernel*.txt
 # Always preserve curated evidence in docs/evidence/
 !docs/evidence/**
 /artifacts/
+releases/
