@@ -74,6 +74,11 @@ bool IsInPool(guest_addr_t address) {
     return address >= pool_start && address < pool_start + kPoolSize;
 }
 
+// Free-list for pool allocations that are Unmap'd. Only slots allocated
+// via PoolAlloc with matching address+size can be freed.
+struct PoolFreeSlot { guest_addr_t base; u64 size; };
+std::vector<PoolFreeSlot> g_pool_free;
+
 // Pool sub-allocator.  Size must already be page-aligned.  Returns 0 on
 // failure (pool exhausted or not initialized).
 guest_addr_t PoolAlloc(u64 aligned_size) {
@@ -85,6 +90,22 @@ guest_addr_t PoolAlloc(u64 aligned_size) {
             return 0;
     }
     std::lock_guard<std::mutex> lock(g_regions_mutex);
+
+    // 1. Search free list for available reuse
+    for (auto it = g_pool_free.begin(); it != g_pool_free.end(); ++it) {
+        if (it->size >= aligned_size) {
+            guest_addr_t addr = it->base;
+            if (it->size == aligned_size) {
+                g_pool_free.erase(it);
+            } else {
+                it->base += aligned_size;
+                it->size -= aligned_size;
+            }
+            std::memset(reinterpret_cast<void*>(addr), 0, aligned_size);
+            return addr;
+        }
+    }
+
     if (g_pool_used + aligned_size > kPoolSize) return 0;  // OOM
     guest_addr_t addr = reinterpret_cast<guest_addr_t>(g_pool_base) + g_pool_used;
     g_pool_used += aligned_size;
@@ -112,15 +133,12 @@ guest_addr_t PoolAlloc(u64 aligned_size) {
     return addr;
 }
 
-// Free-list for pool allocations that are Unmap'd.  Only slots allocated
-// via PoolAlloc with matching address+size can be freed.
-struct PoolFreeSlot { guest_addr_t base; u64 size; };
-std::vector<PoolFreeSlot> g_pool_free;
-bool PoolFree(guest_addr_t base, u64 size) {
+bool PoolFreeLocked(guest_addr_t base, u64 size) {
     if (!g_pool_ok) return false;
     guest_addr_t pool_start = reinterpret_cast<guest_addr_t>(g_pool_base);
     guest_addr_t pool_end   = pool_start + kPoolSize;
     if (base < pool_start || base + size > pool_end) return false;
+
     // Last-bump release (LIFO common case): just rewind the bump pointer.
     if (base + size == reinterpret_cast<guest_addr_t>(g_pool_base) + g_pool_used) {
         g_pool_used -= size;
@@ -128,6 +146,11 @@ bool PoolFree(guest_addr_t base, u64 size) {
     }
     g_pool_free.push_back({base, size});  // non-LIFO: add to free-list
     return true;
+}
+
+bool PoolFree(guest_addr_t base, u64 size) {
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    return PoolFreeLocked(base, size);
 }
 
 // ---------------------------------------------------------------------------
@@ -613,10 +636,17 @@ Status Unmap(guest_addr_t address, u64 size) {
     // I3.2: try pool free first (fast, no VirtualFree).  Pool VAs are NOT
     // added to the free list: their pages stay committed inside the pool
     // span, and PoolAlloc's bump/free-list already handles reuse.
-    if (PoolFree(address, aligned_size)) {
-        UntrackRegion(address, aligned_size);
-        LOG_DEBUG(Memory, "Unmapped from pool [0x%llx-0x%llx]", address, address + size);
-        return Status::Ok;
+    {
+        std::lock_guard<std::mutex> lock(g_regions_mutex);
+        if (PoolFreeLocked(address, aligned_size)) {
+            g_regions.erase(std::remove_if(g_regions.begin(), g_regions.end(),
+                [&](const Region& r) {
+                    return r.base == address && r.size == aligned_size;
+                }),
+                g_regions.end());
+            LOG_DEBUG(Memory, "Unmapped from pool [0x%llx-0x%llx]", address, address + size);
+            return Status::Ok;
+        }
     }
 
     // First attempt full release
@@ -705,8 +735,10 @@ Status Protect(guest_addr_t address, u64 size, u32 protection) {
 Status Query(guest_addr_t address, MemoryInfo* out_info) {
     if (!out_info) return Status::InvalidArgument;
     *out_info = MemoryInfo{};
-    // First consult our own region table.
-    {
+
+    // Direct-mapped pool memory: pages stay committed in Win32 after PoolFree,
+    // so the region table is the sole authority for pool allocations.
+    if (IsInPool(address)) {
         std::lock_guard<std::mutex> lock(g_regions_mutex);
         for (const auto& r : g_regions) {
             if (r.base <= address && address < r.base + r.size) {
@@ -716,46 +748,59 @@ Status Query(guest_addr_t address, MemoryInfo* out_info) {
                 out_info->is_committed     = r.committed;
                 out_info->is_reserved      = !r.committed;
                 out_info->win32_protection = r.win32_prot;
-                if (!r.committed) {
-                    MEMORY_BASIC_INFORMATION mbi{};
-                    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) != 0 && mbi.State == MEM_COMMIT) {
-                        out_info->is_committed     = true;
-                        out_info->is_reserved      = false;
-                        out_info->win32_protection = mbi.Protect;
-                        out_info->protection       = TranslateFromWin32(mbi.Protect);
-                    }
-                }
                 return Status::Ok;
             }
         }
-    }
-    // Fall back to VirtualQuery for any host allocation that we did not track.
-    // Exception: inside our direct-mapped pool the pages stay physically
-    // committed after PoolFree (kept for reuse), so VirtualQuery would report
-    // a freed sub-allocation as still mapped.  The region table above is the
-    // authority there — untracked pool space means unmapped.
-    if (IsInPool(address)) {
         return Status::NotMapped;
     }
+
+    // Outside the pool: query the OS for ground-truth page state.
     MEMORY_BASIC_INFORMATION mbi{};
-    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
+    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0 || mbi.State == MEM_FREE) {
         return Status::NotMapped;
     }
-    if (mbi.State == MEM_FREE) return Status::NotMapped;
-    out_info->base_address     = reinterpret_cast<guest_addr_t>(mbi.BaseAddress);
-    out_info->size             = mbi.RegionSize;
-    out_info->protection       = TranslateFromWin32(mbi.Protect);
+
+    std::lock_guard<std::mutex> lock(g_regions_mutex);
+    const Region* matched_region = nullptr;
+    for (const auto& r : g_regions) {
+        if (r.base <= address && address < r.base + r.size) {
+            matched_region = &r;
+            break;
+        }
+    }
+
+    out_info->win32_protection = mbi.Protect;
     out_info->is_committed     = (mbi.State == MEM_COMMIT);
     out_info->is_reserved      = (mbi.State == MEM_RESERVE);
-    out_info->win32_protection = mbi.Protect;
+
+    if (matched_region) {
+        out_info->base_address = matched_region->base;
+        out_info->size         = matched_region->size;
+        if (out_info->is_committed) {
+            u32 host_prot = TranslateFromWin32(mbi.Protect);
+            out_info->protection = (matched_region->protection != PROT_NONE)
+                                       ? (host_prot & matched_region->protection)
+                                       : host_prot;
+            if (out_info->protection == PROT_NONE && host_prot != PROT_NONE) {
+                out_info->protection = host_prot;
+            }
+        } else {
+            out_info->protection = PROT_NONE;
+        }
+    } else {
+        out_info->base_address = reinterpret_cast<guest_addr_t>(mbi.BaseAddress);
+        out_info->size         = mbi.RegionSize;
+        out_info->protection   = out_info->is_committed ? TranslateFromWin32(mbi.Protect) : PROT_NONE;
+    }
     return Status::Ok;
 }
 
 bool IsReadable(guest_addr_t address, u64 size) {
     if (size == 0) return true;
-    u64 start_page = address & ~(static_cast<u64>(PAGE_SIZE - 1));
-    u64 end_page   = (address + size - 1) & ~(static_cast<u64>(PAGE_SIZE - 1));
-    for (u64 p = start_page; p <= end_page; p += PAGE_SIZE) {
+    constexpr u64 kHostPageSize = 4096;
+    u64 start_page = address & ~(kHostPageSize - 1);
+    u64 end_page   = (address + size - 1) & ~(kHostPageSize - 1);
+    for (u64 p = start_page; p <= end_page; p += kHostPageSize) {
         MemoryInfo info{};
         if (Query(p, &info) != Status::Ok) return false;
         if (!info.is_committed) return false;
@@ -766,9 +811,10 @@ bool IsReadable(guest_addr_t address, u64 size) {
 
 bool IsWritable(guest_addr_t address, u64 size) {
     if (size == 0) return true;
-    u64 start_page = address & ~(static_cast<u64>(PAGE_SIZE - 1));
-    u64 end_page   = (address + size - 1) & ~(static_cast<u64>(PAGE_SIZE - 1));
-    for (u64 p = start_page; p <= end_page; p += PAGE_SIZE) {
+    constexpr u64 kHostPageSize = 4096;
+    u64 start_page = address & ~(kHostPageSize - 1);
+    u64 end_page   = (address + size - 1) & ~(kHostPageSize - 1);
+    for (u64 p = start_page; p <= end_page; p += kHostPageSize) {
         MemoryInfo info{};
         if (Query(p, &info) != Status::Ok) return false;
         if (!info.is_committed) return false;
@@ -779,9 +825,12 @@ bool IsWritable(guest_addr_t address, u64 size) {
 
 bool IsExecutable(guest_addr_t address, u64 size) {
     if (size == 0) return true;
-    for (u64 off = 0; off < size; off += PAGE_SIZE) {
+    constexpr u64 kHostPageSize = 4096;
+    u64 start_page = address & ~(kHostPageSize - 1);
+    u64 end_page   = (address + size - 1) & ~(kHostPageSize - 1);
+    for (u64 p = start_page; p <= end_page; p += kHostPageSize) {
         MemoryInfo info{};
-        if (Query(address + off, &info) != Status::Ok) return false;
+        if (Query(p, &info) != Status::Ok) return false;
         if (!info.is_committed) return false;
         if (!(info.protection & PROT_EXEC)) return false;
     }
@@ -994,37 +1043,566 @@ void ReadBuffer(guest_addr_t addr, void* dest, u64 size) {
     if (addr >= 0x200000000ULL && addr < 0x202000000ULL) {
         LOG_DEBUG(Memory, "Framebuffer read at guest 0x%llx (size=%llu)", addr, size);
     }
-    std::memcpy(dest, reinterpret_cast<const void*>(addr), size);
+    GuardedRead(dest, addr, size);
 }
 
 void WriteBuffer(guest_addr_t addr, const void* src, u64 size) {
     if (addr >= 0x200000000ULL && addr < 0x202000000ULL) {
         LOG_DEBUG(Memory, "Framebuffer write at guest 0x%llx (size=%llu)", addr, size);
     }
-    std::memcpy(reinterpret_cast<void*>(addr), src, size);
+    GuardedWrite(addr, src, size);
+}
+
+bool GuardedRead(void* dest_host, guest_addr_t src_guest, u64 size, u64* out_bytes_read) {
+    if (out_bytes_read) *out_bytes_read = 0;
+    if (size == 0) return true;
+    if (!dest_host) return false;
+
+    // Fast path: if entirely readable upfront, single memcpy
+    if (IsReadable(src_guest, size)) {
+        std::memcpy(dest_host, reinterpret_cast<const void*>(src_guest), size);
+        if (out_bytes_read) *out_bytes_read = size;
+        return true;
+    }
+
+    constexpr u64 kHostPage = 4096;
+    u64 copied = 0;
+    guest_addr_t current_src = src_guest;
+    u8* current_dst = reinterpret_cast<u8*>(dest_host);
+    u64 remaining = size;
+
+    while (remaining > 0) {
+        u64 page_offset = current_src & (kHostPage - 1);
+        u64 chunk = kHostPage - page_offset;
+        if (chunk > remaining) chunk = remaining;
+
+        if (!IsReadable(current_src, chunk)) {
+            CommitOnFault(current_src);
+            if (!IsReadable(current_src, chunk)) {
+                LOG_WARN(Memory, "GuardedRead: invalid read at 0x%llx (copied %llu of %llu bytes)",
+                         current_src, copied, size);
+                if (out_bytes_read) *out_bytes_read = copied;
+                return false;
+            }
+        }
+
+        std::memcpy(current_dst, reinterpret_cast<const void*>(current_src), chunk);
+        current_src += chunk;
+        current_dst += chunk;
+        copied += chunk;
+        remaining -= chunk;
+    }
+
+    if (out_bytes_read) *out_bytes_read = copied;
+    return true;
+}
+
+bool GuardedWrite(guest_addr_t dest_guest, const void* src_host, u64 size, u64* out_bytes_written) {
+    if (out_bytes_written) *out_bytes_written = 0;
+    if (size == 0) return true;
+    if (!src_host) return false;
+
+    // Fast path: if entirely writable upfront, single memcpy
+    if (IsWritable(dest_guest, size)) {
+        std::memcpy(reinterpret_cast<void*>(dest_guest), src_host, size);
+        if (out_bytes_written) *out_bytes_written = size;
+        return true;
+    }
+
+    constexpr u64 kHostPage = 4096;
+    u64 copied = 0;
+    guest_addr_t current_dest = dest_guest;
+    const u8* current_src = reinterpret_cast<const u8*>(src_host);
+    u64 remaining = size;
+
+    while (remaining > 0) {
+        u64 page_offset = current_dest & (kHostPage - 1);
+        u64 chunk = kHostPage - page_offset;
+        if (chunk > remaining) chunk = remaining;
+
+        if (!IsWritable(current_dest, chunk)) {
+            CommitOnFault(current_dest);
+            if (!IsWritable(current_dest, chunk)) {
+                LOG_WARN(Memory, "GuardedWrite: invalid write at 0x%llx (copied %llu of %llu bytes)",
+                         current_dest, copied, size);
+                if (out_bytes_written) *out_bytes_written = copied;
+                return false;
+            }
+        }
+
+        std::memcpy(reinterpret_cast<void*>(current_dest), current_src, chunk);
+        current_dest += chunk;
+        current_src  += chunk;
+        copied       += chunk;
+        remaining    -= chunk;
+    }
+
+    if (out_bytes_written) *out_bytes_written = copied;
+    return true;
+}
+
+bool GuardedCopy(guest_addr_t dest_guest, guest_addr_t src_guest, u64 size, u64* out_bytes_copied) {
+    if (out_bytes_copied) *out_bytes_copied = 0;
+    if (size == 0) return true;
+    if (dest_guest == src_guest) {
+        if (out_bytes_copied) *out_bytes_copied = size;
+        return true;
+    }
+
+    // H4.6: reject sign-extended SCE error codes masquerading as pointers
+    constexpr u64 kBadPtrMask  = 0xFFFFFFFF80000000ULL;
+    constexpr u64 kBadPtrMatch = 0xFFFFFFFF80000000ULL;
+    if ((dest_guest & kBadPtrMask) == kBadPtrMatch || (src_guest & kBadPtrMask) == kBadPtrMatch) {
+        LOG_WARN(Memory, "GuardedCopy: bad pointer (looks like sign-extended error code): dest=0x%llx src=0x%llx size=%llu",
+                 dest_guest, src_guest, size);
+        return false;
+    }
+
+    // Fast path: if both ranges are valid upfront, single memmove
+    if (IsReadable(src_guest, size) && IsWritable(dest_guest, size)) {
+        std::memmove(reinterpret_cast<void*>(dest_guest),
+                     reinterpret_cast<const void*>(src_guest), size);
+        if (out_bytes_copied) *out_bytes_copied = size;
+        return true;
+    }
+
+    // Pre-pass: try demand-committing all touched pages across both ranges
+    auto DemandCommitSpan = [](guest_addr_t addr, u64 len, bool is_write) {
+        constexpr u64 kHostPage = 4096;
+        guest_addr_t cur = addr & ~(kHostPage - 1);
+        guest_addr_t end = (addr + len - 1) & ~(kHostPage - 1);
+        for (guest_addr_t p = cur; p <= end; p += kHostPage) {
+            if (is_write ? !IsWritable(p, 1) : !IsReadable(p, 1)) {
+                CommitOnFault(p);
+            }
+        }
+    };
+    DemandCommitSpan(src_guest, size, false);
+    DemandCommitSpan(dest_guest, size, true);
+
+    if (IsReadable(src_guest, size) && IsWritable(dest_guest, size)) {
+        std::memmove(reinterpret_cast<void*>(dest_guest),
+                     reinterpret_cast<const void*>(src_guest), size);
+        if (out_bytes_copied) *out_bytes_copied = size;
+        return true;
+    }
+
+    // Partial/Fault path: chunk-by-chunk copy stopping at fault boundary
+    constexpr u64 kHostPage = 4096;
+    u64 copied = 0;
+    u64 remaining = size;
+    bool success = true;
+
+    // Determine direction for overlapping ranges (memmove semantics)
+    const bool overlap_backward = (dest_guest > src_guest && dest_guest < src_guest + size);
+
+    if (!overlap_backward) {
+        guest_addr_t cur_src  = src_guest;
+        guest_addr_t cur_dest = dest_guest;
+        while (remaining > 0) {
+            u64 src_off  = cur_src & (kHostPage - 1);
+            u64 dest_off = cur_dest & (kHostPage - 1);
+            u64 chunk = std::min(kHostPage - src_off, kHostPage - dest_off);
+            if (chunk > remaining) chunk = remaining;
+
+            if (!IsReadable(cur_src, chunk)) {
+                CommitOnFault(cur_src);
+                if (!IsReadable(cur_src, chunk)) {
+                    LOG_WARN(Memory, "GuardedCopy: read fault at 0x%llx (copied %llu of %llu bytes)", cur_src, copied, size);
+                    success = false;
+                    break;
+                }
+            }
+            if (!IsWritable(cur_dest, chunk)) {
+                CommitOnFault(cur_dest);
+                if (!IsWritable(cur_dest, chunk)) {
+                    LOG_WARN(Memory, "GuardedCopy: write fault at 0x%llx (copied %llu of %llu bytes)", cur_dest, copied, size);
+                    success = false;
+                    break;
+                }
+            }
+
+            std::memmove(reinterpret_cast<void*>(cur_dest),
+                         reinterpret_cast<const void*>(cur_src), chunk);
+            cur_src   += chunk;
+            cur_dest  += chunk;
+            copied    += chunk;
+            remaining -= chunk;
+        }
+    } else {
+        // Backward copy for overlapping dest > src
+        guest_addr_t cur_src  = src_guest + size;
+        guest_addr_t cur_dest = dest_guest + size;
+        while (remaining > 0) {
+            u64 src_off  = cur_src & (kHostPage - 1);
+            u64 dest_off = cur_dest & (kHostPage - 1);
+            if (src_off == 0) src_off = kHostPage;
+            if (dest_off == 0) dest_off = kHostPage;
+            u64 chunk = std::min(src_off, dest_off);
+            if (chunk > remaining) chunk = remaining;
+
+            guest_addr_t chunk_src  = cur_src - chunk;
+            guest_addr_t chunk_dest = cur_dest - chunk;
+
+            if (!IsReadable(chunk_src, chunk)) {
+                CommitOnFault(chunk_src);
+                if (!IsReadable(chunk_src, chunk)) {
+                    LOG_WARN(Memory, "GuardedCopy: backward read fault at 0x%llx (copied %llu of %llu bytes)", chunk_src, copied, size);
+                    success = false;
+                    break;
+                }
+            }
+            if (!IsWritable(chunk_dest, chunk)) {
+                CommitOnFault(chunk_dest);
+                if (!IsWritable(chunk_dest, chunk)) {
+                    LOG_WARN(Memory, "GuardedCopy: backward write fault at 0x%llx (copied %llu of %llu bytes)", chunk_dest, copied, size);
+                    success = false;
+                    break;
+                }
+            }
+
+            std::memmove(reinterpret_cast<void*>(chunk_dest),
+                         reinterpret_cast<const void*>(chunk_src), chunk);
+            cur_src   -= chunk;
+            cur_dest  -= chunk;
+            copied    += chunk;
+            remaining -= chunk;
+        }
+    }
+
+    if (out_bytes_copied) *out_bytes_copied = copied;
+    return success;
+}
+
+bool GuardedSet(guest_addr_t dest_guest, int value, u64 size, u64* out_bytes_set) {
+    if (out_bytes_set) *out_bytes_set = 0;
+    if (size == 0) return true;
+
+    // Fast path: if entirely writable upfront, single memset
+    if (IsWritable(dest_guest, size)) {
+        std::memset(reinterpret_cast<void*>(dest_guest), value, size);
+        if (out_bytes_set) *out_bytes_set = size;
+        return true;
+    }
+
+    constexpr u64 kHostPage = 4096;
+    u64 set_count = 0;
+    guest_addr_t cur_dest = dest_guest;
+    u64 remaining = size;
+
+    while (remaining > 0) {
+        u64 dest_off = cur_dest & (kHostPage - 1);
+        u64 chunk = kHostPage - dest_off;
+        if (chunk > remaining) chunk = remaining;
+
+        if (!IsWritable(cur_dest, chunk)) {
+            CommitOnFault(cur_dest);
+            if (!IsWritable(cur_dest, chunk)) {
+                LOG_WARN(Memory, "GuardedSet: write fault at 0x%llx (set %llu of %llu bytes)", cur_dest, set_count, size);
+                if (out_bytes_set) *out_bytes_set = set_count;
+                return false;
+            }
+        }
+
+        std::memset(reinterpret_cast<void*>(cur_dest), value, chunk);
+        cur_dest  += chunk;
+        set_count += chunk;
+        remaining -= chunk;
+    }
+
+    if (out_bytes_set) *out_bytes_set = set_count;
+    return true;
+}
+
+u64 GuardedStrlen(guest_addr_t str_guest, u64 max_len) {
+    if (!str_guest || max_len == 0) return 0;
+
+    constexpr u64 kHostPage = 4096;
+    guest_addr_t cur = str_guest;
+    u64 len = 0;
+
+    while (len < max_len) {
+        u64 page_offset = cur & (kHostPage - 1);
+        u64 chunk = kHostPage - page_offset;
+        if (len + chunk > max_len) chunk = max_len - len;
+
+        if (!IsReadable(cur, chunk)) {
+            CommitOnFault(cur);
+            if (!IsReadable(cur, chunk)) {
+                u64 valid_bytes = 0;
+                while (valid_bytes < chunk && IsReadable(cur + valid_bytes, 1)) {
+                    u8 b = *reinterpret_cast<const u8*>(cur + valid_bytes);
+                    if (b == 0) return len + valid_bytes;
+                    ++valid_bytes;
+                }
+                LOG_DEBUG(Memory, "GuardedStrlen: reached unmapped boundary at 0x%llx (len=%llu)", cur + valid_bytes, len + valid_bytes);
+                return len + valid_bytes;
+            }
+        }
+
+        const char* p = reinterpret_cast<const char*>(cur);
+        const void* hit = std::memchr(p, 0, chunk);
+        if (hit) {
+            return len + (reinterpret_cast<const char*>(hit) - p);
+        }
+
+        cur += chunk;
+        len += chunk;
+    }
+
+    return len;
+}
+
+guest_addr_t GuardedStrcpy(guest_addr_t dest_guest, guest_addr_t src_guest, u64 max_len) {
+    if (!dest_guest || !src_guest || max_len == 0) return dest_guest;
+
+    constexpr u64 kHostPage = 4096;
+    guest_addr_t cur_src  = src_guest;
+    guest_addr_t cur_dest = dest_guest;
+    u64 copied = 0;
+
+    while (copied < max_len) {
+        u64 src_off  = cur_src & (kHostPage - 1);
+        u64 dest_off = cur_dest & (kHostPage - 1);
+        u64 chunk = std::min(kHostPage - src_off, kHostPage - dest_off);
+        if (copied + chunk > max_len) chunk = max_len - copied;
+
+        if (!IsReadable(cur_src, chunk)) {
+            CommitOnFault(cur_src);
+            if (!IsReadable(cur_src, chunk)) {
+                LOG_WARN(Memory, "GuardedStrcpy: read fault at src 0x%llx (copied %llu bytes)", cur_src, copied);
+                break;
+            }
+        }
+        if (!IsWritable(cur_dest, chunk)) {
+            CommitOnFault(cur_dest);
+            if (!IsWritable(cur_dest, chunk)) {
+                LOG_WARN(Memory, "GuardedStrcpy: write fault at dest 0x%llx (copied %llu bytes)", cur_dest, copied);
+                break;
+            }
+        }
+
+        const char* s = reinterpret_cast<const char*>(cur_src);
+        char* d       = reinterpret_cast<char*>(cur_dest);
+        const void* hit = std::memchr(s, 0, chunk);
+        if (hit) {
+            u64 bytes_to_null = (reinterpret_cast<const char*>(hit) - s) + 1; // include \0
+            std::memcpy(d, s, bytes_to_null);
+            return dest_guest;
+        }
+
+        std::memcpy(d, s, chunk);
+        cur_src  += chunk;
+        cur_dest += chunk;
+        copied   += chunk;
+    }
+
+    return dest_guest;
+}
+
+guest_addr_t GuardedStrncpy(guest_addr_t dest_guest, guest_addr_t src_guest, u64 count) {
+    if (!dest_guest || count == 0) return dest_guest;
+    if (!src_guest) {
+        GuardedSet(dest_guest, 0, count);
+        return dest_guest;
+    }
+
+    constexpr u64 kHostPage = 4096;
+    guest_addr_t cur_src  = src_guest;
+    guest_addr_t cur_dest = dest_guest;
+    u64 copied = 0;
+    bool found_null = false;
+
+    while (copied < count) {
+        u64 src_off  = cur_src & (kHostPage - 1);
+        u64 dest_off = cur_dest & (kHostPage - 1);
+        u64 chunk = std::min(kHostPage - src_off, kHostPage - dest_off);
+        if (copied + chunk > count) chunk = count - copied;
+
+        if (!found_null) {
+            if (!IsReadable(cur_src, chunk)) {
+                CommitOnFault(cur_src);
+                if (!IsReadable(cur_src, chunk)) {
+                    LOG_WARN(Memory, "GuardedStrncpy: read fault at src 0x%llx (copied %llu of %llu bytes)", cur_src, copied, count);
+                    GuardedSet(cur_dest, 0, count - copied);
+                    return dest_guest;
+                }
+            }
+        }
+        if (!IsWritable(cur_dest, chunk)) {
+            CommitOnFault(cur_dest);
+            if (!IsWritable(cur_dest, chunk)) {
+                LOG_WARN(Memory, "GuardedStrncpy: write fault at dest 0x%llx (copied %llu of %llu bytes)", cur_dest, copied, count);
+                return dest_guest;
+            }
+        }
+
+        if (!found_null) {
+            const char* s = reinterpret_cast<const char*>(cur_src);
+            char* d       = reinterpret_cast<char*>(cur_dest);
+            const void* hit = std::memchr(s, 0, chunk);
+            if (hit) {
+                u64 bytes_to_null = (reinterpret_cast<const char*>(hit) - s) + 1; // includes \0
+                std::memcpy(d, s, bytes_to_null);
+                if (chunk > bytes_to_null) {
+                    std::memset(d + bytes_to_null, 0, chunk - bytes_to_null);
+                }
+                found_null = true;
+            } else {
+                std::memcpy(d, s, chunk);
+            }
+        } else {
+            std::memset(reinterpret_cast<void*>(cur_dest), 0, chunk);
+        }
+
+        cur_src  += chunk;
+        cur_dest += chunk;
+        copied   += chunk;
+    }
+
+    return dest_guest;
+}
+
+int GuardedStrcmp(guest_addr_t a_guest, guest_addr_t b_guest, u64 max_len) {
+    if (a_guest == b_guest) return 0;
+    if (!a_guest) return -1;
+    if (!b_guest) return 1;
+
+    constexpr u64 kHostPage = 4096;
+    guest_addr_t cur_a = a_guest;
+    guest_addr_t cur_b = b_guest;
+    u64 checked = 0;
+
+    while (checked < max_len) {
+        u64 a_off = cur_a & (kHostPage - 1);
+        u64 b_off = cur_b & (kHostPage - 1);
+        u64 chunk = std::min(kHostPage - a_off, kHostPage - b_off);
+        if (checked + chunk > max_len) chunk = max_len - checked;
+
+        if (!IsReadable(cur_a, chunk)) {
+            CommitOnFault(cur_a);
+            if (!IsReadable(cur_a, chunk)) return -1;
+        }
+        if (!IsReadable(cur_b, chunk)) {
+            CommitOnFault(cur_b);
+            if (!IsReadable(cur_b, chunk)) return 1;
+        }
+
+        const u8* pa = reinterpret_cast<const u8*>(cur_a);
+        const u8* pb = reinterpret_cast<const u8*>(cur_b);
+        for (u64 i = 0; i < chunk; ++i) {
+            if (pa[i] != pb[i]) {
+                return (pa[i] < pb[i]) ? -1 : 1;
+            }
+            if (pa[i] == 0) return 0;
+        }
+
+        cur_a   += chunk;
+        cur_b   += chunk;
+        checked += chunk;
+    }
+
+    return 0;
+}
+
+int GuardedStrncmp(guest_addr_t a_guest, guest_addr_t b_guest, u64 count) {
+    if (count == 0 || a_guest == b_guest) return 0;
+    if (!a_guest) return -1;
+    if (!b_guest) return 1;
+
+    constexpr u64 kHostPage = 4096;
+    guest_addr_t cur_a = a_guest;
+    guest_addr_t cur_b = b_guest;
+    u64 checked = 0;
+
+    while (checked < count) {
+        u64 a_off = cur_a & (kHostPage - 1);
+        u64 b_off = cur_b & (kHostPage - 1);
+        u64 chunk = std::min(kHostPage - a_off, kHostPage - b_off);
+        if (checked + chunk > count) chunk = count - checked;
+
+        if (!IsReadable(cur_a, chunk)) {
+            CommitOnFault(cur_a);
+            if (!IsReadable(cur_a, chunk)) return -1;
+        }
+        if (!IsReadable(cur_b, chunk)) {
+            CommitOnFault(cur_b);
+            if (!IsReadable(cur_b, chunk)) return 1;
+        }
+
+        const u8* pa = reinterpret_cast<const u8*>(cur_a);
+        const u8* pb = reinterpret_cast<const u8*>(cur_b);
+        for (u64 i = 0; i < chunk; ++i) {
+            if (pa[i] != pb[i]) {
+                return (pa[i] < pb[i]) ? -1 : 1;
+            }
+            if (pa[i] == 0) return 0;
+        }
+
+        cur_a   += chunk;
+        cur_b   += chunk;
+        checked += chunk;
+    }
+
+    return 0;
+}
+
+int GuardedMemcmp(guest_addr_t a_guest, guest_addr_t b_guest, u64 count) {
+    if (count == 0 || a_guest == b_guest) return 0;
+    if (!a_guest) return -1;
+    if (!b_guest) return 1;
+
+    // Fast path: if both are readable, single memcmp
+    if (IsReadable(a_guest, count) && IsReadable(b_guest, count)) {
+        return std::memcmp(reinterpret_cast<const void*>(a_guest),
+                           reinterpret_cast<const void*>(b_guest), count);
+    }
+
+    constexpr u64 kHostPage = 4096;
+    guest_addr_t cur_a = a_guest;
+    guest_addr_t cur_b = b_guest;
+    u64 checked = 0;
+
+    while (checked < count) {
+        u64 a_off = cur_a & (kHostPage - 1);
+        u64 b_off = cur_b & (kHostPage - 1);
+        u64 chunk = std::min(kHostPage - a_off, kHostPage - b_off);
+        if (checked + chunk > count) chunk = count - checked;
+
+        if (!IsReadable(cur_a, chunk)) {
+            CommitOnFault(cur_a);
+            if (!IsReadable(cur_a, chunk)) return -1;
+        }
+        if (!IsReadable(cur_b, chunk)) {
+            CommitOnFault(cur_b);
+            if (!IsReadable(cur_b, chunk)) return 1;
+        }
+
+        const int res = std::memcmp(reinterpret_cast<const void*>(cur_a),
+                                    reinterpret_cast<const void*>(cur_b), chunk);
+        if (res != 0) return res;
+
+        cur_a   += chunk;
+        cur_b   += chunk;
+        checked += chunk;
+    }
+
+    return 0;
 }
 
 bool CommitOnFault(guest_addr_t address) {
     constexpr u64 kGranularity = 65536; // Windows allocation granularity
     const guest_addr_t base = address & ~(kGranularity - 1);
-    // Accept any genuinely-reserved page, tracked or not.  The guest VAs are
-    // host VAs, so the game can touch pages the emulator never recorded (e.g.
-    // guest thread stacks set up in the host thread path, or reserve-then-touch
-    // heaps) — refusing to commit them turns a benign demand-commit into a
-    // hard host crash the next time host CRT memcpy runs on the guest stack.
-    // VirtualQuery below is the authoritative state check.
     MEMORY_BASIC_INFORMATION mbi{};
     if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
         LOG_WARN(Memory, "CommitOnFault: VirtualQuery failed at 0x%llx", address);
         return false;
     }
-    // The region record may be marked committed as a whole while only a
-    // subrange actually is (Memory::Protect's commit fallback flips the
-    // containing record).  Decide per fault page instead: commit only when
-    // the page is genuinely still reserved (LOST EPIC's Unity heap does
-    // exactly this: reserve 8 MB, mprotect-commit 4 MB, then touch more).
+    if (mbi.State == MEM_COMMIT) {
+        return true; // Already committed
+    }
     if (mbi.State != MEM_RESERVE) {
-        LOG_WARN(Memory, "CommitOnFault: page at 0x%llx not MEM_RESERVE (state=%u) — skipping", address, (u32)mbi.State);
+        LOG_DEBUG(Memory, "CommitOnFault: page at 0x%llx not MEM_RESERVE (state=%u) — skipping", address, (u32)mbi.State);
         return false;
     }
     if (!VirtualAlloc(reinterpret_cast<void*>(base), kGranularity, MEM_COMMIT, PAGE_READWRITE)) {

@@ -411,25 +411,29 @@ namespace HLE {
             return path;
         }
 
-        // Orbis struct stat layout (matches src/kernel/syscalls.cpp SysStat).
+        // Orbis struct stat layout (FreeBSD 11 based, matches src/kernel/syscalls.cpp SysStat).
         struct OrbisStat {
-            u64 st_dev;
-            u64 st_ino;
-            u64 st_mode;
-            u64 st_nlink;
-            u64 st_uid;
-            u64 st_gid;
-            u64 st_rdev;
-            s64 st_size;
-            s64 st_blksize;
-            s64 st_blocks;
-            s64 st_atime;
-            s64 st_atimensec;
-            s64 st_mtime;
-            s64 st_mtimensec;
-            s64 st_ctime;
-            s64 st_ctimensec;
-            s64 __unused[3];
+            u32 st_dev;     // 0
+            u32 st_ino;     // 4
+            u16 st_mode;    // 8
+            u16 st_nlink;   // 10
+            u32 st_uid;     // 12
+            u32 st_gid;     // 16
+            u32 st_rdev;    // 20
+            s64 st_atime;   // 24
+            s64 st_atimensec; // 32
+            s64 st_mtime;   // 40
+            s64 st_mtimensec; // 48
+            s64 st_ctime;   // 56
+            s64 st_ctimensec; // 64
+            s64 st_size;    // 72
+            s64 st_blocks;  // 80
+            u32 st_blksize; // 88
+            u32 st_flags;   // 92
+            u32 st_gen;     // 96
+            s32 st_lspare;  // 100
+            s64 st_birthtime; // 104
+            s64 st_birthtimensec; // 112
         };
 
         void FillOrbisStat(guest_addr_t statbuf, const struct _stat64& hs) {
@@ -513,7 +517,7 @@ namespace HLE {
             struct _stat64 hs {};
             if (_fstat64(fd, &hs) != 0) return OrbisErrno();
             FillOrbisStat(statbuf, hs);
-            LOG_DEBUG(HLE, "sceKernelFstat(fd=%d) -> 0 (size=%lld)", fd, static_cast<s64>(hs.st_size));
+            LOG_ERROR(HLE, "sceKernelFstat(fd=%d) -> 0 (size=%lld)", fd, static_cast<s64>(hs.st_size));
             return 0;
         }
 
@@ -527,7 +531,7 @@ namespace HLE {
                 return err;
             }
             FillOrbisStat(statbuf, hs);
-            LOG_DEBUG(HLE, "sceKernelStat('%s') -> 0 (size=%lld)", path.c_str(), static_cast<s64>(hs.st_size));
+            LOG_ERROR(HLE, "sceKernelStat('%s') -> 0 (size=%lld)", path.c_str(), static_cast<s64>(hs.st_size));
             return 0;
         }
     } // namespace
@@ -934,17 +938,7 @@ namespace HLE {
         RegisterSymbol("libkernel", "TqIu8K3Q5h8#S#N", [](const GuestArgs&) -> u64 { return 0; });
         RegisterSymbol("libkernel", "O0FqD1eG0uI#S#N", [](const GuestArgs&) -> u64 { return 0; });
 
-        // Thread attributes
-        auto PthreadAttrStub = [](const GuestArgs&) -> u64 { return 0; };
-        RegisterSymbol("libkernel", "Bvn74vj6oLo", PthreadAttrStub); // scePthreadAttrSetstack
-        RegisterSymbol("libkernel", "Bvn74vj6oLo#T#T", PthreadAttrStub);
-        RegisterSymbol("libkernel", "Bvn74vj6oLo#S#N", PthreadAttrStub);
-        RegisterSymbol("libkernel", "scePthreadAttrSetstack", PthreadAttrStub);
-        
-        RegisterSymbol("libkernel", "UTXzJbWhhTE", PthreadAttrStub); // scePthreadAttrSetstacksize
-        RegisterSymbol("libkernel", "UTXzJbWhhTE#T#T", PthreadAttrStub);
-        RegisterSymbol("libkernel", "UTXzJbWhhTE#S#N", PthreadAttrStub);
-        RegisterSymbol("libkernel", "scePthreadAttrSetstacksize", PthreadAttrStub);
+
 
         // KernelGetSanitizerMallocReplaceExternal (py6L8jiVAN8) — ASan support.
         RegisterSymbol("libkernel", "py6L8jiVAN8#T#T", [](const GuestArgs&) -> u64 {
@@ -985,8 +979,6 @@ namespace HLE {
             LOG_WARN(HLE, "sceKernelConvertUtcToLocaltime(0x%llx, 0x%llx)", args.arg1, args.arg2);
             return 0;
         });
-        RegisterSymbol("libkernel", "YQ0navp+YIc#T#T", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "x1X76arYMxU#S#N", [](const GuestArgs&) -> u64 { return 0; });
         // PthreadEqual (3PtV6p3QNX4) — compare two thread IDs.
         RegisterSymbol("libkernel", "3PtV6p3QNX4#T#T", [](const GuestArgs& a) -> u64 {
             LOG_DEBUG(HLE, "PthreadEqual(t1=%llu, t2=%llu) -> %d", a.arg1, a.arg2, a.arg1 == a.arg2 ? 1 : 0);
@@ -994,8 +986,10 @@ namespace HLE {
         });
         // PthreadGetthreadid (EI-5-jlq2dE) — get OS thread id for a pthread.
         RegisterSymbol("libkernel", "EI-5-jlq2dE#T#T", [](const GuestArgs& a) -> u64 {
-            if (a.arg2) Memory::Write<u64>(a.arg2, a.arg1); // return thread id
-            LOG_DEBUG(HLE, "PthreadGetthreadid(%llu) -> 0", a.arg1);
+            LOG_DEBUG(HLE, "PthreadGetthreadid(thread=0x%llx, out=0x%llx) -> 0", a.arg1, a.arg2);
+            if (a.arg2) {
+                Memory::Write<u32>(a.arg2, static_cast<u32>(Kernel::GetCurrentThreadId()));
+            }
             return 0;
         });
         // PthreadGetname (How7B8Oet6k) — get thread name.
@@ -1029,65 +1023,362 @@ namespace HLE {
         });
 
         // =====================================================================
-        // scePthreadAttrInit  /  scePthreadAttrDestroy
-        // Minimal attr init: write the struct size as a sentinel, return 0.
+        // scePthreadAttr / pthread_attr family
+        // Uses dedicated guest memory slots so the guest receives an 8-byte pointer
+        // to a valid readable/writable 64-byte guest memory struct.
         // =====================================================================
-        RegisterSymbol("libkernel", "scePthreadAttrInit", [](const GuestArgs& args) -> u64 {
-            guest_addr_t attr_ptr = args.arg1;
-            if (attr_ptr) Memory::Write<u64>(attr_ptr, 0x38); // attr struct sentinel size
-            LOG_DEBUG(HLE, "scePthreadAttrInit(0x%llx) -> OK", attr_ptr);
+        static guest_addr_t s_attr_page_base = 0;
+        static std::mutex s_attr_pool_mutex;
+        static constexpr u32 kMaxAttrs = 1024;
+        static bool s_attr_used[kMaxAttrs] = {};
+
+        auto AllocAttrSlot = []() -> guest_addr_t {
+            std::lock_guard<std::mutex> lock(s_attr_pool_mutex);
+            if (!s_attr_page_base) {
+                if (Memory::AllocateRange(64 * 1024, 64 * 1024, Memory::Owner::Hle,
+                                          "pthread-attr-pool", &s_attr_page_base) != Memory::Status::Ok ||
+                    Memory::Commit(s_attr_page_base, 64 * 1024, Memory::PROT_READ | Memory::PROT_WRITE) != Memory::Status::Ok) {
+                    LOG_ERROR(HLE, "Failed to allocate guest pthread_attr pool page");
+                    return 0;
+                }
+            }
+            for (u32 i = 0; i < kMaxAttrs; ++i) {
+                if (!s_attr_used[i]) {
+                    s_attr_used[i] = true;
+                    guest_addr_t slot_va = s_attr_page_base + i * 64;
+                    Memory::Write<u64>(slot_va + 0x00, 0x38);
+                    Memory::Write<u64>(slot_va + 0x08, 2 * 1024 * 1024); // 2MB stack
+                    Memory::Write<u64>(slot_va + 0x10, 0);               // stack base
+                    Memory::Write<u64>(slot_va + 0x18, 0x1000);          // guard size
+                    Memory::Write<u64>(slot_va + 0x20, 0);               // joinable
+                    Memory::Write<u64>(slot_va + 0x28, 0xFF);            // cpuset
+                    Memory::Write<u64>(slot_va + 0x30, 0);               // priority
+                    Memory::Write<u64>(slot_va + 0x38, 0);               // inheritsched
+                    return slot_va;
+                }
+            }
+            LOG_ERROR(HLE, "PthreadAttr pool exhausted");
             return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadAttrDestroy", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadAttrDestroy(0x%llx) -> OK", args.arg1);
+        };
+
+        auto FreeAttrSlot = [](guest_addr_t slot_va) {
+            if (!slot_va || !s_attr_page_base) return;
+            std::lock_guard<std::mutex> lock(s_attr_pool_mutex);
+            if (slot_va >= s_attr_page_base && slot_va < s_attr_page_base + kMaxAttrs * 64) {
+                u32 i = static_cast<u32>((slot_va - s_attr_page_base) / 64);
+                s_attr_used[i] = false;
+            }
+        };
+
+        auto ResolveAttrPtr = [](guest_addr_t arg) -> guest_addr_t {
+            if (!arg) return 0;
+            if (s_attr_page_base && arg >= s_attr_page_base && arg < s_attr_page_base + kMaxAttrs * 64) {
+                return arg;
+            }
+            u64 val = Memory::Read<u64>(arg);
+            if (s_attr_page_base && val >= s_attr_page_base && val < s_attr_page_base + kMaxAttrs * 64) {
+                return val;
+            }
+            return arg;
+        };
+
+        auto PthreadAttrInitImpl = [AllocAttrSlot](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            if (!attr) return 22; // EINVAL
+            guest_addr_t slot_va = AllocAttrSlot();
+            if (!slot_va) return 12; // ENOMEM
+            Memory::Write<u64>(attr, slot_va);
+            LOG_DEBUG(HLE, "PthreadAttrInit(0x%llx) -> slot=0x%llx", attr, slot_va);
             return 0;
-        });
-        RegisterSymbol("libkernel", "62KCwEMmzcM#S#N", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadAttrDestroy(NID)(0x%llx) -> OK", args.arg1);
+        };
+
+        auto PthreadAttrDestroyImpl = [ResolveAttrPtr, FreeAttrSlot](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            if (attr) {
+                guest_addr_t slot_va = ResolveAttrPtr(attr);
+                FreeAttrSlot(slot_va);
+                Memory::Write<u64>(attr, 0);
+            }
+            LOG_DEBUG(HLE, "PthreadAttrDestroy(0x%llx) -> OK", attr);
             return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadAttrSetstacksize", [](const GuestArgs& args) -> u64 {
-            LOG_INFO(HLE, "scePthreadAttrSetstacksize(attr=0x%llx, size=0x%llx) -> OK", args.arg1, args.arg2);
+        };
+
+        auto PthreadAttrSetstacksizeImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            u64 size = args.arg2;
+            if (!attr) return 22; // EINVAL
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            if (slot) Memory::Write<u64>(slot + 0x08, size);
+            LOG_DEBUG(HLE, "PthreadAttrSetstacksize(attr=0x%llx, size=0x%llx) -> OK", attr, size);
             return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadAttrSetdetachstate", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadAttrSetdetachstate(attr=0x%llx, state=%llu) -> OK", args.arg1, args.arg2);
+        };
+
+        auto PthreadAttrGetstacksizeImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t out_size = args.arg2;
+            if (!attr || !out_size) return 22; // EINVAL
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            u64 size = slot ? Memory::Read<u64>(slot + 0x08) : 2 * 1024 * 1024;
+            if (size == 0) size = 2 * 1024 * 1024;
+            Memory::Write<u64>(out_size, size);
+            LOG_DEBUG(HLE, "PthreadAttrGetstacksize(attr=0x%llx) -> size=0x%llx", attr, size);
             return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadAttrSetschedparam", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadAttrSetschedparam(attr=0x%llx) -> OK", args.arg1);
+        };
+
+        auto PthreadAttrSetstackImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t stackaddr = args.arg2;
+            u64 size = args.arg3;
+            if (!attr) return 22; // EINVAL
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            if (slot) {
+                Memory::Write<u64>(slot + 0x10, stackaddr);
+                Memory::Write<u64>(slot + 0x08, size);
+            }
+            LOG_DEBUG(HLE, "PthreadAttrSetstack(attr=0x%llx, addr=0x%llx, size=0x%llx) -> OK", attr, stackaddr, size);
             return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadAttrSetinheritsched", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadAttrSetinheritsched(attr=0x%llx, inherit=%llu) -> OK", args.arg1, args.arg2);
+        };
+
+        auto PthreadAttrGetstackImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t out_addr = args.arg2;
+            guest_addr_t out_size = args.arg3;
+            if (!attr) return 22; // EINVAL
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            if (out_addr) Memory::Write<u64>(out_addr, slot ? Memory::Read<u64>(slot + 0x10) : 0);
+            if (out_size) {
+                u64 size = slot ? Memory::Read<u64>(slot + 0x08) : 2 * 1024 * 1024;
+                if (size == 0) size = 2 * 1024 * 1024;
+                Memory::Write<u64>(out_size, size);
+            }
+            LOG_DEBUG(HLE, "PthreadAttrGetstack(attr=0x%llx) -> OK", attr);
             return 0;
-        });
-        RegisterSymbol("libkernel", "scePthreadAttrSetschedpolicy", [](const GuestArgs& args) -> u64 {
-            LOG_DEBUG(HLE, "scePthreadAttrSetschedpolicy(attr=0x%llx, policy=%llu) -> OK", args.arg1, args.arg2);
+        };
+
+        auto PthreadAttrSetguardsizeImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            u64 guard = args.arg2;
+            if (!attr) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            if (slot) Memory::Write<u64>(slot + 0x18, guard);
+            LOG_DEBUG(HLE, "PthreadAttrSetguardsize(attr=0x%llx, guard=0x%llx) -> OK", attr, guard);
             return 0;
-        });
-        // Plain POSIX attr names used by the game's real libc.prx.
-        RegisterSymbol("libkernel", "pthread_attr_init", [](const GuestArgs& args) -> u64 {
-            if (args.arg1) Memory::Write<u64>(args.arg1, 0x38);
+        };
+
+        auto PthreadAttrGetguardsizeImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t out_guard = args.arg2;
+            if (!attr || !out_guard) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            Memory::Write<u64>(out_guard, slot ? Memory::Read<u64>(slot + 0x18) : 0x1000);
+            LOG_DEBUG(HLE, "PthreadAttrGetguardsize(attr=0x%llx) -> OK", attr);
             return 0;
-        });
-        RegisterSymbol("libkernel", "pthread_attr_destroy", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_setstacksize", [](const GuestArgs& args) -> u64 {
-            if (args.arg1) Memory::Write<u64>(args.arg1 + 8, args.arg2);
-            return 0; 
-        });
-        RegisterSymbol("libkernel", "pthread_attr_setstack", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_getstacksize", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_getstack", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_get_np", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_setdetachstate", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_getdetachstate", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_setguardsize", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_getguardsize", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_setschedparam", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_getschedparam", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_setschedpolicy", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libkernel", "pthread_attr_setinheritsched", [](const GuestArgs&) -> u64 { return 0; });
+        };
+
+        auto PthreadAttrSetdetachstateImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            u64 state = args.arg2;
+            if (!attr) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            if (slot) Memory::Write<u64>(slot + 0x20, state);
+            LOG_DEBUG(HLE, "PthreadAttrSetdetachstate(attr=0x%llx, state=%llu) -> OK", attr, state);
+            return 0;
+        };
+
+        auto PthreadAttrGetdetachstateImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t out_state = args.arg2;
+            if (!attr || !out_state) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            Memory::Write<u32>(out_state, slot ? static_cast<u32>(Memory::Read<u64>(slot + 0x20)) : 0);
+            LOG_DEBUG(HLE, "PthreadAttrGetdetachstate(attr=0x%llx) -> OK", attr);
+            return 0;
+        };
+
+        auto PthreadAttrSetaffinityImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            u64 cpuset = args.arg2;
+            if (!attr) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            if (slot) Memory::Write<u64>(slot + 0x28, cpuset);
+            LOG_DEBUG(HLE, "PthreadAttrSetaffinity(attr=0x%llx, cpuset=0x%llx) -> OK", attr, cpuset);
+            return 0;
+        };
+
+        auto PthreadAttrGetaffinityImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t out_cpuset = args.arg2;
+            if (!attr || !out_cpuset) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            u64 mask = slot ? Memory::Read<u64>(slot + 0x28) : 0xFF;
+            if (mask == 0) mask = 0xFF;
+            Memory::Write<u64>(out_cpuset, mask);
+            LOG_DEBUG(HLE, "PthreadAttrGetaffinity(attr=0x%llx) -> mask=0x%llx", attr, mask);
+            return 0;
+        };
+
+        auto PthreadAttrSetschedparamImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t param = args.arg2;
+            if (!attr) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            if (slot && param) Memory::Write<u64>(slot + 0x30, Memory::Read<u64>(param));
+            LOG_DEBUG(HLE, "PthreadAttrSetschedparam(attr=0x%llx) -> OK", attr);
+            return 0;
+        };
+
+        auto PthreadAttrGetschedparamImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t out_param = args.arg2;
+            if (!attr || !out_param) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            Memory::Write<u64>(out_param, slot ? Memory::Read<u64>(slot + 0x30) : 0);
+            LOG_DEBUG(HLE, "PthreadAttrGetschedparam(attr=0x%llx) -> OK", attr);
+            return 0;
+        };
+
+        auto PthreadAttrSetschedpolicyImpl = [](const GuestArgs& args) -> u64 {
+            LOG_DEBUG(HLE, "PthreadAttrSetschedpolicy(attr=0x%llx, policy=%llu) -> OK", args.arg1, args.arg2);
+            return 0;
+        };
+
+        auto PthreadAttrGetschedpolicyImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t out_policy = args.arg2;
+            if (!attr || !out_policy) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            Memory::Write<u32>(out_policy, slot ? static_cast<u32>(Memory::Read<u64>(slot + 0x38)) : 0);
+            LOG_DEBUG(HLE, "PthreadAttrGetschedpolicy(attr=0x%llx) -> 0", attr);
+            return 0;
+        };
+
+        auto PthreadAttrSetinheritschedImpl = [](const GuestArgs& args) -> u64 {
+            LOG_DEBUG(HLE, "PthreadAttrSetinheritsched(attr=0x%llx, inherit=%llu) -> OK", args.arg1, args.arg2);
+            return 0;
+        };
+
+        auto PthreadAttrGetinheritschedImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t attr = args.arg1;
+            guest_addr_t out_inherit = args.arg2;
+            if (!attr || !out_inherit) return 22;
+            guest_addr_t slot = ResolveAttrPtr(attr);
+            Memory::Write<u32>(out_inherit, slot ? static_cast<u32>(Memory::Read<u64>(slot + 0x38)) : 0);
+            LOG_DEBUG(HLE, "PthreadAttrGetinheritsched(attr=0x%llx) -> 0", attr);
+            return 0;
+        };
+
+        auto PthreadAttrGetImpl = [AllocAttrSlot, ResolveAttrPtr](const GuestArgs& args) -> u64 {
+            guest_addr_t thread_id = args.arg1;
+            guest_addr_t attr_ptr  = args.arg2;
+            if (!attr_ptr) return 22; // EINVAL
+
+            guest_addr_t slot = ResolveAttrPtr(attr_ptr);
+            if (!slot || slot == attr_ptr) {
+                slot = AllocAttrSlot();
+                Memory::Write<u64>(attr_ptr, slot);
+            }
+
+            u64 stack_base = 0;
+            u64 stack_size = 2 * 1024 * 1024;
+            u64 target_id = thread_id ? thread_id : CpuCore::GetCurrentThreadId();
+            GuestThread* t = CpuCore::GetThreadById(target_id);
+            if (t && t->stack_size > 0) {
+                stack_base = t->stack_base;
+                stack_size = t->stack_size;
+            }
+            if (slot) {
+                Memory::Write<u64>(slot + 0x08, stack_size);
+                Memory::Write<u64>(slot + 0x10, stack_base);
+                Memory::Write<u64>(slot + 0x28, 0xFF);
+            }
+            LOG_DEBUG(HLE, "scePthreadAttrGet(thread=%llu, attr=0x%llx) -> base=0x%llx, size=0x%llx",
+                      target_id, attr_ptr, stack_base, stack_size);
+            return 0;
+        };
+
+        // Symbol registrations
+        RegisterSymbol("libkernel", "scePthreadAttrInit", PthreadAttrInitImpl);
+        RegisterSymbol("libkernel", "pthread_attr_init", PthreadAttrInitImpl);
+        RegisterSymbol("libkernel", "wtkt-teR1so", PthreadAttrInitImpl);
+        RegisterSymbol("libkernel", "wtkt-teR1so#T#T", PthreadAttrInitImpl);
+        RegisterSymbol("libkernel", "wtkt-teR1so#S#N", PthreadAttrInitImpl);
+        RegisterSymbol("libkernel", "aI+OeCz8xrQ", PthreadAttrInitImpl);
+        RegisterSymbol("libkernel", "aI+OeCz8xrQ#T#T", PthreadAttrInitImpl);
+        RegisterSymbol("libkernel", "aI+OeCz8xrQ#S#N", PthreadAttrInitImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrDestroy", PthreadAttrDestroyImpl);
+        RegisterSymbol("libkernel", "pthread_attr_destroy", PthreadAttrDestroyImpl);
+        RegisterSymbol("libkernel", "62KCwEMmzcM#S#N", PthreadAttrDestroyImpl);
+        RegisterSymbol("libkernel", "62KCwEMmzcM#T#T", PthreadAttrDestroyImpl);
+        RegisterSymbol("libkernel", "62KCwEMmzcM", PthreadAttrDestroyImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrSetstacksize", PthreadAttrSetstacksizeImpl);
+        RegisterSymbol("libkernel", "pthread_attr_setstacksize", PthreadAttrSetstacksizeImpl);
+        RegisterSymbol("libkernel", "UTXzJbWhhTE", PthreadAttrSetstacksizeImpl);
+        RegisterSymbol("libkernel", "UTXzJbWhhTE#T#T", PthreadAttrSetstacksizeImpl);
+        RegisterSymbol("libkernel", "UTXzJbWhhTE#S#N", PthreadAttrSetstacksizeImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrGetstacksize", PthreadAttrGetstacksizeImpl);
+        RegisterSymbol("libkernel", "pthread_attr_getstacksize", PthreadAttrGetstacksizeImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrSetstack", PthreadAttrSetstackImpl);
+        RegisterSymbol("libkernel", "pthread_attr_setstack", PthreadAttrSetstackImpl);
+        RegisterSymbol("libkernel", "Bvn74vj6oLo", PthreadAttrSetstackImpl);
+        RegisterSymbol("libkernel", "Bvn74vj6oLo#T#T", PthreadAttrSetstackImpl);
+        RegisterSymbol("libkernel", "Bvn74vj6oLo#S#N", PthreadAttrSetstackImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrGetstack", PthreadAttrGetstackImpl);
+        RegisterSymbol("libkernel", "pthread_attr_getstack", PthreadAttrGetstackImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrSetguardsize", PthreadAttrSetguardsizeImpl);
+        RegisterSymbol("libkernel", "pthread_attr_setguardsize", PthreadAttrSetguardsizeImpl);
+        RegisterSymbol("libkernel", "scePthreadAttrGetguardsize", PthreadAttrGetguardsizeImpl);
+        RegisterSymbol("libkernel", "pthread_attr_getguardsize", PthreadAttrGetguardsizeImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrSetdetachstate", PthreadAttrSetdetachstateImpl);
+        RegisterSymbol("libkernel", "pthread_attr_setdetachstate", PthreadAttrSetdetachstateImpl);
+        RegisterSymbol("libkernel", "-Wreprtu0Qs#T#T", PthreadAttrSetdetachstateImpl);
+        RegisterSymbol("libkernel", "-Wreprtu0Qs#S#N", PthreadAttrSetdetachstateImpl);
+        RegisterSymbol("libkernel", "-Wreprtu0Qs", PthreadAttrSetdetachstateImpl);
+        RegisterSymbol("libkernel", "scePthreadAttrGetdetachstate", PthreadAttrGetdetachstateImpl);
+        RegisterSymbol("libkernel", "pthread_attr_getdetachstate", PthreadAttrGetdetachstateImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrSetaffinity", PthreadAttrSetaffinityImpl);
+        RegisterSymbol("libkernel", "pthread_attr_setaffinity_np", PthreadAttrSetaffinityImpl);
+        RegisterSymbol("libkernel", "3qxgM4ezETA#T#T", PthreadAttrSetaffinityImpl);
+        RegisterSymbol("libkernel", "3qxgM4ezETA#S#N", PthreadAttrSetaffinityImpl);
+        RegisterSymbol("libkernel", "3qxgM4ezETA", PthreadAttrSetaffinityImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrGetaffinity", PthreadAttrGetaffinityImpl);
+        RegisterSymbol("libkernel", "pthread_attr_getaffinity_np", PthreadAttrGetaffinityImpl);
+        RegisterSymbol("libkernel", "8+s5BzZjxSg#T#T", PthreadAttrGetaffinityImpl);
+        RegisterSymbol("libkernel", "8+s5BzZjxSg#S#N", PthreadAttrGetaffinityImpl);
+        RegisterSymbol("libkernel", "8+s5BzZjxSg", PthreadAttrGetaffinityImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrSetschedparam", PthreadAttrSetschedparamImpl);
+        RegisterSymbol("libkernel", "pthread_attr_setschedparam", PthreadAttrSetschedparamImpl);
+        RegisterSymbol("libkernel", "DzES9hQF4f4#T#T", PthreadAttrSetschedparamImpl);
+        RegisterSymbol("libkernel", "DzES9hQF4f4#S#N", PthreadAttrSetschedparamImpl);
+        RegisterSymbol("libkernel", "DzES9hQF4f4", PthreadAttrSetschedparamImpl);
+        RegisterSymbol("libkernel", "scePthreadAttrGetschedparam", PthreadAttrGetschedparamImpl);
+        RegisterSymbol("libkernel", "pthread_attr_getschedparam", PthreadAttrGetschedparamImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrSetschedpolicy", PthreadAttrSetschedpolicyImpl);
+        RegisterSymbol("libkernel", "pthread_attr_setschedpolicy", PthreadAttrSetschedpolicyImpl);
+        RegisterSymbol("libkernel", "scePthreadAttrGetschedpolicy", PthreadAttrGetschedpolicyImpl);
+        RegisterSymbol("libkernel", "pthread_attr_getschedpolicy", PthreadAttrGetschedpolicyImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrSetinheritsched", PthreadAttrSetinheritschedImpl);
+        RegisterSymbol("libkernel", "pthread_attr_setinheritsched", PthreadAttrSetinheritschedImpl);
+        RegisterSymbol("libkernel", "scePthreadAttrGetinheritsched", PthreadAttrGetinheritschedImpl);
+        RegisterSymbol("libkernel", "pthread_attr_getinheritsched", PthreadAttrGetinheritschedImpl);
+
+        RegisterSymbol("libkernel", "scePthreadAttrGet", PthreadAttrGetImpl);
+        RegisterSymbol("libkernel", "pthread_attr_get_np", PthreadAttrGetImpl);
+        RegisterSymbol("libkernel", "x1X76arYMxU", PthreadAttrGetImpl);
+        RegisterSymbol("libkernel", "x1X76arYMxU#T#T", PthreadAttrGetImpl);
+        RegisterSymbol("libkernel", "x1X76arYMxU#S#N", PthreadAttrGetImpl);
+
         RegisterSymbol("libkernel", "pthread_setschedparam", [](const GuestArgs&) -> u64 { return 0; });
         RegisterSymbol("libkernel", "pthread_getschedparam", [](const GuestArgs&) -> u64 { return 0; });
         RegisterSymbol("libkernel", "pthread_setprio", [](const GuestArgs&) -> u64 { return 0; });
@@ -1323,77 +1614,34 @@ namespace HLE {
         });
 
         // memset (8zTFvBIAIN8#T#T)
-        RegisterSymbol("libkernel", "8zTFvBIAIN8#T#T", [](const GuestArgs& args) -> u64 {
+        auto MemsetImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             u32 ch = static_cast<u32>(args.arg2);
             u64 count = args.arg3;
-            
-            // Guard against corrupted count values (e.g. count > 256MB is likely garbage)
+
             constexpr u64 MAX_MEMSET = 256ULL * 1024 * 1024;
             if (count > MAX_MEMSET) {
                 LOG_WARN(HLE, "libkernel::memset: count 0x%llx exceeds 256MB limit, clamping to 0", count);
                 count = 0;
             }
-            
+
             LOG_DEBUG(HLE, "libkernel::memset(dest: 0x%llx, ch: %u, count: %llu)", dest, ch, count);
             if (dest && count > 0) {
-                u64 current_dest = dest;
-                u64 remaining = count;
-                while (remaining > 0) {
-                    u64 page_offset = current_dest & 0xFFF;
-                    u64 chunk = 0x1000 - page_offset;
-                    if (chunk > remaining) chunk = remaining;
-                    
-                    if (!Memory::IsWritable(current_dest, chunk)) {
-                        Memory::CommitOnFault(current_dest);
-                        if (!Memory::IsWritable(current_dest, chunk)) {
-                            LOG_WARN(HLE, "libkernel::memset: dest range not writable (0x%llx, %llu) - skipped chunk", current_dest, chunk);
-                            break;
-                        }
-                    }
-                    std::memset(reinterpret_cast<void*>(current_dest), static_cast<int>(ch & 0xFF), chunk);
-                    
-                    current_dest += chunk;
-                    remaining -= chunk;
-                }
+                Memory::GuardedSet(dest, static_cast<int>(ch & 0xFF), count);
             }
             return dest;
-        });
+        };
+        RegisterSymbol("libkernel", "8zTFvBIAIN8#T#T", MemsetImpl);
 
         // strlen (j4ViWNHEgww#T#T)
-        RegisterSymbol("libkernel", "j4ViWNHEgww#T#T", [](const GuestArgs& args) -> u64 {
+        auto StrlenImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t str = args.arg1;
             if (!str) return 0;
-
-            u64 len = 0;
-            // Check the full page upfront (safe on any stack).
-            const u64 page_start = str & ~(static_cast<u64>(0xFFF));
-            const u64 page_end   = page_start + 0x1000;
-            if (Memory::IsReadable(str, 1)) {
-                while (str + len < page_end) {
-                    u8 c = Memory::Read<u8>(str + len);
-                    if (c == 0) break;    // found terminator
-                    len++;
-                }
-            } else {
-                // Page not mapped — single-byte SEH fallback.
-                while (str + len < page_end) {
-                    u8 c = 0;
-                    __try { c = Memory::Read<u8>(str + len); }
-                    __except (EXCEPTION_EXECUTE_HANDLER) { break; }
-                    if (c == 0) break;
-                    len++;
-                }
-            }
-            // If the string crossed into an unmapped page, report length up to
-            // the fault boundary (the caller may still read within the mapped
-            // portion), capped at PAGE_SIZE to avoid unbounded loops.
-            if (len >= 0x1000) {
-                LOG_DEBUG(HLE, "libkernel::strlen(str: 0x%llx): string exceeds single page (truncated to %llu)", str, len);
-            }
+            const u64 len = Memory::GuardedStrlen(str, UINT64_MAX);
             LOG_DEBUG(HLE, "libkernel::strlen(str: 0x%llx) -> %llu", str, len);
             return len;
-        });
+        };
+        RegisterSymbol("libkernel", "j4ViWNHEgww#T#T", StrlenImpl);
 
         // __cxa_atexit (tsvEmnenz48#T#T)
         RegisterSymbol("libkernel", "tsvEmnenz48#T#T", [](const GuestArgs& args) -> u64 {
@@ -1617,87 +1865,7 @@ namespace HLE {
         // the narrow TOCTOU race window where it does work.
         // Shared guarded copy for memmove/memcpy.  The __try/__except SEH
         // fallback is NOT functional on the guest stack (x64 unwinder validates
-        // the frame against the TIB and skips handlers on non-primary stacks),
-        // so a first-chance AV there escapes to the kernel VEH and hard-crashes
-        // the emulator.  Instead: when the page-table guard fails, demand-commit
-        // the reserved page(s) (PS5 on-demand memory — a game may reserve VA and
-        // touch it later), then re-check.  Only if the range is still not mapped
-        // (a genuine host-address copy, normal for the AGC-to-DCB pipeline) do we
-        // attempt the copy directly.
-        auto GuardedCopy = [](guest_addr_t dest, guest_addr_t src, u64 count,
-                              const char* which) {
-            // PCSX5_STR_COPY_PROBE: log every string-like copy whose source or
-            // destination begins with '"' or contains the image-path prefix.
-            // Gated behind an env var so normal runs are unaffected; used to
-            // locate where a record's image path is truncated to "image".
-            static const bool probe_on = ([] {
-                char b[2] = {0}; size_t n = 0;
-                return ::getenv_s(&n, b, sizeof(b), "PCSX5_STR_COPY_PROBE") == 0 && n > 0;
-            })();
-            if (probe_on && count >= 3 && count <= 0x1000) {
-                auto dump = [&](guest_addr_t a) -> std::string {
-                    std::string s;
-                    for (u64 i = 0; i < count && i < 40; ++i) {
-                        if (!Memory::IsReadable(a + i, 1)) break;
-                        char c = static_cast<char>(Memory::Read<u8>(a + i));
-                        s += (c >= 32 && c < 127) ? c : '?';
-                    }
-                    return s;
-                };
-                const std::string sd = dump(src);
-                const std::string dd = dump(dest);
-                if (sd.find("image") != std::string::npos ||
-                    dd.find("image") != std::string::npos ||
-                    sd.rfind("\"", 0) == 0 || dd.rfind("\"", 0) == 0) {
-                    LOG_INFO(HLE, "STRCPY %s count=%llu src@0x%llx=\"%s\" dest@0x%llx=\"%s\"",
-                             which, count, src, sd.c_str(), dest, dd.c_str());
-                }
-            }
-            bool src_ok  = Memory::IsReadable(src, count);
-            bool dest_ok = Memory::IsWritable(dest, count);
-            if (src_ok && dest_ok) {
-                std::memmove(reinterpret_cast<void*>(dest),
-                             reinterpret_cast<const void*>(src), count);
-                return;
-            }
-            if (!src_ok)  Memory::CommitOnFault(src);
-            if (!dest_ok) Memory::CommitOnFault(dest);
-            src_ok  = Memory::IsReadable(src, count);
-            dest_ok = Memory::IsWritable(dest, count);
-            if (src_ok && dest_ok) {
-                std::memmove(reinterpret_cast<void*>(dest),
-                             reinterpret_cast<const void*>(src), count);
-                return;
-            }
-            // Still unmapped after demand-commit.  A genuine host-address copy
-            // (AGC-to-DCB pipeline passes host addresses through here) is fine
-            // to attempt, but a near-null / sub-2GB pointer that isn't in the
-            // guest page table is a game bug — attempting it raises a host CRT
-            // AV that SEH cannot guard on the guest stack.  Skip those instead
-            // of crashing the emulator.
-            // Validate via VirtualQuery before attempting host copy to prevent hard AVs on uncommitted memory
-            MEMORY_BASIC_INFORMATION mbi_s{}, mbi_d{};
-            bool s_valid = (VirtualQuery(reinterpret_cast<LPCVOID>(src), &mbi_s, sizeof(mbi_s)) != 0 && mbi_s.State == MEM_COMMIT);
-            bool d_valid = (VirtualQuery(reinterpret_cast<LPCVOID>(dest), &mbi_d, sizeof(mbi_d)) != 0 && mbi_d.State == MEM_COMMIT);
-            if (s_valid) {
-                s_valid = (mbi_s.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
-            }
-            if (d_valid) {
-                d_valid = (mbi_d.Protect & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
-            }
-            if (!s_valid || !d_valid) {
-                LOG_WARN(HLE, "libkernel::%s: skipping copy with uncommitted memory (src_valid=%d dest_valid=%d src=0x%llx dest=0x%llx count=%llu)",
-                         which, (int)s_valid, (int)d_valid, src, dest, count);
-                return;
-            }
-            LOG_DEBUG(HLE, "libkernel::%s: page-table guard still fails after demand-commit "
-                      "(src_ok=%d dest_ok=%d src=0x%llx dest=0x%llx count=%llu) — host copy",
-                      which, (int)src_ok, (int)dest_ok, src, dest, count);
-            std::memmove(reinterpret_cast<void*>(dest),
-                         reinterpret_cast<const void*>(src), count);
-        };
-
-        auto MemmoveImpl = [&GuardedCopy](const GuestArgs& args) -> u64 {
+        auto MemmoveImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             guest_addr_t src  = args.arg2;
             u64 count         = args.arg3;
@@ -1709,15 +1877,7 @@ namespace HLE {
             }
             LOG_DEBUG(HLE, "libkernel::memmove(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                // H4.6: reject sign-extended SCE error codes passed as pointers
-                constexpr u64 kBadPtrMask2 = 0xFFFFFFFF80000000ULL;
-                if ((dest & kBadPtrMask2) == kBadPtrMask2 || (src & kBadPtrMask2) == kBadPtrMask2) {
-                    LOG_WARN(HLE, "libkernel::memmove: bad pointer (looks like sign-extended "
-                             "error code): dest=0x%llx src=0x%llx count=%llu — returning dest",
-                             dest, src, count);
-                    return dest;
-                }
-                GuardedCopy(dest, src, count, "memmove");
+                Memory::GuardedCopy(dest, src, count);
             }
             return dest;
         };
@@ -1736,34 +1896,13 @@ namespace HLE {
                 return 0;
             }
             if (old_ptr) {
-                // Safely copy up to new_size, stopping at the first uncommitted page
-                u64 current_src = old_ptr;
-                u64 current_dest = mem;
-                u64 remaining = new_size;
-                while (remaining > 0) {
-                    u64 page_offset = current_src & 0xFFF;
-                    u64 chunk = 0x1000 - page_offset;
-                    if (chunk > remaining) chunk = remaining;
-                    
-                    if (!Memory::IsReadable(current_src, chunk)) {
-                        break; // Reached end of committed old_ptr memory
-                    }
-                    if (!Memory::IsWritable(current_dest, chunk)) {
-                        break; // Should not happen since we just mapped mem
-                    }
-                    std::memmove(reinterpret_cast<void*>(current_dest),
-                                 reinterpret_cast<const void*>(current_src), chunk);
-                    
-                    current_src += chunk;
-                    current_dest += chunk;
-                    remaining -= chunk;
-                }
+                Memory::GuardedCopy(mem, old_ptr, new_size);
             }
             LOG_DEBUG(HLE, "libkernel::realloc(ptr: 0x%llx, size: %llu) -> 0x%llx", old_ptr, new_size, mem);
             return mem;
         });
 
-        auto MemcpyImpl = [&GuardedCopy](const GuestArgs& args) -> u64 {
+        auto MemcpyImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dest = args.arg1;
             guest_addr_t src  = args.arg2;
             u64 count         = args.arg3;
@@ -1774,23 +1913,9 @@ namespace HLE {
                 count = 0;
             }
 
-            // H4.6: detect sign-extended SCE error codes masquerading as
-            // pointers (0xFFFFFFFF8xxxxxxx — an HLE function returned an
-            // AgcError value that the game passed as a pointer).  These
-            // will crash inside host CRT (VCRUNTIME140.dll) when the game
-            // later dereferences the copy target.
-            constexpr u64 kBadPtrMask  = 0xFFFFFFFF80000000ULL;
-            constexpr u64 kBadPtrMatch = 0xFFFFFFFF80000000ULL;
-            if ((dest & kBadPtrMask) == kBadPtrMatch || (src & kBadPtrMask) == kBadPtrMatch) {
-                LOG_WARN(HLE, "libkernel::memcpy: bad pointer (looks like sign-extended "
-                         "error code): dest=0x%llx src=0x%llx count=%llu — returning dest",
-                         dest, src, count);
-                return dest;
-            }
-
             LOG_DEBUG(HLE, "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                GuardedCopy(dest, src, count, "memcpy");
+                Memory::GuardedCopy(dest, src, count);
             }
             return dest;
         };
@@ -1955,11 +2080,12 @@ namespace HLE {
             const int fd = FakeFileFd(f);
             if (fd >= 0) {
                 const u64 n = static_cast<u64>(KernelReadCore(fd, buf, size * count));
-                LOG_DEBUG(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, count: %llu) -> %llu", buf, size, count, n);
-                return n;
+                const u64 items = (size > 0) ? (n / size) : 0;
+                LOG_ERROR(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, count: %llu) -> read bytes: %llu, returning items: %llu", buf, size, count, n, items);
+                return items;
             }
             u64 n = fread(reinterpret_cast<void*>(buf), size, count, reinterpret_cast<FILE*>(f));
-            LOG_DEBUG(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, count: %llu) -> %llu", buf, size, count, n);
+            LOG_ERROR(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, count: %llu) -> read items: %llu", buf, size, count, n);
             return n;
         });
 
@@ -1971,11 +2097,11 @@ namespace HLE {
             const int fd = FakeFileFd(f);
             if (fd >= 0) {
                 const s64 r = _lseeki64(fd, offset, whence);
-                LOG_DEBUG(HLE, "libkernel::fseek(0x%llx, %lld, %d) -> %lld", f, offset, whence, r);
+                LOG_ERROR(HLE, "libkernel::fseek(0x%llx, %lld, %d) -> %lld", f, offset, whence, r);
                 return r < 0 ? ~0ull : 0;
             }
             int r = f ? fseek(reinterpret_cast<FILE*>(f), (long)offset, whence) : -1;
-            LOG_DEBUG(HLE, "libkernel::fseek(%p, %lld, %d) -> %d", reinterpret_cast<void*>(f), offset, whence, r);
+            LOG_ERROR(HLE, "libkernel::fseek(%p, %lld, %d) -> %d", reinterpret_cast<void*>(f), offset, whence, r);
             return (u64)(s64)r;
         });
 
@@ -1985,11 +2111,11 @@ namespace HLE {
             const int fd = FakeFileFd(f);
             if (fd >= 0) {
                 const s64 r = _lseeki64(fd, 0, SEEK_CUR);
-                LOG_DEBUG(HLE, "libkernel::ftell(0x%llx) -> %lld", f, r);
+                LOG_ERROR(HLE, "libkernel::ftell(0x%llx) -> %lld", f, r);
                 return static_cast<u64>(r);
             }
             long r = f ? ftell(reinterpret_cast<FILE*>(f)) : -1;
-            LOG_DEBUG(HLE, "libkernel::ftell(%p) -> %ld", reinterpret_cast<void*>(f), r);
+            LOG_ERROR(HLE, "libkernel::ftell(%p) -> %ld", reinterpret_cast<void*>(f), r);
             return (u64)(s64)r;
         });
 
@@ -2240,7 +2366,7 @@ namespace HLE {
         // CpuCore registry (reached through the Kernel:: thread API).
         // Honors the CpuConfig max_guest_threads limit to avoid race conditions
         // in the Construct runtime's multi-threaded JSON parser (PPSA02929).
-        auto PthreadCreateImpl = [](const GuestArgs& args) -> u64 {
+        auto PthreadCreateImpl = [ResolveAttrPtr](const GuestArgs& args) -> u64 {
             guest_addr_t tid_out   = args.arg1;
             guest_addr_t attr_ptr  = args.arg2;
             guest_addr_t entry_ptr = args.arg3;
@@ -2274,9 +2400,12 @@ namespace HLE {
 
             u64 kGuestStackSize = 2 * 1024 * 1024; // default 2MB
             if (attr_ptr) {
-                u64 requested = Memory::Read<u64>(attr_ptr + 8);
-                if (requested > 0 && requested < 256 * 1024 * 1024) {
-                    kGuestStackSize = requested;
+                guest_addr_t slot = ResolveAttrPtr(attr_ptr);
+                if (slot) {
+                    u64 requested = Memory::Read<u64>(slot + 8);
+                    if (requested > 0 && requested < 256 * 1024 * 1024) {
+                        kGuestStackSize = requested;
+                    }
                 }
             }
             kGuestStackSize = (kGuestStackSize + 0xFFF) & ~0xFFFULL; // align to page
@@ -2363,34 +2492,23 @@ namespace HLE {
         // String utilities
         // =====================================================================
         // strncpy (6sJWiWSRuqk#T#T)
-        RegisterSymbol("libkernel", "6sJWiWSRuqk#T#T", [](const GuestArgs& args) -> u64 {
+        // strncpy (6sJWiWSRuqk#T#T)
+        auto StrncpyImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
             u64 n = args.arg3;
-            if (dst && src && n > 0 && n < 0x10000000ULL) {
-                if (Memory::IsReadable(src, 1) && Memory::IsWritable(dst, 1)) {
-                    strncpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src), n);
-                } else {
-                    __try { strncpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src), n); }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {
-                        LOG_WARN(HLE, "libkernel::strncpy: AV (dst: 0x%llx, src: 0x%llx, n: %llu)", dst, src, n);
-                    }
-                }
+            if (dst && n > 0 && n < 0x10000000ULL) {
+                Memory::GuardedStrncpy(dst, src, n);
             }
             return dst;
-        });
+        };
+        RegisterSymbol("libkernel", "6sJWiWSRuqk#T#T", StrncpyImpl);
+        RegisterSymbol("libkernel", "strncpy#T#T", StrncpyImpl);
 
         // strcpy
         auto StrcpyImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
             if (dst && src) {
-                if (Memory::IsReadable(src, 1) && Memory::IsWritable(dst, 1)) {
-                    strcpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
-                } else {
-                    __try { strcpy(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src)); }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {
-                        LOG_WARN(HLE, "libkernel::strcpy: AV (dst: 0x%llx, src: 0x%llx)", dst, src);
-                    }
-                }
+                Memory::GuardedStrcpy(dst, src);
             }
             return dst;
         };
@@ -2401,14 +2519,8 @@ namespace HLE {
         auto StrcatImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
             if (dst && src) {
-                if (Memory::IsReadable(src, 1) && Memory::IsWritable(dst, 1)) {
-                    strcat(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src));
-                } else {
-                    __try { strcat(reinterpret_cast<char*>(dst), reinterpret_cast<const char*>(src)); }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {
-                        LOG_WARN(HLE, "libkernel::strcat: AV (dst: 0x%llx, src: 0x%llx)", dst, src);
-                    }
-                }
+                u64 dst_len = Memory::GuardedStrlen(dst, UINT64_MAX);
+                Memory::GuardedStrcpy(dst + dst_len, src);
             }
             return dst;
         };
@@ -2419,7 +2531,7 @@ namespace HLE {
         RegisterSymbol("libkernel", "strlen#T#T", [](const GuestArgs& args) -> u64 {
             guest_addr_t str = args.arg1;
             if (!str) return 0;
-            return strlen(reinterpret_cast<const char*>(str));
+            return Memory::GuardedStrlen(str, UINT64_MAX);
         });
 
         // memcpy — plain-name alias of Q3VBxCXhUHs#T#T
@@ -2429,74 +2541,22 @@ namespace HLE {
         RegisterSymbol("libkernel", "memmove#T#T", MemmoveImpl);
 
         // memset — plain-name alias of 8zTFvBIAIN8#T#T
-        RegisterSymbol("libkernel", "memset#T#T", [](const GuestArgs& args) -> u64 {
-            guest_addr_t dst = args.arg1;
-            u32 ch = static_cast<u32>(args.arg2);
-            u64 n = args.arg3;
-            if (dst && n > 0 && n < 0x10000000ULL) {
-                u64 current_dest = dst;
-                u64 remaining = n;
-                while (remaining > 0) {
-                    u64 page_offset = current_dest & 0xFFF;
-                    u64 chunk = 0x1000 - page_offset;
-                    if (chunk > remaining) chunk = remaining;
-                    
-                    if (!Memory::IsWritable(current_dest, chunk)) {
-                        Memory::CommitOnFault(current_dest);
-                        if (!Memory::IsWritable(current_dest, chunk)) {
-                            LOG_WARN(HLE, "libkernel::memset: dest range not writable (0x%llx, %llu) - skipped chunk", current_dest, chunk);
-                            break;
-                        }
-                    }
-                    std::memset(reinterpret_cast<void*>(current_dest), static_cast<int>(ch & 0xFF), chunk);
-                    
-                    current_dest += chunk;
-                    remaining -= chunk;
-                }
-            }
-            return dst;
-        });
+        RegisterSymbol("libkernel", "memset#T#T", MemsetImpl);
 
         // strcmp
-        RegisterSymbol("libkernel", "strcmp#T#T", [](const GuestArgs& args) -> u64 {
+        auto StrcmpImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t a = args.arg1, b = args.arg2;
             if (!a || !b) return (u64)(s64)-1;
-            // H4.6: reject sign-extended SCE error codes passed as pointers
-            constexpr u64 kBadPtrMask  = 0xFFFFFFFF80000000ULL;
-            constexpr u64 kBadPtrMatch = 0xFFFFFFFF80000000ULL;
-            if ((a & kBadPtrMask) == kBadPtrMatch || (b & kBadPtrMask) == kBadPtrMatch) {
-                LOG_WARN(HLE, "strcmp: bad pointer (sign-extended error code): a=0x%llx b=0x%llx", a, b);
-                return (u64)(s64)-1;
-            }
-            if (Memory::IsReadable(a, 1) && Memory::IsReadable(b, 1)) {
-                int cmp = strcmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
-                return (u64)(s64)cmp;
-            }
-            __try {
-                int cmp = strcmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
-                return (u64)(s64)cmp;
-            } __except (EXCEPTION_EXECUTE_HANDLER) {
-                LOG_WARN(HLE, "strcmp: AV (a=0x%llx, b=0x%llx)", a, b);
-                return (u64)(s64)-1;
-            }
-        });
+            return static_cast<u64>(static_cast<s64>(Memory::GuardedStrcmp(a, b)));
+        };
+        RegisterSymbol("libkernel", "strcmp#T#T", StrcmpImpl);
 
         // strncmp (aesyjrHVWy4#T#T)
         auto StrncmpImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t a = args.arg1, b = args.arg2;
             u64 n = args.arg3;
-            if (!a || !b || n == 0 || n > 0x10000000ULL) return (u64)(s64)-1;
-            if (Memory::IsReadable(a, n > 0 ? 1 : 0) && Memory::IsReadable(b, n > 0 ? 1 : 0)) {
-                int cmp = strncmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b), n);
-                return (u64)(s64)cmp;
-            }
-            __try {
-                int cmp = strncmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b), n);
-                return (u64)(s64)cmp;
-            } __except (EXCEPTION_EXECUTE_HANDLER) {
-                LOG_WARN(HLE, "strncmp: AV (a=0x%llx, b=0x%llx, n=%llu)", a, b, n);
-                return (u64)(s64)-1;
-            }
+            if (!a || !b || n == 0) return 0;
+            return static_cast<u64>(static_cast<s64>(Memory::GuardedStrncmp(a, b, n)));
         };
         RegisterSymbol("libkernel", "strncmp#T#T", StrncmpImpl);
         RegisterSymbol("libkernel", "aesyjrHVWy4#T#T", StrncmpImpl);
@@ -2509,13 +2569,7 @@ namespace HLE {
                 int cmp = _stricmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
                 return (u64)(s64)cmp;
             }
-            __try {
-                int cmp = _stricmp(reinterpret_cast<const char*>(a), reinterpret_cast<const char*>(b));
-                return (u64)(s64)cmp;
-            } __except (EXCEPTION_EXECUTE_HANDLER) {
-                LOG_WARN(HLE, "strcasecmp: AV (a=0x%llx, b=0x%llx)", a, b);
-                return (u64)(s64)-1;
-            }
+            return (u64)(s64)-1;
         });
 
         // sprintf (g7zzzLDYGw0#T#T) — real implementation (SysV varargs via
@@ -2564,43 +2618,9 @@ namespace HLE {
         // Misc stubs — return success/0 for unresolved PS5-specific functions
         // These will be updated as we understand them better
         // =====================================================================
-        // Unknown PS5-specific NIDs (return 0 to allow game to continue)
-        for (const char* nid : {
-            "Q4rRL34CEeE#T#T", "pztV4AF18iI#T#T", "8zsu04XNsZ4#T#T",
-            "YQ0navp+YIc#T#T", "weDug8QD-lE#T#T",
-            "RQXLbdT2lc4#T#T", "-P6FNMzk2Kc#T#T",
-            // Note: cond/mutex-attr and cond NIDs (m5-2bsNfv7s, 2Tb92quprl0,
-            // waPcxYiR3WA, g+PZd2hiacg) moved to real implementations in
-            // src/hle/libkernel_sync.cpp — do not re-add them here.
-            "4tPhsP6FpDI#H#I",
-            "4wSze92BhLI#S#N",
-            "-Wreprtu0Qs#S#N", "DzES9hQF4f4#S#N", "x1X76arYMxU#S#N",
-            "-quPa4SEJUw#S#N", "AUXVxWeJU-A#S#N",
-            "MBuItvba6z8#S#N", "hT0IAEvN+M0#E#F", "5zBnau1uIEo#E#F",
-            "tpFJ8LIKvPw#E#F", "AUIHb7jUX3I#E#F", "sUXGfNMalIo#F#G",
-            "Bagshr7OQ6Q#F#G", "p+GcLqwpL9M#E#F", "YE4dbtbz6OE#E#F",
-            "CzkKf7ahIyU#E#F", "wG+84pnNIuo#E#F", "MfDb+4Nln64#E#F",
-            "Wxbg5x3pTXA#E#F", "4llLk7YJRTE#E#F", "3kg7rT0NQIs#S#N",
-            "85zul--eGXs#G#H",
-            "c88Yy54Mx0w#G#H", "xk0AcarP3V4#L#M",
-            "clVvL4ZDntw#L#M", "gjP9-KQzoUk#L#M", "YndgXqQVV7c#L#M",
-            "rPo6tV8D9bM#Q#R", "656LMQSrg6U#Q#R", "jEIXUAr9XE8#R#S",
-            "rPl0INNc-M8#R#S", "hZIg1EWGsHM#P#Q", "Vo5V8KAwCmk#Q#R",
-            "hv1luiJrqQM#L#M",
-            "fMP5NHUOaMk#D#E", "yKDy8S5yLA0#G#H",
-            "6ncge5+l5Qs#L#M", "bwFjS+bX9mA#U#U", "eR2bZFAAU0Q#D#E",
-            "d-kSG2fLrvI#P#Q"
-            // The libkernel audio aliases (ekNvsT22rsY/b+uAV89IlxE/
-            // QOQtbeDqsT4/s1--uE9mBFw with #N#O) are NOT stubbed here:
-            // libaudioout.cpp binds them to the real paced handlers —
-            // Dreaming Sarah's audio thread busy-floods 64KB direct-memory
-            // allocations when sceAudioOutOutput returns instantly.
-        }) {
-            RegisterSymbol("libkernel", nid, [nid](const GuestArgs& /*a*/) -> u64 {
-                LogStubCallOnce("libkernel", nid);
-                return 0;
-            });
-        }
+        // The fallback stubs have been removed because they maliciously shadow
+        // real HLE implementations. Any truly unimplemented NIDs will naturally
+        // fall through to the HLE subsystem's Resolve() auto-stub mechanism.
 
         auto FallbackStub = [](const GuestArgs& args) -> u64 {
             LOG_INFO(HLE, "unknown::stub(args: 0x%llx, 0x%llx, 0x%llx)", args.arg1, args.arg2, args.arg3);

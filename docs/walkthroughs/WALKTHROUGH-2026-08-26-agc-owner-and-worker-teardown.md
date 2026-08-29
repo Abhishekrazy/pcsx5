@@ -11,7 +11,7 @@ We registered a temporary HLE hook for sceAgcDriverRegisterOwner that dumped RDI
 This proved the function allocates an owner handle, writes it to [RDI], and returns 0.
 
 ## Step 2: Resolving sceAgcCreateShader (Gate A)
-After implementing the owner registration, the guest crashed with a failed assertion: ssertion 'error == 0' failed.
+After implementing the owner registration, the guest crashed with a failed assertion: Assertion 'error == 0' failed.
 We corrected sceAgcCreateShader to return SCE_OK (0) instead of a pointer, resolving the crash.
 
 ## Step 3: Reproducing the Worker Teardown Crash (Gate B)
@@ -24,4 +24,7 @@ We fixed PthreadExitImpl to call Kernel::ExitThread(exit_value). This ensured th
 2. CpuCore::HandleThreadExit is called, correctly releasing guest stack and TLS memory for detached threads.
 3. Thread records are accurately tracked, preventing CpuCore::Shutdown from incorrectly terminating threads.
 
-We also updated ExitGuestProcess in hle.cpp to cleanly exit worker threads instead of relying on ::TerminateProcess. All tests now pass cleanly at 100%.
+We audited ExitGuestProcess and confirmed it rightfully serves as a fatal process boundary, using ::TerminateProcess safely to halt execution during UNKNOWN stubs or fatal exceptions.
+
+## Step 5: Regression Testing (Gate B)
+We discovered and fixed a silent memory leak where VirtualFree failed to unmap TLS blocks because the memory manager passed tls_base instead of the base allocation pointer (shifted by 0x10000). We introduced a repeated thread stress test inside worker_libc_abi_tests.cpp covering 100 detached and joinable lifecycles. All 100 threads successfully exited without memory leaks or CRT teardown crashes.

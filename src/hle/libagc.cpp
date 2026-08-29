@@ -1,3 +1,4 @@
+#include "libkernel_sync.h"
 // libSceAgc / libSceAgcDriver HLE — Phase 5 Milestone 0.
 //
 // Ported semantics from SharpEmu (sharpemu_clone/src/SharpEmu.Libs/Agc/):

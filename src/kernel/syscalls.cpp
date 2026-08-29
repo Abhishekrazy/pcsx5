@@ -85,27 +85,17 @@ static bool ReadGuestString(guest_addr_t addr, char* dest, size_t max_size) {
 }
 
 static bool SafeReadBuffer(guest_addr_t addr, void* dest, u64 size) {
-    // Prevent non-canonical addresses from triggering #GP faults.
     if (addr > 0x00007FFFFFFFFFFF) {
         return false;
     }
-    __try {
-        Memory::ReadBuffer(addr, dest, size);
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
+    return Memory::GuardedRead(dest, addr, size);
 }
 
 static bool SafeWriteBuffer(guest_addr_t addr, const void* src, u64 size) {
-    __try {
-        Memory::WriteBuffer(addr, src, size);
-        return true;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
+    if (addr > 0x00007FFFFFFFFFFF) {
         return false;
     }
+    return Memory::GuardedWrite(addr, src, size);
 }
 
 void InitializeSyscallTable() {
@@ -460,33 +450,32 @@ s64 SysStat(guest_addr_t pathname, guest_addr_t statbuf, CONTEXT*) {
     const std::string host_path = TranslateGuestPath(path);
     
     struct {
-        u64 st_dev;
-        u64 st_ino;
-        u64 st_mode;
-        u64 st_nlink;
-        u64 st_uid;
-        u64 st_gid;
-        u64 st_rdev;
-        s64 st_size;
-        s64 st_blksize;
-        s64 st_blocks;
-        s64 st_atime;
-        s64 st_atimensec;
-        s64 st_mtime;
-        s64 st_mtimensec;
-        s64 st_ctime;
-        s64 st_ctimensec;
-        s64 __unused[3];
-    } st = {};
-    
-    DWORD attribs = GetFileAttributesA(host_path.c_str());
-    if (attribs == INVALID_FILE_ATTRIBUTES) {
-        return -ENOENT;
-    }
+        u32 st_dev;     // 0
+        u32 st_ino;     // 4
+        u16 st_mode;    // 8
+        u16 st_nlink;   // 10
+        u32 st_uid;     // 12
+        u32 st_gid;     // 16
+        u32 st_rdev;    // 20
+        s64 st_atime;   // 24
+        s64 st_atimensec; // 32
+        s64 st_mtime;   // 40
+        s64 st_mtimensec; // 48
+        s64 st_ctime;   // 56
+        s64 st_ctimensec; // 64
+        s64 st_size;    // 72
+        s64 st_blocks;  // 80
+        u32 st_blksize; // 88
+        u32 st_flags;   // 92
+        u32 st_gen;     // 96
+        s32 st_lspare;  // 100
+        s64 st_birthtime; // 104
+        s64 st_birthtimensec; // 112
+    } st{};
     
     st.st_dev = 1;
     st.st_ino = 1;
-    st.st_mode = ((attribs & FILE_ATTRIBUTE_DIRECTORY) ? 0040000 : 0100000) | 0644;
+    st.st_mode = 0100666;
     st.st_nlink = 1;
     st.st_uid = 0;
     st.st_gid = 0;
@@ -528,24 +517,28 @@ s64 SysFstat(s64 fd, guest_addr_t statbuf, CONTEXT*) {
     FdEntry* entry = GetFd(static_cast<int>(fd));
     
     struct {
-        u64 st_dev;
-        u64 st_ino;
-        u64 st_mode;
-        u64 st_nlink;
-        u64 st_uid;
-        u64 st_gid;
-        u64 st_rdev;
-        s64 st_size;
-        s64 st_blksize;
-        s64 st_blocks;
-        s64 st_atime;
-        s64 st_atimensec;
-        s64 st_mtime;
-        s64 st_mtimensec;
-        s64 st_ctime;
-        s64 st_ctimensec;
-        s64 __unused[3];
-    } st = {};
+        u32 st_dev;     // 0
+        u32 st_ino;     // 4
+        u16 st_mode;    // 8
+        u16 st_nlink;   // 10
+        u32 st_uid;     // 12
+        u32 st_gid;     // 16
+        u32 st_rdev;    // 20
+        s64 st_atime;   // 24
+        s64 st_atimensec; // 32
+        s64 st_mtime;   // 40
+        s64 st_mtimensec; // 48
+        s64 st_ctime;   // 56
+        s64 st_ctimensec; // 64
+        s64 st_size;    // 72
+        s64 st_blocks;  // 80
+        u32 st_blksize; // 88
+        u32 st_flags;   // 92
+        u32 st_gen;     // 96
+        s32 st_lspare;  // 100
+        s64 st_birthtime; // 104
+        s64 st_birthtimensec; // 112
+    } st{};
     
     st.st_dev = 1;
     st.st_ino = 1;

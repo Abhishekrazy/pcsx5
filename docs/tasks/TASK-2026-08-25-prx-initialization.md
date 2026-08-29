@@ -18,7 +18,7 @@ Recover and implement the real PRX initialization lifecycle, migrating ownership
 ## Claims vs Reality
 | Claim | Classification | Proof |
 |-------|----------------|-------|
-| PRX DT_INIT runs before _start | VERIFIED | boot_log12_debug.txt traces MODULE_INIT_BEGIN before GUEST_ENTRY_BEGIN. |
+| PRX DT_INIT runs before _start | VERIFIED | docs/evidence/2026-08/task-13-prx-init/boot_log12_debug.txt traces MODULE_INIT_BEGIN before GUEST_ENTRY_BEGIN. |
 | PRX constructors run on guest stack | IMPLEMENTED | InvokeGuestOnStack switches rsp to sp - 1024. |
 | libc DT_INIT requires additional kernel state | OBSERVED | libc aborts with 0xa0020013 inside its DT_INIT_ARRAY. |
 | eboot _start executes PRX initializers | HACK (Obsolete) | Removed. Verified that eboot _start does not do this natively. |

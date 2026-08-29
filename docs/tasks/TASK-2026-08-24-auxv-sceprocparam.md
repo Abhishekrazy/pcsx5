@@ -22,4 +22,4 @@
 
 ## 3. Evidence Artifacts
 - **Audit File**: `docs/audits/AUDIT-2026-08-24-auxv-sceprocparam.md`
-- **Trap Logs**: Traces from `diag_trap12.txt` prove the `.init_array` loop was executing, but `Auxv` and `SceProcParam` were never read natively.
+- **Trap Logs**: Traces from `docs/evidence/2026-08/task-09-auxv/diag_trap12.txt` prove the `.init_array` loop was executing, but `Auxv` and `SceProcParam` were never read natively.

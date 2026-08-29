@@ -71,14 +71,24 @@ namespace HLE {
                     Memory::Write<s32>(out + 8, -1);
                     Memory::Write<s32>(out + 12, -1);
                 }
-                return 1;
+                return 0;
             }
-            return static_cast<u64>(count);
+            return 0; // ORBIS_OK
         };
         RegisterUserServiceSymbol("sceUserServiceGetLoginUserIdList",
                                   "fPhymKNvK-A#U#U", GetLoginUserIdList);
 
+
+        // sceUserServiceGetEvent(SceUserServiceEvent* event)
+        auto GetEvent = [](const GuestArgs& args) -> u64 {
+            guest_addr_t out = args.arg1;
+            LOG_INFO(HLE, "sceUserServiceGetEvent(out: 0x%llx)", out);
+            return 0x80280116; // SCE_USER_SERVICE_ERROR_NO_EVENT (or similar)
+        };
+        RegisterUserServiceSymbol("sceUserServiceGetEvent", "unknown_nid", GetEvent);
+
         // sceUserServiceGetInitialUser(SceUserServiceUserId* out)
+
         auto GetInitialUser = [](const GuestArgs& args) -> u64 {
             guest_addr_t out = args.arg1;
             LOG_INFO(HLE, "sceUserServiceGetInitialUser(out: 0x%llx)", out);
@@ -110,6 +120,13 @@ namespace HLE {
         };
         RegisterUserServiceSymbol("sceUserServiceGetUserName",
                                   "1xxcMiGu2fo#U#U", GetUserName);
+
+        auto UnknownJT = [](const GuestArgs& args) -> u64 {
+            LOG_INFO(HLE, "sceUserServiceUnknown_JT(arg1: 0x%llx, arg2: 0x%llx, arg3: 0x%llx)", args.arg1, args.arg2, args.arg3);
+            return 0;
+        };
+        RegisterSymbol("unknown", "JT+t00a3TxA", UnknownJT);
+        RegisterSymbol("unknown", "JT+t00a3TxA#A#B", UnknownJT);
     }
 }
 // namespace HLE

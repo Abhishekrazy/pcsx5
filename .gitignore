@@ -107,4 +107,25 @@ installer/Output/
 
 # Runtime shader disk cache (regenerated at runtime)
 /Cache/
-/kyty_clone
+/kyty_clone/
+/Testing/
+/scratch/
+
+# Temporary debug logs, traces, and crash minidumps
+boot_log*.txt
+boot_log*.log
+run_log*.txt
+diag_trap*.txt
+diag_output.txt
+ppsa*_run*.txt
+ppsa*_diag*.txt
+ppsa*_loader*.txt
+ppsa*_kernel*.txt
+*.dmp
+*.dump
+*.trace
+*.tmp
+
+# Always preserve curated evidence in docs/evidence/
+!docs/evidence/**
+/artifacts/

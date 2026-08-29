@@ -44,7 +44,9 @@ $assetsDir = Join-Path $repoRoot "assets"
 
 # Clean
 if ($Clean) {
-    foreach ($d in @($buildDir, $distDir)) {
+    $csharpBin = Join-Path $repoRoot "src\ui_csharp\bin"
+    $csharpObj = Join-Path $repoRoot "src\ui_csharp\obj"
+    foreach ($d in @($buildDir, $distDir, $csharpBin, $csharpObj)) {
         if (Test-Path $d) { Remove-Item -Recurse -Force $d; Log "Removed $d" }
     }
 }

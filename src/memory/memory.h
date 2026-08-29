@@ -182,6 +182,28 @@ void ReadBuffer (guest_addr_t addr, void* dest, u64 size);
 void WriteBuffer(guest_addr_t addr, const void* src, u64 size);
 
 // ---------------------------------------------------------------------------
+// Page-aware, fault-resilient guest memory primitives (Task 25).
+//
+// These functions validate guest memory page-by-page (4 KiB page boundaries),
+// demand-committing any encountered MEM_RESERVE pages via CommitOnFault.
+// If an unmapped (MEM_FREE) or invalidly protected page is encountered, the
+// operation cleanly halts at the boundary, records the byte count successfully
+// processed, and returns false (or the processed length) without raising a
+// host Access Violation (0xC0000005) or relying on host SEH on guest stacks.
+// ---------------------------------------------------------------------------
+bool GuardedRead(void* dest_host, guest_addr_t src_guest, u64 size, u64* out_bytes_read = nullptr);
+bool GuardedWrite(guest_addr_t dest_guest, const void* src_host, u64 size, u64* out_bytes_written = nullptr);
+bool GuardedCopy(guest_addr_t dest_guest, guest_addr_t src_guest, u64 size, u64* out_bytes_copied = nullptr);
+bool GuardedSet(guest_addr_t dest_guest, int value, u64 size, u64* out_bytes_set = nullptr);
+
+u64          GuardedStrlen(guest_addr_t str_guest, u64 max_len = UINT64_MAX);
+guest_addr_t GuardedStrcpy(guest_addr_t dest_guest, guest_addr_t src_guest, u64 max_len = UINT64_MAX);
+guest_addr_t GuardedStrncpy(guest_addr_t dest_guest, guest_addr_t src_guest, u64 count);
+int          GuardedStrcmp(guest_addr_t a_guest, guest_addr_t b_guest, u64 max_len = UINT64_MAX);
+int          GuardedStrncmp(guest_addr_t a_guest, guest_addr_t b_guest, u64 count);
+int          GuardedMemcmp(guest_addr_t a_guest, guest_addr_t b_guest, u64 count);
+
+// ---------------------------------------------------------------------------
 // Pointer <-> guest address translation
 // ---------------------------------------------------------------------------
 inline void* Translate(guest_addr_t addr) {

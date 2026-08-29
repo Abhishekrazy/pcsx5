@@ -258,11 +258,16 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
             char module_path[MAX_PATH] = {};
             const DWORD len = GetModuleFileNameA(nullptr, module_path, MAX_PATH);
             if (len > 0 && len < MAX_PATH) {
-                nid_candidates.push_back(
-                    std::filesystem::path(module_path).parent_path() / "assets" / "nid_db.txt");
+                std::filesystem::path mpath = module_path;
+                std::filesystem::path dir = mpath.parent_path();
+                for (int i = 0; i < 5; ++i) {
+                    nid_candidates.push_back(dir / "assets" / "nid_db.txt");
+                    dir = dir.parent_path();
+                }
             }
         }
         nid_candidates.emplace_back("assets/nid_db.txt");
+        nid_candidates.emplace_back("../../assets/nid_db.txt");
         bool nid_loaded = false;
         for (const auto& candidate : nid_candidates) {
             std::error_code ec;

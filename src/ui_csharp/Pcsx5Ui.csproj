@@ -14,6 +14,10 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <TieredCompilation>true</TieredCompilation>
+    <TieredCompilationQuickJit>true</TieredCompilationQuickJit>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,11 +38,13 @@
        resolves at runtime.  Conditional so a missing native build does not
        break a pure-C# compile. -->
   <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)/../../build/bin/pcsx5_core.dll')">
-    <!-- Build: copied loose next to the app.  Publish (single-file): bundled
-         into pcsx5.exe via IncludeNativeLibrariesForSelfExtract — DllImport
-         resolves it from the bundle at runtime. -->
     <Content Include="$(MSBuildProjectDirectory)/../../build/bin/pcsx5_core.dll" Link="pcsx5_core.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)/../../build/bin/Release/pcsx5_core.dll') And !Exists('$(MSBuildProjectDirectory)/../../build/bin/pcsx5_core.dll')">
+    <Content Include="$(MSBuildProjectDirectory)/../../build/bin/Release/pcsx5_core.dll" Link="pcsx5_core.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
 

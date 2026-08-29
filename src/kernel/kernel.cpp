@@ -230,6 +230,9 @@ namespace Kernel {
         for (const auto& m : g_loaded_modules) {
             if (m.base_address == module.base_address) return;
         }
+        
+        bool is_main_module = g_loaded_modules.empty();
+        
         g_loaded_modules.push_back(module);
         g_loaded_module_tls_index.push_back(0); // resolved below
         const size_t idx = g_loaded_modules.size() - 1;
@@ -237,6 +240,32 @@ namespace Kernel {
             // 1-based TLS-module index: the first TLS-bearing module loaded is
             // "module 1", which is the main block (fast path in __tls_get_addr).
             g_loaded_module_tls_index[idx] = static_cast<u32>(idx + 1);
+            
+            if (is_main_module && module.tls_file_size > 0 && module.tls_file_size <= 0x100000ULL) {
+                // Initialize the main executable's static TLS block (variant-II).
+                u64 templ_va = 0;
+                for (const auto& seg : module.segments) {
+                    const u64 fo = seg.file_offset;
+                    if (module.tls_template_offset >= fo &&
+                        module.tls_template_offset + module.tls_file_size <= fo + seg.file_size) {
+                        templ_va = seg.address + (module.tls_template_offset - fo);
+                        break;
+                    }
+                }
+                if (templ_va && Memory::IsReadable(templ_va, module.tls_file_size)) {
+                    u64 align = module.tls_align ? module.tls_align : 0x20;
+                    u64 aligned_size = (module.tls_mem_size + align - 1) & ~(align - 1);
+                    guest_addr_t tp = g_guest_tls.ThreadPointer();
+                    if (tp > aligned_size) {
+                        guest_addr_t dest = tp - aligned_size;
+                        std::memmove(reinterpret_cast<void*>(dest),
+                                     reinterpret_cast<void*>(templ_va),
+                                     static_cast<size_t>(module.tls_file_size));
+                        LOG_INFO(Kernel, "Initialized main TLS block: copied 0x%llx bytes to 0x%llx", 
+                                 (unsigned long long)module.tls_file_size, dest);
+                    }
+                }
+            }
         }
     }
 
@@ -1212,13 +1241,12 @@ namespace Kernel {
     }
 
     static bool SafeRead(void* dest, const void* src, size_t size) {
-        __try {
-            std::memcpy(dest, src, size);
+        if (!dest || !src || size == 0) return false;
+        SIZE_T bytes_read = 0;
+        if (ReadProcessMemory(GetCurrentProcess(), src, dest, size, &bytes_read) && bytes_read == size) {
             return true;
         }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            return false;
-        }
+        return false;
     }
 
     // ------------------------------------------------------------------
@@ -1676,6 +1704,38 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                          inst[0], inst[1], inst[2], inst[3], inst[4], inst[5], inst[6], inst[7],
                          inst[8], inst[9], inst[10], inst[11], inst[12], inst[13], inst[14], inst[15]);
             }
+            // Dump instruction bytes BEFORE host RIP
+            if (Memory::IsReadable(context->Rip - 32, 32)) {
+                u8 inst[32];
+                Memory::ReadBuffer(context->Rip - 32, inst, 32);
+                LOG_INFO(Kernel, "VEH Prev Instr Bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+                         inst[0], inst[1], inst[2], inst[3], inst[4], inst[5], inst[6], inst[7],
+                         inst[8], inst[9], inst[10], inst[11], inst[12], inst[13], inst[14], inst[15],
+                         inst[16], inst[17], inst[18], inst[19], inst[20], inst[21], inst[22], inst[23],
+                         inst[24], inst[25], inst[26], inst[27], inst[28], inst[29], inst[30], inst[31]);
+                
+                FILE* fdump = nullptr;
+                if (fopen_s(&fdump, "crash_rip_dump.bin", "wb") == 0 && fdump) {
+                    u64 dump_base = context->Rip - 32768;
+                    u8* dump_buf = new u8[65536];
+                    Memory::ReadBuffer(dump_base, dump_buf, 65536);
+                    fwrite(dump_buf, 1, 65536, fdump);
+                    fclose(fdump);
+                    delete[] dump_buf;
+                    LOG_INFO(Kernel, "Dumped 64KB around RIP to crash_rip_dump.bin");
+                }
+                
+                FILE* fdump2 = nullptr;
+                if (fopen_s(&fdump2, "crash_prx_dump.bin", "wb") == 0 && fdump2) {
+                    u64 dump_base = 0x820000000;
+                    u8* dump_buf = new u8[16*1024*1024]; // 16MB
+                    Memory::ReadBuffer(dump_base, dump_buf, 16*1024*1024);
+                    fwrite(dump_buf, 1, 16*1024*1024, fdump2);
+                    fclose(fdump2);
+                    delete[] dump_buf;
+                    LOG_INFO(Kernel, "Dumped 16MB at 0x820000000 to crash_prx_dump.bin");
+                }
+            }
         }
 
         // ---- GUEST NULL-CALL attribution (durable diagnostic) -------------
@@ -1814,8 +1874,9 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 u32 syscall_number = static_cast<u32>(context->Rax);
                 LOG_WARN(Kernel, "Guest invoked raw syscall %u via int 0x41", syscall_number);
                 if (syscall_number == 1) { // sys_exit
-                    fflush(stdout); fflush(stderr); LogConfig::FlushDedup();
-                    ::TerminateProcess(::GetCurrentProcess(), static_cast<u32>(context->Rdi));
+                    SwitchToThread();
+                    context->Rip += 2;
+                    return EXCEPTION_CONTINUE_EXECUTION;
                 } else if (syscall_number == 431) { // sys_thr_exit
                     ::TerminateThread(::GetCurrentThread(), 0);
                 } else {
@@ -2138,14 +2199,16 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             // so host-frame crashes in real libc.prx code (native memset etc.)
             // can be attributed to the calling guest frame.
             LOG_ERROR(Kernel, "Guest stack scan:");
+            int scan_count = 0;
             for (u64 sp_scan = context->Rsp;
-                 sp_scan < context->Rsp + 0x2000;
+                 sp_scan < context->Rsp + 0x2000 && scan_count < 16;
                  sp_scan += 8) {
                 u64 val = 0;
                 if (!SafeRead(&val, reinterpret_cast<void*>(sp_scan), 8)) break;
                 if (val >= 0x800000000 && val < 0x900000000) {
                     LOG_ERROR(Kernel, "  [RSP+0x%04llx] -> 0x%llx (offset 0x%llx)",
                               sp_scan - context->Rsp, val, val - 0x800000000);
+                    scan_count++;
                 }
             }
 
@@ -2184,14 +2247,16 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             GetCurrentThreadStackLimits(&stack_low, &stack_high);
             const u64 scan_limit = static_cast<u64>(stack_high);
             LOG_ERROR(Kernel, "Guest stack scan (potential return addresses):");
+            int host_scan_count = 0;
             for (u64 sp_scan = context->Rsp;
-                 sp_scan < context->Rsp + 0x2000 && sp_scan + sizeof(u64) <= scan_limit;
+                 sp_scan < context->Rsp + 0x2000 && sp_scan + sizeof(u64) <= scan_limit && host_scan_count < 16;
                  sp_scan += 8) {
                 u64 val = 0;
                 if (!SafeRead(&val, reinterpret_cast<void*>(sp_scan), 8)) break;
                 if (val >= 0x800000000 && val < 0x900000000) {
                     LOG_ERROR(Kernel, "  [RSP+0x%04llx] -> 0x%llx (guest offset 0x%llx)",
                               sp_scan - context->Rsp, val, val - 0x800000000);
+                    host_scan_count++;
                 }
             }
 
@@ -2219,6 +2284,14 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
 
             LOG_ERROR(Kernel, "VEH Unhandled Exception: Code: 0x%X, RIP: 0x%llx, Module: %s, Offset: 0x%llx",
                       exception_record->ExceptionCode, context->Rip, module_name, offset);
+            
+            LOG_ERROR(Kernel, "  Registers:");
+            LOG_ERROR(Kernel, "    RAX: 0x%016llx  RBX: 0x%016llx  RCX: 0x%016llx", context->Rax, context->Rbx, context->Rcx);
+            LOG_ERROR(Kernel, "    RDX: 0x%016llx  RSI: 0x%016llx  RDI: 0x%016llx", context->Rdx, context->Rsi, context->Rdi);
+            LOG_ERROR(Kernel, "    RBP: 0x%016llx  RSP: 0x%016llx  R8 : 0x%016llx", context->Rbp, context->Rsp, context->R8);
+            LOG_ERROR(Kernel, "    R9 : 0x%016llx  R10: 0x%016llx  R11: 0x%016llx", context->R9, context->R10, context->R11);
+            LOG_ERROR(Kernel, "    R12: 0x%016llx  R13: 0x%016llx  R14: 0x%016llx", context->R12, context->R13, context->R14);
+            LOG_ERROR(Kernel, "    R15: 0x%016llx", context->R15);
 
             // I6.1: Boot-status timeline — stages recorded via SetBootStatus.
             auto boot_timeline = GPU::GetBootTimeline();

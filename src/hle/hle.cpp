@@ -178,9 +178,11 @@ namespace HLE {
     }
 
     void ExitGuestProcess(u32 exit_code) {
+        g_guest_exit_code = exit_code;
+        RequestStop(); // Signal all threads to stop
+        
         if (::GetCurrentThreadId() == g_main_guest_thread_id.load(std::memory_order_acquire) &&
             g_guest_exit_env_armed.load(std::memory_order_acquire)) {
-            g_guest_exit_code = exit_code;
             longjmp(g_guest_exit_env, 1);
         }
         // Off the main guest thread there is no armed setjmp buffer; fall
@@ -188,6 +190,7 @@ namespace HLE {
         // active threads crash during host CRT exit teardown.
 #ifdef _WIN32
         ::TerminateProcess(::GetCurrentProcess(), exit_code);
+        ::Sleep(INFINITE); // Wait for termination
 #else
         std::exit(static_cast<int>(exit_code));
 #endif
@@ -317,7 +320,9 @@ namespace HLE {
             RegisterSymbol(mod_copy, name_copy,
                            [mod_copy, name_copy, friendly](const GuestArgs& args) -> u64 {
                                StubContract contract = GetStubContract(name_copy);
-                               if (contract.classification == StubClass::UNKNOWN || contract.classification == StubClass::NEVER_SAFE) {
+                               bool should_abort = (contract.classification == StubClass::NEVER_SAFE) ||
+                                                   (g_strict_import_mode && contract.classification == StubClass::UNKNOWN);
+                               if (should_abort) {
                                    LOG_ERROR(HLE, "==================================================");
                                    LOG_ERROR(HLE, "UNSUPPORTED GUEST OPERATION (NID DB STUB)");
                                    LOG_ERROR(HLE, "MODULE: %s", mod_copy.c_str());
@@ -730,7 +735,9 @@ namespace HLE {
         lock.unlock();
         RegisterSymbol(module_name, name, [module_name, name](const GuestArgs& args) -> u64 {
             StubContract contract = GetStubContract(name);
-            if (contract.classification == StubClass::UNKNOWN || contract.classification == StubClass::NEVER_SAFE) {
+            bool should_abort = (contract.classification == StubClass::NEVER_SAFE) ||
+                                (contract.classification == StubClass::UNKNOWN);
+            if (should_abort) {
                 std::string friendly = ResolveFriendlyName(name);
                 LOG_ERROR(HLE, "==================================================");
                 LOG_ERROR(HLE, "UNSUPPORTED GUEST OPERATION (RESOLVE STUB)");
@@ -800,7 +807,9 @@ namespace HLE {
         lock.unlock();
         RegisterSymbol("unknown", name, [name](const GuestArgs& args) -> u64 {
             StubContract contract = GetStubContract(name);
-            if (contract.classification == StubClass::UNKNOWN || contract.classification == StubClass::NEVER_SAFE) {
+            bool should_abort = (contract.classification == StubClass::NEVER_SAFE) ||
+                                (g_strict_import_mode && contract.classification == StubClass::UNKNOWN);
+            if (should_abort) {
                 std::string friendly = ResolveFriendlyName(name);
                 LOG_ERROR(HLE, "==================================================");
                 LOG_ERROR(HLE, "UNSUPPORTED GUEST OPERATION (RESOLVE_ANY STUB)");

@@ -93,7 +93,9 @@ struct GuestThread {
     // Running state
     bool is_running = false;
     bool is_joined = false;
-    bool detached = false;         // auto-cleanup (stack/TLS/handle) on thread exit
+    bool detached = false;
+    u64 saved_gs_08 = 0;
+    u64 saved_gs_10 = 0;         // auto-cleanup (stack/TLS/handle) on thread exit
 
     // Synchronization
     std::mutex mtx;
@@ -118,6 +120,8 @@ namespace CpuCore {
 
     // Initialize the CPU core subsystem
     bool Initialize();
+    void HandleThreadExit(u64 thread_id, u64 exit_code);
+    GuestThread* GetThreadById(u64 thread_id);
 
     // Shutdown the CPU core subsystem
     void Shutdown();

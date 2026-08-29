@@ -306,6 +306,12 @@ namespace HLE {
                                char* out_buf, int buf_size);
 
     // Resets the libc guest heap allocator (clears bump pointer, end, and free list).
+
+    u64 LibcHeapAlloc(u64 size, u64 align);
+    void LibcHeapFree(u64 ptr);
+
+    u64 LibcHeapAlloc(u64 size, u64 align);
+    void LibcHeapFree(u64 ptr);
     void ResetLibcHeap();
 
     // Dynamic dispatcher callback (called by assembly bridge).
