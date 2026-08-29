@@ -87,9 +87,9 @@ void TestPosixOpenFstatClose() {
 
     const guest_addr_t statbuf = g_page + 0x400;
     assert(PosixFstat(Args(fd, statbuf)) == 0);
-    // st_size (field 8 of the Orbis stat layout) must match the file written
+    // st_size (offset 72 / 9*8 of the Orbis stat layout) must match the file written
     // by main() ("payload" = 7 bytes).
-    assert(Memory::Read<s64>(statbuf + 7 * 8) == 7);
+    assert(Memory::Read<s64>(statbuf + 72) == 7);
 
     assert(PosixClose(Args(fd)) == 0);
     HLE::SetGuestErrno(0);
@@ -135,7 +135,7 @@ void TestPosixStat() {
     const guest_addr_t path = PutString(kTestFile, 0x100);
     const guest_addr_t statbuf = g_page + 0x400;
     assert(PosixStat(Args(path, statbuf)) == 0);
-    assert(Memory::Read<s64>(statbuf + 7 * 8) == 7); // st_size
+    assert(Memory::Read<s64>(statbuf + 72) == 7); // st_size
 
     HLE::SetGuestErrno(0);
     const guest_addr_t missing = PutString("/__pcsx5_test_missing__/nope.bin", 0x180);
