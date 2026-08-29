@@ -785,7 +785,7 @@ if(BUILD_TESTING)
         )
         # ALL: ctest does not build targets — the ELFs must be produced by the
         # default build or the smoke tests fail with missing files (CI bug).
-        add_custom_target(guest_test_elfs
+        add_custom_target(guest_test_elfs ALL
             DEPENDS ${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
                     ${CMAKE_BINARY_DIR}/test_elf/tls_guest.elf
         )
