@@ -15,7 +15,6 @@
 - Safe and reproducible release/update system.
 
 ### Engineering Platform
-- Specialized AI agents for investigation.
 - Independent architectural verification.
 - Automated crash clustering.
 - Trace comparison.
