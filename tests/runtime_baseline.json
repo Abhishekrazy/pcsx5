@@ -26,7 +26,7 @@
         "classification": "UNKNOWN",
         "evidence": "OBSERVED",
         "next_step": "Run the investigate-boundary skill; the fatal site is not yet distinguished from handled faults.",
-        "doc": "docs/walkthroughs/WALKTHROUGH-2026-08-30-ai-framework-initialization.md"
+        "doc": null
       },
       "last_run_id": "PPSA02929_20260830_065056_baseline",
       "git_revision": "66e0369",
@@ -59,7 +59,7 @@
         "classification": "UNKNOWN",
         "evidence": "OBSERVED",
         "next_step": "Identify the caller of the null pointer and whether it is an unresolved import; run investigate-boundary then recover-contract.",
-        "doc": "docs/walkthroughs/WALKTHROUGH-2026-08-30-ai-framework-initialization.md"
+        "doc": null
       },
       "last_run_id": "PPSA21564_20260830_065127_baseline",
       "git_revision": "66e0369",

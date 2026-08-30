@@ -62,8 +62,7 @@ generated from real runs rather than maintained by hand.
 | Dreaming Sarah | PPSA02929 | Crashes | ~24 s | content load, menus, guest threads |
 | ASTRO BOT | PPSA21564 | Crashes | ~35 s | guest threads |
 
-Both terminate with `STATUS_ACCESS_VIOLATION`. The current investigation targets
-are recorded in [`docs/`](docs/).
+Both terminate with `STATUS_ACCESS_VIOLATION`.
 
 ## Screenshots
 
@@ -153,7 +152,7 @@ tests/          unit, integration and regression tests (CTest)
 tools/          developer and reverse-engineering tooling
 third_party/    vendored dependencies
 architecture/   canonical architecture reference and ADRs
-docs/           task, audit and evidence records
+docs/           engineering goals and repository hygiene
 guide/          component map and how to extend the emulator
 wiki/           contributor how-tos (HLE symbols, syscalls, debugging, PKG)
 compat/         per-title compatibility database

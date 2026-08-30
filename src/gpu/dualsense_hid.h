@@ -66,7 +66,7 @@ namespace DualSense {
 
     // Number of DualSense controllers currently enumerated (0 when none).
     // Only controller 0 is currently streamed; see
-    // docs/tasks/TASK-2026-08-30-multi-player-input-routing.md.
+    // architecture/decisions/ADR-001-input-ownership.md.
     int GetDeviceCount();
 
     // ---- output ----------------------------------------------------------
