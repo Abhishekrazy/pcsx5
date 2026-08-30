@@ -1,8 +1,7 @@
 # PCSX5 Developer Guide
 
 All engineering documentation in one place. Read `COMPONENT_MAP.md` first; use
-`EXTENDING.md` when adding a feature. `PROJECT_ATOM.md` is the machine-readable
-"AI memory" that a future session loads to understand the project instantly.
+`EXTENDING.md` when adding a feature.
 
 ## Index
 
