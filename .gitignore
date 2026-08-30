@@ -125,8 +125,6 @@ ppsa*_kernel*.txt
 *.trace
 *.tmp
 
-# Always preserve curated evidence in docs/evidence/
-!docs/evidence/**
 /artifacts/
 releases/
 
