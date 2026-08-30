@@ -1,0 +1,98 @@
+---
+name: Compatibility Report
+about: Submit a PS5 game compatibility report for PCSX5
+title: "[GAME TITLE] (TITLE_ID) - Status"
+labels: ["compat-report", "status-nothing"]
+assignees: ""
+---
+
+## 🎮 Game Information
+
+| Field | Value |
+|-------|-------|
+| **Game Title** | |
+| **Title ID** | (e.g., `PPSA-XXXXX_00`) |
+| **Region** | (e.g., US, EU, JP, ASIA) |
+| **Version** | (e.g., 1.00, 1.02) |
+| **Disc / Digital** | |
+| **PS5 Firmware** | (e.g., 4.50, 5.00, 6.00, 7.00, 8.00, 9.00) |
+
+## 🖥️ Test Environment
+
+| Component | Specification |
+|-----------|---------------|
+| **PCSX5 Version** | (e.g., `v0.1.0-123-gabc1234` or `nightly-2024-01-15`) |
+| **CPU** | (e.g., Ryzen 7 5800X, i7-12700K) |
+| **GPU** | (e.g., RTX 3080, RX 6800 XT) |
+| **RAM** | (e.g., 32GB DDR4-3600) |
+| **OS** | (e.g., Windows 11 22H2, Linux Mint 21) |
+| **Graphics Backend** | [ ] Vulkan  [ ] OpenGL |
+
+## ⚙️ Settings Used
+
+| Setting | Value |
+|---------|-------|
+| **Resolution** | (e.g., Native, 1920x1080, 3840x2160) |
+| **Upscaling** | [ ] None  [ ] FSR  [ ] NIS |
+| **Frame Limit** | [ ] 30 FPS  [ ] 60 FPS  [ ] Uncapped |
+| **VSync** | [ ] On  [ ] Off |
+| **Other Notable Settings** | |
+
+## 🏷️ Compatibility Status
+
+**Select ONE status label** (update the label on the right sidebar):
+
+- [ ] `status-playable` - **Playable**: Completable with minor/no issues; stable 30/60 FPS
+- [ ] `status-ingame` - **Ingame**: Reaches gameplay but has major issues (crashes, graphics, performance)
+- [ ] `status-menus` - **Menus**: Boots to main menu only; crashes/freezes before gameplay
+- [ ] `status-intro` - **Intro**: Reaches logos/intro screens but crashes before menus
+- [ ] `status-boots` - **Boot**: Shows something (logo, splash) but crashes before intro
+- [ ] `status-nothing` - **Nothing**: Black screen, immediate crash, or fails to boot
+
+## 📋 Detailed Report
+
+### ✅ What Works
+- 
+
+### ⚠️ Minor Issues
+- 
+
+### ❌ Major Issues
+- 
+
+### 🔧 Workarounds / Fixes
+- 
+
+## 📸 Evidence
+
+### Screenshots
+<!-- Drag and drop screenshots here -->
+- In-game gameplay:
+- Graphical issues (if any):
+- Settings used:
+
+### Logs
+<!-- Attach or paste relevant log excerpts -->
+<details>
+<summary>PCSX5 Log (click to expand)</summary>
+
+```
+Paste relevant log lines here
+```
+
+</details>
+
+## ✅ Checklist
+
+- [ ] Tested with latest PCSX5 version (stable or nightly)
+- [ ] Tested for at least 10-15 minutes of gameplay
+- [ ] Tested save/load functionality
+- [ ] Included hardware specs and PCSX5 version
+- [ ] Applied exactly ONE status label
+- [ ] Added `compat-report` label
+- [ ] Attached screenshots (if applicable)
+- [ ] Attached logs for crashes/issues
+
+## 📝 Additional Notes
+
+<!-- Any other information: DLC tested, specific scenes that crash, comparison with other emulators, etc. -->

@@ -77,7 +77,7 @@ Following the Task 05 recovery of the `sceAgcSuspendPoint` safe stub contract:
 - **Real Emulator Bug**: None in memory manager, GPU pipeline, or DWARF LSDA unwinder.
 - **Performance Fix**: LinkModule symbol lookup was optimized with $O(1)$ hash table caching, dropping module link time from minutes to milliseconds.
 - **Log Hygiene**: VEH non-fault C++ exceptions (`0xE06D7363`) were decoupled from console info flooding.
-- **Architectural Integrity**: In strict adherence to `GEMINI.md`, no speculative crash suppression, fake exception catching, or sentinel skips were introduced.
+- **Architectural Integrity**: In strict adherence to the project engineering guidelines, no speculative crash suppression, fake exception catching, or sentinel skips were introduced.
 
 ---
 

@@ -67,7 +67,6 @@ ps5.csv
 # Python cache
 __pycache__/
 *.pyc
-.github/ISSUE_TEMPLATE/compatibility-report.yml
 .gitignore
 .gitignore
 generate_compat_table.py

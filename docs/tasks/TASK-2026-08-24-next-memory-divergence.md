@@ -12,7 +12,7 @@
 - **DWARF LSDA Unwinder Verification**: Verified that the HLE unwinder traverses `.eh_frame_hdr` faithfully and correctly invokes `std::terminate` (ExitGuestProcess 134) because no catch handler exists on the worker thread.
 - **Comparative Multi-Title Baseline (PPSA21564)**: Profiled `PPSA21564` (Brotato) under identical diagnostics. Discovered that `PPSA21564` throws `St9bad_alloc` in static initializers (`DT_INIT`), subsequently hitting missing stub `cfwBSQyr5Ys#A#B` (`__cxa_demangle`).
 - **Loader / Linker Optimization**: Optimized `LinkModule` symbol resolution using $O(1)$ hash table caching, dropping module linking overhead from minutes to <1 second.
-- **Strict Architecture Compliance**: Enforced zero Fast Sentinel Recovery, zero fake catch insertions, and zero unverified stub contracts per `GEMINI.md`.
+- **Strict Architecture Compliance**: Enforced zero Fast Sentinel Recovery, zero fake catch insertions, and zero unverified stub contracts per the project engineering guidelines.
 
 ---
 

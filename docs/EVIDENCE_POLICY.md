@@ -41,7 +41,7 @@ The emulator adheres to the principle of **Evidence Before Implementation**. How
 
 ### 7. What Must Never Be Deleted
 - Authoritative source code (`src/**`), unit/integration test suites (`tests/**`), and build scripts (`CMakeLists.txt`, `build_release.ps1`, `build_and_package.ps1`).
-- Canonical documentation (`docs/**`, `architecture/**`, `guide/**`, `wiki/**`, `GEMINI.md`, `README.md`, `PENDING.md`, `PROGRESS.md`, `ROADMAP.md`).
+- Canonical documentation (`docs/**`, `architecture/**`, `guide/**`, `wiki/**`, `README.md`, `ROADMAP.md`).
 - Required test fixtures (`tests/golden/**`, `tests/test_elf/**`, `assets/**`).
 - Curated diagnostic evidence in `docs/evidence/**`.
 - Developer and reverse-engineering tools (`tools/**`).

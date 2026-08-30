@@ -18,7 +18,7 @@ Missing evidence:
 - The actual access pattern `libc.prx` performs during startup.
 
 ## 2. Methodology
-To strictly adhere to `GEMINI.md` (no speculative PS5 behavior, evidence before implementation), we will use hardware-level trapping (Vectored Exception Handling) during the guest boot process to trace:
+To strictly adhere to the project engineering guidelines (no speculative PS5 behavior, evidence before implementation), we will use hardware-level trapping (Vectored Exception Handling) during the guest boot process to trace:
 1. Reads to the Auxiliary Vector array.
 2. Reads to the `SceProcParam` memory block.
 

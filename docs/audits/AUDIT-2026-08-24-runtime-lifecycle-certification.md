@@ -246,7 +246,7 @@ None of the identified discrepancies violate runtime safety or prevent clean re-
 
 **LIFECYCLE CERTIFIED**
 
-All lifecycle invariants defined in `GEMINI.md` and `architecture/RUNTIME_LIFECYCLE.md` are verified and confirmed by empirical evidence:
+All lifecycle invariants defined in the project engineering guidelines and `architecture/RUNTIME_LIFECYCLE.md` are verified and confirmed by empirical evidence:
 - 100% test pass rate across all 45 CTest targets.
 - 100% clean multi-session core lifecycle execution.
 - Real PS5 titles (Dreaming Sarah `PPSA02929` and Brotato `PPSA21564`) maintain baseline compatibility without regressions.

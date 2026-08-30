@@ -17,7 +17,7 @@ All engineering documentation in one place. Read `COMPONENT_MAP.md` first; use
 - Architecture deep-dive: `../wiki/architecture.md`
 - Developer guide (HLE symbols, tests, porting): `../DEVGUIDE.md`
 - Build: `../BUILDING.md` and `../build_release.ps1`
-- Roadmap / priorities: `../ROADMAP.md`, `../PENDING.md`, `../PROGRESS.md`
+- Roadmap / priorities: `../ROADMAP.md`, `../docs/GOALS.md`
 
 ## Generate this folder (authoritative source of truth)
 
