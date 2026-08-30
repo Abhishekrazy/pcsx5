@@ -152,7 +152,8 @@ src/ui_csharp/  .NET 9 WPF desktop shell
 tests/          unit, integration and regression tests (CTest)
 tools/          developer and reverse-engineering tooling
 third_party/    vendored dependencies
-docs/           architecture, task and audit records
+architecture/   canonical architecture reference and ADRs
+docs/           task, audit and evidence records
 guide/          component map and how to extend the emulator
 wiki/           contributor how-tos (HLE symbols, syscalls, debugging, PKG)
 compat/         per-title compatibility database
