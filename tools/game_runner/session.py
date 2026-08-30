@@ -48,7 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import screen_capture as sc
 from crash_analyzer import analyze_crash
-from input_harness import send_key_press
+from input_harness import send_key_press, click_at
 
 try:
     import psutil
@@ -210,6 +210,26 @@ def scan_log(path):
 # --------------------------------------------------------------------------- #
 # The run itself
 # --------------------------------------------------------------------------- #
+def parse_clicks(spec):
+    """'960,540@5;480,300@8' -> [(5.0, 960, 540), (8.0, 480, 300)] sorted by time.
+
+    Pointer input is needed to verify UI affordances that keyboard and gamepad
+    navigation do not yet reach."""
+    events = []
+    if not spec:
+        return events
+    for item in spec.split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        if "@" not in item or "," not in item:
+            raise SystemExit("bad --clicks entry '%s' (expected x,y@seconds)" % item)
+        coords, at = item.rsplit("@", 1)
+        x, y = coords.split(",", 1)
+        events.append((float(at), int(x), int(y)))
+    return sorted(events)
+
+
 def parse_keys(spec):
     """'space@5,enter@12' -> [(5.0, 'space'), (12.0, 'enter')] sorted by time."""
     events = []
@@ -226,12 +246,19 @@ def parse_keys(spec):
     return sorted(events)
 
 
-def run_once(args, title_id, eboot, cli, run_index=0):
+def run_once(args, title_id, eboot, cli, run_index=0, launch=None):
+    """Run one process under observation and record it.
+
+    `launch` generalizes this beyond the emulator CLI: pass
+    {"prefix", "argv", "cwd", "kind"} to observe another process (the WPF shell)
+    with the same capture, freeze detection, classification and record schema.
+    Without it, the emulator CLI is launched for `title_id`."""
     os.makedirs(ARTIFACTS, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     label = "_" + args.label if getattr(args, "label", None) else ""
     suffix = "_r%d" % run_index if run_index else ""
-    run_id = "%s_%s%s%s" % (title_id, stamp, label, suffix)
+    prefix = launch["prefix"] if launch else title_id
+    run_id = "%s_%s%s%s" % (prefix, stamp, label, suffix)
     run_dir = os.path.join(ARTIFACTS, run_id)
     frames_dir = os.path.join(run_dir, "frames")
     os.makedirs(frames_dir, exist_ok=True)
@@ -239,6 +266,18 @@ def run_once(args, title_id, eboot, cli, run_index=0):
 
     kill_stale()
 
+    if launch:
+        argv = list(launch["argv"])
+        cwd = launch["cwd"]
+    else:
+        argv, cwd = _emulator_argv(args, title_id, eboot, cli, run_dir)
+
+    _print_launch(run_id, argv, args)
+    return _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
+                    title_id, eboot, cli, launch)
+
+
+def _emulator_argv(args, title_id, eboot, cli, run_dir):
     argv = [cli]
     if args.headless:
         argv.append("--headless")
@@ -248,15 +287,21 @@ def run_once(args, title_id, eboot, cli, run_index=0):
     if args.strict_imports:
         argv.append("--strict-imports")
     argv += ["--report=" + os.path.join(run_dir, "import_report.json"), eboot]
+    return argv, os.path.dirname(cli)
 
+
+def _print_launch(run_id, argv, args):
     print("[session] run_id   %s" % run_id)
-    print("[session] cli      %s" % " ".join(argv))
+    print("[session] exec     %s" % " ".join(argv))
     print("[session] duration %ss  sample %ss  headless=%s"
           % (args.duration, args.sample, args.headless))
 
+
+def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
+             title_id, eboot, cli, launch):
     log_file = open(log_path, "wb")
     started = time.time()
-    proc = subprocess.Popen(argv, cwd=os.path.dirname(cli),
+    proc = subprocess.Popen(argv, cwd=cwd,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     hwnd_box = [0]
@@ -279,6 +324,8 @@ def run_once(args, title_id, eboot, cli, run_index=0):
 
     key_events = parse_keys(args.keys)
     key_index = 0
+    click_events = parse_clicks(getattr(args, "clicks", None))
+    click_index = 0
     frames = []
     prev_img = None
     first_frame_t = None
@@ -307,11 +354,22 @@ def run_once(args, title_id, eboot, cli, run_index=0):
             termination = "duration-reached"
             break
 
+        # Input must land in the window under test, not wherever focus happens
+        # to be, so resolve and focus it before dispatching anything.
+        if (key_index < len(key_events) and key_events[key_index][0] <= elapsed) or            (click_index < len(click_events) and click_events[click_index][0] <= elapsed):
+            sc.focus_window(hwnd_box[0] or sc.find_window_by_pid(proc.pid))
+
         while key_index < len(key_events) and key_events[key_index][0] <= elapsed:
             key = key_events[key_index][1]
             print("[session] t=%6.1fs key '%s'" % (elapsed, key))
             send_key_press(key)
             key_index += 1
+
+        while click_index < len(click_events) and click_events[click_index][0] <= elapsed:
+            _, cx, cy = click_events[click_index]
+            print("[session] t=%6.1fs click (%d,%d)" % (elapsed, cx, cy))
+            click_at(cx, cy)
+            click_index += 1
 
         if ps is not None:
             try:
@@ -409,8 +467,9 @@ def run_once(args, title_id, eboot, cli, run_index=0):
     record = {
         "schema": "pcsx5-runtime-run/1",
         "run_id": run_id,
+        "kind": launch["kind"] if launch else "title",
         "title_id": title_id,
-        "eboot": os.path.relpath(eboot, REPO).replace("\\", "/"),
+        "eboot": None if not eboot else os.path.relpath(eboot, REPO).replace("\\", "/"),
         "git_revision": git_revision(),
         "build_revision": build_revision(cli),
         "argv": argv,
@@ -628,6 +687,49 @@ def cmd_longrun(args):
     return cmd_run(args)
 
 
+UI_EXE_CANDIDATES = [
+    os.path.join(REPO, "src", "ui_csharp", "bin", "Release",
+                 "net9.0-windows", "win-x64", "pcsx5.exe"),
+    os.path.join(REPO, "src", "ui_csharp", "bin", "Debug",
+                 "net9.0-windows", "win-x64", "pcsx5.exe"),
+    os.path.join(REPO, "dist", "pcsx5.exe"),
+]
+
+
+def find_ui_exe():
+    for c in UI_EXE_CANDIDATES:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
+def cmd_shell(args):
+    """Observe the WPF shell itself.
+
+    The shell is a shipping product surface, so a UI change needs the same kind
+    of evidence a runtime change does: did it start, did it render, did it keep
+    rendering, and what did it look like.  This reuses the emulator run path
+    rather than adding a second launcher."""
+    exe = getattr(args, "exe", None) or find_ui_exe()
+    if exe and not os.path.isfile(exe):
+        raise SystemExit("shell executable not found: %s" % exe)
+    if not exe:
+        raise SystemExit(
+            "pcsx5.exe (WPF shell) not found. Build it first: "
+            "  dotnet build src/ui_csharp/Pcsx5Ui.csproj -c Release -r win-x64")
+    args.headless = False          # a windowless UI run proves nothing
+    args.input = None
+    args.strict_imports = False
+    args.restart_on_crash = 0
+    rec = run_once(args, "shell", None, exe, launch={
+        "prefix": "SHELL",
+        "argv": [exe],
+        "cwd": os.path.dirname(exe),
+        "kind": "shell",
+    })
+    return 0 if rec["status"] in ("progressing", "frozen") else 1
+
+
 def cmd_list(args):
     titles = discover_titles()
     print("Titles under Games/:")
@@ -700,6 +802,7 @@ def main():
                         help="no window; log-only run (frame validation is impossible)")
         sp.add_argument("--input", help="controller replay JSON, passed as --play-input=")
         sp.add_argument("--keys", help='keyboard schedule, e.g. "space@10,enter@20"')
+        sp.add_argument("--clicks", help='mouse schedule, e.g. "960,540@5;480,300@8"')
         sp.add_argument("--sample", type=float, default=2.0,
                         help="frame sample interval in seconds")
         sp.add_argument("--change-threshold", type=float, default=0.005,
@@ -720,6 +823,18 @@ def main():
     sp.add_argument("--minutes", type=float, required=True,
                     help="1, 5, 10, 30 or 60 are the standard soak durations")
     sp.set_defaults(func=cmd_longrun)
+
+    sp = sub.add_parser("shell", help="launch and observe the WPF desktop shell")
+    sp.add_argument("--exe", help="explicit shell executable; use to verify the "
+                                  "packaged dist/ layout rather than the dev build")
+    sp.add_argument("--duration", type=int, default=45, help="seconds")
+    sp.add_argument("--keys", help='keyboard schedule, e.g. "tab@3,enter@5"')
+    sp.add_argument("--clicks", help='mouse schedule, e.g. "960,540@5;480,300@8"')
+    sp.add_argument("--sample", type=float, default=1.5)
+    sp.add_argument("--change-threshold", type=float, default=0.002)
+    sp.add_argument("--stop-on-freeze", type=float, default=0.0)
+    sp.add_argument("--label", help="slug appended to the run id")
+    sp.set_defaults(func=cmd_shell)
 
     sp = sub.add_parser("list", help="list titles and recent runs")
     sp.set_defaults(func=cmd_list)

@@ -149,6 +149,50 @@ set(SHADER_TRANSLATE_SRC
 )
 
 # ------------------------------------------------------------------------
+# DualSenseWindows — vendored DualSense HID library by Ludwig Fuechsl (MIT).
+#   https://github.com/Ohjurot/DualSense-Windows  @ a78fbab1
+# Provenance, credit, licence compatibility and the update procedure are
+# documented in third_party/DualSenseWindows/README.md.
+#
+# Provides the DualSense input and output report handling PCSX5 needs:
+# analog sticks, touchpad and motion on the way in; rumble, adaptive
+# triggers, lightbar, player LEDs and the microphone LED on the way out.
+# Windows-only, so it is guarded accordingly.
+# ------------------------------------------------------------------------
+if(WIN32)
+    add_library(dualsense_windows STATIC
+        third_party/DualSenseWindows/src/DualSenseWindows/IO.cpp
+        third_party/DualSenseWindows/src/DualSenseWindows/DS5_Input.cpp
+        third_party/DualSenseWindows/src/DualSenseWindows/DS5_Output.cpp
+        third_party/DualSenseWindows/src/DualSenseWindows/DS_CRC32.cpp
+        third_party/DualSenseWindows/src/DualSenseWindows/Helpers.cpp
+    )
+    target_include_directories(dualsense_windows
+        PUBLIC  third_party/DualSenseWindows/include
+        PRIVATE third_party/DualSenseWindows/src
+    )
+    # DS5W_API resolves to nothing for a static build; consumers must define
+    # DS5W_USE_LIB so they agree (see third_party/DualSenseWindows/DSW_Api.h).
+    target_compile_definitions(dualsense_windows
+        PRIVATE DS5W_BUILD_LIB
+        INTERFACE DS5W_USE_LIB
+    )
+    target_link_libraries(dualsense_windows PUBLIC hid setupapi)
+    set_target_properties(dualsense_windows PROPERTIES FOLDER "third_party")
+    # Vendored third-party source: do not hold it to our warning settings.
+    if(MSVC)
+        target_compile_options(dualsense_windows PRIVATE /W0)
+    endif()
+endif()
+
+# src/gpu/dualsense_ds5w.cpp is compiled into the core, the CLI and the test
+# executables alike. link_libraries() only affects targets created after this
+# point, which is why it sits here rather than beside the other link lines.
+if(WIN32)
+    link_libraries(dualsense_windows)
+endif()
+
+# ------------------------------------------------------------------------
 # LibAtrac9 — vendored C port of Thealexbarney/LibAtrac9 (MIT).
 # Used by the SndPreviewPlayer (src/ui/snd_player.cpp) and by the
 # libSceAtrac9 HLE codec path (src/hle/libatrac9.cpp).  Defined at top
@@ -275,6 +319,7 @@ add_library(pcsx5_core SHARED
     src/gpu/vulkan/vulkan_device.h
     src/gpu/vulkan/vulkan_device.cpp
     src/gpu/vulkan_backend.cpp
+    src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
     src/gpu/vk_context.cpp
@@ -316,6 +361,9 @@ add_executable(pcsx5_cli
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
     src/gpu/dualsense_hid.h
+    # The DualSense implementation is no longer header-inline, and pcsx5_core is
+    # a DLL that does not export it, so this target compiles it directly.
+    src/gpu/dualsense_ds5w.cpp
 )
 target_include_directories(pcsx5_cli PRIVATE src ${GLFW3_INCLUDE_DIR})
 
@@ -330,6 +378,7 @@ if(BUILD_TESTING)
         src/memory/memory.cpp
         src/config/config.cpp
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -502,6 +551,7 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -562,6 +612,7 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
         src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
@@ -617,6 +668,7 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -691,6 +743,7 @@ if(BUILD_TESTING)
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1185,6 +1238,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1246,6 +1300,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1307,6 +1362,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1369,6 +1425,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1425,6 +1482,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
         src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
         src/gpu/vk_present.cpp
@@ -1481,6 +1539,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1543,6 +1602,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1605,6 +1665,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1666,6 +1727,7 @@ add_executable(dump_imports
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1719,6 +1781,7 @@ add_executable(libcxxabi_tests
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp
@@ -1826,6 +1889,7 @@ add_executable(libcxxabi_tests
         ${KERNEL_SRC}
         ${CPU_SRC}
         src/gpu/vulkan_backend.cpp
+        src/gpu/dualsense_ds5w.cpp
     src/gpu/input/input_bot.h
     src/gpu/input/input_bot.cpp
         src/gpu/vk_context.cpp

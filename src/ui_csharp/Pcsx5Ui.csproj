@@ -34,6 +34,28 @@
     <PackageReference Include="NAudio" Version="2.3.0" />
   </ItemGroup>
 
+  <!-- Localization files.  I18n.Load looks for assets/lang next to the app and
+       then walks up only five directory levels; the build output sits six levels
+       below the repository root, so without this copy the app finds nothing and
+       renders raw translation keys.  Copying them makes the app self-contained
+       instead of depending on where it happens to sit. -->
+  <ItemGroup>
+    <Content Include="$(MSBuildProjectDirectory)/../../assets/lang/*.json"
+             Link="assets/lang/%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Boot analyzer used by the Tools tab.  LocateBootParser() probes a fixed
+       list of relative paths; the dev tree happens to match one but the packaged
+       layout does not, so carry the tool with the app instead of guessing. -->
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)/../../build/Release/pcsx5_boot_parser.exe')">
+    <Content Include="$(MSBuildProjectDirectory)/../../build/Release/pcsx5_boot_parser.exe"
+             Link="pcsx5_boot_parser.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- Emulator core built by CMake (build/bin/pcsx5_core.dll).  Copied next
        to the app in both build and publish output so DllImport("pcsx5_core")
        resolves at runtime.  Conditional so a missing native build does not

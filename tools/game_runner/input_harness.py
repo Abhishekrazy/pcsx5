@@ -71,3 +71,54 @@ def send_key_press(key_name, duration=0.1):
     press_key(vk)
     time.sleep(duration)
     release_key(vk)
+
+
+# --- Mouse -------------------------------------------------------------------
+# UI verification needs pointer input: many shell affordances are reachable only
+# by click until keyboard/gamepad navigation is complete, and a verification run
+# must be able to drive them without a human at the machine.
+
+MOUSEEVENTF_MOVE = 0x0001
+MOUSEEVENTF_ABSOLUTE = 0x8000
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+
+
+def _abs(x, y):
+    """Convert screen pixels to the 0..65535 absolute range SendInput wants."""
+    user32 = ctypes.windll.user32
+    user32.SetProcessDPIAware()
+    w = user32.GetSystemMetrics(0)
+    h = user32.GetSystemMetrics(1)
+    return int(x * 65535 / (w - 1)), int(y * 65535 / (h - 1))
+
+
+def _mouse_event(flags, ax=0, ay=0):
+    extra = ctypes.c_ulong(0)
+    ii_ = Input_I()
+    ii_.mi = MouseInput(ax, ay, 0, flags, 0, ctypes.pointer(extra))
+    inp = Input(ctypes.c_ulong(0), ii_)
+    ctypes.windll.user32.SendInput(1, ctypes.pointer(inp), ctypes.sizeof(inp))
+
+
+def move_to(x, y):
+    ax, ay = _abs(x, y)
+    _mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, ax, ay)
+
+
+def click_at(x, y, settle=0.12):
+    """Move to a screen coordinate and left-click it."""
+    move_to(x, y)
+    time.sleep(settle)
+    _mouse_event(MOUSEEVENTF_LEFTDOWN)
+    time.sleep(0.05)
+    _mouse_event(MOUSEEVENTF_LEFTUP)
+    time.sleep(settle)
+
+
+def double_click_at(x, y, settle=0.12):
+    click_at(x, y, settle)
+    _mouse_event(MOUSEEVENTF_LEFTDOWN)
+    time.sleep(0.04)
+    _mouse_event(MOUSEEVENTF_LEFTUP)
+    time.sleep(settle)

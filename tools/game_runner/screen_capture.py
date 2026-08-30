@@ -64,6 +64,38 @@ def get_hwnd_rect(hwnd):
     return (rect.left, rect.top, rect.right, rect.bottom)
 
 
+def focus_window(hwnd):
+    """Bring a window to the foreground so injected input reaches it.
+
+    SendInput delivers to whatever is focused, not to a chosen window, so a
+    verification run that does not do this silently sends its keys and clicks
+    into another application and reports a UI that "did not respond".
+    AttachThreadInput is needed because SetForegroundWindow is refused for a
+    process that does not own the current foreground window."""
+    if not hwnd or not user32.IsWindow(hwnd):
+        return False
+    kernel32 = ctypes.windll.kernel32
+    SW_RESTORE = 9
+    try:
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+        fg = user32.GetForegroundWindow()
+        if fg == hwnd:
+            return True
+        target_thread = user32.GetWindowThreadProcessId(hwnd, None)
+        this_thread = kernel32.GetCurrentThreadId()
+        attached = False
+        if target_thread and target_thread != this_thread:
+            attached = bool(user32.AttachThreadInput(this_thread, target_thread, True))
+        user32.BringWindowToTop(hwnd)
+        ok = bool(user32.SetForegroundWindow(hwnd))
+        if attached:
+            user32.AttachThreadInput(this_thread, target_thread, False)
+        return ok
+    except Exception:
+        return False
+
+
 def capture_rect(rect, output_path):
     """Grab a screen rectangle to output_path.  Returns the PIL image, or None
     if the rect is off-screen or degenerate (a minimised window reports

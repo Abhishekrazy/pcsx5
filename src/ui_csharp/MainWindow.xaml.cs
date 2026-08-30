@@ -32,6 +32,21 @@ namespace Pcsx5Ui
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)] public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
         [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+
+        // Monitor bounds, so fullscreen can size to the display instead of
+        // relying on Maximized (which only covers the taskbar while focused).
+        [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFO lpmi);
+        public const uint MONITOR_DEFAULTTONEAREST = 2;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+        }
         [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern ushort RegisterClassW(ref WNDCLASS lpWndClass);
@@ -316,11 +331,15 @@ namespace Pcsx5Ui
                 ParseCommandLineArgs();
                 LoadConfig();
                 ApplyUiScale();
+                ApplyShellFullscreen(_config.ui.start_fullscreen);
                 InitializeControllerPolling();
 
                 // Start Discord RPC and load translations
                 _discordRpc.Start();
                 TranslateUi();
+                // After TranslateUi: I18n must be loaded or every binding label
+                // falls back to its raw token.
+                RefreshBindingLabels();
 
                 // Set default tab to Library
                 TabLibrary_Click(this, null);
@@ -467,6 +486,7 @@ namespace Pcsx5Ui
                     _config.ui.language = ini.GetValue("Ui", "Language", "en-US");
                     _config.ui.title_music_enabled = bool.Parse(ini.GetValue("Ui", "TitleMusicEnabled", "true"));
                     _config.ui.scale = double.Parse(ini.GetValue("Ui", "UiScale", "1.0"), System.Globalization.CultureInfo.InvariantCulture);
+                    _config.ui.start_fullscreen = bool.Parse(ini.GetValue("Ui", "StartFullscreen", "true"));
                 }
                 else
                 {
@@ -548,6 +568,7 @@ namespace Pcsx5Ui
                 ini.SetValue("Ui", "Language", _config.ui.language);
                 ini.SetValue("Ui", "TitleMusicEnabled", _config.ui.title_music_enabled.ToString().ToLower());
                 ini.SetValue("Ui", "UiScale", _config.ui.scale.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                ini.SetValue("Ui", "StartFullscreen", _config.ui.start_fullscreen.ToString().ToLower());
 
                 ini.Save(_iniPath);
                 LogConsole("Configuration saved to " + _iniPath);
@@ -802,22 +823,49 @@ namespace Pcsx5Ui
             }
         }
 
+        // Library tile presentation. A focused tile is larger, fully opaque and
+        // elevated; unfocused tiles recede. Sized for reading at console
+        // distance rather than at a desk.
+        private const double TileSize = 250.0;
+        // Larger tiles need less scale to read as focused; too much and the
+        // focused tile crowds its neighbours.
+        private const double FocusedTileScale = 1.10;
+        private const double UnfocusedTileOpacity = 0.55;
+
+        private static void SetTileScale(Border card, double scale)
+        {
+            if (card == null) return;
+            if (!(card.RenderTransform is ScaleTransform st))
+            {
+                card.RenderTransformOrigin = new Point(0.5, 0.5);
+                st = new ScaleTransform(1.0, 1.0);
+                card.RenderTransform = st;
+            }
+            st.ScaleX = scale;
+            st.ScaleY = scale;
+        }
+
         private void AddGameTile(GameEntry game)
         {
             var border = new Border
             {
-                Width = 145,
-                Height = 145,
-                Margin = new Thickness(10, 0, 10, 0),
-                CornerRadius = new CornerRadius(8),
+                Width = TileSize,
+                Height = TileSize,
+                Margin = new Thickness(14, 0, 14, 0),
+                CornerRadius = new CornerRadius(12),
                 Background = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255)),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(15, 255, 255, 255)),
-                BorderThickness = new Thickness(1.5),
+                BorderThickness = new Thickness(2),
                 Cursor = Cursors.Hand,
                 ClipToBounds = true,
                 Tag = game,
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
+                // Unfocused tiles recede so the focused one carries the eye.
+                Opacity = UnfocusedTileOpacity,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new ScaleTransform(1.0, 1.0),
             };
+            System.Windows.Automation.AutomationProperties.SetName(border, game.Title ?? "");
 
             var tileGrid = new Grid();
             var coverImage = LoadImageHelper(game.CoverPath);
@@ -838,7 +886,7 @@ namespace Pcsx5Ui
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     Foreground = Brushes.White,
-                    FontSize = 11,
+                    FontSize = 15,
                     FontWeight = FontWeights.Bold,
                     TextWrapping = TextWrapping.Wrap,
                     TextAlignment = TextAlignment.Center,
@@ -861,7 +909,8 @@ namespace Pcsx5Ui
                 if (_selectedGame != game)
                 {
                     border.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 153, 255));
-                    overlay.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
+                    overlay.Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
+                    border.Opacity = 0.85;
                 }
             };
             border.MouseLeave += (s, e) =>
@@ -871,6 +920,7 @@ namespace Pcsx5Ui
                     border.BorderBrush = new SolidColorBrush(Color.FromArgb(15, 255, 255, 255));
                     overlay.Background = new SolidColorBrush(Color.FromArgb(0, 255, 255, 255));
                     border.Effect = null;
+                    border.Opacity = UnfocusedTileOpacity;
                 }
             };
             border.MouseDown += (s, e) =>
@@ -879,6 +929,9 @@ namespace Pcsx5Ui
             };
 
             GamesWrapPanel.Children.Add(border);
+            // Layout has not run yet, so defer the overflow check.
+            Dispatcher.BeginInvoke(new Action(UpdateLibraryScrollArrows),
+                System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         private void SelectGame(GameEntry game)
@@ -944,14 +997,17 @@ namespace Pcsx5Ui
                 {
                     card.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 153, 255));
                     if (cardOverlay != null)
-                        cardOverlay.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
+                        cardOverlay.Background = new SolidColorBrush(Color.FromArgb(0, 255, 255, 255));
                     card.Effect = new System.Windows.Media.Effects.DropShadowEffect
                     {
                         Color = Color.FromRgb(0, 153, 255),
-                        BlurRadius = 15,
+                        BlurRadius = 34,
                         ShadowDepth = 0,
-                        Opacity = 0.6
+                        Opacity = 0.9
                     };
+                    card.Opacity = 1.0;
+                    SetTileScale(card, FocusedTileScale);
+                    Panel.SetZIndex(card, 10);
                 }
                 else
                 {
@@ -959,6 +1015,9 @@ namespace Pcsx5Ui
                     if (cardOverlay != null)
                         cardOverlay.Background = new SolidColorBrush(Color.FromArgb(0, 255, 255, 255));
                     card.Effect = null;
+                    card.Opacity = UnfocusedTileOpacity;
+                    SetTileScale(card, 1.0);
+                    Panel.SetZIndex(card, 0);
                 }
             }
 
@@ -1575,59 +1634,199 @@ namespace Pcsx5Ui
 
         // ── Folder picker overlay helpers ─────────────────────────────────
 
+        // -- In-app folder browser ------------------------------------------
+        // The shell must be usable with a controller alone, and a Windows folder
+        // dialog cannot be driven by one, so the filesystem is browsed in-app.
+        // Gamepad:  D-Pad move | Cross open | Triangle select | Circle up/cancel
+        // Keyboard: arrows and Enter via the ListBox, plus the buttons
+        // Mouse:    click to highlight, double-click to open
+        private string _folderPickerPath;   // null => the drive list
+        private string _folderPickerRefreshKey;  // settings sub-page to redraw on confirm
+
         private void ShowFolderPickerOverlay(string target, string currentPath = null)
         {
             _folderPickerTarget = target;
-            if (FolderPickerCurrentPath != null)
-                FolderPickerCurrentPath.Text = string.IsNullOrEmpty(currentPath) ? "" : $"Current: {currentPath}";
-            if (FolderPickerOverlay != null) FolderPickerOverlay.Visibility = Visibility.Visible;
-            FolderPickerOpenBtn?.Focus();
+
+            FolderPickerTitle.Text = I18n.Tr("picker.title");
+            FolderPickerUpBtn.Content = I18n.Tr("picker.up");
+            FolderPickerOpenBtn.Content = I18n.Tr("picker.open");
+            FolderPickerSelectBtn.Content = I18n.Tr("picker.select");
+            FolderPickerCancelBtn.Content = I18n.Tr("picker.cancel");
+            FolderPickerHints.Text = I18n.Tr("picker.hints");
+
+            System.Windows.Automation.AutomationProperties.SetName(FolderPickerList, I18n.Tr("picker.list_name"));
+            System.Windows.Automation.AutomationProperties.SetName(FolderPickerUpBtn, I18n.Tr("picker.up"));
+            System.Windows.Automation.AutomationProperties.SetName(FolderPickerOpenBtn, I18n.Tr("picker.open"));
+            System.Windows.Automation.AutomationProperties.SetName(FolderPickerSelectBtn, I18n.Tr("picker.select"));
+            System.Windows.Automation.AutomationProperties.SetName(FolderPickerCancelBtn, I18n.Tr("picker.cancel"));
+
+            string startPath = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(currentPath) && Directory.Exists(currentPath))
+                    startPath = currentPath;
+            }
+            catch { startPath = null; }
+
+            PopulateFolderPicker(startPath);
+            FolderPickerOverlay.Visibility = Visibility.Visible;
+            FolderPickerList.Focus();
         }
 
         private void HideFolderPickerOverlay()
         {
             _folderPickerTarget = null;
+            _folderPickerRefreshKey = null;
             if (FolderPickerOverlay != null) FolderPickerOverlay.Visibility = Visibility.Collapsed;
         }
 
-        private void FolderPickerOpen_Click(object sender, RoutedEventArgs e)
+        private void PopulateFolderPicker(string path)
         {
-            var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Select PS5 Games Folder" };
-            if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.FolderName))
-            {
-                string path = dialog.FolderName;
-                HideFolderPickerOverlay();
+            _folderPickerPath = path;
+            var items = new List<FolderEntry>();
 
-                if (_folderPickerTarget == "firstrun")
-                {
-                    _firstRunSelectedFolder = path;
-                    FirstRunFolderText.Text = path;
-                    FirstRunContinueBtn.IsEnabled = true;
-                }
-                else if (_folderPickerTarget == "settings")
-                {
-                    if (!_gameFolders.Contains(path))
-                    {
-                        _gameFolders.Add(path);
-                        LoadGames();
-                        SaveConfig();
-                        LogConsole($"Folder added: {path}");
-                        FooterStatus.Text = $"Folder added: {System.IO.Path.GetFileName(path)}";
-                    }
-                }
+            if (string.IsNullOrEmpty(path))
+            {
+                FolderPickerCurrentPath.Text = I18n.Tr("picker.this_pc");
+                foreach (var drive in SafeGetDrives()) items.Add(drive);
             }
             else
             {
-                HideFolderPickerOverlay();
+                FolderPickerCurrentPath.Text = path;
+
+                // Parent entry; a null FullPath means "back to the drive list".
+                string parent = null;
+                try { parent = Directory.GetParent(path)?.FullName; } catch { parent = null; }
+                items.Add(new FolderEntry { Icon = "⬆", Name = I18n.Tr("picker.parent"), FullPath = parent, IsParent = true });
+
+                string[] dirs = null;
+                string problem = null;
+                try { dirs = Directory.GetDirectories(path); }
+                catch (UnauthorizedAccessException) { problem = I18n.Tr("picker.denied"); }
+                catch (Exception) { problem = I18n.Tr("picker.unavailable"); }
+
+                if (problem != null)
+                {
+                    items.Add(new FolderEntry { Icon = "⛔", Name = problem });
+                }
+                else
+                {
+                    Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
+                    foreach (var d in dirs)
+                    {
+                        string name = null;
+                        try { name = Path.GetFileName(d); } catch { continue; }
+                        if (string.IsNullOrEmpty(name)) continue;
+                        items.Add(new FolderEntry { Icon = "📁", Name = name, FullPath = d });
+                    }
+                    if (items.Count == 1)
+                        items.Add(new FolderEntry { Icon = "—", Name = I18n.Tr("picker.empty") });
+                }
+            }
+
+            FolderPickerList.ItemsSource = items;
+            if (items.Count > 0)
+            {
+                FolderPickerList.SelectedIndex = 0;
+                FolderPickerList.ScrollIntoView(items[0]);
+            }
+            // "Select this folder" is meaningless while the drive list is shown.
+            FolderPickerSelectBtn.IsEnabled = !string.IsNullOrEmpty(path);
+        }
+
+        private List<FolderEntry> SafeGetDrives()
+        {
+            var list = new List<FolderEntry>();
+            DriveInfo[] drives;
+            try { drives = DriveInfo.GetDrives(); }
+            catch { return list; }
+
+            foreach (var d in drives)
+            {
+                try
+                {
+                    if (!d.IsReady) continue;   // empty card reader, removed drive
+                    string label = string.IsNullOrWhiteSpace(d.VolumeLabel)
+                        ? d.Name : d.Name + "  (" + d.VolumeLabel + ")";
+                    list.Add(new FolderEntry { Icon = "💾", Name = label, FullPath = d.RootDirectory.FullName });
+                }
+                catch { /* drive vanished between enumeration and query */ }
+            }
+            return list;
+        }
+
+        private void FolderPickerOpenSelected()
+        {
+            if (!(FolderPickerList.SelectedItem is FolderEntry entry)) return;
+            if (entry.IsParent) { PopulateFolderPicker(entry.FullPath); return; }
+            if (!string.IsNullOrEmpty(entry.FullPath)) PopulateFolderPicker(entry.FullPath);
+        }
+
+        private void FolderPickerGoUp()
+        {
+            if (string.IsNullOrEmpty(_folderPickerPath))
+            {
+                HideFolderPickerOverlay();   // already at the top: Circle cancels
+                return;
+            }
+            string parent = null;
+            try { parent = Directory.GetParent(_folderPickerPath)?.FullName; } catch { parent = null; }
+            PopulateFolderPicker(parent);
+        }
+
+        private void FolderPickerConfirm()
+        {
+            string path = _folderPickerPath;
+            if (string.IsNullOrEmpty(path)) return;
+
+            // Capture before hiding: HideFolderPickerOverlay() clears both.
+            string target = _folderPickerTarget;
+            string refreshKey = _folderPickerRefreshKey;
+            HideFolderPickerOverlay();
+
+            if (target == "firstrun")
+            {
+                _firstRunSelectedFolder = path;
+                FirstRunFolderText.Text = path;
+                FirstRunContinueBtn.IsEnabled = true;
+            }
+            else
+            {
+                if (!_gameFolders.Contains(path))
+                {
+                    _gameFolders.Add(path);
+                    LoadGames();
+                    SaveConfig();
+                    LogConsole("Folder added: " + path);
+                    if (FooterStatus != null)
+                        FooterStatus.Text = "Folder added: " + System.IO.Path.GetFileName(path);
+                }
+                if (!string.IsNullOrEmpty(refreshKey)) PopulateSubPage(refreshKey);
             }
         }
 
+        private void FolderPickerOpen_Click(object sender, RoutedEventArgs e) => FolderPickerOpenSelected();
+        private void FolderPickerSelect_Click(object sender, RoutedEventArgs e) => FolderPickerConfirm();
+        private void FolderPickerUp_Click(object sender, RoutedEventArgs e) => FolderPickerGoUp();
+        private void FolderPickerList_MouseDoubleClick(object sender, MouseButtonEventArgs e) => FolderPickerOpenSelected();
+
         private void FolderPickerCancel_Click(object sender, RoutedEventArgs e) => HideFolderPickerOverlay();
 
-        private void HandleFolderPickerNav(bool cross, bool circle)
+        private void HandleFolderPickerNav(bool up, bool down, bool cross, bool circle, bool triangle)
         {
-            if (cross) FolderPickerOpen_Click(this, null);
-            else if (circle) HideFolderPickerOverlay();
+            int count = FolderPickerList.Items.Count;
+            if (count > 0 && (up || down))
+            {
+                int i = FolderPickerList.SelectedIndex;
+                if (up) i = (i <= 0) ? count - 1 : i - 1;
+                else i = (i >= count - 1) ? 0 : i + 1;
+                FolderPickerList.SelectedIndex = i;
+                FolderPickerList.ScrollIntoView(FolderPickerList.Items[i]);
+                return;
+            }
+            if (cross) FolderPickerOpenSelected();
+            else if (triangle) FolderPickerConfirm();
+            else if (circle) FolderPickerGoUp();
         }
 
         private void StopButton_Click(object sender, RoutedEventArgs e)
@@ -2329,6 +2528,11 @@ namespace Pcsx5Ui
 
         private void Maximize_Click(object sender, RoutedEventArgs e)
         {
+            if (_shellFullscreen)
+            {
+                ToggleShellFullscreen();
+                return;
+            }
             if (this.WindowState == WindowState.Maximized)
             {
                 this.WindowState = WindowState.Normal;
@@ -2356,6 +2560,7 @@ namespace Pcsx5Ui
             SettingsView.Visibility = Visibility.Collapsed;
             // LogsView removed
             UpdateTabHighlight(TabLibraryBtn);
+            FocusFirst(LaunchButton, FullLibraryToggleBtn, SearchBox);
         }
 
         private void ToggleFullLibrary_Click(object sender, RoutedEventArgs e)
@@ -2364,6 +2569,20 @@ namespace Pcsx5Ui
             FullLibraryGrid.Visibility = showFull ? Visibility.Visible : Visibility.Collapsed;
             LibraryCarousel.Visibility = showFull ? Visibility.Collapsed : Visibility.Visible;
             FullLibraryToggleBtn.Content = showFull ? "◀ Carousel" : "View All ▸";
+            if (showFull) FocusFirst(FullLibraryListView);
+            else FocusFirst(LaunchButton);
+        }
+
+        /// <summary>Show the shelf arrows only when the library actually
+        /// overflows. Permanent arrows over a library that fits on screen read
+        /// as broken chrome rather than as an affordance.</summary>
+        private void UpdateLibraryScrollArrows()
+        {
+            if (LibraryScroller == null) return;
+            bool scrollable = LibraryScroller.ScrollableWidth > 1.0;
+            var vis = scrollable ? Visibility.Visible : Visibility.Collapsed;
+            if (LibraryScrollLeft != null) LibraryScrollLeft.Visibility = vis;
+            if (LibraryScrollRight != null) LibraryScrollRight.Visibility = vis;
         }
 
         private void LibraryScrollLeft_Click(object sender, RoutedEventArgs e)
@@ -2409,6 +2628,7 @@ namespace Pcsx5Ui
             {
                 RunBootAnalyzer();
             }
+            FocusFirst(AnalyzerListView);
         }
 
         private void TabController_Click(object sender, RoutedEventArgs e)
@@ -2424,6 +2644,7 @@ namespace Pcsx5Ui
             UpdateTabHighlight(TabControllerBtn);
 
             StartControllerVizPolling();
+            FocusFirst(CtrlConfigCombo, BtnMapUp);
         }
 
         private void TabSettings_Click(object sender, RoutedEventArgs e)
@@ -2439,6 +2660,9 @@ namespace Pcsx5Ui
             UpdateTabHighlight(TabSettingsBtn);
             UpdateSettingsUiFromConfig();
             ResetSettingsView();
+            // The hub is a Grid; focus its first real category tile instead.
+            var hub = GetHubCategoryButtons();
+            FocusFirst(hub != null && hub.Count > 0 ? hub[0] : null);
         }
 
         private int _settingsLevel = 1; // 1 = Main Categories Hub, 2 = Category Rows Overview, 3 = Dedicated Sub-Page
@@ -2563,6 +2787,7 @@ namespace Pcsx5Ui
                 case "UI":
                     list.Add(new SettingDefinition { Key = "ui_language", Title = "Interface Language", Description = "Dashboard text and user interface localization", GetValueBadge = () => _config.ui.language, Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_scale", Title = "UI Scale (Display Size)", Description = "Scale factor for high-DPI monitors and large TV screens", GetValueBadge = () => $"{_config.ui.scale * 100:0}%", Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "ui_fullscreen", Title = I18n.Tr("settings.ui_fullscreen.title"), Description = I18n.Tr("settings.ui_fullscreen.desc"), GetValueBadge = () => _config.ui.start_fullscreen ? I18n.Tr("common.enabled") : I18n.Tr("common.disabled"), Type = "toggle" });
                     break;
                 case "About":
                     list.Add(new SettingDefinition { Key = "about_core", Title = "Core Architecture", Description = "PCSX5 Windows x64 Native Core (C++20)", GetValueBadge = () => "v0.4.2-alpha", Type = "choice" });
@@ -2696,6 +2921,7 @@ namespace Pcsx5Ui
                 Action<bool> setter = null;
 
                 if (settingKey == "gpu_fullscreen") { isEnabled = _config.graphics.fullscreen; setter = v => _config.graphics.fullscreen = v; }
+                else if (settingKey == "ui_fullscreen") { isEnabled = _config.ui.start_fullscreen; setter = v => { _config.ui.start_fullscreen = v; ApplyShellFullscreen(v); }; }
                 else if (settingKey == "snd_title_music") { isEnabled = _config.ui.title_music_enabled; setter = v => _config.ui.title_music_enabled = v; }
                 else if (settingKey == "in_rumble") { isEnabled = _config.input.rumble; setter = v => _config.input.rumble = v; }
                 else if (settingKey == "hle_strict") { isEnabled = _config.hle.strict_imports; setter = v => _config.hle.strict_imports = v; }
@@ -2878,14 +3104,11 @@ namespace Pcsx5Ui
                 var btnAdd = new Button { Content = "➕  Add Directory", Style = (Style)FindResource("ModernButtonStyle"), Width = 150, Height = 34, Margin = new Thickness(0, 0, 10, 0) };
                 btnAdd.Click += (snd, ea) =>
                 {
-                    var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Select Game Folder" };
-                    if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.FolderName) && !_gameFolders.Contains(dialog.FolderName))
-                    {
-                        _gameFolders.Add(dialog.FolderName);
-                        SaveConfig();
-                        PopulateSubPage(settingKey);
-                        LoadGames();
-                    }
+                    // Route through the in-app browser so this path is usable
+                    // with a controller; the sub-page refreshes on confirm.
+                    _folderPickerRefreshKey = settingKey;
+                    ShowFolderPickerOverlay("settings",
+                        _gameFolders.Count > 0 ? _gameFolders[_gameFolders.Count - 1] : null);
                 };
 
                 var btnRemove = new Button { Content = "🗑️  Remove Selected", Style = (Style)FindResource("SecondaryButtonStyle"), Width = 160, Height = 34 };
@@ -3091,18 +3314,8 @@ namespace Pcsx5Ui
 
         private void BtnAddFolder_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new Microsoft.Win32.OpenFolderDialog();
-            dialog.Title = "Select Game Folder";
-            if (dialog.ShowDialog() == true)
-            {
-                string selectedPath = dialog.FolderName;
-                if (!string.IsNullOrEmpty(selectedPath) && !_gameFolders.Contains(selectedPath))
-                {
-                    _gameFolders.Add(selectedPath);
-                    LoadGames(); // Re-scan games automatically
-                    SaveConfig(); // Save configuration
-                }
-            }
+            ShowFolderPickerOverlay("settings",
+                _gameFolders.Count > 0 ? _gameFolders[_gameFolders.Count - 1] : null);
         }
 
         // --- FIRST-RUN SETUP (games folder picker) ---
@@ -3132,14 +3345,7 @@ namespace Pcsx5Ui
 
         private void FirstRunBrowse_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new Microsoft.Win32.OpenFolderDialog();
-            dialog.Title = "Select PS5 Games Folder";
-            if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.FolderName))
-            {
-                _firstRunSelectedFolder = dialog.FolderName;
-                FirstRunFolderText.Text = _firstRunSelectedFolder;
-                FirstRunContinueBtn.IsEnabled = true;
-            }
+            ShowFolderPickerOverlay("firstrun", _firstRunSelectedFolder);
         }
 
         private void FirstRunContinue_Click(object sender, RoutedEventArgs e)
@@ -3169,16 +3375,291 @@ namespace Pcsx5Ui
             MainLayoutRoot.LayoutTransform = new ScaleTransform(scale, scale);
         }
 
+        // --- SHELL FULLSCREEN ---
+        // The dashboard is a console interface, so it presents fullscreen by
+        // default.  A borderless window in the Maximized state covers the whole
+        // monitor including the taskbar, which is the effect we want; the
+        // WindowChrome caption/resize bands are collapsed so the top 50 px does
+        // not stay a drag handle with no title bar drawn in it.
+        private bool _shellFullscreen;
+        private WindowState _preFullscreenState = WindowState.Normal;
+
+        public bool IsShellFullscreen => _shellFullscreen;
+
+        private void ApplyShellFullscreen(bool on)
+        {
+            if (on == _shellFullscreen && IsLoaded) return;
+            _shellFullscreen = on;
+
+            var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(this);
+            if (on)
+            {
+                _preFullscreenState = this.WindowState == WindowState.Minimized
+                    ? WindowState.Normal : this.WindowState;
+                if (chrome != null)
+                {
+                    chrome.CaptionHeight = 0;
+                    chrome.ResizeBorderThickness = new Thickness(0);
+                }
+                this.WindowStyle = WindowStyle.None;
+                this.ResizeMode = ResizeMode.NoResize;
+                this.WindowState = WindowState.Normal;
+                if (!SizeToMonitor())
+                {
+                    // No monitor info (rare): fall back to Maximized, which
+                    // covers the screen while the window holds focus.
+                    this.WindowState = WindowState.Maximized;
+                }
+            }
+            else
+            {
+                if (chrome != null)
+                {
+                    chrome.CaptionHeight = 50;
+                    chrome.ResizeBorderThickness = new Thickness(6);
+                }
+                this.WindowStyle = WindowStyle.SingleBorderWindow;
+                this.ResizeMode = ResizeMode.CanResize;
+                this.WindowState = _preFullscreenState == WindowState.Maximized
+                    ? WindowState.Maximized : WindowState.Normal;
+            }
+
+            // An embedded game window is sized from the host presenter, which
+            // just changed size.
+            ResizeEmbeddedWindow();
+        }
+
+        /// <summary>Fill the monitor the window currently sits on. Returns false
+        /// if the monitor bounds could not be resolved.</summary>
+        private bool SizeToMonitor()
+        {
+            try
+            {
+                IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero) return false;
+
+                IntPtr mon = NativeMethods.MonitorFromWindow(hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+                if (mon == IntPtr.Zero) return false;
+
+                var mi = new NativeMethods.MONITORINFO();
+                mi.cbSize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(NativeMethods.MONITORINFO));
+                if (!NativeMethods.GetMonitorInfoW(mon, ref mi)) return false;
+
+                // Monitor bounds are physical pixels; WPF positions in DIPs.
+                double sx = 1.0, sy = 1.0;
+                var src = PresentationSource.FromVisual(this);
+                if (src?.CompositionTarget != null)
+                {
+                    var m = src.CompositionTarget.TransformFromDevice;
+                    sx = m.M11;
+                    sy = m.M22;
+                }
+
+                this.Left = mi.rcMonitor.Left * sx;
+                this.Top = mi.rcMonitor.Top * sy;
+                this.Width = (mi.rcMonitor.Right - mi.rcMonitor.Left) * sx;
+                this.Height = (mi.rcMonitor.Bottom - mi.rcMonitor.Top) * sy;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void ToggleShellFullscreen()
+        {
+            bool target = !_shellFullscreen;
+            ApplyShellFullscreen(target);
+            _config.ui.start_fullscreen = target;
+            SaveConfig();
+        }
+
+        /// <summary>The one place the controller hint legend is rendered.
+        /// Every screen calls this with its own key, so a screen that forgets
+        /// its hints is visible as a missing call rather than as an empty bar.</summary>
+        /// <summary>Give a screen an initial focus target, so arriving on it with
+        /// a controller never leaves nothing selected. Deferred to Loaded because
+        /// a view that has just become visible has not been arranged yet, and
+        /// Focus() on an unarranged element silently fails.</summary>
+        private void FocusFirst(params Control[] candidates)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                foreach (var c in candidates)
+                {
+                    if (c == null || !c.IsVisible || !c.IsEnabled) continue;
+                    if (c.Focus()) return;
+                }
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        /// <summary>Gamepad navigation for the expanded "View All" list, which
+        /// previously had none -- opening it stranded a pad user with no way to
+        /// choose a game or return. Circle backs out, matching the shell-wide
+        /// convention that Circle is Back.</summary>
+        private void HandleFullLibraryNav(bool up, bool down, bool cross, bool circle)
+        {
+            int count = FullLibraryListView.Items.Count;
+            if (count > 0 && (up || down))
+            {
+                int i = FullLibraryListView.SelectedIndex;
+                if (up) i = (i <= 0) ? count - 1 : i - 1;
+                else i = (i >= count - 1) ? 0 : i + 1;
+                FullLibraryListView.SelectedIndex = i;
+                FullLibraryListView.ScrollIntoView(FullLibraryListView.Items[i]);
+                if (FullLibraryListView.Items[i] is GameEntry g) SelectGame(g);
+                return;
+            }
+            if (cross)
+            {
+                if (FullLibraryListView.SelectedItem is GameEntry g) SelectGame(g);
+                ToggleFullLibrary_Click(this, null);   // collapse back to the shelf
+            }
+            else if (circle)
+            {
+                ToggleFullLibrary_Click(this, null);
+            }
+        }
+
+        private void ShowHints(string key)
+        {
+            _lastHintKey = key;
+            if (FooterGamepadHints != null)
+                FooterGamepadHints.Text = ApplyGlyphs(I18n.Tr(key));
+        }
+
+        /// <summary>Substitute the device-neutral glyph tokens in a hint template
+        /// with labels for whichever device is currently active.</summary>
+        private string ApplyGlyphs(string template)
+        {
+            if (string.IsNullOrEmpty(template)) return template;
+            string sfx = _inputSource == ShellInputSource.Keyboard ? ".kb" : ".pad";
+            string[] tokens = { "DEV", "OK", "BACK", "ALT", "ALT2", "DIR", "TABS" };
+            foreach (var t in tokens)
+                template = template.Replace("%" + t + "%", I18n.Tr("glyph." + t.ToLowerInvariant() + sfx));
+            return template;
+        }
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F11)
+            {
+                ToggleShellFullscreen();
+                e.Handled = true;
+                return;
+            }
+
+            // A rebind is armed: the next key becomes the binding. This is what
+            // lets someone with no controller configure the emulator at all.
+            if (_activeRebindBtn != null)
+            {
+                SetInputSource(ShellInputSource.Keyboard);
+                if (e.Key == Key.Escape)
+                {
+                    CancelRebind("bind.cancelled");
+                }
+                else if (e.Key != Key.System && e.Key != Key.ImeProcessed)
+                {
+                    AssignKeyboardBinding(e.Key);
+                }
+                e.Handled = true;
+                return;
+            }
+
+            // A real key press means the user is on the keyboard now.
+            SetInputSource(ShellInputSource.Keyboard);
+
+            // Never steal keys from a text field the user is typing into.
+            if (Keyboard.FocusedElement is TextBox) return;
+
+            bool handled = true;
+            switch (e.Key)
+            {
+                case Key.Up:
+                case Key.W: _kbUp = true; break;
+                case Key.Down:
+                case Key.S: _kbDown = true; break;
+                case Key.Left:
+                case Key.A: _kbLeft = true; break;
+                case Key.Right:
+                case Key.D: _kbRight = true; break;
+
+                case Key.Enter:
+                case Key.Space: _kbCross = true; break;
+                case Key.Escape:
+                case Key.Back: _kbCircle = true; break;
+                case Key.T: _kbTriangle = true; break;
+                case Key.F: _kbSquare = true; break;
+
+                case Key.Q: _kbTabPrev = true; break;
+                case Key.E: _kbTabNext = true; break;
+                default: handled = false; break;
+            }
+            e.Handled = handled;
+        }
+
+        /// <summary>Assign a keyboard key to the armed binding slot.</summary>
+        private void AssignKeyboardBinding(Key key)
+        {
+            if (_activeRebindBtn == null) return;
+
+            string token = "key_" + key.ToString().ToLowerInvariant();
+            _customMappings[_activeRebindTag] = token;
+            _activeRebindBtn.Content = BindingDisplayName(token);
+            _activeRebindBtn.Foreground = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0, 204, 102));
+            FooterStatus.Text = I18n.Tr("bind.bound",
+                BindingDisplayName(_activeRebindTag), BindingDisplayName(token));
+            _activeRebindBtn = null;
+            _activeRebindTag = null;
+            _rebindNeedsRelease = true;
+            RefreshBindingLabels();
+        }
+
         // --- GAMEPAD NAV & PS BUTTON POLLING ---
         private System.Windows.Threading.DispatcherTimer _controllerTimer;
         private XInputState _prevInputState = new XInputState();
         private DateTime _lastAnalogNav = DateTime.MinValue;
 
+        // Directional repeat. A new direction fires at once; holding waits
+        // NavFirstDelay and then repeats every NavRepeatInterval.
+        /// <summary>Which device the user touched most recently. Both remain
+        /// live at all times; this only drives how prompts are labelled.</summary>
+        private enum ShellInputSource { Gamepad, Keyboard }
+
+        private ShellInputSource _inputSource = ShellInputSource.Gamepad;
+        private string _lastHintKey;
+
+        private void SetInputSource(ShellInputSource src)
+        {
+            if (_inputSource == src) return;
+            _inputSource = src;
+            // Re-render the current legend so prompts follow the device without
+            // waiting for the next screen change.
+            if (_lastHintKey != null) ShowHints(_lastHintKey);
+        }
+
+        // Virtual button presses raised by the keyboard and consumed by the next
+        // input tick, so keyboard and pad share one navigation implementation.
+        private bool _kbUp, _kbDown, _kbLeft, _kbRight;
+        private bool _kbCross, _kbCircle, _kbTriangle, _kbSquare;
+        private bool _kbTabPrev, _kbTabNext;
+
+        private int _navHeldDir;            // 0 none, 1 up, 2 down, 3 left, 4 right
+        private DateTime _navRepeatAt = DateTime.MinValue;
+        private static readonly TimeSpan NavFirstDelay = TimeSpan.FromMilliseconds(340);
+        private static readonly TimeSpan NavRepeatInterval = TimeSpan.FromMilliseconds(90);
+
         private void InitializeControllerPolling()
         {
             WindowsDualSenseReader.EnsureStarted();
-            _controllerTimer = new System.Windows.Threading.DispatcherTimer();
-            _controllerTimer.Interval = TimeSpan.FromMilliseconds(50); // poll at 20 FPS (every 50ms)
+            // Input priority: the default (Background) sits below rendering and
+            // layout, so ticks get starved whenever the UI is busy and the pad
+            // feels laggy regardless of the interval.
+            _controllerTimer = new System.Windows.Threading.DispatcherTimer(
+                System.Windows.Threading.DispatcherPriority.Input);
+            _controllerTimer.Interval = TimeSpan.FromMilliseconds(10);  // ~100 Hz
             _controllerTimer.Tick += ControllerTimer_Tick;
             _controllerTimer.Start();
         }
@@ -3250,6 +3731,11 @@ namespace Pcsx5Ui
 
         private Button _activeRebindBtn = null;
         private string _activeRebindTag = null;
+        // Capture must not consume the button press that armed it, so the pad
+        // has to return to neutral before the next press counts as the binding.
+        private bool _rebindNeedsRelease = false;
+        private DateTime _rebindArmedAt = DateTime.MinValue;
+        private static readonly TimeSpan RebindTimeout = TimeSpan.FromSeconds(10);
         private bool _psDown = false;
         private bool _psHoldTriggered = false;
         private DateTime _psDownAt = DateTime.MinValue;
@@ -3265,10 +3751,13 @@ namespace Pcsx5Ui
                     ResetRebindBtnStyle(_activeRebindBtn);
                 }
                 _activeRebindBtn = btn;
-                _activeRebindTag = btn.Tag as string ?? btn.Name;
-                btn.Content = "[Press Key/Button]";
+                _activeRebindTag = BindingSlotOf(btn);
+                _rebindNeedsRelease = true;
+                _rebindArmedAt = DateTime.Now;
+                btn.Content = I18n.Tr("bind.press_now");
                 btn.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 204, 0));
-                FooterStatus.Text = $"Rebinding {_activeRebindTag}... Press any controller button or key.";
+                FooterStatus.Text = I18n.Tr("bind.arming", BindingDisplayName(_activeRebindTag));
+                ShowHints("bind.hints");
             }
         }
 
@@ -3276,11 +3765,167 @@ namespace Pcsx5Ui
         {
             if (btn == null) return;
             btn.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White);
-            string tag = btn.Tag as string ?? btn.Name;
-            if (_customMappings.TryGetValue(tag, out var saved))
+            string slot = BindingSlotOf(btn);
+            string token = _customMappings.TryGetValue(slot, out var saved)
+                ? saved : BindingDefaultOf(btn);
+            btn.Content = BindingDisplayName(token);
+        }
+
+        /// <summary>Human-readable name for an internal binding token. The raw
+        /// tokens (pad_up, axis_left_y, l1) are implementation detail and should
+        /// never be what the user reads off the screen.</summary>
+        /// <summary>The binding slot a button configures. Tag carries
+        /// "SlotName|default_token" so the default is data rather than a
+        /// hardcoded, untranslatable label sitting in Content.</summary>
+        private static string BindingSlotOf(Button btn)
+        {
+            string tag = btn?.Tag as string;
+            if (string.IsNullOrEmpty(tag)) return btn?.Name ?? "";
+            int bar = tag.IndexOf('|');
+            return bar < 0 ? tag : tag.Substring(0, bar);
+        }
+
+        private static string BindingDefaultOf(Button btn)
+        {
+            string tag = btn?.Tag as string;
+            if (string.IsNullOrEmpty(tag)) return null;
+            int bar = tag.IndexOf('|');
+            return bar < 0 ? null : tag.Substring(bar + 1);
+        }
+
+        /// <summary>Render every binding button with its readable label. Called
+        /// after load and after any change to the mappings.</summary>
+        private void RefreshBindingLabels()
+        {
+            foreach (var btn in GetBindingButtons())
             {
-                btn.Content = saved;
+                if (btn == null) continue;
+                if (btn == _activeRebindBtn) continue;   // keep the armed prompt
+
+                string slot = BindingSlotOf(btn);
+                string token = _customMappings.TryGetValue(slot, out var saved)
+                    ? saved : BindingDefaultOf(btn);
+                btn.Content = BindingDisplayName(token);
             }
+        }
+
+        /// <summary>Every button that configures a binding. Kept separate from
+        /// GetControllerSetupControls(), which is the navigation order and also
+        /// contains combos, sliders and action buttons.</summary>
+        private List<Button> GetBindingButtons()
+        {
+            return new List<Button>
+            {
+                BtnMapUp, BtnMapDown, BtnMapLeft, BtnMapRight,
+                BtnMapTriangle, BtnMapCircle, BtnMapCross, BtnMapSquare,
+                BtnMapL1, BtnMapL2, BtnMapR1, BtnMapR2,
+                BtnMapL3, BtnMapR3, BtnMapOptions,
+                BtnMapTouchpadLeft, BtnMapTouchpadCenter, BtnMapTouchpadRight,
+                BtnMapLeftStickUp, BtnMapLeftStickDown,
+                BtnMapLeftStickLeft, BtnMapLeftStickRight,
+                BtnMapRightStickUp, BtnMapRightStickDown,
+                BtnMapRightStickLeft, BtnMapRightStickRight,
+            };
+        }
+
+        private string BindingDisplayName(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token)) return I18n.Tr("bind.unmapped");
+
+            // Keyboard bindings are open-ended, so they are formatted rather
+            // than given one locale key per key on the keyboard.
+            string t = token.Trim();
+            if (t.StartsWith("key_", StringComparison.OrdinalIgnoreCase))
+            {
+                string name = t.Substring(4).Replace("_", " ");
+                if (name.Length > 0) name = char.ToUpperInvariant(name[0]) + name.Substring(1);
+                return I18n.Tr("bind.keyboard_fmt", name);
+            }
+
+            string key = "bind." + t.ToLowerInvariant();
+            string label = I18n.Tr(key);
+            // I18n.Tr returns the key itself when there is no entry; fall back to
+            // the raw token rather than showing "bind.something" on screen.
+            return label == key ? token : label;
+        }
+
+        /// <summary>Map the normalized button mask the input tick builds (for both
+        /// DualSense and XInput) to a binding token. Returns null when neutral.
+        /// The PS button is excluded: it is the cancel gesture, not bindable.</summary>
+        private static string BindingTokenFromMask(ushort mask, byte leftTrigger, byte rightTrigger)
+        {
+            if ((mask & 0x1000) != 0) return "cross";
+            if ((mask & 0x2000) != 0) return "circle";
+            if ((mask & 0x4000) != 0) return "square";
+            if ((mask & 0x8000) != 0) return "triangle";
+            if ((mask & 0x0100) != 0) return "l1";
+            if ((mask & 0x0200) != 0) return "r1";
+            if (leftTrigger > 60) return "l2";
+            if (rightTrigger > 60) return "r2";
+            if ((mask & 0x0040) != 0) return "l3";
+            if ((mask & 0x0080) != 0) return "r3";
+            if ((mask & 0x0001) != 0) return "pad_up";
+            if ((mask & 0x0002) != 0) return "pad_down";
+            if ((mask & 0x0004) != 0) return "pad_left";
+            if ((mask & 0x0008) != 0) return "pad_right";
+            if ((mask & 0x0010) != 0) return "options";
+            if ((mask & 0x0020) != 0) return "back";
+            return null;
+        }
+
+        private void CancelRebind(string reasonKey)
+        {
+            if (_activeRebindBtn == null) return;
+            ResetRebindBtnStyle(_activeRebindBtn);
+            _activeRebindBtn = null;
+            _activeRebindTag = null;
+            _rebindNeedsRelease = false;
+            FooterStatus.Text = I18n.Tr(reasonKey);
+        }
+
+        /// <summary>Single owner of rebind capture. Returns true when it consumed
+        /// the input, in which case the caller must not also treat it as
+        /// navigation -- that conflict is what made rebinding unusable.</summary>
+        private bool HandleRebindCapture(ushort mask, byte leftTrigger, byte rightTrigger)
+        {
+            if (_activeRebindBtn == null) return false;
+
+            if (DateTime.Now - _rebindArmedAt > RebindTimeout)
+            {
+                CancelRebind("bind.timed_out");
+                return true;
+            }
+
+            // PS cancels. It is deliberately not bindable, so it is always a way
+            // out of an armed rebind.
+            if ((mask & 0x0400) != 0)
+            {
+                CancelRebind("bind.cancelled");
+                return true;
+            }
+
+            bool neutral = mask == 0 && leftTrigger <= 60 && rightTrigger <= 60;
+            if (_rebindNeedsRelease)
+            {
+                if (neutral) _rebindNeedsRelease = false;
+                return true;   // still swallow input while waiting for neutral
+            }
+            if (neutral) return true;
+
+            string token = BindingTokenFromMask(mask, leftTrigger, rightTrigger);
+            if (token == null) return true;
+
+            _customMappings[_activeRebindTag] = token;
+            _activeRebindBtn.Content = BindingDisplayName(token);
+            _activeRebindBtn.Foreground = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0, 204, 102));
+            FooterStatus.Text = I18n.Tr("bind.bound",
+                BindingDisplayName(_activeRebindTag), BindingDisplayName(token));
+            _activeRebindBtn = null;
+            _activeRebindTag = null;
+            _rebindNeedsRelease = true;
+            RefreshBindingLabels();
+            return true;
         }
 
         private void CheckRebindInput(HostGamepadButtons buttons)
@@ -3321,11 +3966,10 @@ namespace Pcsx5Ui
 
             var b = state.Buttons;
 
-            // Check interactive button rebind
-            if (_activeRebindBtn != null && b != HostGamepadButtons.None)
-            {
-                CheckRebindInput(b);
-            }
+            // Rebind capture deliberately does NOT happen here. This timer runs
+            // at 60Hz alongside the 20Hz input tick, and having both act on the
+            // same press made Cross re-arm and Circle cancel the binding being
+            // set. HandleRebindCapture in the input tick is the single owner.
 
             PadUpOverlay.Opacity = b.HasFlag(HostGamepadButtons.Up) ? 1 : 0;
             PadDownOverlay.Opacity = b.HasFlag(HostGamepadButtons.Down) ? 1 : 0;
@@ -3585,6 +4229,13 @@ namespace Pcsx5Ui
                 BtnMapRightStickLeft,
                 BtnMapRightStickRight,
                 BtnMapRightStickDown,
+                // Previously omitted, so these were unreachable by pad.
+                BtnMapL3,
+                BtnMapOptions,
+                BtnMapR3,
+                BtnMapTouchpadLeft,
+                BtnMapTouchpadCenter,
+                BtnMapTouchpadRight,
                 TestRumbleBtn,
                 ToggleMicBtn,
                 RestoreDefaultMappingsBtn,
@@ -3597,8 +4248,7 @@ namespace Pcsx5Ui
             if (_settingsLevel == 1)
             {
                 // Level 1: Main Category Hub (8 Tiles)
-                if (FooterGamepadHints != null)
-                    FooterGamepadHints.Text = "🎮 [L1/R1 / L2/R2] Tabs  •  [D-Pad] Categories  •  [✕] Enter  •  [◯] Back to Library";
+                ShowHints("hints.settings_hub");
 
                 var hubButtons = GetHubCategoryButtons().Where(btn => btn != null && btn.IsVisible).ToList();
                 if (hubButtons.Count == 0) return;
@@ -3634,8 +4284,7 @@ namespace Pcsx5Ui
             else if (_settingsLevel == 2)
             {
                 // Level 2: Category Rows Overview
-                if (FooterGamepadHints != null)
-                    FooterGamepadHints.Text = "🎮 [D-Pad ↑↓] Select Setting  •  [✕] Open Option  •  [◯] Back to Settings Hub";
+                ShowHints("hints.settings_list");
 
                 if (SettingsCategoryRowsPanel == null) return;
                 var rowButtons = SettingsCategoryRowsPanel.Children.OfType<Button>().ToList();
@@ -3666,8 +4315,7 @@ namespace Pcsx5Ui
             else if (_settingsLevel == 3)
             {
                 // Level 3: Dedicated Sub-Page (Pickers, Sliders, Toggles, Directory List)
-                if (FooterGamepadHints != null)
-                    FooterGamepadHints.Text = "🎮 [D-Pad ↑↓] Select  •  [D-Pad ←→] Adjust Slider  •  [✕] Choose  •  [◯] Back to Category";
+                ShowHints("hints.settings_detail");
 
                 if (SettingsSubPageContentContainer == null) return;
                 var focusables = SettingsSubPageContentContainer.Children
@@ -3744,14 +4392,8 @@ namespace Pcsx5Ui
 
         private void HandleControllerSetupGamepadNav(bool up, bool down, bool left, bool right, bool a, bool b)
         {
-            if (_activeRebindBtn != null && b)
-            {
-                ResetRebindBtnStyle(_activeRebindBtn);
-                _activeRebindBtn = null;
-                _activeRebindTag = null;
-                FooterStatus.Text = "Rebind cancelled.";
-                return;
-            }
+            // An armed rebind is handled before navigation is ever reached
+            // (see HandleRebindCapture), so there is nothing to cancel here.
 
             var controls = GetControllerSetupControls().Where(c => c != null && c.IsVisible).ToList();
             if (controls.Count == 0) return;
@@ -3895,6 +4537,25 @@ namespace Pcsx5Ui
                 ly = state.Gamepad.sThumbLY;
             }
 
+            // Fold in anything the keyboard raised since the last tick, then
+            // clear it, so a key press acts exactly like the equivalent button.
+            bool kbUp = _kbUp, kbDown = _kbDown, kbLeft = _kbLeft, kbRight = _kbRight;
+            bool kbCross = _kbCross, kbCircle = _kbCircle;
+            bool kbTriangle = _kbTriangle, kbSquare = _kbSquare;
+            bool kbTabPrev = _kbTabPrev, kbTabNext = _kbTabNext;
+            _kbUp = _kbDown = _kbLeft = _kbRight = false;
+            _kbCross = _kbCircle = _kbTriangle = _kbSquare = false;
+            _kbTabPrev = _kbTabNext = false;
+
+            // Any real pad activity switches the prompts back to controller
+            // labels. Thresholds keep idle stick drift from flapping the source.
+            if (buttons != 0 ||
+                state.Gamepad.bLeftTrigger > 60 || state.Gamepad.bRightTrigger > 60 ||
+                Math.Abs((int)lx) > 15000 || Math.Abs((int)ly) > 15000)
+            {
+                Dispatcher.Invoke(() => SetInputSource(ShellInputSource.Gamepad));
+            }
+
             ushort prevButtons = _prevInputState.Gamepad.wButtons;
             byte prevLT = _prevInputState.Gamepad.bLeftTrigger;
             byte prevRT = _prevInputState.Gamepad.bRightTrigger;
@@ -3930,14 +4591,77 @@ namespace Pcsx5Ui
             bool l1Held = (buttons & 0x0100) != 0;
             bool r1Held = (buttons & 0x0200) != 0;
 
+            // Keyboard contributions, merged before the repeat model so a key
+            // press behaves identically to the corresponding pad button.
+            if (kbCross) aPressed = true;
+            if (kbCircle) bPressed = true;
+            if (kbSquare) xPressed = true;
+            if (kbTriangle) yPressed = true;
+            if (kbTabPrev) l1Pressed = true;
+            if (kbTabNext) r1Pressed = true;
+
             // Map Left Thumbstick with analog deadzone and cooldown
             const int stickThreshold = 15000;
-            if ((DateTime.Now - _lastAnalogNav).TotalMilliseconds > 220)
+
+            // Which direction is currently being asked for, from stick or D-Pad.
+            int navDir = 0;
+            if (lx < -stickThreshold || (buttons & 0x0004) != 0) navDir = 3;
+            else if (lx > stickThreshold || (buttons & 0x0008) != 0) navDir = 4;
+            else if (ly > stickThreshold || (buttons & 0x0001) != 0) navDir = 1;
+            else if (ly < -stickThreshold || (buttons & 0x0002) != 0) navDir = 2;
+
+            bool navFire = false;
+            if (navDir == 0)
             {
-                if (lx < -stickThreshold || (buttons & 0x0004) != 0) { leftPressed = true; _lastAnalogNav = DateTime.Now; }
-                else if (lx > stickThreshold || (buttons & 0x0008) != 0) { rightPressed = true; _lastAnalogNav = DateTime.Now; }
-                else if (ly > stickThreshold || (buttons & 0x0001) != 0) { upPressed = true; _lastAnalogNav = DateTime.Now; }
-                else if (ly < -stickThreshold || (buttons & 0x0002) != 0) { downPressed = true; _lastAnalogNav = DateTime.Now; }
+                _navHeldDir = 0;
+            }
+            else if (navDir != _navHeldDir)
+            {
+                // Direction changed: act now. The old code made this wait out the
+                // cooldown, which is most of what "laggy" meant.
+                _navHeldDir = navDir;
+                _navRepeatAt = DateTime.Now + NavFirstDelay;
+                navFire = true;
+            }
+            else if (DateTime.Now >= _navRepeatAt)
+            {
+                _navRepeatAt = DateTime.Now + NavRepeatInterval;
+                navFire = true;
+            }
+
+            // A keyboard direction is a discrete press: it bypasses the hold
+            // repeat entirely rather than waiting on it.
+            if (kbUp) upPressed = true;
+            if (kbDown) downPressed = true;
+            if (kbLeft) leftPressed = true;
+            if (kbRight) rightPressed = true;
+
+            if (navFire)
+            {
+                _lastAnalogNav = DateTime.Now;
+                switch (navDir)
+                {
+                    case 1: upPressed = true; break;
+                    case 2: downPressed = true; break;
+                    case 3: leftPressed = true; break;
+                    case 4: rightPressed = true; break;
+                }
+            }
+
+            // ── REBIND CAPTURE ──────────────────────────────────────────────
+            // Runs before every shortcut and navigation path: while a binding is
+            // armed the pad belongs to the rebind, or Cross/Circle would be eaten
+            // as "activate"/"cancel" and could never be bound.
+            if (_activeRebindBtn != null)
+            {
+                bool consumed = false;
+                Dispatcher.Invoke(() => consumed = HandleRebindCapture(
+                    buttons, state.Gamepad.bLeftTrigger, state.Gamepad.bRightTrigger));
+                if (consumed)
+                {
+                    _prevInputState = state;
+                    return;
+                }
             }
 
             // ── SHORTCUT 1: FORCE STOP GAME (PS + Options OR PS + L1 + R1 OR PS + L3 + R3) ──
@@ -3973,8 +4697,7 @@ namespace Pcsx5Ui
             if (_gameConsoleVisible)
             {
                 Dispatcher.Invoke(() => {
-                    if (FooterGamepadHints != null)
-                        FooterGamepadHints.Text = "🎮 [D-Pad ↑↓] Scroll Logs  •  [✕] Copy to Clipboard  •  [◯] Close Console  •  [L3+R3] Toggle";
+                    ShowHints("hints.console");
                     if (upPressed) ConsoleOutputBox.LineUp();
                     else if (downPressed) ConsoleOutputBox.LineDown();
                     else if (aPressed) CopyConsole_Click(this, null);
@@ -4023,14 +4746,12 @@ namespace Pcsx5Ui
                 {
                     if (_pauseMenuVisible)
                     {
-                        if (FooterGamepadHints != null)
-                            FooterGamepadHints.Text = "🎮 [D-Pad ↑↓] Navigate  •  [✕] Select  •  [◯] Stop Game  •  [△] Console";
+                        ShowHints("hints.pause_menu");
                         HandlePauseMenuNav(upPressed, downPressed, aPressed, bPressed, yPressed);
                     }
                     else if (_watchdogToastVisible)
                     {
-                        if (FooterGamepadHints != null)
-                            FooterGamepadHints.Text = "🎮 [✕] Wait  •  [◯] Force Stop";
+                        ShowHints("hints.watchdog");
                         HandleWatchdogToastNav(aPressed, bPressed);
                     }
                     else if (GameView.Visibility == Visibility.Visible)
@@ -4051,14 +4772,14 @@ namespace Pcsx5Ui
                 // Overlay Dialog Traps
                 if (FolderPickerOverlay != null && FolderPickerOverlay.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [✕] Open Folder Browser  •  [◯] Cancel";
-                    HandleFolderPickerNav(aPressed, bPressed);
+                    ShowHints("picker.hints");
+                    HandleFolderPickerNav(upPressed, downPressed, aPressed, bPressed, yPressed);
                     _prevInputState = state;
                     return;
                 }
                 if (FirstRunOverlay != null && FirstRunOverlay.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [✕] Browse Folder  •  [◯] Skip  •  [△] Continue";
+                    ShowHints("hints.firstrun");
                     if (yPressed && FirstRunContinueBtn.IsEnabled) FirstRunContinue_Click(this, null);
                     else if (aPressed)
                     {
@@ -4071,7 +4792,7 @@ namespace Pcsx5Ui
                 }
                 if (CrashDialogOverlay != null && CrashDialogOverlay.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null) FooterGamepadHints.Text = "🎮 [✕] Dismiss  •  [◯] Close Overlay";
+                    ShowHints("hints.overlay");
                     if (aPressed || bPressed) DismissCrashDialog_Click(this, null);
                     _prevInputState = state;
                     return;
@@ -4105,8 +4826,26 @@ namespace Pcsx5Ui
                 // ── NAVIGATION PER ACTIVE TAB ──
                 if (LibraryView.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null)
-                        FooterGamepadHints.Text = "🎮 [L1/R1 / L2/R2] Tabs  •  [D-Pad] Select Game  •  [✕] Play Game  •  [△] Analyzer  •  [◯] Stop  •  [L3+R3] Console";
+                    // The expanded list is a distinct navigation surface.
+                    if (FullLibraryGrid != null && FullLibraryGrid.Visibility == Visibility.Visible)
+                    {
+                        ShowHints("hints.full_library");
+                        HandleFullLibraryNav(upPressed, downPressed, aPressed, bPressed);
+                        _prevInputState = state;
+                        return;
+                    }
+
+                    ShowHints("hints.library");
+
+                    // Square opens search: the only unassigned face button here,
+                    // and the search field was otherwise unreachable by pad.
+                    if (xPressed && SearchBox != null)
+                    {
+                        SearchBox.Focus();
+                        SearchBox.SelectAll();
+                        _prevInputState = state;
+                        return;
+                    }
 
                     if (_games.Count > 0)
                     {
@@ -4150,14 +4889,12 @@ namespace Pcsx5Ui
                 }
                 else if (ControllerView.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null)
-                        FooterGamepadHints.Text = "🎮 [L1/R1 / L2/R2] Tabs  •  [D-Pad] Navigate  •  [✕] Rebind / Action  •  [◯] Cancel";
+                    ShowHints("hints.controller");
                     HandleControllerSetupGamepadNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
                 }
                 else if (AnalyzerView.Visibility == Visibility.Visible)
                 {
-                    if (FooterGamepadHints != null)
-                        FooterGamepadHints.Text = "🎮 [L1/R1 / L2/R2] Tabs  •  [D-Pad Up/Down] Select Executable  •  [✕] Analyze All";
+                    ShowHints("hints.analyzer");
                     HandleAnalyzerGamepadNav(upPressed, downPressed, aPressed);
                 }
             });
@@ -4356,10 +5093,16 @@ namespace Pcsx5Ui
                 if (string.IsNullOrEmpty(game.EbootPath) || !File.Exists(game.EbootPath))
                     continue;
 
+                // pcsx5_boot_parser takes the game DIRECTORY.  Handed the eboot
+                // file it prints a usage banner and exits, leaving the grid empty.
+                string gameDir = null;
+                try { gameDir = Path.GetDirectoryName(game.EbootPath); } catch { gameDir = null; }
+                if (string.IsNullOrEmpty(gameDir)) continue;
+
                 string rawOutput = "";
                 try
                 {
-                    rawOutput = await RunParserProcessAsync(parserPath, game.EbootPath);
+                    rawOutput = await RunParserProcessAsync(parserPath, gameDir);
                 }
                 catch (Exception ex)
                 {
@@ -4396,74 +5139,160 @@ namespace Pcsx5Ui
                 process.StartInfo.RedirectStandardOutput = true;
                 process.StartInfo.CreateNoWindow = true;
 
-                process.OutputDataReceived += (s, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
+                // Exited can fire before the output pipe is drained, so complete
+                // on the output stream closing rather than on the exit event, and
+                // bound the wait: a stuck parser must not freeze the Tools tab.
+                process.OutputDataReceived += (s, e) =>
+                {
+                    if (e.Data != null) sb.AppendLine(e.Data);
+                    else tcs.TrySetResult(sb.ToString());   // null => stream closed
+                };
                 process.EnableRaisingEvents = true;
-                process.Exited += (s, e) => tcs.SetResult(sb.ToString());
+                process.Exited += (s, e) => tcs.TrySetResult(sb.ToString());
 
                 process.Start();
                 process.BeginOutputReadLine();
 
+                var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(60)));
+                if (completed != tcs.Task)
+                {
+                    try { if (!process.HasExited) process.Kill(true); } catch { }
+                    return sb.ToString() + Environment.NewLine + "[timed out after 60s]";
+                }
                 return await tcs.Task;
             }
         }
 
+        // Colour codes come through the redirected pipe; they are noise in the
+        // log pane and would break every marker match below.
+        private static readonly System.Text.RegularExpressions.Regex AnsiEscapeRe =
+            new System.Text.RegularExpressions.Regex(
+                "\\[[0-9;]*m", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static string StripAnsi(string text)
+        {
+            return string.IsNullOrEmpty(text) ? (text ?? "") : AnsiEscapeRe.Replace(text, "");
+        }
+
+        private static System.Text.RegularExpressions.Match M(string line, string pattern)
+        {
+            return System.Text.RegularExpressions.Regex.Match(line, pattern);
+        }
+
+        private static bool HexOf(string s, out ulong value)
+        {
+            return ulong.TryParse(s, System.Globalization.NumberStyles.HexNumber,
+                                  System.Globalization.CultureInfo.InvariantCulture, out value);
+        }
+
+        /// <summary>Extract the analyzer columns from pcsx5_boot_parser output.
+        /// Every marker below was taken from real output, not assumed.</summary>
         private BootAnalysisResult ParseParserOutput(string raw, GameEntry game)
         {
+            raw = StripAnsi(raw ?? "");
+
             var res = new BootAnalysisResult
             {
                 Title = game.Title,
                 TitleId = game.TitleId,
                 EbootPath = game.EbootPath,
                 RawOutput = raw,
-                Format = "Unknown",
-                EncryptionStatus = "Decrypted",
+                Format = I18n.Tr("analyzer.unknown"),
+                EncryptionStatus = I18n.Tr("analyzer.unknown"),
                 MemoryFootprint = "-",
-                AlignmentStatus = "OK"
+                AlignmentStatus = I18n.Tr("analyzer.unknown"),
             };
 
-            using (var reader = new StringReader(raw))
+            bool isSelf = false, isElf = false, isPie = false, moduleLoaded = false;
+            bool sawLoadSegment = false, misaligned = false;
+            int selfSegs = 0, encryptedSegs = 0;
+            string sdkType = null, bootError = null, misalignedDetail = null;
+            long footprintBytes = -1;
+
+            foreach (var rawLine in raw.Split('\n'))
             {
-                string line;
-                while ((line = reader.ReadLine()) != null)
+                string line = rawLine.Trim();
+                if (line.Length == 0) continue;
+
+                if (line.IndexOf("Detected SELF container", StringComparison.OrdinalIgnoreCase) >= 0)
+                    isSelf = true;
+                if (line.IndexOf("Valid ELF64", StringComparison.OrdinalIgnoreCase) >= 0)
+                    isElf = true;
+                if (line.IndexOf("treating as PIE", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    line.IndexOf("(PIE) detected", StringComparison.OrdinalIgnoreCase) >= 0)
+                    isPie = true;
+
+                var m = M(line, @"PS5 SDK module type (0x[0-9A-Fa-f]+)");
+                if (m.Success) sdkType = m.Groups[1].Value;
+
+                // SELF segments carry their own encryption flag.
+                m = M(line, @"SELF Seg\[\d+\]:.*?encrypted=(\d)");
+                if (m.Success)
                 {
-                    if (line.Contains("Format detected:"))
+                    selfSegs++;
+                    if (m.Groups[1].Value != "0") encryptedSegs++;
+                }
+
+                m = M(line, @"Required memory footprint:.*?\(size:\s*(\d+)\s*bytes\)");
+                if (m.Success) long.TryParse(m.Groups[1].Value, out footprintBytes);
+
+                // PS5 maps on 16 KB pages; a PT_LOAD whose vaddr is not a
+                // multiple of its own alignment is a real loader hazard.
+                m = M(line, @"Program Header \d+: type=0x1\b.*?vaddr=0x([0-9A-Fa-f]+).*?align=0x([0-9A-Fa-f]+)");
+                if (m.Success)
+                {
+                    sawLoadSegment = true;
+                    if (HexOf(m.Groups[1].Value, out ulong vaddr) &&
+                        HexOf(m.Groups[2].Value, out ulong align) &&
+                        align > 1 && (vaddr % align) != 0)
                     {
-                        res.Format = line.Substring(line.IndexOf("Format detected:") + "Format detected:".Length).Trim();
-                    }
-                    else if (line.Contains("STATUS: PLAINTEXT / DECRYPTED (Key Applied)"))
-                    {
-                        res.EncryptionStatus = "Decrypted 🔑";
-                    }
-                    else if (line.Contains("STATUS: ENCRYPTED SEGMENTS DETECTED"))
-                    {
-                        res.EncryptionStatus = "Locked 🔒";
-                    }
-                    else if (line.Contains("STATUS: PLAINTEXT / DECRYPTED"))
-                    {
-                        res.EncryptionStatus = "Decrypted";
-                    }
-                    else if (line.Contains("BOOT ERROR:"))
-                    {
-                        string err = line.Substring(line.IndexOf("BOOT ERROR:") + "BOOT ERROR:".Length).Trim();
-                        res.AlignmentStatus = "Error: " + err;
-                    }
-                    else if (line.Contains("WARNING: Segment vaddr is not 16KB page-aligned!"))
-                    {
-                        if (!res.AlignmentStatus.StartsWith("Error"))
-                        {
-                            res.AlignmentStatus = "Warning ⚠️";
-                        }
-                    }
-                    else if (line.Contains("Memory footprint:"))
-                    {
-                        int idx = line.IndexOf("Footprint size:");
-                        if (idx != -1)
-                        {
-                            res.MemoryFootprint = line.Substring(idx + "Footprint size:".Length).Replace(")", "").Trim();
-                        }
+                        misaligned = true;
+                        // Naming the offending segment is the difference between
+                        // a verdict and something actionable.
+                        if (misalignedDetail == null)
+                            misalignedDetail = string.Format("PH{0} vaddr=0x{1:X}",
+                                m.Groups[0].Value.Contains("Header ")
+                                    ? m.Groups[0].Value.Split(new[] { "Header " }, StringSplitOptions.None)[1].Split(':')[0]
+                                    : "?",
+                                vaddr);
                     }
                 }
+
+                if (line.StartsWith("Module Loaded:", StringComparison.OrdinalIgnoreCase))
+                    moduleLoaded = line.IndexOf("Yes", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                int errIdx = line.IndexOf("BOOT ERROR:", StringComparison.OrdinalIgnoreCase);
+                if (errIdx >= 0) bootError = line.Substring(errIdx + "BOOT ERROR:".Length).Trim();
             }
+
+            // Container format
+            if (isSelf) res.Format = isPie ? "SELF · PIE" : "SELF";
+            else if (isElf) res.Format = isPie ? "ELF64 · PIE" : "ELF64";
+            if (sdkType != null && res.Format != I18n.Tr("analyzer.unknown"))
+                res.Format += "  (SDK " + sdkType + ")";
+
+            // Encryption, from the SELF segment flags where they exist.
+            if (selfSegs > 0)
+            {
+                res.EncryptionStatus = encryptedSegs == 0
+                    ? I18n.Tr("analyzer.decrypted_segs", selfSegs)
+                    : I18n.Tr("analyzer.encrypted_segs", encryptedSegs, selfSegs);
+            }
+            else if (isElf)
+            {
+                res.EncryptionStatus = I18n.Tr("analyzer.plaintext_elf");
+            }
+
+            if (footprintBytes > 0) res.MemoryFootprint = FormatBytes(footprintBytes);
+
+            if (bootError != null) res.AlignmentStatus = I18n.Tr("analyzer.error", bootError);
+            else if (!moduleLoaded) res.AlignmentStatus = I18n.Tr("analyzer.not_loaded");
+            else if (!sawLoadSegment) res.AlignmentStatus = I18n.Tr("analyzer.unknown");
+            else if (misaligned)
+                res.AlignmentStatus = misalignedDetail == null
+                    ? I18n.Tr("analyzer.misaligned")
+                    : I18n.Tr("analyzer.misaligned_at", misalignedDetail);
+            else res.AlignmentStatus = I18n.Tr("analyzer.aligned_16k");
 
             return res;
         }
@@ -4621,7 +5450,22 @@ namespace Pcsx5Ui
             public string language { get; set; } = "en-US";
             public bool title_music_enabled { get; set; } = true;
             public double scale { get; set; } = 1.0;
+            // The shell is a console interface, so fullscreen is the default
+            // presentation.  Distinct from graphics.fullscreen, which governs
+            // the *game* window, not the dashboard.
+            public bool start_fullscreen { get; set; } = true;
         }
+    }
+
+    /// <summary>One row in the in-app folder browser: a drive, a subfolder, the
+    /// parent entry, or a non-navigable status row (empty / access denied).</summary>
+    public class FolderEntry
+    {
+        public string Icon { get; set; }
+        public string Name { get; set; }
+        public string FullPath { get; set; }   // null on status rows, and on the
+                                               // parent entry at a drive root
+        public bool IsParent { get; set; }
     }
 
     public class IniFile

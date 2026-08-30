@@ -130,3 +130,24 @@ ppsa*_kernel*.txt
 !docs/evidence/**
 /artifacts/
 releases/
+
+# ---------------------------------------------------------------------------
+# Local AI engineering tooling — development aids, not part of the emulator.
+# Kept on disk, deliberately not published.
+# ---------------------------------------------------------------------------
+.claude/
+.gemini/
+CLAUDE.md
+GEMINI.md
+
+# Offline-only analysis output and scratch artifacts
+/crash_prx_dump.bin
+/crash_rip_dump.bin
+/prev.bin
+/imports.txt
+/imports_summary.txt
+/count_tokens.py
+/patch_logging.py
+/temp/
+/memory/
+/tools/validate_ai_framework.py

@@ -57,6 +57,10 @@ namespace Pcsx5Ui
                         {
                             _translations[kvp.Key] = kvp.Value;
                         }
+                        // Tell XAML bindings created via {loc:Tr} to re-resolve;
+                        // they are parsed before this point and would otherwise
+                        // keep showing raw keys.
+                        I18nSource.Instance.Refresh();
                     }
                 }
             }

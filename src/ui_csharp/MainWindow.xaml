@@ -1,21 +1,23 @@
 <Window x:Class="Pcsx5Ui.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Pcsx5Ui"
         xmlns:local="clr-namespace:Pcsx5Ui"
-        Title="PCSX5 - PlayStation 5 Emulator" Height="780" Width="1200"
-        MinWidth="1050" MinHeight="680"
-        WindowStartupLocation="CenterScreen"
-        Background="#0A0D14"
-        Foreground="White"
-        FontFamily="Segoe UI Semibold, Inter, Outfit, Arial"
-        Loaded="Window_Loaded"
-        Icon="pcsx5_icon.ico">
+ Title="PCSX5 - PlayStation 5 Emulator" Height="780" Width="1200"
+ MinWidth="1050" MinHeight="680"
+ WindowStartupLocation="CenterScreen"
+ Background="#0A0D14"
+ Foreground="White"
+ FontFamily="Segoe UI Semibold, Inter, Outfit, Arial"
+ Loaded="Window_Loaded"
+ PreviewKeyDown="Window_PreviewKeyDown"
+ Icon="pcsx5_icon.ico">
 
     <WindowChrome.WindowChrome>
         <WindowChrome GlassFrameThickness="-1" 
-                      CornerRadius="12" 
-                      CaptionHeight="50" 
-                      ResizeBorderThickness="6"/>
+ CornerRadius="12" 
+ CaptionHeight="50" 
+ ResizeBorderThickness="6"/>
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
@@ -41,6 +43,7 @@
         
         <!-- Navigation tab button style -->
         <Style x:Key="NavTabButtonStyle" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource AccentFocusVisual}"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#FFA0A0A5"/>
             <Setter Property="FontSize" Value="14"/>
@@ -55,9 +58,9 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}" 
-                                Padding="{TemplateBinding Padding}">
+ BorderBrush="{TemplateBinding BorderBrush}" 
+ BorderThickness="{TemplateBinding BorderThickness}" 
+ Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -67,6 +70,7 @@
 
         <!-- Standard Button Style -->
         <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource AccentFocusVisual}"/>
             <Setter Property="Background" Value="#1EFFFFFF"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderBrush" Value="#2FFFFFFF"/>
@@ -79,10 +83,10 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}" 
-                                CornerRadius="6"
-                                Padding="{TemplateBinding Padding}">
+ BorderBrush="{TemplateBinding BorderBrush}" 
+ BorderThickness="{TemplateBinding BorderThickness}" 
+ CornerRadius="6"
+ Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -103,6 +107,7 @@
 
         <!-- Secondary Button Style -->
         <Style x:Key="SecondaryButtonStyle" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource AccentFocusVisual}"/>
             <Setter Property="Background" Value="#1F242F"/>
             <Setter Property="Foreground" Value="#FFA0A0A5"/>
             <Setter Property="BorderBrush" Value="#2A2F3D"/>
@@ -173,9 +178,9 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="TileBorder" Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}" 
-                                CornerRadius="14" Padding="16,14">
+ BorderBrush="{TemplateBinding BorderBrush}" 
+ BorderThickness="{TemplateBinding BorderThickness}" 
+ CornerRadius="14" Padding="16,14">
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -206,9 +211,9 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="RowBorder" Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}" 
-                                CornerRadius="12" Padding="18,12">
+ BorderBrush="{TemplateBinding BorderBrush}" 
+ BorderThickness="{TemplateBinding BorderThickness}" 
+ CornerRadius="12" Padding="18,12">
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -239,9 +244,9 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="OptionBorder" Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}" 
-                                CornerRadius="12" Padding="20,14">
+ BorderBrush="{TemplateBinding BorderBrush}" 
+ BorderThickness="{TemplateBinding BorderThickness}" 
+ CornerRadius="12" Padding="20,14">
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -272,9 +277,9 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="PillBorder" Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}" 
-                                CornerRadius="12" Padding="24,0">
+ BorderBrush="{TemplateBinding BorderBrush}" 
+ BorderThickness="{TemplateBinding BorderThickness}" 
+ CornerRadius="12" Padding="24,0">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -295,6 +300,7 @@
 
         <!-- Settings Card / Row Tile Style (Android TV Card Style) -->
         <Style x:Key="SettingsCardTileStyle" TargetType="Border">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource AccentFocusVisual}"/>
             <Setter Property="Background" Value="#14FFFFFF"/>
             <Setter Property="BorderBrush" Value="#15FFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -319,6 +325,17 @@
             </Image.Effect>
         </Image>
         
+        <!-- Bottom scrim: keeps title/metadata legible over arbitrary key art. -->
+        <Rectangle IsHitTestVisible="False">
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#0005060A" Offset="0.35"/>
+                    <GradientStop Color="#9905060A" Offset="0.72"/>
+                    <GradientStop Color="#E605060A" Offset="1.0"/>
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+
         <!-- Dark gradient overlay to fade the background art to black at the edges -->
         <Grid>
             <Grid.Background>
@@ -354,16 +371,16 @@
                     
                     <!-- Logo -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="25,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
-                        <TextBlock Text="PCSX5" Foreground="#0099FF" FontSize="20" FontWeight="ExtraBold" VerticalAlignment="Center"/>
-                        <TextBlock Text="PS5" Foreground="#A0A0A5" FontSize="11" Margin="8,4,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="PCSX5" Foreground="#0099FF" FontSize="{DynamicResource Type4XL}" FontWeight="ExtraBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="PS5" Foreground="#A0A0A5" FontSize="{DynamicResource TypeM}" Margin="8,4,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
 
                     <!-- Navigation Tabs -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Button x:Name="TabLibraryBtn" Content="GAME LIBRARY" Style="{StaticResource NavTabButtonStyle}" Click="TabLibrary_Click"/>
-                        <Button x:Name="TabAnalyzerBtn" Content="BOOT ANALYZER" Style="{StaticResource NavTabButtonStyle}" Click="TabAnalyzer_Click"/>
-                        <Button x:Name="TabControllerBtn" Content="CONTROLLER SETUP" Style="{StaticResource NavTabButtonStyle}" Click="TabController_Click"/>
-                        <Button x:Name="TabSettingsBtn" Content="SYSTEM SETTINGS" Style="{StaticResource NavTabButtonStyle}" Click="TabSettings_Click"/>
+                        <Button x:Name="TabLibraryBtn" Content="{loc:Tr Key=ui.game_library}" Style="{StaticResource NavTabButtonStyle}" Click="TabLibrary_Click"/>
+                        <Button x:Name="TabAnalyzerBtn" Content="{loc:Tr Key=ui.boot_analyzer}" Style="{StaticResource NavTabButtonStyle}" Click="TabAnalyzer_Click"/>
+                        <Button x:Name="TabControllerBtn" Content="{loc:Tr Key=ui.controller_setup}" Style="{StaticResource NavTabButtonStyle}" Click="TabController_Click"/>
+                        <Button x:Name="TabSettingsBtn" Content="{loc:Tr Key=ui.system_settings}" Style="{StaticResource NavTabButtonStyle}" Click="TabSettings_Click"/>
                     </StackPanel>
 
                     <!-- Top-Right Controls & Search Box -->
@@ -371,28 +388,28 @@
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,2,0" WindowChrome.IsHitTestVisibleInChrome="True">
                             <!-- Universal HUD: Performance metrics (FPS, RAM, Host CPU) -->
                             <StackPanel x:Name="HudMetricsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,15,0" Visibility="Collapsed">
-                                <TextBlock x:Name="HudFpsText" Text="FPS: --" FontSize="11" Foreground="#50DD60" FontWeight="Bold" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="HudFpsText" Text="FPS: --" FontSize="{DynamicResource TypeM}" Foreground="#50DD60" FontWeight="Bold" VerticalAlignment="Center"/>
                                 <TextBlock Text="|" Foreground="#25FFFFFF" Margin="8,0" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="HudRamText" Text="RAM: -- MB" FontSize="11" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="HudRamText" Text="RAM: -- MB" FontSize="{DynamicResource TypeM}" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                                 <TextBlock Text="|" Foreground="#25FFFFFF" Margin="8,0" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="HudVramText" Text="VRAM: -- MB" FontSize="11" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="HudVramText" Text="VRAM: -- MB" FontSize="{DynamicResource TypeM}" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                             </StackPanel>
 
-                            <Button x:Name="BtnMinimize" Content="⚊" Width="42" Height="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="11" Click="Minimize_Click" Style="{x:Null}">
+                            <Button x:Name="BtnMinimize" Content="⚊" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Minimize_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
                                     </Style>
                                 </Button.Resources>
                             </Button>
-                            <Button x:Name="BtnMaximize" Content="🗖" Width="42" Height="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="10" Click="Maximize_Click" Style="{x:Null}">
+                            <Button x:Name="BtnMaximize" Content="🗖" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="{DynamicResource TypeS}" Click="Maximize_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
                                     </Style>
                                 </Button.Resources>
                             </Button>
-                            <Button x:Name="BtnClose" Content="✕" Width="42" Height="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="11" Click="Close_Click" Style="{x:Null}">
+                            <Button x:Name="BtnClose" Content="✕" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Close_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
@@ -411,11 +428,11 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <!-- Search Icon -->
-                                    <TextBlock Grid.Column="0" Text="🔍" Foreground="#FFA0A0A5" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="0" Text="🔍" Foreground="#FFA0A0A5" FontSize="{DynamicResource TypeM}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     <!-- TextBox -->
-                                    <TextBox x:Name="SearchBox" Grid.Column="1" Background="Transparent" Foreground="White" BorderThickness="0" VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="0,0,10,0" FontSize="11" FontWeight="SemiBold" GotFocus="SearchBox_GotFocus" LostFocus="SearchBox_LostFocus" TextChanged="SearchBox_TextChanged"/>
+                                    <TextBox x:Name="SearchBox" FocusVisualStyle="{StaticResource AccentFocusVisual}" Grid.Column="1" Background="Transparent" Foreground="White" BorderThickness="0" VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="0,0,10,0" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" GotFocus="SearchBox_GotFocus" LostFocus="SearchBox_LostFocus" TextChanged="SearchBox_TextChanged"/>
                                     <!-- Placeholder Text -->
-                                    <TextBlock x:Name="SearchPlaceholder" Grid.Column="1" Text="Search Games..." Foreground="#6FA0A0A5" FontSize="11" VerticalAlignment="Center" Padding="0,0,10,0" IsHitTestVisible="False" Visibility="Visible"/>
+                                    <TextBlock x:Name="SearchPlaceholder" Grid.Column="1" Text="{loc:Tr Key=ui.search_games}" Foreground="#6FA0A0A5" FontSize="{DynamicResource TypeM}" VerticalAlignment="Center" Padding="0,0,10,0" IsHitTestVisible="False" Visibility="Visible"/>
                                 </Grid>
                             </Border>
                         </Grid>
@@ -432,7 +449,7 @@
                         <!-- Upper details area -->
                         <RowDefinition Height="*"/>
                         <!-- Lower carousel shelf -->
-                        <RowDefinition Height="265"/>
+                        <RowDefinition Height="420"/>
                     </Grid.RowDefinitions>
 
                     <!-- Upper details area: details about selected game -->
@@ -442,30 +459,37 @@
                             <ColumnDefinition Width="1*"/>   <!-- Mini Cover Display -->
                         </Grid.ColumnDefinitions>
 
-                        <!-- Left Column: Big Game Title & Play Controls -->
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <!-- Left Column: Big Game Title & Play Controls.
+                             Bottom-anchored so the title and its action sit
+                             directly above the tile row, as on the PS5 home
+                             screen, rather than centred with dead space below. -->
+                        <StackPanel Grid.Column="0" VerticalAlignment="Bottom" Margin="0,0,0,26">
                             <!-- Game Title -->
-                            <TextBlock x:Name="DetailTitle" Text="Select a Game" FontSize="42" FontWeight="ExtraBold" Foreground="White" TextWrapping="Wrap" LineHeight="48"/>
+                            <TextBlock x:Name="DetailTitle" Text="{loc:Tr Key=ui.select_a_game}" FontSize="{DynamicResource TypeDisplayL}" FontWeight="ExtraBold" Foreground="White" TextWrapping="Wrap" LineHeight="48"/>
                             
                             <!-- Metadata badges & ID -->
                             <StackPanel Orientation="Horizontal" Margin="0,12,0,20">
-                                <TextBlock x:Name="DetailTitleId" Text="No game selected" FontSize="13" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="DetailTitleId" Text="{loc:Tr Key=ui.no_game_selected}" FontSize="{DynamicResource TypeL}" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                                 <TextBlock Text="•" Foreground="#FFA0A0A5" Margin="10,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="DetailSize" Text="-" FontSize="13" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="DetailSize" Text="-" FontSize="{DynamicResource TypeL}" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                                 <TextBlock Text="•" Foreground="#FFA0A0A5" Margin="10,0,10,0" VerticalAlignment="Center"/>
                                 
                                 <Border x:Name="DetailCompatBadge" Padding="8,3,8,3" CornerRadius="4" Background="#3F555555" VerticalAlignment="Center">
-                                    <TextBlock x:Name="DetailCompatText" Text="UNKNOWN" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                                    <TextBlock x:Name="DetailCompatText" Text="{loc:Tr Key=ui.unknown}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="White"/>
                                 </Border>
                             </StackPanel>
 
-                            <!-- Path info -->
-                            <TextBlock Text="Executable Path:" FontSize="11" Foreground="#6FA0A0A5" Margin="0,0,0,3"/>
-                            <TextBlock x:Name="DetailPath" Text="-" FontSize="11" Foreground="#FFA0A0A5" TextWrapping="Wrap" MaxHeight="45" Margin="0,0,0,25"/>
+                            <!-- Path info: present for developers, deliberately
+                                 quiet. A full filesystem path shouting at the
+                                 user is the opposite of a console dashboard. -->
+                            <TextBlock x:Name="DetailPath" Text="-" FontSize="{DynamicResource TypeS}"
+                                       Foreground="#59A0A0A5" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                                       Margin="0,0,0,22"/>
 
                             <!-- Play/Launch Button -->
                             <StackPanel Orientation="Horizontal">
-                                <Button x:Name="LaunchButton" Content="Play Game" Width="200" Height="48" FontSize="15" FontWeight="Bold" Cursor="Hand" Click="LaunchButton_Click">
+                                <Button x:Name="LaunchButton" Content="{loc:Tr Key=ui.play_game}" MinWidth="200" MinHeight="48" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Cursor="Hand" Click="LaunchButton_Click">
                                     <Button.Style>
                                         <Style TargetType="Button">
                                             <Setter Property="Background" Value="#0078D4"/>
@@ -491,7 +515,7 @@
                                     </Button.Style>
                                 </Button>
 
-                                <Button x:Name="StopButton" Content="Stop" Width="100" Height="48" FontSize="15" FontWeight="Bold" Margin="15,0,0,0" Cursor="Hand" Visibility="Collapsed" Click="StopButton_Click">
+                                <Button x:Name="StopButton" Content="{loc:Tr Key=ui.stop}" MinWidth="100" MinHeight="48" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Margin="15,0,0,0" Cursor="Hand" Visibility="Collapsed" Click="StopButton_Click">
                                     <Button.Style>
                                         <Style TargetType="Button">
                                             <Setter Property="Background" Value="#CC2200"/>
@@ -517,7 +541,7 @@
                         </StackPanel>
 
                         <!-- Right Column: Visual Art Preview of Selected Game -->
-                        <Border x:Name="GameCoverDisplayBorder" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,10,0" Width="220" Height="220" CornerRadius="12" BorderBrush="#2FFFFFFF" BorderThickness="1" Background="#1F000000"/>
+                        <Border x:Name="GameCoverDisplayBorder" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,10,0" Width="300" MinHeight="300" CornerRadius="16" BorderBrush="#2FFFFFFF" BorderThickness="1" Background="#1F000000"/>
                     </Grid>
 
                     <!-- Lower Carousel shelf: horizontal scrolling game icons -->
@@ -533,29 +557,29 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="LibraryHeaderTextBlock" Grid.Column="0" Text="Game Library" FontSize="13" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="LibraryHeaderTextBlock" Grid.Column="0" Text="{loc:Tr Key=ui.game_library_2}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock x:Name="LibraryGameCount" Text="0 games" FontSize="11" Foreground="#6FA0A0A5" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                <Button x:Name="FullLibraryToggleBtn" Content="View All ▸" Width="110" Height="28" FontSize="10" Style="{StaticResource ModernButtonStyle}" Click="ToggleFullLibrary_Click"/>
+                                <TextBlock x:Name="LibraryGameCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeM}" Foreground="#6FA0A0A5" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <Button x:Name="FullLibraryToggleBtn" Content="{loc:Tr Key=ui.view_all}" MinWidth="110" MinHeight="28" FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Click="ToggleFullLibrary_Click"/>
                             </StackPanel>
                         </Grid>
 
                         <Grid Grid.Row="1">
-                            <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Style="{StaticResource ModernScrollViewer}" Padding="35,0,10,0">
-                                <StackPanel x:Name="GamesWrapPanel" Orientation="Horizontal" VerticalAlignment="Center" Height="200"/>
+                            <ScrollViewer x:Name="LibraryScroller" Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Style="{StaticResource ModernScrollViewer}" Padding="35,0,10,0">
+                                <StackPanel x:Name="GamesWrapPanel" Orientation="Horizontal" VerticalAlignment="Center" Height="320"/>
                             </ScrollViewer>
 
                             <!-- Scroll arrows -->
-                            <Button x:Name="LibraryScrollLeft" Content="◀" Width="32" Height="60" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                    Background="#80000000" Foreground="White" FontSize="14" BorderThickness="0" Margin="5,0,0,0"
-                                    Click="LibraryScrollLeft_Click" Panel.ZIndex="10"/>
-                            <Button x:Name="LibraryScrollRight" Content="▶" Width="32" Height="60" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                    Background="#80000000" Foreground="White" FontSize="14" BorderThickness="0" Margin="0,0,5,0"
-                                    Click="LibraryScrollRight_Click" Panel.ZIndex="10"/>
+                            <Button x:Name="LibraryScrollLeft" Content="◀" MinWidth="52" MinHeight="52" HorizontalAlignment="Left" VerticalAlignment="Center"
+ Background="#59000000" Foreground="White" FontSize="{DynamicResource TypeL}" BorderThickness="0" Margin="8,0,0,0"
+ Visibility="Collapsed" Click="LibraryScrollLeft_Click" Panel.ZIndex="10"/>
+                            <Button x:Name="LibraryScrollRight" Content="▶" MinWidth="52" MinHeight="52" HorizontalAlignment="Right" VerticalAlignment="Center"
+ Background="#59000000" Foreground="White" FontSize="{DynamicResource TypeL}" BorderThickness="0" Margin="0,0,8,0"
+ Visibility="Collapsed" Click="LibraryScrollRight_Click" Panel.ZIndex="10"/>
                         </Grid>
 
                         <!-- Spacer -->
-                        <Border Grid.Row="2" Height="10"/>
+                        <Border Grid.Row="2" MinHeight="10"/>
                     </Grid>
 
                     <!-- Full library grid view (hidden by default) -->
@@ -570,20 +594,20 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                <Button x:Name="FullLibraryBackBtn" Content="◀ Back to Carousel" Width="140" Height="28" FontSize="10" Style="{StaticResource ModernButtonStyle}" Click="ToggleFullLibrary_Click"/>
-                                <TextBox x:Name="LibrarySearchBox" Width="200" Height="28" Margin="12,0,0,0" FontSize="11" Background="#2F000000" Foreground="White" BorderBrush="#3FFFFFFF" BorderThickness="1"/>
+                                <Button x:Name="FullLibraryBackBtn" Content="{loc:Tr Key=ui.back_to_carousel}" MinWidth="140" MinHeight="28" FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Click="ToggleFullLibrary_Click"/>
+                                <TextBox x:Name="LibrarySearchBox" Width="200" Height="28" Margin="12,0,0,0" FontSize="{DynamicResource TypeM}" Background="#2F000000" Foreground="White" BorderBrush="#3FFFFFFF" BorderThickness="1"/>
                             </StackPanel>
-                            <TextBlock Grid.Column="1" x:Name="FullLibraryCount" Text="0 games" FontSize="11" Foreground="#6FA0A0A5" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" x:Name="FullLibraryCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeM}" Foreground="#6FA0A0A5" VerticalAlignment="Center"/>
                         </Grid>
-                        <ListView x:Name="FullLibraryListView" Grid.Row="1" Background="Transparent" Foreground="White" BorderThickness="0"
+                        <ListView x:Name="FullLibraryListView" FocusVisualStyle="{StaticResource AccentFocusVisual}" Grid.Row="1" Background="Transparent" Foreground="White" BorderThickness="0"
                                   ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListView.View>
                                 <GridView>
-                                    <GridViewColumn Header="Title" Width="250" DisplayMemberBinding="{Binding Title}"/>
-                                    <GridViewColumn Header="Title ID" Width="110" DisplayMemberBinding="{Binding TitleId}"/>
-                                    <GridViewColumn Header="Size" Width="90" DisplayMemberBinding="{Binding SizeStr}"/>
-                                    <GridViewColumn Header="Status" Width="100" DisplayMemberBinding="{Binding CompatStatus}"/>
-                                    <GridViewColumn Header="Path" Width="200" DisplayMemberBinding="{Binding EbootPath}"/>
+                                    <GridViewColumn Header="{loc:Tr Key=ui.title}" Width="250" DisplayMemberBinding="{Binding Title}"/>
+                                    <GridViewColumn Header="{loc:Tr Key=ui.title_id}" Width="110" DisplayMemberBinding="{Binding TitleId}"/>
+                                    <GridViewColumn Header="{loc:Tr Key=ui.size}" Width="90" DisplayMemberBinding="{Binding SizeStr}"/>
+                                    <GridViewColumn Header="{loc:Tr Key=ui.status}" Width="100" DisplayMemberBinding="{Binding CompatStatus}"/>
+                                    <GridViewColumn Header="{loc:Tr Key=ui.path}" Width="200" DisplayMemberBinding="{Binding EbootPath}"/>
                                 </GridView>
                             </ListView.View>
                             <ListView.ItemContainerStyle>
@@ -615,11 +639,11 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="0,0,0,10">
-                        <TextBlock x:Name="AnalyzerHeaderTextBlock" Text="Executable Boot &amp; Memory Analyzer" FontSize="14" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="AnalyzerHeaderTextBlock" Text="{loc:Tr Key=ui.executable_boot_amp_memory_analyzer}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                         
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Analyze All Games" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeAll_Click"/>
-                            <Button Content="Export Minimal Summary" Style="{StaticResource ModernButtonStyle}" Margin="10,0,0,0" Click="ExportSummary_Click"/>
+                            <Button Content="{loc:Tr Key=ui.analyze_all_games}" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeAll_Click"/>
+                            <Button Content="{loc:Tr Key=ui.export_minimal_summary}" Style="{StaticResource ModernButtonStyle}" Margin="10,0,0,0" Click="ExportSummary_Click"/>
                         </StackPanel>
                     </Grid>
 
@@ -631,15 +655,15 @@
 
                         <!-- ListView -->
                         <Border Grid.Column="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Margin="0,0,10,0">
-                            <ListView x:Name="AnalyzerListView" Background="Transparent" Foreground="White" BorderThickness="0" SelectionChanged="AnalyzerListView_SelectionChanged">
+                            <ListView x:Name="AnalyzerListView" FocusVisualStyle="{StaticResource AccentFocusVisual}" Background="Transparent" Foreground="White" BorderThickness="0" SelectionChanged="AnalyzerListView_SelectionChanged">
                                 <ListView.View>
                                     <GridView>
-                                        <GridViewColumn Header="Game Title" Width="180" DisplayMemberBinding="{Binding Title}"/>
-                                        <GridViewColumn Header="Title ID" Width="80" DisplayMemberBinding="{Binding TitleId}"/>
-                                        <GridViewColumn Header="Format" Width="90" DisplayMemberBinding="{Binding Format}"/>
-                                        <GridViewColumn Header="Encryption" Width="100" DisplayMemberBinding="{Binding EncryptionStatus}"/>
-                                        <GridViewColumn Header="Footprint" Width="80" DisplayMemberBinding="{Binding MemoryFootprint}"/>
-                                        <GridViewColumn Header="Alignment" Width="80" DisplayMemberBinding="{Binding AlignmentStatus}"/>
+                                        <GridViewColumn Header="{loc:Tr Key=ui.game_title}" Width="220" DisplayMemberBinding="{Binding Title}"/>
+                                        <GridViewColumn Header="{loc:Tr Key=ui.title_id}" Width="110" DisplayMemberBinding="{Binding TitleId}"/>
+                                        <GridViewColumn Header="{loc:Tr Key=ui.format}" Width="210" DisplayMemberBinding="{Binding Format}"/>
+                                        <GridViewColumn Header="{loc:Tr Key=ui.encryption}" Width="210" DisplayMemberBinding="{Binding EncryptionStatus}"/>
+                                        <GridViewColumn Header="{loc:Tr Key=ui.footprint}" Width="120" DisplayMemberBinding="{Binding MemoryFootprint}"/>
+                                        <GridViewColumn Header="{loc:Tr Key=ui.alignment}" Width="260" DisplayMemberBinding="{Binding AlignmentStatus}"/>
                                     </GridView>
                                 </ListView.View>
                                 <ListView.ItemContainerStyle>
@@ -669,9 +693,9 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <TextBlock Grid.Row="0" Text="Detailed Parser Analysis Log" FontSize="11" Foreground="#FFA0A0A5" Margin="0,0,0,8"/>
+                                <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.detailed_parser_analysis_log}" FontSize="{DynamicResource TypeM}" Foreground="#FFA0A0A5" Margin="0,0,0,8"/>
                                 <TextBox x:Name="AnalyzerOutputTextBox" Grid.Row="1" Background="Transparent" Foreground="#FFCC66" FontFamily="Consolas, Courier New" FontSize="10.5" 
-                                         BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsReadOnly="True" AcceptsReturn="True"/>
+ BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsReadOnly="True" AcceptsReturn="True"/>
                             </Grid>
                         </Border>
                     </Grid>
@@ -684,7 +708,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Controller Setup" FontSize="14" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="0,0,0,5"/>
+                    <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.controller_setup_2}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="0,0,0,5"/>
 
                     <Border Grid.Row="1" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="15">
                         <Grid>
@@ -703,22 +727,22 @@
                                     <!-- D-PAD CARD -->
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="D-Pad" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.d_pad}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Up" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapUp" Content="pad_up" Tag="PadUp" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapUp" Tag="PadUp|pad_up" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Left" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapLeft" Content="pad_left" Tag="PadLeft" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapLeft" Tag="PadLeft|pad_left" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Right" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapRight" Content="pad_right" Tag="PadRight" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapRight" Tag="PadRight|pad_right" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Down" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapDown" Content="pad_down" Tag="PadDown" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapDown" Tag="PadDown|pad_down" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -726,14 +750,14 @@
                                     <!-- L1 and L2 CARD -->
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="L1 and L2" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.l1_and_l2}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="L1" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapL1" Content="l1" Tag="L1" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="L1" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapL1" Tag="L1|l1" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="L2" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapL2" Content="l2" Tag="L2" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="L2" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapL2" Tag="L2|l2" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -741,24 +765,24 @@
                                     <!-- LEFT STICK DEADZONE CARD -->
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="Left Stick Deadzone" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
-                                            <TextBlock Text="Min Deadzone (def: 2 max: 127)" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.left_stick_deadzone}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.min_deadzone_def_2_max_127}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
                                             <Grid Margin="0,0,0,8">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="30"/>
                                                 </Grid.ColumnDefinitions>
-                                                <Slider x:Name="CtrlMinDeadzoneLSlider" Minimum="0" Maximum="127" Value="2" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ElementName=CtrlMinDeadzoneLSlider, Path=Value}" Foreground="White" FontWeight="Bold" FontSize="10" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
+                                                <Slider x:Name="CtrlMinDeadzoneLSlider" FocusVisualStyle="{StaticResource AccentFocusVisual}" Minimum="0" Maximum="127" Value="2" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding ElementName=CtrlMinDeadzoneLSlider, Path=Value}" Foreground="White" FontWeight="Bold" FontSize="{DynamicResource TypeS}" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
                                             </Grid>
-                                            <TextBlock Text="Max Deadzone (def: 127 max: 127)" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.max_deadzone_def_127_max_127}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="30"/>
                                                 </Grid.ColumnDefinitions>
-                                                <Slider x:Name="CtrlMaxDeadzoneLSlider" Minimum="0" Maximum="127" Value="127" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ElementName=CtrlMaxDeadzoneLSlider, Path=Value}" Foreground="White" FontWeight="Bold" FontSize="10" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
+                                                <Slider x:Name="CtrlMaxDeadzoneLSlider" FocusVisualStyle="{StaticResource AccentFocusVisual}" Minimum="0" Maximum="127" Value="127" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding ElementName=CtrlMaxDeadzoneLSlider, Path=Value}" Foreground="White" FontWeight="Bold" FontSize="{DynamicResource TypeS}" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -766,22 +790,22 @@
                                     <!-- LEFT STICK CARD -->
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="Left Stick" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.left_stick}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Up" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapLeftStickUp" Content="axis_left_y" Tag="LeftStickUp" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapLeftStickUp" Tag="LeftStickUp|axis_left_y" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Left" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapLeftStickLeft" Content="axis_left_x" Tag="LeftStickLeft" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapLeftStickLeft" Tag="LeftStickLeft|axis_left_x" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Right" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapLeftStickRight" Content="axis_left_x" Tag="LeftStickRight" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapLeftStickRight" Tag="LeftStickRight|axis_left_x" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Down" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapLeftStickDown" Content="axis_left_y" Tag="LeftStickDown" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapLeftStickDown" Tag="LeftStickDown|axis_left_y" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -808,25 +832,25 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         
-                                        <TextBlock Grid.Row="0" Text="Config Selection" FontSize="11" FontWeight="Bold" Foreground="#0099FF" HorizontalAlignment="Center" Margin="0,0,0,5"/>
+                                        <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.config_selection}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" HorizontalAlignment="Center" Margin="0,0,0,5"/>
                                         
                                         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,5">
-                                            <ComboBox x:Name="CtrlConfigCombo" SelectedIndex="0" Width="140" Height="24" Background="#2FFFFFFF" Foreground="Black">
-                                                <ComboBoxItem Content="Common Config"/>
+                                            <ComboBox x:Name="CtrlConfigCombo" FocusVisualStyle="{StaticResource AccentFocusVisual}" SelectedIndex="0" Width="140" Height="24" Background="#2FFFFFFF" Foreground="Black">
+                                                <ComboBoxItem Content="{loc:Tr Key=ui.common_config}"/>
                                             </ComboBox>
-                                            <CheckBox x:Name="CtrlUsePerGameConfigCheck" Content="Use per-game configs" Foreground="White" Margin="15,0,0,0" VerticalAlignment="Center" FontSize="11"/>
+                                            <CheckBox x:Name="CtrlUsePerGameConfigCheck" FocusVisualStyle="{StaticResource AccentFocusVisual}" Content="{loc:Tr Key=ui.use_per_game_configs}" Foreground="White" Margin="15,0,0,0" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
                                         </StackPanel>
 
                                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,0">
-                                            <TextBlock Text="Active Gamepad:" Foreground="#FFA0A0A5" VerticalAlignment="Center" FontSize="11" Margin="0,0,10,0"/>
-                                            <ComboBox x:Name="CtrlActiveGamepadCombo" SelectedIndex="0" Width="200" Height="24" Background="#2FFFFFFF" Foreground="Black" SelectionChanged="CtrlActiveGamepadCombo_SelectionChanged">
-                                                <ComboBoxItem Content="Player 1: DualSense Wireless Controller"/>
-                                                <ComboBoxItem Content="Player 2: Controller Slot 2"/>
-                                                <ComboBoxItem Content="Player 3: Controller Slot 3"/>
-                                                <ComboBoxItem Content="Player 4: Controller Slot 4"/>
-                                                <ComboBoxItem Content="Xbox Controller (XInput)"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.active_gamepad}" Foreground="#FFA0A0A5" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}" Margin="0,0,10,0"/>
+                                            <ComboBox x:Name="CtrlActiveGamepadCombo" FocusVisualStyle="{StaticResource AccentFocusVisual}" SelectedIndex="0" Width="200" Height="24" Background="#2FFFFFFF" Foreground="Black" SelectionChanged="CtrlActiveGamepadCombo_SelectionChanged">
+                                                <ComboBoxItem Content="{loc:Tr Key=ui.player_1_dualsense_wireless_controller}"/>
+                                                <ComboBoxItem Content="{loc:Tr Key=ui.player_2_controller_slot_2}"/>
+                                                <ComboBoxItem Content="{loc:Tr Key=ui.player_3_controller_slot_3}"/>
+                                                <ComboBoxItem Content="{loc:Tr Key=ui.player_4_controller_slot_4}"/>
+                                                <ComboBoxItem Content="{loc:Tr Key=ui.xbox_controller_xinput}"/>
                                             </ComboBox>
-                                            <Button Content="Set Active Gamepad as Default" Style="{StaticResource ModernButtonStyle}" Height="24" FontSize="10" Padding="8,0,8,0" Margin="10,0,0,0" Click="SaveSettingsBtn_Click"/>
+                                            <Button Content="{loc:Tr Key=ui.set_active_gamepad_as_default}" Style="{StaticResource ModernButtonStyle}" MinHeight="24" FontSize="{DynamicResource TypeS}" Padding="8,0,8,0" Margin="10,0,0,0" Click="SaveSettingsBtn_Click"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -898,29 +922,29 @@
                                         </Grid.RowDefinitions>
 
                                         <StackPanel Grid.Column="0" Grid.Row="0" Margin="2,0,2,0">
-                                            <TextBlock Text="L3" FontSize="10" Foreground="#0099FF" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapL3" Content="l3" Tag="L3" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="0"/>
+                                            <TextBlock Text="L3" FontSize="{DynamicResource TypeS}" Foreground="#0099FF" HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                            <Button x:Name="BtnMapL3" Tag="L3|l3" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Grid.Row="0" Margin="2,0,2,0">
-                                            <TextBlock Text="Options" FontSize="10" Foreground="#0099FF" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapOptions" Content="options" Tag="Options" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.options}" FontSize="{DynamicResource TypeS}" Foreground="#0099FF" HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                            <Button x:Name="BtnMapOptions" Tag="Options|options" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="2" Grid.Row="0" Margin="2,0,2,0">
-                                            <TextBlock Text="R3" FontSize="10" Foreground="#0099FF" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapR3" Content="r3" Tag="R3" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="0"/>
+                                            <TextBlock Text="R3" FontSize="{DynamicResource TypeS}" Foreground="#0099FF" HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                            <Button x:Name="BtnMapR3" Tag="R3|r3" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="0" Grid.Row="1" Margin="2,5,2,0">
-                                            <TextBlock Text="Touchpad Left" FontSize="10" Foreground="#FFA0A0A5" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapTouchpadLeft" Content="unmapped" Tag="TouchpadLeft" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.touchpad_left}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                            <Button x:Name="BtnMapTouchpadLeft" Tag="TouchpadLeft|unmapped" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Grid.Row="1" Margin="2,5,2,0">
-                                            <TextBlock Text="Touchpad Center" FontSize="10" Foreground="#FFA0A0A5" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapTouchpadCenter" Content="back" Tag="TouchpadCenter" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.touchpad_center}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                            <Button x:Name="BtnMapTouchpadCenter" Tag="TouchpadCenter|back" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="2" Grid.Row="1" Margin="2,5,2,0">
-                                            <TextBlock Text="Touchpad Right" FontSize="10" Foreground="#FFA0A0A5" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapTouchpadRight" Content="unmapped" Tag="TouchpadRight" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.touchpad_right}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" HorizontalAlignment="Center" Margin="0,0,0,2"/>
+                                            <Button x:Name="BtnMapTouchpadRight" Tag="TouchpadRight|unmapped" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -934,7 +958,7 @@
                                         </Grid.ColumnDefinitions>
 
                                         <StackPanel Grid.Column="0">
-                                            <TextBlock Text="Color Adjustment &amp; Haptics" FontSize="10" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.color_adjustment_amp_haptics}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,4"/>
                                             
                                             <!-- RED -->
                                             <Grid Margin="0,1,0,1">
@@ -942,7 +966,7 @@
                                                     <ColumnDefinition Width="35"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="RED" FontSize="9" Foreground="White" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.red}" FontSize="{DynamicResource TypeXS}" Foreground="White" VerticalAlignment="Center"/>
                                                 <Slider x:Name="CtrlColorRSlider" Minimum="0" Maximum="255" Value="0" TickFrequency="16" IsSnapToTickEnabled="True" Grid.Column="1" VerticalAlignment="Center" ValueChanged="CtrlColorSliders_ValueChanged"/>
                                             </Grid>
                                             
@@ -952,7 +976,7 @@
                                                     <ColumnDefinition Width="35"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="GREEN" FontSize="9" Foreground="White" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.green}" FontSize="{DynamicResource TypeXS}" Foreground="White" VerticalAlignment="Center"/>
                                                 <Slider x:Name="CtrlColorGSlider" Minimum="0" Maximum="255" Value="0" TickFrequency="16" IsSnapToTickEnabled="True" Grid.Column="1" VerticalAlignment="Center" ValueChanged="CtrlColorSliders_ValueChanged"/>
                                             </Grid>
                                             
@@ -962,14 +986,14 @@
                                                     <ColumnDefinition Width="35"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="BLUE" FontSize="9" Foreground="White" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.blue}" FontSize="{DynamicResource TypeXS}" Foreground="White" VerticalAlignment="Center"/>
                                                 <Slider x:Name="CtrlColorBSlider" Minimum="0" Maximum="255" Value="255" TickFrequency="16" IsSnapToTickEnabled="True" Grid.Column="1" VerticalAlignment="Center" ValueChanged="CtrlColorSliders_ValueChanged"/>
                                             </Grid>
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                            <CheckBox x:Name="CtrlOverrideColorCheck" Content="Override Color" Foreground="White" FontSize="10" IsChecked="True" Margin="0,0,0,6"/>
-                                            <Border Background="Blue" Height="24" BorderBrush="White" BorderThickness="1" CornerRadius="4" x:Name="CtrlColorBox"/>
+                                            <CheckBox x:Name="CtrlOverrideColorCheck" Content="{loc:Tr Key=ui.override_color}" Foreground="White" FontSize="{DynamicResource TypeS}" IsChecked="True" Margin="0,0,0,6"/>
+                                            <Border Background="Blue" MinHeight="24" BorderBrush="White" BorderThickness="1" CornerRadius="4" x:Name="CtrlColorBox"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -977,14 +1001,14 @@
                                 <!-- Bottom actions -->
                                 <Grid Grid.Row="4" Margin="0,5,0,0">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                        <Button x:Name="RestoreDefaultMappingsBtn" Content="Restore Defaults" Style="{StaticResource ModernButtonStyle}" Width="110" Height="26" FontSize="10" Padding="0" Click="RestoreDefaultMappings_Click"/>
-                                        <Button x:Name="TestRumbleBtn" Content="Vibration Test" Style="{StaticResource ModernButtonStyle}" Width="100" Height="26" FontSize="10" Padding="0" Margin="6,0,0,0" Click="TestRumbleBtn_Click" ToolTip="Sends a haptic pulse to connected DualSense controller"/>
-                                        <Button x:Name="ToggleMicBtn" Content="Toggle Mic LED" Style="{StaticResource ModernButtonStyle}" Width="100" Height="26" FontSize="10" Padding="0" Margin="6,0,0,0" Click="ToggleMicBtn_Click" ToolTip="Toggles controller microphone mute LED"/>
+                                        <Button x:Name="RestoreDefaultMappingsBtn" Content="{loc:Tr Key=ui.restore_defaults}" Style="{StaticResource ModernButtonStyle}" MinWidth="110" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Click="RestoreDefaultMappings_Click"/>
+                                        <Button x:Name="TestRumbleBtn" Content="{loc:Tr Key=ui.vibration_test}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Margin="6,0,0,0" Click="TestRumbleBtn_Click" ToolTip="{loc:Tr Key=ui.sends_a_haptic_pulse_to_connected_dualsense_}"/>
+                                        <Button x:Name="ToggleMicBtn" Content="{loc:Tr Key=ui.toggle_mic_led}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Margin="6,0,0,0" Click="ToggleMicBtn_Click" ToolTip="{loc:Tr Key=ui.toggles_controller_microphone_mute_led}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Button Content="Save" Style="{StaticResource ModernButtonStyle}" Width="65" Height="26" FontSize="10" Padding="0" Click="SaveSettingsBtn_Click"/>
-                                        <Button Content="Cancel" Style="{StaticResource ModernButtonStyle}" Width="65" Height="26" FontSize="10" Padding="0" Margin="6,0,0,0"/>
-                                        <Button Content="Apply" Style="{StaticResource ModernButtonStyle}" Width="65" Height="26" FontSize="10" Padding="0" Margin="6,0,0,0" Click="SaveSettingsBtn_Click"/>
+                                        <Button Content="{loc:Tr Key=ui.save}" Style="{StaticResource ModernButtonStyle}" MinWidth="65" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Click="SaveSettingsBtn_Click"/>
+                                        <Button Content="{loc:Tr Key=ui.cancel}" Style="{StaticResource ModernButtonStyle}" MinWidth="65" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Margin="6,0,0,0"/>
+                                        <Button Content="{loc:Tr Key=ui.apply}" Style="{StaticResource ModernButtonStyle}" MinWidth="65" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Margin="6,0,0,0" Click="SaveSettingsBtn_Click"/>
                                     </StackPanel>
                                 </Grid>
 
@@ -998,9 +1022,9 @@
 
                                         <!-- LEFT: digital + analog input readouts -->
                                         <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                                            <TextBlock Text="LIVE INPUT" FontSize="10" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
-                                            <TextBlock x:Name="TesterConnectionText" Text="No controller connected" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,6" TextWrapping="Wrap"/>
-                                            <TextBlock x:Name="TesterButtonsText" Text="Buttons: -" FontSize="10" Foreground="White" Margin="0,0,0,8" TextWrapping="Wrap" FontFamily="Consolas"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.live_input}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
+                                            <TextBlock x:Name="TesterConnectionText" Text="{loc:Tr Key=ui.no_controller_connected}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,6" TextWrapping="Wrap"/>
+                                            <TextBlock x:Name="TesterButtonsText" Text="{loc:Tr Key=ui.buttons}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,8" TextWrapping="Wrap" FontFamily="Consolas"/>
 
                                             <Grid Margin="0,0,0,4">
                                                 <Grid.ColumnDefinitions>
@@ -1008,9 +1032,9 @@
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="34"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="L2" FontSize="10" Foreground="White" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="0" Text="L2" FontSize="{DynamicResource TypeS}" Foreground="White" VerticalAlignment="Center"/>
                                                 <ProgressBar x:Name="TesterL2Bar" Grid.Column="1" Minimum="0" Maximum="255" Height="10" Background="#20FFFFFF" Foreground="#0099FF"/>
-                                                <TextBlock x:Name="TesterL2Text" Grid.Column="2" Text="0" FontSize="10" Foreground="White" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+                                                <TextBlock x:Name="TesterL2Text" Grid.Column="2" Text="0" FontSize="{DynamicResource TypeS}" Foreground="White" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
                                             </Grid>
                                             <Grid Margin="0,0,0,8">
                                                 <Grid.ColumnDefinitions>
@@ -1018,50 +1042,50 @@
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="34"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="R2" FontSize="10" Foreground="White" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="0" Text="R2" FontSize="{DynamicResource TypeS}" Foreground="White" VerticalAlignment="Center"/>
                                                 <ProgressBar x:Name="TesterR2Bar" Grid.Column="1" Minimum="0" Maximum="255" Height="10" Background="#20FFFFFF" Foreground="#0099FF"/>
-                                                <TextBlock x:Name="TesterR2Text" Grid.Column="2" Text="0" FontSize="10" Foreground="White" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
+                                                <TextBlock x:Name="TesterR2Text" Grid.Column="2" Text="0" FontSize="{DynamicResource TypeS}" Foreground="White" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
                                             </Grid>
 
-                                            <TextBlock x:Name="TesterLeftStickText" Text="Left Stick:  X=128 Y=128" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterRightStickText" Text="Right Stick: X=128 Y=128" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterTouchText" Text="Touchpad: released" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterGyroText" Text="Gyro:  -" FontSize="10" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterAccelText" Text="Accel: -" FontSize="10" Foreground="White" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterLeftStickText" Text="{loc:Tr Key=ui.left_stick_x_128_y_128}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterRightStickText" Text="{loc:Tr Key=ui.right_stick_x_128_y_128}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterTouchText" Text="{loc:Tr Key=ui.touchpad_released}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterGyroText" Text="{loc:Tr Key=ui.gyro}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
+                                            <TextBlock x:Name="TesterAccelText" Text="{loc:Tr Key=ui.accel}" FontSize="{DynamicResource TypeS}" Foreground="White" FontFamily="Consolas"/>
                                         </StackPanel>
 
                                         <!-- RIGHT: output tests (rumble, LEDs, lightbar, adaptive triggers) -->
                                         <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                                            <TextBlock Text="OUTPUT TESTS" FontSize="10" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.output_tests}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
 
-                                            <TextBlock Text="Rumble" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.rumble}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                                <Button Content="Low Freq" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Click="TesterRumbleLow_Click"/>
-                                                <Button Content="High Freq" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterRumbleHigh_Click"/>
-                                                <Button Content="Stop" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterRumbleStop_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.low_freq}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Click="TesterRumbleLow_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.high_freq}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterRumbleHigh_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.stop}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterRumbleStop_Click"/>
                                             </StackPanel>
 
-                                            <TextBlock Text="Lightbar &amp; Player LEDs" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.lightbar_amp_player_leds}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                                <Button Content="Set Lightbar Color" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Click="TesterLightbarApply_Click" ToolTip="Applies the RED/GREEN/BLUE slider values to the controller lightbar"/>
-                                                <Button Content="Reset" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterLightbarReset_Click"/>
-                                                <Button Content="Cycle Player LED" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterPlayerLed_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.set_lightbar_color}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Click="TesterLightbarApply_Click" ToolTip="{loc:Tr Key=ui.applies_the_red_green_blue_slider_values_to_}"/>
+                                                <Button Content="{loc:Tr Key=ui.reset}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterLightbarReset_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.cycle_player_led}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterPlayerLed_Click"/>
                                             </StackPanel>
 
-                                            <TextBlock Text="Adaptive Triggers (both L2/R2)" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.adaptive_triggers_both_l2_r2}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                <Button Content="Off" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Click="TesterTriggerOff_Click"/>
-                                                <Button Content="Feedback" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerFeedback_Click"/>
-                                                <Button Content="Weapon" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerWeapon_Click"/>
-                                                <Button Content="Vibration" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerVibration_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.off}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Click="TesterTriggerOff_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.feedback}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerFeedback_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.weapon}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerWeapon_Click"/>
+                                                <Button Content="{loc:Tr Key=ui.vibration}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerVibration_Click"/>
                                             </StackPanel>
-                                            <TextBlock Text="Speaker &amp; Microphone (USB only)" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.speaker_amp_microphone_usb_only}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                <Button Content="Play Test Tone" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Click="TesterPlayTone_Click" ToolTip="Plays a 440 Hz tone through the DualSense speaker (USB audio endpoint, channels 1-2)"/>
-                                                <Button x:Name="TesterMicTestBtn" Content="Mic Test" Style="{StaticResource ModernButtonStyle}" Height="22" FontSize="9" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterMicTest_Click" ToolTip="Live level meter from the DualSense microphone (USB only)"/>
+                                                <Button Content="{loc:Tr Key=ui.play_test_tone}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Click="TesterPlayTone_Click" ToolTip="{loc:Tr Key=ui.plays_a_440_hz_tone_through_the_dualsense_sp}"/>
+                                                <Button x:Name="TesterMicTestBtn" Content="{loc:Tr Key=ui.mic_test}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterMicTest_Click" ToolTip="{loc:Tr Key=ui.live_level_meter_from_the_dualsense_micropho}"/>
                                                 <ProgressBar x:Name="TesterMicLevelBar" Minimum="0" Maximum="100" Width="80" Height="10" Background="#20FFFFFF" Foreground="#0099FF" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                             </StackPanel>
-                                            <TextBlock x:Name="TesterStatusText" Text="" FontSize="9" Foreground="#FFCC66" TextWrapping="Wrap"/>
+                                            <TextBlock x:Name="TesterStatusText" Text="" FontSize="{DynamicResource TypeXS}" Foreground="#FFCC66" TextWrapping="Wrap"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -1073,22 +1097,22 @@
                                     <!-- FACE BUTTONS CARD -->
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="Face Buttons" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.face_buttons}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Triangle" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapTriangle" Content="triangle" Tag="Triangle" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.triangle}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapTriangle" Tag="Triangle|triangle" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Circle" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapCircle" Content="circle" Tag="Circle" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.circle}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapCircle" Tag="Circle|circle" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Cross" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapCross" Content="cross" Tag="Cross" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.cross}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapCross" Tag="Cross|cross" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Square" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapSquare" Content="square" Tag="Square" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.square}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapSquare" Tag="Square|square" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -1096,14 +1120,14 @@
                                     <!-- R1 and R2 CARD -->
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="R1 and R2" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.r1_and_r2}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="R1" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapR1" Content="r1" Tag="R1" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="R1" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapR1" Tag="R1|r1" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="R2" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapR2" Content="r2" Tag="R2" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="R2" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapR2" Tag="R2|r2" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -1111,24 +1135,24 @@
                                     <!-- RIGHT STICK DEADZONE CARD -->
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="Right Stick Deadzone" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
-                                            <TextBlock Text="Min Deadzone (def: 2 max: 127)" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.right_stick_deadzone}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.min_deadzone_def_2_max_127}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
                                             <Grid Margin="0,0,0,8">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="30"/>
                                                 </Grid.ColumnDefinitions>
-                                                <Slider x:Name="CtrlMinDeadzoneRSlider" Minimum="0" Maximum="127" Value="2" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ElementName=CtrlMinDeadzoneRSlider, Path=Value}" Foreground="White" FontWeight="Bold" FontSize="10" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
+                                                <Slider x:Name="CtrlMinDeadzoneRSlider" FocusVisualStyle="{StaticResource AccentFocusVisual}" Minimum="0" Maximum="127" Value="2" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding ElementName=CtrlMinDeadzoneRSlider, Path=Value}" Foreground="White" FontWeight="Bold" FontSize="{DynamicResource TypeS}" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
                                             </Grid>
-                                            <TextBlock Text="Max Deadzone (def: 127 max: 127)" FontSize="10" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.max_deadzone_def_127_max_127}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="30"/>
                                                 </Grid.ColumnDefinitions>
-                                                <Slider x:Name="CtrlMaxDeadzoneRSlider" Minimum="0" Maximum="127" Value="127" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ElementName=CtrlMaxDeadzoneRSlider, Path=Value}" Foreground="White" FontWeight="Bold" FontSize="10" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
+                                                <Slider x:Name="CtrlMaxDeadzoneRSlider" FocusVisualStyle="{StaticResource AccentFocusVisual}" Minimum="0" Maximum="127" Value="127" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding ElementName=CtrlMaxDeadzoneRSlider, Path=Value}" Foreground="White" FontWeight="Bold" FontSize="{DynamicResource TypeS}" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -1136,22 +1160,22 @@
                                     <!-- RIGHT STICK CARD -->
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
-                                            <TextBlock Text="Right Stick" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.right_stick}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Up" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapRightStickUp" Content="axis_right_y" Tag="RightStickUp" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapRightStickUp" Tag="RightStickUp|axis_right_y" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Left" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapRightStickLeft" Content="axis_right_x" Tag="RightStickLeft" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapRightStickLeft" Tag="RightStickLeft|axis_right_x" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Right" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapRightStickRight" Content="axis_right_x" Tag="RightStickRight" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapRightStickRight" Tag="RightStickRight|axis_right_x" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                             <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="Down" Foreground="White" VerticalAlignment="Center" FontSize="11"/>
-                                                <Button x:Name="BtnMapRightStickDown" Content="axis_right_y" Tag="RightStickDown" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" Width="120" Height="22" FontSize="10" Padding="0" HorizontalAlignment="Right"/>
+                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
+                                                <Button x:Name="BtnMapRightStickDown" Tag="RightStickDown|axis_right_y" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -1180,8 +1204,8 @@
 
                         <!-- Level 1 Header -->
                         <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                            <TextBlock Text="SETTINGS" FontSize="26" FontWeight="ExtraBold" Foreground="White"/>
-                            <TextBlock Text="Customize system preferences, display, audio, controllers, and emulation performance." FontSize="13" Foreground="#80A0A0A5" Margin="0,4,0,0"/>
+                            <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeDisplayS}" FontWeight="ExtraBold" Foreground="White"/>
+                            <TextBlock Text="{loc:Tr Key=ui.customize_system_preferences_display_audio_c}" FontSize="{DynamicResource TypeL}" Foreground="#80A0A0A5" Margin="0,4,0,0"/>
                         </StackPanel>
 
                         <!-- Level 1 Category Grid -->
@@ -1195,14 +1219,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#200099FF" CornerRadius="10" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="🖥️" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Border Background="#200099FF" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="🖥️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="Display &amp; Video" FontSize="15" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="Renderer backend, resolution scaling, fullscreen mode" FontSize="11" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.renderer_backend_resolution_scaling_fullscre}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="20" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1214,14 +1238,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#2000C853" CornerRadius="10" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="🔊" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Border Background="#2000C853" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="🔊" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="Audio Output" FontSize="15" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="WASAPI driver, master volume, buffer latency, title theme" FontSize="11" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.audio_output}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.wasapi_driver_master_volume_buffer_latency_t}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="20" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1233,14 +1257,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FF9100" CornerRadius="10" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="🎮" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Border Background="#20FF9100" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="🎮" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="Accessories &amp; Controllers" FontSize="15" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="DualSense native HID, deadzones, vibration haptics" FontSize="11" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.accessories_amp_controllers}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.dualsense_native_hid_deadzones_vibration_hap}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="20" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1252,14 +1276,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#209C27B0" CornerRadius="10" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="💾" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Border Background="#209C27B0" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="💾" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="Storage &amp; Game Folders" FontSize="15" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="Game scan paths, saved data storage, crash bundles" FontSize="11" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.storage_amp_game_folders}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.game_scan_paths_saved_data_storage_crash_bun}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="20" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1271,14 +1295,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20E91E63" CornerRadius="10" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="⚙️" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Border Background="#20E91E63" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="⚙️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="System &amp; Emulation (HLE)" FontSize="15" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="Strict symbol imports, function call tracing, minidumps" FontSize="11" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.system_amp_emulation_hle}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.strict_symbol_imports_function_call_tracing_}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="20" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1290,14 +1314,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#2000E5FF" CornerRadius="10" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="📜" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Border Background="#2000E5FF" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="📜" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="Diagnostics &amp; Logging" FontSize="15" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="Log severity filters, JSON output, continuous file append" FontSize="11" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.diagnostics_amp_logging}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.log_severity_filters_json_output_continuous_}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="20" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1309,14 +1333,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FFD600" CornerRadius="10" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="🌐" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Border Background="#20FFD600" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="🌐" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="UI &amp; Personalization" FontSize="15" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="Interface language, UI scale factor, controller button hints" FontSize="11" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.ui_amp_personalization}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.interface_language_ui_scale_factor_controlle}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="20" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1328,14 +1352,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FFFFFF" CornerRadius="10" Width="40" Height="40" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="ℹ️" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Border Background="#20FFFFFF" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="ℹ️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="System Information" FontSize="15" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="PCSX5 core release, Vulkan SPIR-V engine, host hardware specs" FontSize="11" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.system_information}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.pcsx5_core_release_vulkan_spir_v_engine_host}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="20" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
                             </UniformGrid>
@@ -1357,11 +1381,11 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="BtnCatBack" Content="◯ Back" Style="{StaticResource ModernButtonStyle}" Width="100" Height="34" FontSize="12" Click="BtnSettingsBack_Click"/>
+                            <Button x:Name="BtnCatBack" Content="{loc:Tr Key=ui.back}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="34" FontSize="{DynamicResource TypeML}" Click="BtnSettingsBack_Click"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                                <TextBlock Text="SETTINGS" FontSize="13" FontWeight="Bold" Foreground="#60FFFFFF" VerticalAlignment="Center"/>
-                                <TextBlock Text="  ›  " FontSize="13" Foreground="#40FFFFFF" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="SettingsCategoryViewHeaderTitle" Text="Display &amp; Video" FontSize="18" FontWeight="ExtraBold" Foreground="White" VerticalAlignment="Center"/>
+                                <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="#60FFFFFF" VerticalAlignment="Center"/>
+                                <TextBlock Text="  ›  " FontSize="{DynamicResource TypeL}" Foreground="#40FFFFFF" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SettingsCategoryViewHeaderTitle" Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="White" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Grid>
 
@@ -1388,16 +1412,16 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="BtnSubPageBack" Content="◯ Back" Style="{StaticResource ModernButtonStyle}" Width="100" Height="34" FontSize="12" Click="BtnSettingsBack_Click"/>
+                            <Button x:Name="BtnSubPageBack" Content="{loc:Tr Key=ui.back}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="34" FontSize="{DynamicResource TypeML}" Click="BtnSettingsBack_Click"/>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="SETTINGS" FontSize="11" FontWeight="Bold" Foreground="#50FFFFFF"/>
-                                    <TextBlock Text=" › " FontSize="11" Foreground="#30FFFFFF"/>
-                                    <TextBlock x:Name="SettingsSubPageParentTitle" Text="Display &amp; Video" FontSize="11" FontWeight="Bold" Foreground="#70FFFFFF"/>
-                                    <TextBlock Text=" › " FontSize="11" Foreground="#30FFFFFF"/>
-                                    <TextBlock x:Name="SettingsSubPageTitle" Text="Renderer Backend" FontSize="16" FontWeight="ExtraBold" Foreground="White"/>
+                                    <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#50FFFFFF"/>
+                                    <TextBlock Text=" › " FontSize="{DynamicResource TypeM}" Foreground="#30FFFFFF"/>
+                                    <TextBlock x:Name="SettingsSubPageParentTitle" Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#70FFFFFF"/>
+                                    <TextBlock Text=" › " FontSize="{DynamicResource TypeM}" Foreground="#30FFFFFF"/>
+                                    <TextBlock x:Name="SettingsSubPageTitle" Text="{loc:Tr Key=ui.renderer_backend}" FontSize="{DynamicResource Type2XL}" FontWeight="ExtraBold" Foreground="White"/>
                                 </StackPanel>
-                                <TextBlock x:Name="SettingsSubPageDescription" Text="Select hardware graphic pipeline driver." FontSize="12" Foreground="#80A0A0A5" Margin="0,2,0,0"/>
+                                <TextBlock x:Name="SettingsSubPageDescription" Text="{loc:Tr Key=ui.select_hardware_graphic_pipeline_driver}" FontSize="{DynamicResource TypeML}" Foreground="#80A0A0A5" Margin="0,2,0,0"/>
                             </StackPanel>
                         </Grid>
 
@@ -1415,8 +1439,8 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="SettingsSaveNotice" Text="💡 Settings are saved automatically and synchronized with global.json." FontSize="11" Foreground="#70A0A0A5" VerticalAlignment="Center"/>
-                        <Button x:Name="SaveSettingsBtn" Content="💾 Save Configuration" Width="180" Height="32" Style="{StaticResource ModernButtonStyle}" Click="SaveSettingsBtn_Click" Grid.Column="1"/>
+                        <TextBlock x:Name="SettingsSaveNotice" Text="{loc:Tr Key=ui.settings_are_saved_automatically_and_synchro}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" VerticalAlignment="Center"/>
+                        <Button x:Name="SaveSettingsBtn" Content="{loc:Tr Key=ui.save_configuration}" MinWidth="180" MinHeight="32" Style="{StaticResource ModernButtonStyle}" Click="SaveSettingsBtn_Click" Grid.Column="1"/>
                     </Grid>
                 </Grid>
 
@@ -1445,7 +1469,7 @@
 
                         <!-- Console panel — changes position based on dock mode -->
                         <Border x:Name="GameConsolePanel" Grid.Row="0" Grid.Column="1" Width="380" Visibility="Collapsed" Panel.ZIndex="10"
-                                Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1,0,0,0">
+ Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1,0,0,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -1458,23 +1482,23 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Console" FontSize="12" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.console}" FontSize="{DynamicResource TypeML}" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                        <Button x:Name="ConsoleDockBottomBtn" Width="68" Height="26" FontSize="10" Padding="4,0" ToolTip="Dock bottom"
-                                                Click="ConsoleDockMode_Click" Tag="Bottom" Style="{StaticResource ModernButtonStyle}">⬇ Bottom</Button>
-                                        <Button x:Name="ConsoleDockRightBtn" Width="65" Height="26" FontSize="10" Padding="4,0" Margin="4,0,0,0" ToolTip="Dock right"
-                                                Click="ConsoleDockMode_Click" Tag="Right" Style="{StaticResource ModernButtonStyle}">➡ Right</Button>
-                                        <Button x:Name="ConsoleDockLeftBtn" Width="60" Height="26" FontSize="10" Padding="4,0" Margin="4,0,0,0" ToolTip="Dock left"
-                                                Click="ConsoleDockMode_Click" Tag="Left" Style="{StaticResource ModernButtonStyle}">⬅ Left</Button>
-                                        <Button x:Name="ConsoleDockFloatBtn" Width="62" Height="26" FontSize="10" Padding="4,0" Margin="4,0,0,0" ToolTip="Undock"
-                                                Click="ConsoleDockMode_Click" Tag="Float" Style="{StaticResource ModernButtonStyle}">↗ Float</Button>
+                                        <Button x:Name="ConsoleDockBottomBtn" MinWidth="68" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="4,0" ToolTip="{loc:Tr Key=ui.dock_bottom}"
+ Click="ConsoleDockMode_Click" Tag="Bottom" Style="{StaticResource ModernButtonStyle}">⬇ Bottom</Button>
+                                        <Button x:Name="ConsoleDockRightBtn" MinWidth="65" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="4,0" Margin="4,0,0,0" ToolTip="{loc:Tr Key=ui.dock_right}"
+ Click="ConsoleDockMode_Click" Tag="Right" Style="{StaticResource ModernButtonStyle}">➡ Right</Button>
+                                        <Button x:Name="ConsoleDockLeftBtn" MinWidth="60" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="4,0" Margin="4,0,0,0" ToolTip="{loc:Tr Key=ui.dock_left}"
+ Click="ConsoleDockMode_Click" Tag="Left" Style="{StaticResource ModernButtonStyle}">⬅ Left</Button>
+                                        <Button x:Name="ConsoleDockFloatBtn" MinWidth="62" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="4,0" Margin="4,0,0,0" ToolTip="{loc:Tr Key=ui.undock}"
+ Click="ConsoleDockMode_Click" Tag="Float" Style="{StaticResource ModernButtonStyle}">↗ Float</Button>
                                     </StackPanel>
                                 </Grid>
                                 <Border x:Name="GameConsoleSlot" Grid.Row="1" Margin="6,0,6,6">
                                     <Border x:Name="ConsoleBorder" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="6" Padding="8">
-                                        <RichTextBox x:Name="ConsoleOutputBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="11"
-                                                     BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
-                                                     HorizontalScrollBarVisibility="Disabled" IsDocumentEnabled="True">
+                                        <RichTextBox x:Name="ConsoleOutputBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="{DynamicResource TypeM}"
+ BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+ HorizontalScrollBarVisibility="Disabled" IsDocumentEnabled="True">
                                             <RichTextBox.Resources>
                                                 <Style TargetType="Paragraph"><Setter Property="Margin" Value="0,0,0,1"/></Style>
                                             </RichTextBox.Resources>
@@ -1484,10 +1508,10 @@
                                 <!-- Console action buttons -->
                                 <Grid Grid.Row="2" Margin="10,4,10,8">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <CheckBox x:Name="AutoScrollCheck" Content="Scroll" IsChecked="True" Foreground="#FFA0A0A5" FontSize="10"
-                                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <Button Content="Copy" Width="60" Height="28" FontSize="10" Padding="6,0" Style="{StaticResource ModernButtonStyle}" Click="CopyConsole_Click"/>
-                                        <Button Content="Clear" Width="60" Height="28" FontSize="10" Padding="6,0" Margin="6,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="ClearConsole_Click"/>
+                                        <CheckBox x:Name="AutoScrollCheck" Content="{loc:Tr Key=ui.scroll}" IsChecked="True" Foreground="#FFA0A0A5" FontSize="{DynamicResource TypeS}"
+ VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <Button Content="{loc:Tr Key=ui.copy}" MinWidth="60" MinHeight="28" FontSize="{DynamicResource TypeS}" Padding="6,0" Style="{StaticResource ModernButtonStyle}" Click="CopyConsole_Click"/>
+                                        <Button Content="{loc:Tr Key=ui.clear}" MinWidth="60" MinHeight="28" FontSize="{DynamicResource TypeS}" Padding="6,0" Margin="6,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="ClearConsole_Click"/>
                                     </StackPanel>
                                 </Grid>
                             </Grid>
@@ -1502,37 +1526,37 @@
                                 </Border.Effect>
                                 <StackPanel HorizontalAlignment="Stretch">
                                     <!-- PS5 Pulse Icon -->
-                                    <Border Background="#1F0070D1" BorderBrush="#500099FF" BorderThickness="1.5" CornerRadius="40" Width="72" Height="72" HorizontalAlignment="Center" Margin="0,0,0,18">
-                                        <TextBlock x:Name="BootSpinnerText" Text="💠" FontSize="34" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <Border Background="#1F0070D1" BorderBrush="#500099FF" BorderThickness="1.5" CornerRadius="40" Width="72" MinHeight="72" HorizontalAlignment="Center" Margin="0,0,0,18">
+                                        <TextBlock x:Name="BootSpinnerText" Text="💠" FontSize="{DynamicResource TypeDisplayM}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
 
                                     <!-- Step indicator badge -->
                                     <Border Background="#1E0099FF" CornerRadius="10" Padding="12,3" HorizontalAlignment="Center" Margin="0,0,0,10">
-                                        <TextBlock x:Name="BootStepBadge" Text="Step 1 of 6" FontSize="11" FontWeight="Bold" Foreground="#0099FF"/>
+                                        <TextBlock x:Name="BootStepBadge" Text="{loc:Tr Key=ui.step_1_of_6}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF"/>
                                     </Border>
 
                                     <!-- Phase title -->
-                                    <TextBlock x:Name="BootPhaseTitle" Text="INITIALIZING EMULATOR CORE" FontSize="18" FontWeight="ExtraBold" Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,6" TextAlignment="Center"/>
+                                    <TextBlock x:Name="BootPhaseTitle" Text="{loc:Tr Key=ui.initializing_emulator_core}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,6" TextAlignment="Center"/>
 
                                     <!-- Phase detail -->
-                                    <TextBlock x:Name="BootPhaseDetail" Text="Allocating 128GB Virtual Memory Space..." FontSize="12" Foreground="#8FA0A0A5" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,20"/>
+                                    <TextBlock x:Name="BootPhaseDetail" Text="{loc:Tr Key=ui.allocating_128gb_virtual_memory_space}" FontSize="{DynamicResource TypeML}" Foreground="#8FA0A0A5" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,20"/>
 
                                     <!-- Progress bar and percentage -->
                                     <Grid Margin="0,0,0,16">
-                                        <Border CornerRadius="6" Background="#15FFFFFF" Height="10" VerticalAlignment="Center">
+                                        <Border CornerRadius="6" Background="#15FFFFFF" MinHeight="10" VerticalAlignment="Center">
                                             <ProgressBar x:Name="BootProgressBar" Minimum="0" Maximum="100" Value="15" Background="Transparent" BorderThickness="0" Height="10" Foreground="#0099FF"/>
                                         </Border>
                                     </Grid>
                                     
-                                    <TextBlock x:Name="BootProgressPercentText" Text="15%" FontSize="12" FontWeight="Bold" Foreground="#0099FF" HorizontalAlignment="Right" Margin="0,-10,0,16"/>
+                                    <TextBlock x:Name="BootProgressPercentText" Text="15%" FontSize="{DynamicResource TypeML}" FontWeight="Bold" Foreground="#0099FF" HorizontalAlignment="Right" Margin="0,-10,0,16"/>
 
                                     <!-- Game title -->
                                     <Border Background="#0DFFFFFF" CornerRadius="8" Padding="12,6" HorizontalAlignment="Center" Margin="0,0,0,20">
-                                        <TextBlock x:Name="BootGameTitle" Text="DREAMING SARAH (PPSA02929)" FontSize="11" FontWeight="SemiBold" Foreground="#B0FFFFFF"/>
+                                        <TextBlock x:Name="BootGameTitle" Text="{loc:Tr Key=ui.dreaming_sarah_ppsa02929}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#B0FFFFFF"/>
                                     </Border>
 
                                     <!-- Cancel button -->
-                                    <Button x:Name="BootCancelBtn" Content="◯  Cancel Boot" Width="160" Height="36" Style="{StaticResource ModernButtonStyle}" HorizontalAlignment="Center" Click="BootCancelBtn_Click" Focusable="True" Background="#1FFF2200" BorderBrush="#40FF2200"/>
+                                    <Button x:Name="BootCancelBtn" Content="{loc:Tr Key=ui.cancel_boot}" MinWidth="160" MinHeight="36" Style="{StaticResource ModernButtonStyle}" HorizontalAlignment="Center" Click="BootCancelBtn_Click" Focusable="True" Background="#1FFF2200" BorderBrush="#40FF2200"/>
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -1540,23 +1564,23 @@
                         <!-- IN-GAME PAUSE MENU OVERLAY -->
                         <Grid x:Name="PauseMenuOverlay" Grid.ColumnSpan="1" Grid.RowSpan="1" Visibility="Collapsed" Background="#BF000000">
                             <Border Background="#1C1F28" BorderBrush="#400099FF" BorderThickness="1.5"
-                                    CornerRadius="16" Width="340" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    Padding="0,28,0,28">
+ CornerRadius="16" Width="340" HorizontalAlignment="Center" VerticalAlignment="Center"
+ Padding="0,28,0,28">
                                 <Border.Effect>
                                     <DropShadowEffect Color="#0099FF" BlurRadius="40" Opacity="0.4" ShadowDepth="0"/>
                                 </Border.Effect>
                                 <StackPanel>
                                     <!-- Header -->
-                                    <TextBlock Text="P A U S E D" FontSize="11" FontWeight="Bold" Foreground="#6FA0A0A5"
-                                               HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                    <TextBlock Text="P A U S E D" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#6FA0A0A5"
+ HorizontalAlignment="Center" Margin="0,0,0,4"/>
 
-                                    <TextBlock x:Name="PauseMenuGameTitle" Text="" FontSize="18" FontWeight="ExtraBold"
-                                               Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,24"
-                                               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="280"/>
+                                    <TextBlock x:Name="PauseMenuGameTitle" Text="" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold"
+ Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,24"
+ TextWrapping="Wrap" TextAlignment="Center" MaxWidth="280"/>
 
                                     <!-- Menu Items -->
-                                    <Button x:Name="PauseResumeBtn" Focusable="True" Height="52" Margin="24,0,24,8"
-                                            Click="PauseResume_Click">
+                                    <Button x:Name="PauseResumeBtn" Focusable="True" MinHeight="52" Margin="24,0,24,8"
+ Click="PauseResume_Click">
                                         <Button.Style>
                                             <Style TargetType="Button">
                                                 <Setter Property="Background" Value="#200099FF"/>
@@ -1585,23 +1609,23 @@
                                             </Style>
                                         </Button.Style>
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="▶" FontSize="14" Foreground="#0099FF" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                            <TextBlock Text="Resume Game" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                            <TextBlock Text="  [✕]" FontSize="11" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
+                                            <TextBlock Text="▶" FontSize="{DynamicResource TypeL}" Foreground="#0099FF" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.resume_game}" FontSize="{DynamicResource TypeXL}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <TextBlock Text="  [✕]" FontSize="{DynamicResource TypeM}" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
 
-                                    <Button x:Name="PauseConsoleBtn" Focusable="True" Height="48" Margin="24,0,24,8"
-                                            Click="PauseConsole_Click" Style="{StaticResource ModernButtonStyle}">
+                                    <Button x:Name="PauseConsoleBtn" Focusable="True" MinHeight="48" Margin="24,0,24,8"
+ Click="PauseConsole_Click" Style="{StaticResource ModernButtonStyle}">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="⌨" FontSize="13" Foreground="#FFA0A0A5" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                            <TextBlock Text="Console Logs" FontSize="14" VerticalAlignment="Center"/>
-                                            <TextBlock Text="  [△]" FontSize="11" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
+                                            <TextBlock Text="⌨" FontSize="{DynamicResource TypeL}" Foreground="#FFA0A0A5" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.console_logs}" FontSize="{DynamicResource TypeL}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="  [△]" FontSize="{DynamicResource TypeM}" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
 
-                                    <Button x:Name="PauseStopBtn" Focusable="True" Height="48" Margin="24,0,24,0"
-                                            Click="PauseStop_Click">
+                                    <Button x:Name="PauseStopBtn" Focusable="True" MinHeight="48" Margin="24,0,24,0"
+ Click="PauseStop_Click">
                                         <Button.Style>
                                             <Style TargetType="Button">
                                                 <Setter Property="Background" Value="#15FF2200"/>
@@ -1630,14 +1654,14 @@
                                             </Style>
                                         </Button.Style>
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="⏹" FontSize="13" Foreground="#FF6644" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                            <TextBlock Text="Stop Game" FontSize="14" VerticalAlignment="Center"/>
-                                            <TextBlock Text="  [◯]" FontSize="11" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
+                                            <TextBlock Text="⏹" FontSize="{DynamicResource TypeL}" Foreground="#FF6644" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.stop_game}" FontSize="{DynamicResource TypeL}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="  [◯]" FontSize="{DynamicResource TypeM}" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
 
-                                    <TextBlock Text="[D-Pad ↑↓] Navigate" FontSize="10" Foreground="#30FFFFFF"
-                                               HorizontalAlignment="Center" Margin="0,16,0,0"/>
+                                    <TextBlock Text="{loc:Tr Key=ui.d_pad_navigate}" FontSize="{DynamicResource TypeS}" Foreground="#30FFFFFF"
+ HorizontalAlignment="Center" Margin="0,16,0,0"/>
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -1657,45 +1681,45 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="25,0,0,0">
-                        <TextBlock x:Name="FooterGamesCount" Text="Games Loaded: 0" FontSize="11" Foreground="#6FA0A0A5"/>
+                        <TextBlock x:Name="FooterGamesCount" Text="{loc:Tr Key=ui.games_loaded_0}" FontSize="{DynamicResource TypeM}" Foreground="#6FA0A0A5"/>
                         <TextBlock Text="|" Foreground="#25FFFFFF" Margin="12,0,12,0"/>
-                        <TextBlock x:Name="FooterStatus" Text="Ready" FontSize="11" Foreground="#0099FF"/>
+                        <TextBlock x:Name="FooterStatus" Text="{loc:Tr Key=ui.ready}" FontSize="{DynamicResource TypeM}" Foreground="#0099FF"/>
                         <TextBlock Text="|" Foreground="#25FFFFFF" Margin="12,0,12,0"/>
-                        <TextBlock x:Name="FooterGamepadHints" Text="🎮 [L1/R1] Tabs  •  [D-Pad] Move  •  [✕] Select  •  [◯] Back  •  [△] Settings" FontSize="11" FontWeight="SemiBold" Foreground="#0099FF"/>
+                        <TextBlock x:Name="FooterGamepadHints" Text="{loc:Tr Key=ui.l1_r1_tabs_d_pad_move_select_back_settings}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#0099FF"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
-                        <Button x:Name="GameConsoleButton" Content="📋 Console" Height="26" MinWidth="80" Padding="10,0"
-                                FontSize="10" Style="{StaticResource ModernButtonStyle}" Margin="0,0,8,0"
-                                Click="FooterConsole_Click" ToolTip="Toggle console log viewer"/>
-                        <Button x:Name="GameStopButton" Content="⏹ Stop" Height="26" MinWidth="65" Padding="10,0"
-                                FontSize="10" Style="{StaticResource ModernButtonStyle}" Margin="0,0,8,0"
-                                Click="StopButton_Click" ToolTip="Request graceful stop" Visibility="Collapsed"/>
-                        <Button x:Name="GameKillButton" Content="✕ Force Kill" Height="26" MinWidth="85" Padding="10,0"
-                                Background="#CC2200" BorderBrush="#FF4400" Foreground="White" FontWeight="Bold"
-                                FontSize="10" Style="{StaticResource ModernButtonStyle}" Margin="0,0,8,0"
-                                Click="KillButton_Click" ToolTip="Force terminate process" Visibility="Collapsed"/>
-                        <TextBlock Text="PCSX5 - PlayStation 5 Emulator v1.00" FontSize="10" Foreground="#3FA0A0A5" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                        <Button x:Name="GameConsoleButton" Content="{loc:Tr Key=ui.console_2}" MinHeight="26" MinWidth="80" Padding="10,0"
+ FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Margin="0,0,8,0"
+ Click="FooterConsole_Click" ToolTip="{loc:Tr Key=ui.toggle_console_log_viewer}"/>
+                        <Button x:Name="GameStopButton" Content="{loc:Tr Key=ui.stop_2}" MinHeight="26" MinWidth="65" Padding="10,0"
+ FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Margin="0,0,8,0"
+ Click="StopButton_Click" ToolTip="{loc:Tr Key=ui.request_graceful_stop}" Visibility="Collapsed"/>
+                        <Button x:Name="GameKillButton" Content="{loc:Tr Key=ui.force_kill}" MinHeight="26" MinWidth="85" Padding="10,0"
+ Background="#CC2200" BorderBrush="#FF4400" Foreground="White" FontWeight="Bold"
+ FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Margin="0,0,8,0"
+ Click="KillButton_Click" ToolTip="{loc:Tr Key=ui.force_terminate_process}" Visibility="Collapsed"/>
+                        <TextBlock Text="{loc:Tr Key=ui.pcsx5_playstation_5_emulator_v1_00}" FontSize="{DynamicResource TypeS}" Foreground="#3FA0A0A5" Margin="10,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
             <!-- WATCHDOG TOAST — non-blocking "Game may be hung" warning -->
             <Border x:Name="WatchdogToast" Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Background="#CC1A0D00" BorderBrush="#60FF6600" BorderThickness="1" CornerRadius="10"
-                    Padding="20,12" Margin="0,0,0,80" Visibility="Collapsed" Opacity="0"
-                    IsHitTestVisible="True">
+ Background="#CC1A0D00" BorderBrush="#60FF6600" BorderThickness="1" CornerRadius="10"
+ Padding="20,12" Margin="0,0,0,80" Visibility="Collapsed" Opacity="0"
+ IsHitTestVisible="True">
                 <Border.Effect>
                     <DropShadowEffect Color="#FF6600" BlurRadius="20" Opacity="0.4" ShadowDepth="0"/>
                 </Border.Effect>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="⚠" Foreground="#FF8800" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock Text="Game may be unresponsive" Foreground="#E0FFFFFF" FontSize="12" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                    <Button x:Name="WatchdogWaitBtn" Content="Wait" Width="70" Height="28" Style="{StaticResource ModernButtonStyle}"
-                            FontSize="11" Margin="0,0,6,0" Click="WatchdogWait_Click" Focusable="True"/>
-                    <Button x:Name="WatchdogForceStopBtn" Content="Force Stop" Width="90" Height="28"
-                            Background="#CC2200" BorderBrush="#FF2200" Foreground="White" FontSize="11" FontWeight="Bold"
-                            Focusable="True" Click="WatchdogForceStop_Click">
+                    <TextBlock Text="⚠" Foreground="#FF8800" FontSize="{DynamicResource TypeL}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="{loc:Tr Key=ui.game_may_be_unresponsive}" Foreground="#E0FFFFFF" FontSize="{DynamicResource TypeML}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <Button x:Name="WatchdogWaitBtn" Content="{loc:Tr Key=ui.wait}" MinWidth="70" MinHeight="28" Style="{StaticResource ModernButtonStyle}"
+ FontSize="{DynamicResource TypeM}" Margin="0,0,6,0" Click="WatchdogWait_Click" Focusable="True"/>
+                    <Button x:Name="WatchdogForceStopBtn" Content="{loc:Tr Key=ui.force_stop}" MinWidth="90" MinHeight="28"
+ Background="#CC2200" BorderBrush="#FF2200" Foreground="White" FontSize="{DynamicResource TypeM}" FontWeight="Bold"
+ Focusable="True" Click="WatchdogForceStop_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6">
@@ -1704,21 +1728,21 @@
                             </ControlTemplate>
                         </Button.Template>
                     </Button>
-                    <TextBlock Text="  [✕] Wait  [◯] Stop" FontSize="10" Foreground="#4DFFFFFF" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBlock Text="{loc:Tr Key=ui.wait_stop}" FontSize="{DynamicResource TypeS}" Foreground="#4DFFFFFF" VerticalAlignment="Center" Margin="8,0,0,0"/>
                 </StackPanel>
             </Border>
 
             <!-- TOAST NOTIFICATION OVERLAY -->
             <Border x:Name="ToastNotification" Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Background="#CC1A1D24" BorderBrush="#3300FF99" BorderThickness="1" CornerRadius="10"
-                    Padding="18,10" Margin="0,0,0,50" Visibility="Collapsed" Opacity="0"
-                    IsHitTestVisible="False">
+ Background="#CC1A1D24" BorderBrush="#3300FF99" BorderThickness="1" CornerRadius="10"
+ Padding="18,10" Margin="0,0,0,50" Visibility="Collapsed" Opacity="0"
+ IsHitTestVisible="False">
                 <Border.Effect>
                     <DropShadowEffect Color="#00FF99" BlurRadius="20" Opacity="0.35" ShadowDepth="0"/>
                 </Border.Effect>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="ToastIcon" Text="✓" Foreground="#00FF99" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBlock x:Name="ToastMessage" Text="Configuration saved successfully" Foreground="#E0FFFFFF" FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="ToastIcon" Text="✓" Foreground="#00FF99" FontSize="{DynamicResource TypeL}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="ToastMessage" Text="{loc:Tr Key=ui.configuration_saved_successfully}" Foreground="#E0FFFFFF" FontSize="{DynamicResource TypeML}" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
@@ -1738,12 +1762,12 @@
 
                         <!-- Header -->
                         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,15">
-                            <Border Width="36" Height="36" Background="#20FF2200" CornerRadius="18" Margin="0,0,12,0" VerticalAlignment="Center">
-                                <TextBlock Text="⚠" Foreground="#FF3300" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"/>
+                            <Border Width="36" MinHeight="36" Background="#20FF2200" CornerRadius="18" Margin="0,0,12,0" VerticalAlignment="Center">
+                                <TextBlock Text="⚠" Foreground="#FF3300" FontSize="{DynamicResource Type4XL}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"/>
                             </Border>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="CRASH DIAGNOSTICS" FontSize="16" FontWeight="Bold" Foreground="White"/>
-                                <TextBlock Text="Guest Application Exception Detected" FontSize="11" Foreground="#FFA0A0A5"/>
+                                <TextBlock Text="{loc:Tr Key=ui.crash_diagnostics}" FontSize="{DynamicResource Type2XL}" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text="{loc:Tr Key=ui.guest_application_exception_detected}" FontSize="{DynamicResource TypeM}" Foreground="#FFA0A0A5"/>
                             </StackPanel>
                         </StackPanel>
 
@@ -1762,33 +1786,33 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Exception Code: " Foreground="#FFA0A0A5" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
-                                        <TextBlock x:Name="CrashExcCodeText" Grid.Row="0" Grid.Column="1" Text="0xC0000005 (Access Violation)" Foreground="White" FontWeight="Bold" FontSize="12" Margin="0,0,0,5"/>
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr Key=ui.exception_code}" Foreground="#FFA0A0A5" FontWeight="SemiBold" FontSize="{DynamicResource TypeML}" Margin="0,0,0,5"/>
+                                        <TextBlock x:Name="CrashExcCodeText" Grid.Row="0" Grid.Column="1" Text="{loc:Tr Key=ui.0xc0000005_access_violation}" Foreground="White" FontWeight="Bold" FontSize="{DynamicResource TypeML}" Margin="0,0,0,5"/>
 
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Address (RIP): " Foreground="#FFA0A0A5" FontWeight="SemiBold" FontSize="12"/>
-                                        <TextBlock x:Name="CrashRipText" Grid.Row="1" Grid.Column="1" Text="0x800000080" Foreground="#0099FF" FontWeight="Bold" FontSize="12"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr Key=ui.address_rip}" Foreground="#FFA0A0A5" FontWeight="SemiBold" FontSize="{DynamicResource TypeML}"/>
+                                        <TextBlock x:Name="CrashRipText" Grid.Row="1" Grid.Column="1" Text="0x800000080" Foreground="#0099FF" FontWeight="Bold" FontSize="{DynamicResource TypeML}"/>
                                     </Grid>
                                 </Border>
 
                                 <!-- Analysis -->
-                                <TextBlock Text="AUTOMATED ANALYSIS:" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
+                                <TextBlock Text="{loc:Tr Key=ui.automated_analysis}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
                                 <Border Background="#100099FF" BorderBrush="#200099FF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,15">
-                                    <TextBlock x:Name="CrashAnalysisText" TextWrapping="Wrap" Foreground="#FFD0D0D5" FontSize="12" LineHeight="18"
-                                               Text="The guest application crashed at address 0x800000080 (Offset: 0x80). This indicates the binary contains encrypted segments or is executing garbage headers. You need to decrypt the executable first."/>
+                                    <TextBlock x:Name="CrashAnalysisText" TextWrapping="Wrap" Foreground="#FFD0D0D5" FontSize="{DynamicResource TypeML}" LineHeight="18"
+ Text="{loc:Tr Key=ui.the_guest_application_crashed_at_address_0x8}"/>
                                 </Border>
 
                                 <!-- Raw Logs -->
-                                <TextBlock Text="CRASH DUMP EXTRACT:" FontSize="11" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="0,0,0,6"/>
-                                <TextBox x:Name="CrashRawText" IsReadOnly="True" Background="#15000000" Foreground="#FFA0A0A5" BorderThickness="0" TextWrapping="Wrap" FontFamily="Consolas" FontSize="10" Padding="8" MinHeight="80" MaxHeight="220" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"/>
+                                <TextBlock Text="{loc:Tr Key=ui.crash_dump_extract}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="0,0,0,6"/>
+                                <TextBox x:Name="CrashRawText" IsReadOnly="True" Background="#15000000" Foreground="#FFA0A0A5" BorderThickness="0" TextWrapping="Wrap" FontFamily="Consolas" FontSize="{DynamicResource TypeS}" Padding="8" MinHeight="80" MaxHeight="220" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"/>
                             </StackPanel>
                         </ScrollViewer>
 
                         <!-- Buttons -->
                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Copy" MinWidth="70" Height="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="CopyCrashToClipboard_Click" Margin="0,0,6,0"/>
-                            <Button Content="Raw Logs" MinWidth="80" Height="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="ViewCrashRawLogs_Click" Margin="0,0,6,0"/>
-                            <Button Content="Dismiss" MinWidth="70" Height="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="DismissCrashDialog_Click" Margin="0,0,6,0"/>
-                            <Button Content="Boot Analyzer" MinWidth="110" Height="32" Padding="14,0" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeCrashedGame_Click"/>
+                            <Button Content="{loc:Tr Key=ui.copy}" MinWidth="70" MinHeight="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="CopyCrashToClipboard_Click" Margin="0,0,6,0"/>
+                            <Button Content="{loc:Tr Key=ui.raw_logs}" MinWidth="80" MinHeight="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="ViewCrashRawLogs_Click" Margin="0,0,6,0"/>
+                            <Button Content="{loc:Tr Key=ui.dismiss}" MinWidth="70" MinHeight="32" Padding="12,0" Style="{StaticResource SecondaryButtonStyle}" Click="DismissCrashDialog_Click" Margin="0,0,6,0"/>
+                            <Button Content="{loc:Tr Key=ui.boot_analyzer_2}" MinWidth="110" MinHeight="32" Padding="14,0" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeCrashedGame_Click"/>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -1801,29 +1825,29 @@
                         <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>
                     </Border.Effect>
                     <StackPanel>
-                        <TextBlock Text="Welcome to PCSX5" FontSize="22" FontWeight="ExtraBold" Foreground="White" Margin="0,0,0,6"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="#FFA0A0A5" FontSize="13" LineHeight="20" Margin="0,0,0,18"
-                                   Text="Before you start, choose the folder where your PS5 game dumps are stored. PCSX5 will scan it to build your game library. You can add or change folders later in System Settings."/>
+                        <TextBlock Text="{loc:Tr Key=ui.welcome_to_pcsx5}" FontSize="{DynamicResource Type5XL}" FontWeight="ExtraBold" Foreground="White" Margin="0,0,0,6"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#FFA0A0A5" FontSize="{DynamicResource TypeL}" LineHeight="20" Margin="0,0,0,18"
+ Text="{loc:Tr Key=ui.before_you_start_choose_the_folder_where_you}"/>
 
-                        <TextBlock Text="GAMES FOLDER" FontSize="11" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
+                        <TextBlock Text="{loc:Tr Key=ui.games_folder}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
                         <Grid Margin="0,0,0,20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <Border Grid.Column="0" Background="#20FFFFFF" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10,6">
-                                <TextBlock x:Name="FirstRunFolderText" Text="No folder selected" Foreground="White" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="FirstRunFolderText" Text="{loc:Tr Key=ui.no_folder_selected}" Foreground="White" FontSize="{DynamicResource TypeML}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             </Border>
-                            <Button Grid.Column="1" Content="Browse..." Width="100" Height="32" Margin="10,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="FirstRunBrowse_Click"/>
+                            <Button Grid.Column="1" Content="{loc:Tr Key=ui.browse}" MinWidth="100" MinHeight="32" Margin="10,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="FirstRunBrowse_Click"/>
                         </Grid>
 
                         <!-- Controller hint -->
-                        <TextBlock Text="🎮 [✕] Browse Folder  •  [◯] Skip  •  [△] Continue" FontSize="11" Foreground="#4D0099FF"
-                                   HorizontalAlignment="Center" Margin="0,0,0,14"/>
+                        <TextBlock Text="{loc:Tr Key=ui.browse_folder_skip_continue}" FontSize="{DynamicResource TypeM}" Foreground="#4D0099FF"
+ HorizontalAlignment="Center" Margin="0,0,0,14"/>
 
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button x:Name="FirstRunSkipBtn" Content="Skip for Now" Width="120" Height="34" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Click="FirstRunSkip_Click" Focusable="True"/>
-                            <Button x:Name="FirstRunContinueBtn" Content="Continue" Width="140" Height="34" Style="{StaticResource ModernButtonStyle}" IsEnabled="False" Click="FirstRunContinue_Click" Focusable="True"/>
+                            <Button x:Name="FirstRunSkipBtn" Content="{loc:Tr Key=ui.skip_for_now}" MinWidth="120" MinHeight="34" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,0" Click="FirstRunSkip_Click" Focusable="True"/>
+                            <Button x:Name="FirstRunContinueBtn" Content="{loc:Tr Key=ui.continue}" MinWidth="140" MinHeight="34" Style="{StaticResource ModernButtonStyle}" IsEnabled="False" Click="FirstRunContinue_Click" Focusable="True"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -1832,36 +1856,62 @@
             <!-- CONTROLLER FOLDER PICKER OVERLAY
                  Shows before opening the system folder browser dialog. -->
 
+            <!-- In-app directory browser.  A Windows folder dialog cannot be
+                 driven by a controller at all, so the shell browses the
+                 filesystem itself.  All text is assigned from I18n at runtime,
+                 which is why Content/Text are empty here. -->
             <Grid x:Name="FolderPickerOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
-                <Border Background="#1C1F26" BorderBrush="#0099FF" BorderThickness="1.5" CornerRadius="12"
-                        Width="480" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
+                <Border Background="{DynamicResource PickerSurfaceBrush}"
+ BorderBrush="{DynamicResource PickerAccentBrush}" BorderThickness="1.5" CornerRadius="12"
+ Width="780" MinHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28">
                     <Border.Effect>
                         <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>
                     </Border.Effect>
-                    <StackPanel>
-                        <TextBlock Text="📁" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                        <TextBlock Text="SELECT GAME FOLDER" FontSize="16" FontWeight="Bold" Foreground="White"
-                                   HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                        <TextBlock Text="A folder browser will open. Select the folder containing your PS5 game dumps."
-                                   Foreground="#FFA0A0A5" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"
-                                   Margin="0,0,0,24" LineHeight="18"/>
-
-                        <TextBlock x:Name="FolderPickerCurrentPath" Text="" FontSize="11" Foreground="#0099FF"
-                                   TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,20"
-                                   MaxHeight="40" TextTrimming="CharacterEllipsis"/>
-
-                        <TextBlock Text="🎮 [✕] Open Folder Browser  •  [◯] Cancel" FontSize="11"
-                                   Foreground="#4D0099FF" HorizontalAlignment="Center" Margin="0,0,0,18"/>
-
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Button x:Name="FolderPickerOpenBtn" Content="Open Browser" Width="150" Height="36"
-                                    Style="{StaticResource ModernButtonStyle}" Margin="0,0,10,0"
-                                    Click="FolderPickerOpen_Click" Focusable="True"/>
-                            <Button x:Name="FolderPickerCancelBtn" Content="Cancel" Width="100" Height="36"
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Click="FolderPickerCancel_Click" Focusable="True"/>
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+                            <TextBlock x:Name="FolderPickerTitle" FontSize="{DynamicResource Type2XL}" FontWeight="Bold"
+ Foreground="{DynamicResource PickerTextBrush}"/>
+                            <TextBlock x:Name="FolderPickerCurrentPath" FontSize="{DynamicResource TypeML}" Margin="0,6,0,0"
+ Foreground="{DynamicResource PickerAccentBrush}"
+ TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
-                    </StackPanel>
+
+                        <TextBlock x:Name="FolderPickerHints" DockPanel.Dock="Bottom" FontSize="{DynamicResource TypeM}"
+ Foreground="{DynamicResource PickerMutedBrush}" Margin="0,14,0,0"/>
+
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
+ HorizontalAlignment="Right" Margin="0,16,0,0">
+                            <Button x:Name="FolderPickerUpBtn" MinWidth="110" MinHeight="36" Margin="0,0,10,0"
+ Style="{StaticResource SecondaryButtonStyle}"
+ Click="FolderPickerUp_Click" Focusable="True"/>
+                            <Button x:Name="FolderPickerOpenBtn" MinWidth="110" MinHeight="36" Margin="0,0,10,0"
+ Style="{StaticResource SecondaryButtonStyle}"
+ Click="FolderPickerOpen_Click" Focusable="True"/>
+                            <Button x:Name="FolderPickerSelectBtn" MinWidth="190" MinHeight="36" Margin="0,0,10,0"
+ Style="{StaticResource ModernButtonStyle}"
+ Click="FolderPickerSelect_Click" Focusable="True"/>
+                            <Button x:Name="FolderPickerCancelBtn" MinWidth="110" MinHeight="36"
+ Style="{StaticResource SecondaryButtonStyle}"
+ Click="FolderPickerCancel_Click" Focusable="True"/>
+                        </StackPanel>
+
+                        <ListBox x:Name="FolderPickerList" FocusVisualStyle="{StaticResource AccentFocusVisual}"
+ Background="{DynamicResource PickerListBrush}"
+ BorderBrush="{DynamicResource PickerBorderBrush}" BorderThickness="1"
+ Foreground="{DynamicResource PickerTextBrush}" FontSize="{DynamicResource TypeL}"
+ MouseDoubleClick="FolderPickerList_MouseDoubleClick"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="6,7">
+                                        <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource TypeL}" Margin="0,0,12,0"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+ TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
                 </Border>
             </Grid>
         </Grid>
