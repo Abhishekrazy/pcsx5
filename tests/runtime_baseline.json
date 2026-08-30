@@ -1,0 +1,75 @@
+{
+  "schema": "pcsx5-runtime-baseline/1",
+  "updated": "2026-08-30T06:52:09",
+  "git_revision": "66e0369",
+  "titles": {
+    "PPSA02929": {
+      "eboot": "Games/PPSA02929-app0/eboot.bin",
+      "boot_success": false,
+      "first_frame_s": 2.02,
+      "sustained_runtime_s": 23.81,
+      "status": "crashed",
+      "markers": [
+        "content",
+        "menus",
+        "pthreads"
+      ],
+      "crash_location": {
+        "signature": "exception-exit",
+        "rip": "0x80016ab48",
+        "module": null,
+        "thread": "46484",
+        "rip_note": "last logged RIP; not yet confirmed as the fatal site"
+      },
+      "current_boundary": {
+        "summary": "Deterministic termination with STATUS_ACCESS_VIOLATION (0xC0000005) after ~23s, reproduced across three runs. The content and menus markers are reached first, so this is a post-content-load failure. Last logged VEH fault site is guest RIP 0x80016ab48; earlier faults were logged at 0x800133d7c and 0x800120d58, and it is not yet established which is fatal.",
+        "classification": "UNKNOWN",
+        "evidence": "OBSERVED",
+        "next_step": "Run the investigate-boundary skill; the fatal site is not yet distinguished from handled faults.",
+        "doc": "docs/walkthroughs/WALKTHROUGH-2026-08-30-ai-framework-initialization.md"
+      },
+      "last_run_id": "PPSA02929_20260830_065056_baseline",
+      "git_revision": "66e0369",
+      "build_revision": {
+        "binary": "build/bin/Release/pcsx5_core.dll",
+        "size": 2625024,
+        "mtime": "2026-08-29T22:43:28"
+      },
+      "updated": "2026-08-30T06:52:09",
+      "regression_state": "unknown"
+    },
+    "PPSA21564": {
+      "eboot": "Games/PPSA21564-app/eboot.bin",
+      "boot_success": false,
+      "first_frame_s": 2.02,
+      "sustained_runtime_s": 34.64,
+      "status": "crashed",
+      "markers": [
+        "pthreads"
+      ],
+      "crash_location": {
+        "signature": "guest-null-call",
+        "rip": "0x80105ffdb",
+        "module": null,
+        "thread": "4420",
+        "rip_note": "last logged RIP; not yet confirmed as the fatal site"
+      },
+      "current_boundary": {
+        "summary": "GUEST NULL-CALL after ~35s: an indirect call through a null function pointer (logged RIP=0x0, code=0xC0000005, RAX=0x80faf00c0, RDI=0x80eb9f880), followed by termination with 0xC0000005. Only the pthreads marker is reached, so this precedes content load. Frame change stays low (max 0.034), consistent with a boot screen rather than game content.",
+        "classification": "UNKNOWN",
+        "evidence": "OBSERVED",
+        "next_step": "Identify the caller of the null pointer and whether it is an unresolved import; run investigate-boundary then recover-contract.",
+        "doc": "docs/walkthroughs/WALKTHROUGH-2026-08-30-ai-framework-initialization.md"
+      },
+      "last_run_id": "PPSA21564_20260830_065127_baseline",
+      "git_revision": "66e0369",
+      "build_revision": {
+        "binary": "build/bin/Release/pcsx5_core.dll",
+        "size": 2625024,
+        "mtime": "2026-08-29T22:43:28"
+      },
+      "updated": "2026-08-30T06:52:09",
+      "regression_state": "unknown"
+    }
+  }
+}
