@@ -54,19 +54,48 @@ class Input(ctypes.Structure):
     _fields_ = [("type", ctypes.c_ulong),
                 ("ii", Input_I)]
 
-def press_key(hexKeyCode):
+KEYEVENTF_EXTENDEDKEY = 0x0001
+KEYEVENTF_KEYUP       = 0x0002
+MAPVK_VK_TO_VSC       = 0
+
+# Keys that live on the extended part of the keyboard.  Without the extended
+# flag their scan codes collide with the numeric keypad and an application that
+# reads physical keys sees the wrong one.
+_EXTENDED = {0x25, 0x26, 0x27, 0x28,          # arrows
+             0x2D, 0x2E, 0x24, 0x23, 0x21, 0x22,  # ins/del/home/end/page
+             0xA3, 0xA5, 0x90, 0x6F}          # rctrl, ralt, numlock, divide
+
+
+def _scan_code(vk):
+    """Physical scan code for a virtual key.
+
+    This used to be hardcoded to 0x48 for every key.  Anything that resolves
+    input by scan code rather than by virtual key -- SDL, and therefore any SDL
+    based emulator, plus many games reading raw input -- then saw the same
+    physical key no matter what was sent, so scripted input silently did
+    nothing.
+    """
+    return ctypes.windll.user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
+
+
+def _send(hexKeyCode, up):
     extra = ctypes.c_ulong(0)
+    flags = KEYEVENTF_KEYUP if up else 0
+    if hexKeyCode in _EXTENDED:
+        flags |= KEYEVENTF_EXTENDEDKEY
     ii_ = Input_I()
-    ii_.ki = KeyBdInput(hexKeyCode, 0x48, 0, 0, ctypes.pointer(extra))
+    ii_.ki = KeyBdInput(hexKeyCode, _scan_code(hexKeyCode), flags, 0,
+                        ctypes.pointer(extra))
     x = Input(ctypes.c_ulong(1), ii_)
     ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
+
+def press_key(hexKeyCode):
+    _send(hexKeyCode, up=False)
+
+
 def release_key(hexKeyCode):
-    extra = ctypes.c_ulong(0)
-    ii_ = Input_I()
-    ii_.ki = KeyBdInput(hexKeyCode, 0x48, 0x0002, 0, ctypes.pointer(extra))
-    x = Input(ctypes.c_ulong(1), ii_)
-    ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
+    _send(hexKeyCode, up=True)
 
 def send_key_press(key_name, duration=0.1):
     key_name = key_name.lower()
