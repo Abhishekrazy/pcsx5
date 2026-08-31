@@ -1,25 +1,26 @@
 {
   "schema": "pcsx5-runtime-baseline/1",
-  "updated": "2026-08-31T10:08:49",
-  "git_revision": "2db595e",
+  "updated": "2026-08-31T11:17:54",
+  "git_revision": "df9068a",
   "titles": {
     "PPSA02929": {
       "eboot": "Games/PPSA02929-app0/eboot.bin",
       "boot_success": false,
       "first_frame_s": 2.02,
-      "sustained_runtime_s": 23.81,
+      "sustained_runtime_s": 25.57,
       "status": "crashed",
       "markers": [
         "content",
+        "first-draw",
         "menus",
-        "pthreads"
+        "pthreads",
+        "shaders"
       ],
       "crash_location": {
-        "signature": "exception-exit",
-        "rip": "0x80016ab48",
-        "module": null,
-        "thread": "46484",
-        "rip_note": "last logged RIP; not yet confirmed as the fatal site"
+        "signature": "guest-null-call",
+        "rip": "0x715ba49",
+        "module": "Unknown",
+        "thread": "45980"
       },
       "current_boundary": {
         "summary": "Deterministic termination with STATUS_ACCESS_VIOLATION (0xC0000005) after ~23s, reproduced across three runs. The content and menus markers are reached first, so this is a post-content-load failure. Last logged VEH fault site is guest RIP 0x80016ab48; earlier faults were logged at 0x800133d7c and 0x800120d58, and it is not yet established which is fatal.",
@@ -28,15 +29,15 @@
         "next_step": "Run the investigate-boundary skill; the fatal site is not yet distinguished from handled faults.",
         "doc": null
       },
-      "last_run_id": "PPSA02929_20260830_065056_baseline",
-      "git_revision": "66e0369",
+      "last_run_id": "PPSA02929_20260831_111625",
+      "git_revision": "df9068a",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2625024,
-        "mtime": "2026-08-29T22:43:28"
+        "size": 2629120,
+        "mtime": "2026-08-31T11:15:17"
       },
-      "updated": "2026-08-30T06:52:09",
-      "regression_state": "unknown"
+      "updated": "2026-08-31T11:17:54",
+      "regression_state": "advanced"
     },
     "PPSA21564": {
       "eboot": "Games/PPSA21564-app/eboot.bin",

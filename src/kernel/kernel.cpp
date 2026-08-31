@@ -2160,7 +2160,8 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                 parse_success = false;
                             }
                         } else {
-                            LOG_DEBUG(Kernel, "  Unsupported mod=%d, rm=%d", mod, rm);
+                            LOG_WARN(Kernel, "TLS decode failed at RIP=0x%llx (mod=%d, rm=%d)",
+                                     context->Rip, mod, rm);
                             parse_success = false;
                         }
                         
@@ -2349,6 +2350,21 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         }
 
         u64 ip = context->Rip;
+
+        // Last chance before declaring a guest crash: a TLS site may have been
+        // rewritten by another thread while this one was mid-flight.  The
+        // earlier ShouldRetry check happens before the instruction is parsed,
+        // so a thread that entered the handler just before the rewrite passes
+        // it, then parses the freshly written `jmp stub` bytes instead of the
+        // fs-relative access it faulted on, fails to decode them, and lands
+        // here.  Re-executing is correct: the site now holds a complete,
+        // valid instruction.  Observed with five guest threads reaching one
+        // TLS site together - one patched it and the other four died on it.
+        if (exception_record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+            TlsPatch::ShouldRetry(ip)) {
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+
         if (ip >= 0x800000000 && ip < 0x900000000) {
             LOG_ERROR(Kernel, "--------------------------------------------------");
             LOG_ERROR(Kernel, "GUEST APPLICATION CRASHED!");
