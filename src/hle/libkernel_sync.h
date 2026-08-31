@@ -21,6 +21,7 @@ u64 ScePthreadMutexattrSettype(const GuestArgs& args);
 u64 ScePthreadMutexattrDestroy(const GuestArgs& args);
 u64 ScePthreadMutexLock(const GuestArgs& args);
 u64 ScePthreadMutexTrylock(const GuestArgs& args);
+u64 ScePthreadMutexTimedlock(const GuestArgs& args);
 u64 ScePthreadMutexUnlock(const GuestArgs& args);
 u64 ScePthreadMutexDestroy(const GuestArgs& args);
 
@@ -30,12 +31,15 @@ u64 ScePthreadCondWait(const GuestArgs& args);
 u64 ScePthreadCondTimedwait(const GuestArgs& args);
 u64 ScePthreadCondSignal(const GuestArgs& args);
 u64 ScePthreadCondBroadcast(const GuestArgs& args);
+u64 ScePthreadCondSignalto(const GuestArgs& args);
 u64 ScePthreadCondDestroy(const GuestArgs& args);
 
 // pthread read-write lock (host SRWLOCK)
 u64 ScePthreadRwlockInit(const GuestArgs& args);
 u64 ScePthreadRwlockRdlock(const GuestArgs& args);
 u64 ScePthreadRwlockWrlock(const GuestArgs& args);
+u64 ScePthreadRwlockTrywrlock(const GuestArgs& args);
+u64 ScePthreadRwlockTryrdlock(const GuestArgs& args);
 u64 ScePthreadRwlockUnlock(const GuestArgs& args);
 u64 ScePthreadRwlockDestroy(const GuestArgs& args);
 

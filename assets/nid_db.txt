@@ -773,3 +773,18 @@ zE-wXIZjLoM	libKernel	sceKernelDebugRaiseExceptionOnReleaseMode
 zHchY8ft5pk	libKernel	pthread_attr_destroy
 zO9UL3qIINQ	libSceRtc	sceRtcGetCurrentNetworkTick
 zgXifHT9ErY	libSceVideoOut	sceVideoOutIsFlipPending
+
+# Synchronisation primitives observed unresolved during PPSA21564 boot, where
+# an unresolved NID falls back to an auto-stub returning 0 — indistinguishable
+# from success for a pthread call. Each NID below was confirmed by recomputing
+# the PS5 name->NID SHA1 scheme locally, not taken on faith.
+bIHoZCTomsI	libKernel	scePthreadRwlockTrywrlock
+XD3mDeybCnk	libKernel	scePthreadRwlockTryrdlock
+IafI2PxcPnQ	libKernel	scePthreadMutexTimedlock
+o69RpYO-Mu0	libKernel	scePthreadCondSignalto
++U1R4WtXvoc	libKernel	pthread_detach
+IKP8typ0QUk	libKernel	sem_post
+YCV5dGGBcCo	libKernel	sem_wait
+cDW233RAwWo	libKernel	sem_destroy
+Hc4CaR6JBL0	libKernel	sceKernelSyncOnAddressWait
+q2y-wDIVWZA	libKernel	sceKernelSyncOnAddressWake

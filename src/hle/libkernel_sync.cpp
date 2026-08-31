@@ -7,6 +7,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -223,7 +224,7 @@ void MutexHandoffLocked(GuestMutex& mtx) {
     mtx.cv.notify_all();
 }
 
-u64 MutexLockImpl(GuestMutex& mtx, u64 tid, bool try_only) {
+u64 MutexLockImpl(GuestMutex& mtx, u64 tid, bool try_only, DWORD timeout_ms) {
     std::unique_lock<std::mutex> lk(mtx.m);
     if (mtx.owner == tid) {
         // Re-lock from the current owner, per type.  Several Gen5 runtimes
@@ -256,7 +257,18 @@ u64 MutexLockImpl(GuestMutex& mtx, u64 tid, bool try_only) {
     if (try_only) return SCE_KERNEL_ERROR_EBUSY;
     mtx.waiters.push_back(tid);
     // The head waiter is granted ownership directly by MutexHandoffLocked.
-    mtx.cv.wait(lk, [&] { return mtx.owner == tid; });
+    if (timeout_ms == INFINITE) {
+        mtx.cv.wait(lk, [&] { return mtx.owner == tid; });
+        return 0;
+    }
+    if (!mtx.cv.wait_for(lk, std::chrono::milliseconds(timeout_ms),
+                         [&] { return mtx.owner == tid; })) {
+        // Timed out without being handed ownership: leave the FIFO so a later
+        // handoff cannot grant the mutex to a caller that has already given up.
+        const auto it = std::find(mtx.waiters.begin(), mtx.waiters.end(), tid);
+        if (it != mtx.waiters.end()) mtx.waiters.erase(it);
+        return SCE_KERNEL_ERROR_ETIMEDOUT;
+    }
     return 0;
 }
 
@@ -629,7 +641,7 @@ u64 ScePthreadMutexLock(const GuestArgs& args) {
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
     GuestMutex* m = LookupOrCreateMutex(var, true);
     if (!m) return SCE_KERNEL_ERROR_EINVAL;
-    return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/false);
+    return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/false, INFINITE);
 }
 
 u64 ScePthreadMutexTrylock(const GuestArgs& args) {
@@ -637,7 +649,21 @@ u64 ScePthreadMutexTrylock(const GuestArgs& args) {
     if (!var) return SCE_KERNEL_ERROR_EINVAL;
     GuestMutex* m = LookupOrCreateMutex(var, true);
     if (!m) return SCE_KERNEL_ERROR_EINVAL;
-    return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/true);
+    return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/true, INFINITE);
+}
+
+// Timed acquire.  The timeout argument is relative microseconds, matching
+// scePthreadCondTimedwait; it is rounded up so a sub-millisecond request still
+// waits rather than degenerating into a try-lock.
+u64 ScePthreadMutexTimedlock(const GuestArgs& args) {
+    const guest_addr_t var = args.arg1;
+    if (!var) return SCE_KERNEL_ERROR_EINVAL;
+    GuestMutex* m = LookupOrCreateMutex(var, true);
+    if (!m) return SCE_KERNEL_ERROR_EINVAL;
+    u64 ms = (args.arg2 + 999ULL) / 1000ULL;
+    if (ms > 0xFFFFFFFEULL) ms = 0xFFFFFFFEULL;
+    return MutexLockImpl(*m, CurrentTlsIdentity(), /*try_only=*/false,
+                         static_cast<DWORD>(ms));
 }
 
 u64 ScePthreadMutexUnlock(const GuestArgs& args) {
@@ -750,6 +776,19 @@ u64 ScePthreadCondSignal(const GuestArgs& args) {
     return 0;
 }
 
+// Wake one named thread.  A std::condition_variable cannot target a specific
+// waiter, so every waiter is woken and the intended thread is guaranteed to be
+// among them.  CondWaitImpl already waits without a predicate, so the guest
+// re-checks its own condition on wake and the extra wakeups are indistinguishable
+// from the spurious ones it must already tolerate.  Documented divergence: this
+// is a conservative over-wake, not a targeted signal.
+u64 ScePthreadCondSignalto(const GuestArgs& args) {
+    GuestCond* c = LookupOrCreateCond(args.arg1, true);
+    if (!c) return SCE_KERNEL_ERROR_EINVAL;
+    c->cv.notify_all();
+    return 0;
+}
+
 u64 ScePthreadCondBroadcast(const GuestArgs& args) {
     GuestCond* c = LookupOrCreateCond(args.arg1, true);
     if (!c) return SCE_KERNEL_ERROR_EINVAL;
@@ -801,6 +840,31 @@ u64 ScePthreadRwlockWrlock(const GuestArgs& args) {
     if (!rw) return SCE_KERNEL_ERROR_EINVAL;
     AcquireSRWLockExclusive(&rw->srw);
     rw->writer.store(true);
+    return 0;
+}
+
+// Non-blocking write acquire.  Guest runtimes use this to probe a lock and
+// take a different path when it is held; an auto-stub that reported success
+// here let the guest believe it owned a lock it never acquired, and the
+// mismatched unlock then failed against a lock this layer had no record of.
+u64 ScePthreadRwlockTrywrlock(const GuestArgs& args) {
+    const guest_addr_t var = args.arg1;
+    if (!var) return SCE_KERNEL_ERROR_EINVAL;
+    GuestRwlock* rw = LookupOrCreateRwlock(var, true);
+    if (!rw) return SCE_KERNEL_ERROR_EINVAL;
+    if (!TryAcquireSRWLockExclusive(&rw->srw)) return SCE_KERNEL_ERROR_EBUSY;
+    rw->writer.store(true);
+    return 0;
+}
+
+// Non-blocking read acquire, the counterpart of the above.
+u64 ScePthreadRwlockTryrdlock(const GuestArgs& args) {
+    const guest_addr_t var = args.arg1;
+    if (!var) return SCE_KERNEL_ERROR_EINVAL;
+    GuestRwlock* rw = LookupOrCreateRwlock(var, true);
+    if (!rw) return SCE_KERNEL_ERROR_EINVAL;
+    if (!TryAcquireSRWLockShared(&rw->srw)) return SCE_KERNEL_ERROR_EBUSY;
+    rw->readers.fetch_add(1);
     return 0;
 }
 
@@ -1106,12 +1170,12 @@ u64 SceKernelLockMutex(const GuestArgs& args) {
     u32 usec = 0;
     const int timo = ReadTimeout(timo_ptr, usec);
     if (timo == 0) {
-        for (s32 i = 0; i < count; ++i) MutexLockImpl(*m, tid, /*try_only=*/false);
+        for (s32 i = 0; i < count; ++i) MutexLockImpl(*m, tid, /*try_only=*/false, INFINITE);
         return 0;
     }
     const u64 start = Kernel::GuestClockMicros();
     for (s32 i = 0; i < count; ++i) {
-        while (MutexLockImpl(*m, tid, /*try_only=*/true) == SCE_KERNEL_ERROR_EBUSY) {
+        while (MutexLockImpl(*m, tid, /*try_only=*/true, INFINITE) == SCE_KERNEL_ERROR_EBUSY) {
             if (timo == 1 || Kernel::GuestClockMicros() - start >= usec) {
                 // Back out any partial acquisitions.
                 for (s32 j = 0; j < i; ++j) MutexUnlockImpl(*m, tid, true);
@@ -1645,6 +1709,13 @@ void RegisterLibKernelSync() {
     RegisterSymbol("libkernel", "scePthreadRwlockRdlock", ScePthreadRwlockRdlock);
     RegisterSymbol("libkernel", "scePthreadRwlockWrlock", ScePthreadRwlockWrlock);
     RegisterSymbol("libkernel", "scePthreadRwlockUnlock", ScePthreadRwlockUnlock);
+    RegisterSymbol("libkernel", "scePthreadRwlockTrywrlock", ScePthreadRwlockTrywrlock);
+    RegisterSymbol("libkernel", "scePthreadRwlockTryrdlock", ScePthreadRwlockTryrdlock);
+    RegisterSymbol("libkernel", "pthread_rwlock_trywrlock", ScePthreadRwlockTrywrlock);
+    RegisterSymbol("libkernel", "pthread_rwlock_tryrdlock", ScePthreadRwlockTryrdlock);
+    RegisterSymbol("libkernel", "scePthreadMutexTimedlock", ScePthreadMutexTimedlock);
+    RegisterSymbol("libkernel", "pthread_mutex_timedlock", ScePthreadMutexTimedlock);
+    RegisterSymbol("libkernel", "scePthreadCondSignalto", ScePthreadCondSignalto);
     RegisterSymbol("libkernel", "scePthreadRwlockDestroy", ScePthreadRwlockDestroy);
     RegisterSymbol("libkernel", "scePthreadRwlockattrInit", [](const GuestArgs& a) -> u64 {
         if (a.arg1) SafeWriteU64(a.arg1, 0);

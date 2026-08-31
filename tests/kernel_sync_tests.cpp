@@ -523,6 +523,85 @@ void TestPosixSemaphore() {
 
 } // namespace
 
+void TestSyncClusterAdditions() {
+    // rwlock try-variants -------------------------------------------------
+    // Before these existed the NIDs resolved to an auto-stub returning 0, so a
+    // guest probing a held lock was told it had acquired one; its later unlock
+    // then failed against a lock this layer had never recorded.
+    const guest_addr_t rw = g_page + 0x380;
+    assert(ScePthreadRwlockInit(Args(rw, 0)) == 0);
+
+    assert(ScePthreadRwlockTrywrlock(Args(rw)) == 0);   // free -> acquired
+
+    // Held for write: another thread must be refused rather than blocked, and
+    // must be told EBUSY rather than success.
+    u64 other_wr = 0, other_rd = 0;
+    std::thread contender([&] {
+        other_wr = ScePthreadRwlockTrywrlock(Args(rw));
+        other_rd = ScePthreadRwlockTryrdlock(Args(rw));
+    });
+    contender.join();
+    assert(other_wr == SCE_KERNEL_ERROR_EBUSY);
+    assert(other_rd == SCE_KERNEL_ERROR_EBUSY);
+
+    assert(ScePthreadRwlockUnlock(Args(rw)) == 0);
+    assert(ScePthreadRwlockTryrdlock(Args(rw)) == 0);   // free -> read acquired
+    assert(ScePthreadRwlockUnlock(Args(rw)) == 0);
+    assert(ScePthreadRwlockDestroy(Args(rw)) == 0);
+
+    // timed mutex ----------------------------------------------------------
+    const guest_addr_t mtx = g_page + 0x3C0;
+    assert(ScePthreadMutexInit(Args(mtx, 0)) == 0);
+    assert(ScePthreadMutexTimedlock(Args(mtx, 50 * 1000)) == 0);  // free
+    assert(ScePthreadMutexUnlock(Args(mtx)) == 0);
+
+    // Held by another thread: the wait must expire with ETIMEDOUT instead of
+    // blocking forever or reporting a success it did not obtain.
+    std::atomic<bool> holding{false};
+    std::atomic<bool> release{false};
+    std::thread holder([&] {
+        assert(ScePthreadMutexLock(Args(mtx)) == 0);
+        holding = true;
+        while (!release) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        ScePthreadMutexUnlock(Args(mtx));
+    });
+    while (!holding) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    const auto t0 = std::chrono::steady_clock::now();
+    const u64 rc = ScePthreadMutexTimedlock(Args(mtx, 40 * 1000)); // 40 ms
+    const auto waited = std::chrono::steady_clock::now() - t0;
+    assert(rc == SCE_KERNEL_ERROR_ETIMEDOUT);
+    assert(waited >= std::chrono::milliseconds(30));   // actually waited
+    release = true;
+    holder.join();
+
+    assert(ScePthreadMutexTimedlock(Args(mtx, 50 * 1000)) == 0);   // free again
+    assert(ScePthreadMutexUnlock(Args(mtx)) == 0);
+    assert(ScePthreadMutexDestroy(Args(mtx)) == 0);
+
+    // directed condvar wake -------------------------------------------------
+    // Signalto cannot target one waiter through a condition_variable, so it
+    // over-wakes; what must hold is that a waiting thread is actually released.
+    const guest_addr_t cnd = g_page + 0x400;
+    const guest_addr_t cmx = g_page + 0x440;
+    assert(ScePthreadCondInit(Args(cnd, 0)) == 0);
+    assert(ScePthreadMutexInit(Args(cmx, 0)) == 0);
+    std::atomic<bool> woke{false};
+    std::thread waiter([&] {
+        ScePthreadMutexLock(Args(cmx));
+        ScePthreadCondWait(Args(cnd, cmx));
+        woke = true;
+        ScePthreadMutexUnlock(Args(cmx));
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    assert(!woke);
+    assert(ScePthreadCondSignalto(Args(cnd, 1)) == 0);
+    waiter.join();
+    assert(woke);
+
+    std::printf("  sync cluster additions: OK\n");
+}
+
 int main() {
     LogConfig::SetLevel(LogCategory::HLE, LogLevel::Warn);
 
@@ -542,6 +621,7 @@ int main() {
     TestMutexStress();
     TestCondvar();
     TestRwlock();
+    TestSyncClusterAdditions();
     TestTlsKeys();
     TestSemaphore();
     TestEventFlag();
