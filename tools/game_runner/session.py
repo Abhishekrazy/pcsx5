@@ -596,7 +596,7 @@ def load_record(run_id):
         return json.load(f)
 
 
-def entry_from_record(rec, previous=None):
+def entry_from_record(rec, previous=None, stability=None):
     ex = rec["execution"]
     prev_boundary = (previous or {}).get(
         "current_boundary",
@@ -608,6 +608,17 @@ def entry_from_record(rec, previous=None):
         "sustained_runtime_s": rec["duration_s"],
         "status": rec["status"],
         "markers": sorted(rec["markers"]),
+        # Which markers appeared in EVERY sample, and which in only some.
+        # Several boot markers are intermittent, so a comparison that treats any
+        # difference as a verdict reports coin flips as progress or regression.
+        "markers_stable": sorted(stability["stable"]) if stability else sorted(rec["markers"]),
+        "markers_intermittent": sorted(stability["intermittent"]) if stability else [],
+        "samples": stability["samples"] if stability else 1,
+        # Whether the fatal signature and faulting RIP were the same in every
+        # sample. Both vary run to run for some titles, so a change in either is
+        # only worth reporting when it was steady to begin with.
+        "signature_stable": stability.get("signature_stable", True) if stability else True,
+        "rip_stable": stability.get("rip_stable", True) if stability else True,
         "crash_location": {
             "signature": rec["crash"]["fatal_signature"],
             "rip": rec["crash"]["last_rip"],
@@ -650,22 +661,41 @@ def compare_to_baseline(rec, db):
     elif new_r > old_r:
         better("status %s -> %s" % (base.get("status"), rec["status"]))
 
+    # Only markers seen in every baseline sample can support a verdict. An
+    # intermittent marker missing from one run says nothing, and calling that a
+    # regression sends people chasing a change that did nothing.
     new_m = set(rec["markers"])
-    old_m = set(base.get("markers") or [])
-    lost = old_m - new_m
-    gained = new_m - old_m
+    stable = set(base.get("markers_stable") or base.get("markers") or [])
+    flaky = set(base.get("markers_intermittent") or [])
+    samples = base.get("samples", 1)
+
+    lost = stable - new_m
+    gained = new_m - stable - flaky
     if lost:
         worse("markers lost: " + ", ".join(sorted(lost)))
     if gained:
         better("markers gained: " + ", ".join(sorted(gained)))
+    absent = flaky - new_m
+    if absent:
+        notes.append("intermittent markers absent (not a regression): "
+                     + ", ".join(sorted(absent)))
+    if samples < 3 and (lost or gained):
+        notes.append("baseline has %d sample(s); a verdict from that is weak - "
+                     "run 'session.py measure' to establish which markers are stable"
+                     % samples)
 
     old_sig = (base.get("crash_location") or {}).get("signature")
     new_sig = rec["crash"]["fatal_signature"]
     if old_sig != new_sig:
-        notes.append("CHANGED: fatal signature %s -> %s" % (old_sig, new_sig))
+        if base.get("signature_stable", True):
+            notes.append("CHANGED: fatal signature %s -> %s" % (old_sig, new_sig))
+        else:
+            notes.append("fatal signature differs, but it was not stable in the "
+                         "baseline samples (not a change): %s -> %s" % (old_sig, new_sig))
     old_rip = (base.get("crash_location") or {}).get("rip")
     if old_rip and rec["crash"]["last_rip"] and old_rip != rec["crash"]["last_rip"]:
-        notes.append("CHANGED: last RIP %s -> %s" % (old_rip, rec["crash"]["last_rip"]))
+        if base.get("rip_stable", True):
+            notes.append("CHANGED: last RIP %s -> %s" % (old_rip, rec["crash"]["last_rip"]))
 
     if not notes:
         notes.append("no observable difference from baseline")
@@ -704,6 +734,64 @@ def cmd_run(args):
             break
         print("[session] crashed; restarting (%d/%d)" % (i + 1, args.restart_on_crash))
     return 0 if last and last["status"] in ("progressing", "ran-headless") else 1
+
+
+def cmd_measure(args):
+    """Run a title several times and report which observations are stable.
+
+    A single run cannot support "this change helped" or "this change hurt":
+    several boot markers appear only intermittently, and the duration varies
+    run to run. Sampling repeatedly separates the signal that a comparison may
+    rely on from the noise that it must not.
+    """
+    cli = find_cli()
+    if not cli:
+        raise SystemExit("pcsx5_cli.exe not found. Build first: "
+                         "cmake --build build --config Release")
+    title_id, eboot = resolve_title(args.title)
+
+    runs = []
+    for i in range(args.runs):
+        print("[measure] run %d/%d" % (i + 1, args.runs))
+        runs.append(run_once(args, title_id, eboot, cli, run_index=i))
+
+    seen = [set(r["markers"]) for r in runs]
+    everywhere = set.intersection(*seen) if seen else set()
+    anywhere = set.union(*seen) if seen else set()
+    intermittent = anywhere - everywhere
+    durations = [r["duration_s"] for r in runs]
+    statuses = sorted({r["status"] for r in runs})
+    sigs = sorted({str(r["crash"]["fatal_signature"]) for r in runs})
+    rips = sorted({str(r["crash"]["last_rip"]) for r in runs})
+
+    print("")
+    print("  samples             %d" % len(runs))
+    print("  duration            min %.1fs  max %.1fs  spread %.1fs"
+          % (min(durations), max(durations), max(durations) - min(durations)))
+    print("  status              %s%s" % (", ".join(statuses),
+                                          "" if len(statuses) == 1 else "   <- varies"))
+    print("  markers stable      %s" % (", ".join(sorted(everywhere)) or "(none)"))
+    print("  markers INTERMITTENT %s" % (", ".join(sorted(intermittent)) or "(none)"))
+    print("  fatal signature     %s%s" % (", ".join(sigs),
+                                          "" if len(sigs) == 1 else "   <- varies"))
+    print("  last RIP            %s" % ("stable" if len(rips) == 1 else
+                                        "varies across %d values" % len(rips)))
+    if intermittent:
+        print("")
+        print("  Only the stable markers can support an advance/regress verdict.")
+
+    if args.update_baseline:
+        db = load_baseline()
+        prev = db.get("titles", {}).get(title_id)
+        stability = {"stable": everywhere, "intermittent": intermittent,
+                     "samples": len(runs),
+                     "signature_stable": len(sigs) == 1,
+                     "rip_stable": len(rips) == 1}
+        db.setdefault("titles", {})[title_id] = entry_from_record(runs[-1], prev, stability)
+        save_baseline(db)
+        print("")
+        print("  baseline updated for %s from %d samples" % (title_id, len(runs)))
+    return 0
 
 
 def cmd_longrun(args):
@@ -842,6 +930,15 @@ def main():
     add_run_args(sp)
     sp.add_argument("--duration", type=int, default=120, help="seconds")
     sp.set_defaults(func=cmd_run)
+
+    sp = sub.add_parser("measure",
+                        help="run a title repeatedly and report which observations are stable")
+    add_run_args(sp)
+    sp.add_argument("--duration", type=int, default=60, help="seconds per run")
+    sp.add_argument("--runs", type=int, default=3, help="number of samples (default 3)")
+    sp.add_argument("--update-baseline", action="store_true",
+                    help="record the sampled stability as the baseline")
+    sp.set_defaults(func=cmd_measure)
 
     sp = sub.add_parser("longrun", help="long-duration soak run")
     add_run_args(sp)

@@ -1,26 +1,36 @@
 {
   "schema": "pcsx5-runtime-baseline/1",
-  "updated": "2026-08-31T11:17:54",
-  "git_revision": "df9068a",
+  "updated": "2026-08-31T23:37:06",
+  "git_revision": "fa740cd",
   "titles": {
     "PPSA02929": {
       "eboot": "Games/PPSA02929-app0/eboot.bin",
       "boot_success": false,
       "first_frame_s": 2.02,
-      "sustained_runtime_s": 25.57,
+      "sustained_runtime_s": 21.52,
       "status": "crashed",
       "markers": [
         "content",
-        "first-draw",
         "menus",
-        "pthreads",
+        "pthreads"
+      ],
+      "markers_stable": [
+        "content",
+        "menus",
+        "pthreads"
+      ],
+      "markers_intermittent": [
+        "first-draw",
         "shaders"
       ],
+      "samples": 3,
+      "signature_stable": false,
+      "rip_stable": false,
       "crash_location": {
-        "signature": "guest-null-call",
-        "rip": "0x715ba49",
-        "module": "Unknown",
-        "thread": "45980"
+        "signature": "exception-exit",
+        "rip": "0x80016ab48",
+        "module": null,
+        "thread": "46212"
       },
       "current_boundary": {
         "summary": "Deterministic termination with STATUS_ACCESS_VIOLATION (0xC0000005) after ~23s, reproduced across three runs. The content and menus markers are reached first, so this is a post-content-load failure. Last logged VEH fault site is guest RIP 0x80016ab48; earlier faults were logged at 0x800133d7c and 0x800120d58, and it is not yet established which is fatal.",
@@ -29,15 +39,14 @@
         "next_step": "Run the investigate-boundary skill; the fatal site is not yet distinguished from handled faults.",
         "doc": null
       },
-      "last_run_id": "PPSA02929_20260831_111625",
-      "git_revision": "df9068a",
+      "last_run_id": "PPSA02929_20260831_233644_r2",
+      "git_revision": "fa740cd",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2629120,
-        "mtime": "2026-08-31T11:15:17"
+        "size": 2630144,
+        "mtime": "2026-08-31T23:21:49"
       },
-      "updated": "2026-08-31T11:17:54",
-      "regression_state": "advanced"
+      "updated": "2026-08-31T23:37:06"
     },
     "PPSA21564": {
       "eboot": "Games/PPSA21564-app/eboot.bin",
