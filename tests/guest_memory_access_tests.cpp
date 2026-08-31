@@ -231,9 +231,40 @@ void TestUnmappedFaultBoundary() {
     std::fprintf(stdout, "[TEST] Fault Boundary Recovery on Unmapped Memory\n");
     EXPECT(Memory::Initialize(), "Initialize");
 
-    // Reserve a single 64KB chunk outside the pool directly
-    void* host_res = VirtualAlloc(nullptr, 65536, MEM_RESERVE, PAGE_NOACCESS);
-    guest_addr_t base = reinterpret_cast<guest_addr_t>(host_res);
+    // Reserve a 64KB chunk whose FOLLOWING page is genuinely free.
+    //
+    // The read below deliberately runs off the end of this reservation, so the
+    // test is only meaningful if the address after it is unmapped. That was
+    // previously assumed: VirtualQuery was called on it and its answer thrown
+    // away. When another allocation happened to sit there the read succeeded
+    // for the full 8192 bytes and the suite failed intermittently -- about one
+    // full run in three, while passing in isolation, which reads like a defect
+    // in the memory subsystem and is not one.
+    //
+    // Reserving until the neighbour is observably MEM_FREE makes the
+    // precondition hold rather than hoping for it. Reservations that fail the
+    // check are kept, not released, so the retry does not simply land on the
+    // same address again; they are released once a usable one is found.
+    void* host_res = nullptr;
+    guest_addr_t base = 0;
+    std::vector<void*> rejected;
+    for (int attempt = 0; attempt < 64 && !host_res; ++attempt) {
+        void* candidate = VirtualAlloc(nullptr, 65536, MEM_RESERVE, PAGE_NOACCESS);
+        if (!candidate) break;
+        const guest_addr_t cand_base = reinterpret_cast<guest_addr_t>(candidate);
+        MEMORY_BASIC_INFORMATION probe{};
+        VirtualQuery(reinterpret_cast<LPCVOID>(cand_base + 65536), &probe, sizeof(probe));
+        if (probe.State == MEM_FREE) {
+            host_res = candidate;
+            base = cand_base;
+        } else {
+            rejected.push_back(candidate);
+        }
+    }
+    for (void* r : rejected) VirtualFree(r, 0, MEM_RELEASE);
+    EXPECT(host_res != nullptr,
+           "found a 64KB reservation followed by free address space");
+    if (!host_res) return;
     CheckStatus(Memory::AdoptRange(base, 65536, Memory::PROT_READ | Memory::PROT_WRITE, false,
                                   Memory::Owner::Kernel, "unmapped_test"),
                 Memory::Status::Ok, __FILE__, __LINE__, "Adopt 64KB reservation");
@@ -246,10 +277,8 @@ void TestUnmappedFaultBoundary() {
     std::vector<u8> valid_data(4096, 0x42);
     EXPECT(Memory::GuardedWrite(valid_page, valid_data.data(), 4096), "Write valid page");
 
-    // The address valid_page + 4096 == base + 65536 is beyond the reservation.
-    // Check with VirtualQuery that it is truly MEM_FREE (or not committed).
-    MEMORY_BASIC_INFORMATION mbi{};
-    VirtualQuery(reinterpret_cast<LPCVOID>(base + 65536), &mbi, sizeof(mbi));
+    // base + 65536 was confirmed MEM_FREE when the reservation was chosen, so
+    // the read below genuinely crosses into unmapped space.
 
     // Request reading 8192 bytes from valid_page (4096 valid + 4096 unmapped/free)
     std::vector<u8> dest(8192, 0);
