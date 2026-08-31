@@ -28,8 +28,8 @@ firmware, system libraries or games. You may only use software you legally own.
 
 PCSX5 can load unmodified retail PS5 executables, run them through the boot
 pipeline, spawn guest threads, translate shaders and present frames — but every
-title tested so far terminates within about a minute. Expect crashes, missing
-rendering and no sound in most cases.
+title tested so far crashes during boot, most of them within the first twenty
+seconds. Expect crashes, missing rendering and no sound in most cases.
 
 What currently works:
 
@@ -37,7 +37,9 @@ What currently works:
 - Dynamic module loading, import resolution and NID linking
 - Guest thread creation and teardown with correct TEB/TLS handling
 - A large HLE surface: libkernel, libc, libScePad, libSceAudioOut, libSceAgc,
-  libSceVideoOut and others
+  libSceVideoOut and others, backed by a symbol database of over a thousand
+  NID-to-name mappings, each one verified by recomputing the hash rather than
+  taken on trust
 - GCN→SPIR-V shader translation and a Vulkan 1.3 renderer
 - ATRAC9 audio decoding
 - DualSense support over USB and Bluetooth (input, rumble, adaptive triggers,
