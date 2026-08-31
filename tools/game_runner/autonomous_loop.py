@@ -98,7 +98,11 @@ def run_loop(pcsx5_path, eboot_path, timeout_seconds=120, capture_intervals=[5, 
             log_file.write(out)
         log_file.close()
 
-    dump_path = os.path.join(os.path.dirname(pcsx5_path), "crash_rip_dump.bin")
+    # The core writes crash dumps into its diagnostics bundle directory.
+    # This script passes no --crash-dir, so the core uses its default
+    # ("pcsx5_crash"), relative to the cwd set on the Popen call above.
+    dump_path = os.path.join(os.path.dirname(pcsx5_path), "pcsx5_crash",
+                             "crash_rip_dump.bin")
     crash_info = analyze_crash(run_log_path, dump_path)
     
     result = {

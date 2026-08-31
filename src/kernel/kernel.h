@@ -32,6 +32,12 @@ namespace Kernel {
     // True when the core is hosted inside another process (see SetInProcMode).
     bool IsInProcMode();
 
+    // Directory the VEH crash dumps (crash_rip_dump.bin, crash_prx_dump.bin)
+    // are written to.  Set by the core once the crash directory is resolved,
+    // so the dumps land beside the crash-report bundle rather than in the
+    // process working directory.  Defaults to "pcsx5_crash" if never called.
+    void SetCrashDumpDir(const std::string& dir);
+
     // Configure PRX module resolution.  `game_dir` is the directory of the
     // main module (its `sce_module/` sub-directory is searched first);
     // `firmware_modules_dir` (may be empty) holds user-supplied firmware

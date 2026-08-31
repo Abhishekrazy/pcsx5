@@ -177,7 +177,11 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
     // use (Kernel::ResolveGuestThreadPointer) — binding the CpuCore tls_base
     // directly diverges when the kernel map has no entry for this thread
     // (shared-TLS fallback) and corrupts worker threads.
-    Kernel::TlsPatch::BindCurrentThread(Kernel::ResolveGuestThreadPointer(id));
+    const guest_addr_t resolved_tp = Kernel::ResolveGuestThreadPointer(id);
+    LOG_INFO(Cpu, "TLS bind: tid=%llu self->tls_base=0x%llx resolved=0x%llx%s",
+             id, self->tls_base, resolved_tp,
+             resolved_tp == self->tls_base ? "" : "  *** SHARED-TLS FALLBACK ***");
+    Kernel::TlsPatch::BindCurrentThread(resolved_tp);
     {
         ULONG guarantee = 64 * 1024;
         SetThreadStackGuarantee(&guarantee);

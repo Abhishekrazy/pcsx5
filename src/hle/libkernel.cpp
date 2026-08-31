@@ -1041,6 +1041,8 @@ namespace HLE {
                     LOG_ERROR(HLE, "Failed to allocate guest pthread_attr pool page");
                     return 0;
                 }
+                LOG_INFO(HLE, "pthread-attr-pool allocated at 0x%llx (64KB, %u slots of 64 bytes)",
+                         s_attr_page_base, kMaxAttrs);
             }
             for (u32 i = 0; i < kMaxAttrs; ++i) {
                 if (!s_attr_used[i]) {

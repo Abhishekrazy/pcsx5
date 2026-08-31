@@ -54,6 +54,36 @@ namespace Kernel {
     static u64 g_process_id = GetCurrentProcessId();
     static bool g_in_proc = false;
 
+    // Where the VEH crash dumps go.  Deliberately not read from
+    // Diagnostics: the test targets compile kernel.cpp without linking
+    // diagnostics.cpp, so the core pushes the resolved path in instead.
+    static std::string g_crash_dump_dir = "pcsx5_crash";
+
+    // Region captured by the second ("PRX") crash dump.  The default is
+    // libc.prx's load base, chosen for an earlier investigation; a different
+    // one is selected per-run with PCSX5_CRASH_DUMP_BASE / _SIZE (hex or
+    // decimal), following the PCSX5_HEADLESS precedent for diagnostic knobs.
+    // GetEnvironmentVariableA rather than getenv: the core builds /W4 /WX and
+    // getenv is deprecated by MSVC.  Matches vulkan_backend.cpp's PCSX5_HEADLESS
+    // and libagc.cpp's PCSX5_PM4_CAPTURE.
+    static u64 EnvU64(const char* name, u64 fallback) {
+        char buf[32] = {};
+        const DWORD n = GetEnvironmentVariableA(name, buf, sizeof(buf));
+        if (n == 0 || n >= sizeof(buf)) return fallback;
+        const u64 v = std::strtoull(buf, nullptr, 0);
+        return v ? v : fallback;
+    }
+
+    u64 CrashDumpBase() {
+        static const u64 v = EnvU64("PCSX5_CRASH_DUMP_BASE", 0x820000000ull);
+        return v;
+    }
+
+    u64 CrashDumpSize() {
+        static const u64 v = EnvU64("PCSX5_CRASH_DUMP_SIZE", 16ull * 1024 * 1024);
+        return v;
+    }
+
     // ------------------------------------------------------------------
     // VEH recursion guard (H4.3): prevents host stack exhaustion from
     // recursive re-entry of the vectored exception handler.  The VEH
@@ -92,6 +122,10 @@ namespace Kernel {
 
     bool IsInProcMode() {
         return g_in_proc;
+    }
+
+    void SetCrashDumpDir(const std::string& dir) {
+        if (!dir.empty()) g_crash_dump_dir = dir;
     }
     static PVOID g_veh_handler = nullptr;
     static LPTOP_LEVEL_EXCEPTION_FILTER g_prev_exception_filter = nullptr;
@@ -1734,26 +1768,41 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                          inst[16], inst[17], inst[18], inst[19], inst[20], inst[21], inst[22], inst[23],
                          inst[24], inst[25], inst[26], inst[27], inst[28], inst[29], inst[30], inst[31]);
                 
+                // Crash dumps belong in the diagnostics bundle directory, not
+                // the process working directory.  These used to be written to a
+                // bare relative path, so a 16MB dump landed in whatever
+                // directory the emulator happened to be started from -- usually
+                // the repository root.  Diagnostics owns this location; the
+                // harness selects it with --crash-dir and already looks for the
+                // RIP dump inside the per-run directory.
+                const std::string& dump_dir = g_crash_dump_dir;
+                std::error_code dump_ec;
+                std::filesystem::create_directories(dump_dir, dump_ec);
+
+                const std::string rip_dump_path = dump_dir + "/crash_rip_dump.bin";
                 FILE* fdump = nullptr;
-                if (fopen_s(&fdump, "crash_rip_dump.bin", "wb") == 0 && fdump) {
+                if (fopen_s(&fdump, rip_dump_path.c_str(), "wb") == 0 && fdump) {
                     u64 dump_base = context->Rip - 32768;
                     u8* dump_buf = new u8[65536];
                     Memory::ReadBuffer(dump_base, dump_buf, 65536);
                     fwrite(dump_buf, 1, 65536, fdump);
                     fclose(fdump);
                     delete[] dump_buf;
-                    LOG_INFO(Kernel, "Dumped 64KB around RIP to crash_rip_dump.bin");
+                    LOG_INFO(Kernel, "Dumped 64KB around RIP to %s", rip_dump_path.c_str());
                 }
-                
+
+                const std::string prx_dump_path = dump_dir + "/crash_prx_dump.bin";
                 FILE* fdump2 = nullptr;
-                if (fopen_s(&fdump2, "crash_prx_dump.bin", "wb") == 0 && fdump2) {
-                    u64 dump_base = 0x820000000;
-                    u8* dump_buf = new u8[16*1024*1024]; // 16MB
-                    Memory::ReadBuffer(dump_base, dump_buf, 16*1024*1024);
-                    fwrite(dump_buf, 1, 16*1024*1024, fdump2);
+                if (fopen_s(&fdump2, prx_dump_path.c_str(), "wb") == 0 && fdump2) {
+                    const u64 dump_base = CrashDumpBase();
+                    const u64 dump_size = CrashDumpSize();
+                    u8* dump_buf = new u8[dump_size];
+                    Memory::ReadBuffer(dump_base, dump_buf, dump_size);
+                    fwrite(dump_buf, 1, dump_size, fdump2);
                     fclose(fdump2);
                     delete[] dump_buf;
-                    LOG_INFO(Kernel, "Dumped 16MB at 0x820000000 to crash_prx_dump.bin");
+                    LOG_INFO(Kernel, "Dumped %llu bytes at 0x%llx to %s",
+                             dump_size, dump_base, prx_dump_path.c_str());
                 }
             }
         }
@@ -1777,6 +1826,25 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                       context->Rsp, context->Rbp,
                       context->R8, context->R9, context->R10, context->R11,
                       context->R12, context->R13, context->R14, context->R15);
+            // Classify the pointer registers against the memory map.  A null
+            // indirect call is usually reached through a table pointer; whether
+            // that pointer is real memory (a structure with an unregistered
+            // callback) or an artifact (corruption) changes the diagnosis
+            // completely, and the register value alone does not say which.
+            for (const auto& reg : { std::pair<const char*, u64>{"RAX", context->Rax},
+                                     std::pair<const char*, u64>{"RBX", context->Rbx},
+                                     std::pair<const char*, u64>{"RDI", context->Rdi} }) {
+                if (reg.second < 0x1000ULL) continue;
+                Memory::MemoryInfo mi{};
+                if (Memory::Query(reg.second, &mi) == Memory::Status::Ok) {
+                    LOG_ERROR(Kernel, "  [%s=0x%llx -> owner=%s region=0x%llx+0x%llx prot=0x%x committed=%d]",
+                              reg.first, reg.second,
+                              Memory::OwnerAsString(Memory::QueryOwner(reg.second)),
+                              mi.base_address, mi.size, mi.protection, mi.is_committed ? 1 : 0);
+                } else {
+                    LOG_ERROR(Kernel, "  [%s=0x%llx -> UNMAPPED]", reg.first, reg.second);
+                }
+            }
             const u64 g_tid = CpuCore::GetCurrentThreadId();
             if (auto* gt = CpuCore::GetThreadById(g_tid)) {
                 const u64 gbase = gt->stack_base, gsize = gt->stack_size;

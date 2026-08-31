@@ -175,9 +175,15 @@ std::string ResolveLoadPath(const std::string& path) {
 PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void* log_user) {
     g_state = CoreState{};
 
+    // An explicit --crash-dir must outrank the config file.  Config::crash
+    // .bundle_dir defaults to "pcsx5_crash" and is therefore never empty, so
+    // applying it unconditionally below silently discarded the caller's choice.
+    bool crash_dir_from_options = false;
+
     if (options) {
         if (options->config_dir)             g_state.config_dir = options->config_dir;
-        if (options->crash_dir)              g_state.crash_dir = options->crash_dir;
+        if (options->crash_dir)              { g_state.crash_dir = options->crash_dir;
+                                               crash_dir_from_options = true; }
         if (options->log_file)               g_state.log_file = options->log_file;
         if (options->title_id)               g_state.title_id = options->title_id;
         if (options->report_path)            g_state.report_path = options->report_path;
@@ -231,8 +237,13 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     }
     LogConfig::SetDedup(false);
     LogConfig::SetDedupWindow(cfg.logging.dedup_window_ms * 1000);
-    if (!cfg.crash.bundle_dir.empty()) g_state.crash_dir = cfg.crash.bundle_dir;
+    if (!crash_dir_from_options && !cfg.crash.bundle_dir.empty()) {
+        g_state.crash_dir = cfg.crash.bundle_dir;
+    }
     if (g_state.crash_dir.empty())     g_state.crash_dir = "pcsx5_crash";
+    // The VEH crash dumps belong next to the crash bundle, not in the process
+    // working directory.
+    Kernel::SetCrashDumpDir(g_state.crash_dir);
     g_state.strict_imports = g_state.strict_imports || cfg.hle.strict_imports;
 
     // Hand the audio output settings to libSceAudioOut (0 = Off / silent-paced).
