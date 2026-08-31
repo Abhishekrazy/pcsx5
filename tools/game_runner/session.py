@@ -102,8 +102,34 @@ def find_cli():
     return None
 
 
+# A PS5 title id: four letters then five digits, e.g. PPSA21564.
+TITLE_ID_RE = re.compile(r"[A-Z]{4}[0-9]{5}")
+
+
+def title_id_from_dirname(entry):
+    """Recover the title id from a dump directory name.
+
+    Dumps arrive named however the tool that produced them chose, and release
+    folders routinely put the id in the middle:
+
+        PPSA21564-app
+        Poppy Playtime Chapter 1     01.002 PPSA20591
+        [SuperPSX]-Super.Monkey.Ball...-PPSA01668-USA-Game(v01.004)...
+
+    Take the id wherever it appears rather than assuming it leads, so a dump
+    can be used as delivered.  Renaming is not an option: directories under
+    Games/ are retail content and are left byte-for-byte as received.
+    """
+    m = TITLE_ID_RE.search(entry.upper())
+    if m:
+        return m.group(0)
+    # No recognisable id: fall back to the leading token, which at least keeps
+    # such a directory addressable instead of dropping it.
+    return re.split(r"[-_ ]", entry)[0]
+
+
 def discover_titles():
-    """Map title id -> eboot path by scanning Games/<TITLEID>*/eboot.bin."""
+    """Map title id -> eboot path by scanning Games/*/eboot.bin."""
     titles = {}
     if not os.path.isdir(GAMES):
         return titles
@@ -113,8 +139,7 @@ def discover_titles():
             continue
         eboot = os.path.join(d, "eboot.bin")
         if os.path.isfile(eboot):
-            tid = re.split(r"[-_]", entry)[0]
-            titles.setdefault(tid, eboot)
+            titles.setdefault(title_id_from_dirname(entry), eboot)
     return titles
 
 

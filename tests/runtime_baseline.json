@@ -1,7 +1,7 @@
 {
   "schema": "pcsx5-runtime-baseline/1",
-  "updated": "2026-08-30T06:52:09",
-  "git_revision": "66e0369",
+  "updated": "2026-08-31T10:08:49",
+  "git_revision": "2db595e",
   "titles": {
     "PPSA02929": {
       "eboot": "Games/PPSA02929-app0/eboot.bin",
@@ -69,6 +69,118 @@
         "mtime": "2026-08-29T22:43:28"
       },
       "updated": "2026-08-30T06:52:09",
+      "regression_state": "unknown"
+    },
+    "PPSA10112": {
+      "eboot": "Games/PPSA10112-app/eboot.bin",
+      "boot_success": false,
+      "first_frame_s": 2.37,
+      "sustained_runtime_s": 16.24,
+      "status": "crashed",
+      "markers": [],
+      "crash_location": {
+        "signature": "exception-exit",
+        "rip": "0x800a2bd0c",
+        "module": null,
+        "thread": "42368"
+      },
+      "current_boundary": {
+        "summary": null,
+        "classification": "UNKNOWN",
+        "doc": null
+      },
+      "last_run_id": "PPSA10112_20260831_100617",
+      "git_revision": "2db595e",
+      "build_revision": {
+        "binary": "build/bin/Release/pcsx5_core.dll",
+        "size": 2627584,
+        "mtime": "2026-08-31T09:42:04"
+      },
+      "updated": "2026-08-31T10:08:48",
+      "regression_state": "unknown"
+    },
+    "PPSA15552": {
+      "eboot": "Games/PPSA15552-app/eboot.bin",
+      "boot_success": false,
+      "first_frame_s": 2.02,
+      "sustained_runtime_s": 4.45,
+      "status": "crashed",
+      "markers": [],
+      "crash_location": {
+        "signature": "exception-exit",
+        "rip": "0x81000addd",
+        "module": null,
+        "thread": "43596"
+      },
+      "current_boundary": {
+        "summary": null,
+        "classification": "UNKNOWN",
+        "doc": null
+      },
+      "last_run_id": "PPSA15552_20260831_100634",
+      "git_revision": "2db595e",
+      "build_revision": {
+        "binary": "build/bin/Release/pcsx5_core.dll",
+        "size": 2627584,
+        "mtime": "2026-08-31T09:42:04"
+      },
+      "updated": "2026-08-31T10:08:49",
+      "regression_state": "unknown"
+    },
+    "PPSA20591": {
+      "eboot": "Games/Poppy Playtime Chapter 1     01.002 PPSA20591/eboot.bin",
+      "boot_success": false,
+      "first_frame_s": 2.02,
+      "sustained_runtime_s": 15.6,
+      "status": "crashed",
+      "markers": [],
+      "crash_location": {
+        "signature": "exception-exit",
+        "rip": "0x801399fa0",
+        "module": null,
+        "thread": "26696"
+      },
+      "current_boundary": {
+        "summary": null,
+        "classification": "UNKNOWN",
+        "doc": null
+      },
+      "last_run_id": "PPSA20591_20260831_100639",
+      "git_revision": "2db595e",
+      "build_revision": {
+        "binary": "build/bin/Release/pcsx5_core.dll",
+        "size": 2627584,
+        "mtime": "2026-08-31T09:42:04"
+      },
+      "updated": "2026-08-31T10:08:49",
+      "regression_state": "unknown"
+    },
+    "PPSA01668": {
+      "eboot": "Games/[SuperPSX]-Super.Monkey.Ball.Banana.Mania-PPSA01668-USA-Game(v01.004) [APR-EMU]-PS5/eboot.bin",
+      "boot_success": false,
+      "first_frame_s": 2.02,
+      "sustained_runtime_s": 5.86,
+      "status": "crashed",
+      "markers": [],
+      "crash_location": {
+        "signature": "guest-null-call",
+        "rip": "0x0",
+        "module": "Unknown",
+        "thread": "40068"
+      },
+      "current_boundary": {
+        "summary": null,
+        "classification": "UNKNOWN",
+        "doc": null
+      },
+      "last_run_id": "PPSA01668_20260831_100655",
+      "git_revision": "2db595e",
+      "build_revision": {
+        "binary": "build/bin/Release/pcsx5_core.dll",
+        "size": 2627584,
+        "mtime": "2026-08-31T09:42:04"
+      },
+      "updated": "2026-08-31T10:08:49",
       "regression_state": "unknown"
     }
   }
