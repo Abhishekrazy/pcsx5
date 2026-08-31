@@ -70,11 +70,35 @@ namespace HLE {
         u64            g_phys_pool_committed = 0;    // bytes committed from base
         std::mutex     g_phys_mutex;
 
+        // Preferred base for the direct-memory pool.  A mapping's address is
+        // pool_base + phys_offset, so letting Windows choose the base handed the
+        // guest raw host pointers around 0x20f_00000000 (~2.2 TB) for memory it
+        // asked to be GPU-visible.  A console-side engine that range-checks a
+        // GPU pointer, or keeps it in a field sized for a PS5 address, cannot
+        // use that.  Sitting the pool low keeps mapped addresses in the shape a
+        // guest expects; it starts above the framebuffer window at
+        // 0x200000000-0x202000000 so the two cannot collide.
+        //
+        // Experimental: if the reservation cannot be honoured at this address
+        // the previous behaviour is used unchanged, so this can only help or do
+        // nothing -- never fail to start.
+        constexpr guest_addr_t kPreferredPhysPoolBase = 0x210000000ULL;
+
         // Lazily initialise the physical pool on first AllocateDirectMemory
         bool EnsurePhysPool() {
             if (g_phys_pool_base) return true;
-            // Reserve (but don't commit) 2 GB.  We'll commit individual pages on Map.
-            void* p = VirtualAlloc(nullptr, PHYS_POOL_SIZE, MEM_RESERVE, PAGE_NOACCESS);
+            // Reserve (but don't commit); pages are committed individually on Map.
+            void* p = VirtualAlloc(reinterpret_cast<void*>(kPreferredPhysPoolBase),
+                                   PHYS_POOL_SIZE, MEM_RESERVE, PAGE_NOACCESS);
+            if (p) {
+                LOG_INFO(HLE, "PhysPool: reserved at the guest-range base 0x%llx",
+                         static_cast<u64>(kPreferredPhysPoolBase));
+            } else {
+                LOG_WARN(HLE, "PhysPool: could not reserve at 0x%llx (err=%lu); "
+                              "falling back to a host-chosen base",
+                         static_cast<u64>(kPreferredPhysPoolBase), GetLastError());
+                p = VirtualAlloc(nullptr, PHYS_POOL_SIZE, MEM_RESERVE, PAGE_NOACCESS);
+            }
             if (!p) {
                 LOG_ERROR(HLE, "PhysPool: VirtualAlloc reserve failed!");
                 return false;
