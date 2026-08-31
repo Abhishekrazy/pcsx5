@@ -98,11 +98,18 @@ def focus_window(hwnd):
 
 def capture_rect(rect, output_path):
     """Grab a screen rectangle to output_path.  Returns the PIL image, or None
-    if the rect is off-screen or degenerate (a minimised window reports
-    left < -32000)."""
+    when there is nothing legitimate to capture: no rect, an off-screen window
+    (a minimised one reports left < -32000), or a degenerate rect.
+
+    There is deliberately no whole-desktop fallback.  Capturing the desktop when
+    the emulator window cannot be found does not produce a picture of the game --
+    it produces a picture of whatever the developer is doing, which then feeds
+    frame hashing and change ratios and reports a title as rendering and
+    progressing when nothing was ever drawn.  A run with no capturable window
+    must be classified as having no frames, not given fabricated ones."""
     try:
         if not rect:
-            img = ImageGrab.grab()
+            return None
         else:
             left, top, right, bottom = rect
             if left < -32000:
@@ -150,8 +157,8 @@ def get_window_rect(window_title_substring):
 
 
 def capture_window(window_title, output_path):
-    """Capture a window found by title, falling back to a full-screen grab when
-    no window matches (unchanged behaviour, now sharing one capture path)."""
+    """Capture a window found by title.  Returns None when no window matches,
+    rather than substituting the desktop -- see capture_rect."""
     return capture_rect(get_window_rect(window_title), output_path)
 
 

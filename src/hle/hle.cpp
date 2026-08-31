@@ -901,9 +901,12 @@ namespace HLE {
         return g_dt_init_addr;
     }
 
-    void QueuePrxInitAddress(const std::string& name, guest_addr_t base, guest_addr_t dt_init, guest_addr_t init_array_addr, u64 init_array_size) {
-        g_prx_init_queue.push_back({name, base, dt_init, init_array_addr, init_array_size, InitState::NotInitialized});
-        LOG_INFO(HLE, "Queued PRX initialization for '%s' at 0x%llx (array: 0x%llx, size: %llu)", name.c_str(), dt_init, init_array_addr, init_array_size);
+    void QueuePrxInitAddress(const std::string& name, guest_addr_t base, guest_addr_t dt_init, guest_addr_t init_array_addr, u64 init_array_size,
+                             guest_addr_t preinit_array_addr, u64 preinit_array_size) {
+        g_prx_init_queue.push_back({name, base, dt_init, init_array_addr, init_array_size,
+                                    preinit_array_addr, preinit_array_size, InitState::NotInitialized});
+        LOG_INFO(HLE, "Queued PRX initialization for '%s' at 0x%llx (preinit: 0x%llx size %llu, init array: 0x%llx size %llu)",
+                 name.c_str(), dt_init, preinit_array_addr, preinit_array_size, init_array_addr, init_array_size);
     }
 
     void ClearPrxInitQueue() {

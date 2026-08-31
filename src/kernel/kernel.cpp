@@ -908,8 +908,14 @@ namespace Kernel {
                 PatchSyscalls(record->module.segments, record->module.name);
 
                 // Queue for initialization
-                if (record->module.init_address != 0 || record->module.init_array_address != 0) {
-                    HLE::QueuePrxInitAddress(record->module.name, record->module.base_address, record->module.init_address, record->module.init_array_address, record->module.init_array_size);
+                if (record->module.init_address != 0 || record->module.init_array_address != 0 ||
+                    record->module.preinit_array_address != 0) {
+                    HLE::QueuePrxInitAddress(record->module.name, record->module.base_address,
+                                             record->module.init_address,
+                                             record->module.init_array_address,
+                                             record->module.init_array_size,
+                                             record->module.preinit_array_address,
+                                             record->module.preinit_array_size);
                 }
 
                 // Same shared-page union merge as the main module path: PRX
@@ -1262,6 +1268,23 @@ namespace Kernel {
             
             prx.state = HLE::InitState::Initializing;
             
+            // DT_PREINIT_ARRAY precedes DT_INIT.  Skipping it left libc.prx's
+            // internal state unset, so its DT_INIT dereferenced a still-zero
+            // BSS pointer and stored through null.
+            if (prx.preinit_array_address && prx.preinit_array_size > 0) {
+                const u64 count = prx.preinit_array_size / 8;
+                LOG_INFO(Kernel, "MODULE_PREINIT_BEGIN module=%s preinit_array=0x%llx count=%llu dependency_depth=%d",
+                         prx.module_name.c_str(), prx.preinit_array_address, count, depth);
+                for (u64 i = 0; i < count; ++i) {
+                    const guest_addr_t func = Memory::Read<u64>(prx.preinit_array_address + (i * 8));
+                    if (func) {
+                        ::InvokeGuestOnStack(func, sp - 1024, 0);
+                    }
+                }
+                LOG_INFO(Kernel, "MODULE_PREINIT_END module=%s preinit_array=0x%llx result=success",
+                         prx.module_name.c_str(), prx.preinit_array_address);
+            }
+
             if (prx.dt_init) {
                 LOG_INFO(Kernel, "MODULE_INIT_BEGIN module=%s address=0x%llx dependency_depth=%d", 
                          prx.module_name.c_str(), prx.dt_init, depth);

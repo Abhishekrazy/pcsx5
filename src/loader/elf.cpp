@@ -500,6 +500,13 @@ namespace Loader {
                             out_module.fini_address =
                                 base_address + dyn.d_un.d_ptr;
                             break;
+                        case DT_PREINIT_ARRAY:
+                            out_module.preinit_array_address =
+                                base_address + dyn.d_un.d_ptr;
+                            break;
+                        case DT_PREINIT_ARRAYSZ:
+                            out_module.preinit_array_size = dyn.d_un.d_val;
+                            break;
                         case DT_INIT_ARRAY:
                             out_module.init_array_address =
                                 base_address + dyn.d_un.d_ptr;

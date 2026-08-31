@@ -194,9 +194,14 @@ namespace HLE {
         guest_addr_t dt_init;
         guest_addr_t init_array_address;
         u64 init_array_size;
+        // DT_PREINIT_ARRAY runs before DT_INIT.  libc.prx relies on this: its
+        // preinit entry establishes state that its DT_INIT then dereferences.
+        guest_addr_t preinit_array_address;
+        u64 preinit_array_size;
         InitState state;
     };
-    void QueuePrxInitAddress(const std::string& name, guest_addr_t base, guest_addr_t dt_init, guest_addr_t init_array_addr, u64 init_array_size);
+    void QueuePrxInitAddress(const std::string& name, guest_addr_t base, guest_addr_t dt_init, guest_addr_t init_array_addr, u64 init_array_size,
+                             guest_addr_t preinit_array_addr = 0, u64 preinit_array_size = 0);
     void ClearPrxInitQueue();
     std::vector<PrxInitRecord>& GetPrxInitQueue();
 

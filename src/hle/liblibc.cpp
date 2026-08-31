@@ -2409,10 +2409,69 @@ void RegisterLibLibc() {
         RegisterSymbol(module, "__stack_chk_fail", StackChkFailImpl);
     }
 
-    // sceLibcHeapGetTraceInfo — heap tracing is not implemented; report
-    // success with no data written (the query is best-effort diagnostics).
+    // sceLibcHeapGetTraceInfo — fills a caller-provided descriptor:
+    //
+    //     +0x00 u64  size, always 32
+    //     +0x08 u32  unknown
+    //     +0x0c u32  unknown
+    //     +0x10 u64* mspace_atomic_id_mask
+    //     +0x18 u64* mstate_table          (64 entries)
+    //
+    // This is an out-parameter call, not a query that may be ignored. Returning
+    // success without writing the two pointers left them zero, and the guest's
+    // own libc.prx caches them into its data segment during preinit and then
+    // stores through them unconditionally -- so a NULL there faults inside
+    // libc's initialisation, before any application code runs. Both must
+    // therefore be real, writable guest memory: the guest writes to *mask and
+    // through the table.
+    //
+    // Layout inferred from disassembling libc.prx's preinit path and
+    // corroborated against a reference implementation; the sizes are the ones
+    // the guest actually indexes. Labelled INFERRED, not verified against
+    // hardware.
+    static guest_addr_t s_heap_trace_block = 0;
+    static std::mutex s_heap_trace_mutex;
+    constexpr u64 kMspaceMaskSize  = sizeof(u64);
+    constexpr u64 kMstateTableSize = 64 * sizeof(u64);
+
     RegisterSymbol("libSceLibcInternal", "sceLibcHeapGetTraceInfo", [](const GuestArgs& args) -> u64 {
-        LOG_DEBUG(HLE, "sceLibcHeapGetTraceInfo(0x%llx, 0x%llx) -> 0 (no trace data)", args.arg1, args.arg2);
+        const guest_addr_t info = args.arg1;
+        if (!info) return 0;
+
+        u64 size = 0;
+        if (!Memory::GuardedRead(&size, info, sizeof(size)) || size != 32) {
+            // Any other descriptor shape is a contract we have not recovered.
+            // Say so rather than writing into a structure we do not understand.
+            LOG_WARN(HLE, "sceLibcHeapGetTraceInfo(0x%llx): descriptor size %llu, expected 32; "
+                          "not populated", info, size);
+            return 0;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(s_heap_trace_mutex);
+            if (!s_heap_trace_block) {
+                const u64 bytes = kMspaceMaskSize + kMstateTableSize;
+                if (Memory::AllocateRange(64 * 1024, 64 * 1024, Memory::Owner::Hle,
+                                          "libc-heap-trace", &s_heap_trace_block) != Memory::Status::Ok ||
+                    Memory::Commit(s_heap_trace_block, 64 * 1024,
+                                   Memory::PROT_READ | Memory::PROT_WRITE) != Memory::Status::Ok) {
+                    LOG_ERROR(HLE, "sceLibcHeapGetTraceInfo: cannot allocate the trace block");
+                    s_heap_trace_block = 0;
+                    return 0;
+                }
+                Memory::GuardedSet(s_heap_trace_block, 0, bytes);
+                LOG_INFO(HLE, "libc heap-trace block at 0x%llx (mask + %llu-entry mstate table)",
+                         s_heap_trace_block, kMstateTableSize / sizeof(u64));
+            }
+        }
+        if (!s_heap_trace_block) return 0;
+
+        const guest_addr_t mask_ptr  = s_heap_trace_block;
+        const guest_addr_t table_ptr = s_heap_trace_block + kMspaceMaskSize;
+        Memory::Write<u64>(info + 0x10, mask_ptr);
+        Memory::Write<u64>(info + 0x18, table_ptr);
+        LOG_DEBUG(HLE, "sceLibcHeapGetTraceInfo(0x%llx) -> mask=0x%llx table=0x%llx",
+                  info, mask_ptr, table_ptr);
         return 0;
     });
 

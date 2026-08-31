@@ -89,6 +89,11 @@ namespace Loader {
     constexpr s64 DT_FINI_ARRAY   = 26;
     constexpr s64 DT_INIT_ARRAYSZ = 27;
     constexpr s64 DT_FINI_ARRAYSZ = 28;
+    // PS5 modules use DT_PREINIT_ARRAY even though the ELF spec reserves it for
+    // executables; libc.prx declares one preinit entry and depends on it having
+    // run before its DT_INIT.
+    constexpr s64 DT_PREINIT_ARRAY   = 32;
+    constexpr s64 DT_PREINIT_ARRAYSZ = 33;
 
     // Relocation Types for x86-64
     constexpr u32 R_X86_64_NONE      = 0;
@@ -258,7 +263,9 @@ namespace Loader {
         u64  tls_align     = 0;
         u64  tls_template_offset = 0; // file offset of TLS template
 
-        // DT_INIT / DT_FINI / DT_INIT_ARRAY / DT_FINI_ARRAY
+        // DT_PREINIT_ARRAY / DT_INIT / DT_FINI / DT_INIT_ARRAY / DT_FINI_ARRAY
+        guest_addr_t preinit_array_address = 0;
+        u64 preinit_array_size = 0;
         guest_addr_t init_address = 0;
         guest_addr_t fini_address = 0;
         guest_addr_t init_array_address = 0;
