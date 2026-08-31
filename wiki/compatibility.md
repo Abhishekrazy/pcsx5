@@ -20,14 +20,14 @@ Legacy aliases still parse (`StatusFromName`, src/compat/compat.cpp:53-65):
 ## On-disk layout
 
 ```
-compat/
+<root>/                     # --root, default compat_seed
   compatibility.json        # index: schema_version + sorted title list
   titles/<TITLE_ID>.json    # one full entry per title
 ```
 
 Index: `{"schema_version": 1, "description": "...", "titles": [...]}`
-(src/compat/compat.cpp:438-448). Currently 6 seeded titles: PPSA01668,
-PPSA02929, PPSA07429, PPSA10112, PPSA20591, PPSA23885.
+(src/compat/compat.cpp:438-448). The repository ships no seeded database:
+the directory is created on first write, so a fresh checkout starts empty.
 
 ## Per-title JSON schema
 

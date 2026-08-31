@@ -155,7 +155,6 @@ architecture/   canonical architecture reference and ADRs
 docs/           engineering goals and repository hygiene
 guide/          component map and how to extend the emulator
 wiki/           contributor how-tos (HLE symbols, syscalls, debugging, PKG)
-compat/         per-title compatibility database
 ```
 
 ## Contributing

@@ -20,7 +20,6 @@ however useful it was at the time.
 | Contributor how-tos | `wiki/**` |
 | Developer and RE tooling | `tools/**` |
 | Vendored dependencies, with licence and pinned version | `third_party/**` |
-| Per-title compatibility data | `compat/**` |
 | Runtime baseline, generated from real runs | `tests/runtime_baseline.json` |
 
 ## What does not
