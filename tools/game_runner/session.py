@@ -475,7 +475,17 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
 
     changes = [f["change"] for f in frames if f["change"] is not None]
     rendering = first_frame_t is not None
-    progressing = bool(changes) and max(changes) >= args.change_threshold
+
+    # A single qualifying frame transition is not progression. Taking the
+    # maximum change over a whole run reported a title as progressing when it
+    # painted three distinct frames in sixty seconds and sat frozen for
+    # forty-two of them -- the emulator's own boot screen, never the game.
+    # A run dominated by one freeze is frozen, which the project treats as a
+    # failure and never as success.
+    changed_enough = bool(changes) and max(changes) >= args.change_threshold
+    run_seconds = max(0.0, ended - started)
+    freeze_dominates = (run_seconds > 0 and longest_freeze >= 0.5 * run_seconds)
+    progressing = changed_enough and not freeze_dominates
     if termination == "process-exit" and (scan["fatal"] or exception_exit):
         status = "crashed"
     elif termination == "process-exit":
