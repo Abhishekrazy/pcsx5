@@ -67,10 +67,20 @@ jobs:
       - name: Resolve version
         shell: pwsh
         run: |
+          $base = (Get-Content VERSION -TotalCount 1).Trim()
           if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') {
             $version = $Matches[1]
+            # The tag and the VERSION file must agree. A release built from a
+            # tag that the tree does not know about ships a binary whose own
+            # version disagrees with the release it is published under, which
+            # is exactly the mismatch the updater cannot recover from.
+            if ($version -ne $base) {
+              Write-Error "Tag v$version does not match VERSION file ($base). Bump VERSION and commit it before tagging."
+              exit 1
+            }
           } else {
-            $version = "0.0.0-dev+$($env:GITHUB_SHA.Substring(0,7))"
+            # Untagged builds sort below the release they are working towards.
+            $version = "$base-dev+$($env:GITHUB_SHA.Substring(0,7))"
           }
           "PCSX5_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 

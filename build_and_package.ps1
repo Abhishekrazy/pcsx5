@@ -32,7 +32,7 @@ param(
     [switch]$CreateInstaller,
 
     [Parameter(Mandatory=$false)]
-    [string]$Version = "0.0.0-dev"
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,6 +51,22 @@ function Write-ErrorAndExit {
     param([string]$Message)
     Write-Log $Message "ERROR"
     exit 1
+}
+
+# Resolve the release version. An explicit -Version wins (CI passes the git
+# tag); otherwise fall back to the VERSION file, which is the single source of
+# truth shared with CMake and the shell's assembly version. A build that cannot
+# determine a version is a packaging bug, not something to paper over with a
+# placeholder, so this fails loudly.
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $versionFile = Join-Path $scriptDir "VERSION"
+    if (-not (Test-Path $versionFile)) {
+        Write-ErrorAndExit "No -Version given and VERSION file not found at $versionFile"
+    }
+    $Version = (Get-Content $versionFile -TotalCount 1).Trim()
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+') {
+    Write-ErrorAndExit "Version '$Version' is not in x.y.z form; the updater compares these and will not order it correctly"
 }
 
 # Clean previous build if requested

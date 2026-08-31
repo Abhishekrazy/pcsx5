@@ -7,6 +7,11 @@
     <AssemblyName>pcsx5</AssemblyName>
     <ApplicationTitle>PCSX5 PlayStation 5 Emulator</ApplicationTitle>
     <ApplicationIcon>pcsx5_icon.ico</ApplicationIcon>
+    <!-- Release version. The build passes -p:Version=<x.y.z> (ultimately from
+         the VERSION file, or from the git tag in CI); this default only applies
+         to an ad-hoc local build. Without it every build reported 1.0.0.0, so
+         the Squirrel updater could never tell two releases apart. -->
+    <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
     <!-- Single-file self-contained publish: `dotnet build` still produces a
          normal framework-dependent layout for dev; `dotnet publish` produces
          the shippable single pcsx5.exe. -->

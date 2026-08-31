@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 cmake_policy(VERSION 3.20)
-project(pcsx5 LANGUAGES CXX C)
+# Single source of truth for the release version.  CI overrides it from the
+# git tag; everything else (installer, packaged zip, the shell's assembly
+# version) derives from this one value so a release cannot ship with a stale
+# or mismatched version.
+file(STRINGS "${CMAKE_SOURCE_DIR}/VERSION" PCSX5_VERSION LIMIT_COUNT 1)
+string(STRIP "${PCSX5_VERSION}" PCSX5_VERSION)
+
+project(pcsx5 VERSION ${PCSX5_VERSION} LANGUAGES CXX C)
 
 # Force C++20
 set(CMAKE_CXX_STANDARD 20)
@@ -1008,7 +1015,7 @@ add_executable(dump_imports
         # pcsx5_core.dll copied alongside (see Pcsx5Ui.csproj).  Phase 3's
         # packaging consumes this directory.
         add_custom_target(pcsx5_ui ALL
-            COMMAND "${DOTNET_EXE}" publish "${CMAKE_SOURCE_DIR}/src/ui_csharp/Pcsx5Ui.csproj" -c Release -o "${CMAKE_BINARY_DIR}/publish/"
+            COMMAND "${DOTNET_EXE}" publish "${CMAKE_SOURCE_DIR}/src/ui_csharp/Pcsx5Ui.csproj" -c Release -o "${CMAKE_BINARY_DIR}/publish/" "-p:Version=${PCSX5_VERSION}"
             COMMENT "Publishing C# WPF Emulator UI (single-file pcsx5.exe)"
         )
         add_dependencies(pcsx5_ui pcsx5_core)
