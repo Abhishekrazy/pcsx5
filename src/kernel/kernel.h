@@ -38,6 +38,14 @@ namespace Kernel {
     // process working directory.  Defaults to "pcsx5_crash" if never called.
     void SetCrashDumpDir(const std::string& dir);
 
+    // Diagnostic data write-watchpoint, selected with PCSX5_WATCH_ADDR (hex,
+    // 8-byte aligned).  Uses a hardware debug register rather than page
+    // protection: it is exact to the qword, so unrelated writes to the same
+    // page are not trapped, and it reports AFTER the store, so the value that
+    // was written is visible.  Debug registers are per-thread state, so every
+    // thread that runs guest code must arm itself.
+    void ArmWatchpointForCurrentThread();
+
     // Configure PRX module resolution.  `game_dir` is the directory of the
     // main module (its `sce_module/` sub-directory is searched first);
     // `firmware_modules_dir` (may be empty) holds user-supplied firmware

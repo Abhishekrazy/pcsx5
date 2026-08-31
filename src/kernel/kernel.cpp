@@ -59,6 +59,7 @@ namespace Kernel {
     // diagnostics.cpp, so the core pushes the resolved path in instead.
     static std::string g_crash_dump_dir = "pcsx5_crash";
 
+
     // Region captured by the second ("PRX") crash dump.  The default is
     // libc.prx's load base, chosen for an earlier investigation; a different
     // one is selected per-run with PCSX5_CRASH_DUMP_BASE / _SIZE (hex or
@@ -82,6 +83,35 @@ namespace Kernel {
     u64 CrashDumpSize() {
         static const u64 v = EnvU64("PCSX5_CRASH_DUMP_SIZE", 16ull * 1024 * 1024);
         return v;
+    }
+    // Diagnostic write-watchpoint (see Kernel::ArmWatchpointForCurrentThread).
+    // Zero disables it, which is the default; nothing below runs unless
+    // PCSX5_WATCH_ADDR is set, so a normal run is unaffected.
+    u64 WatchpointAddress() {
+        static const u64 v = EnvU64("PCSX5_WATCH_ADDR", 0);
+        return v;
+    }
+
+    // Arms DR0 as an 8-byte write watch on the configured address.  DR7 bits:
+    // L0 (bit 0) enables DR0 locally, R/W0 = 01 breaks on data write, and
+    // LEN0 = 11 selects an 8-byte range, which requires 8-byte alignment.
+    void ArmWatchpointOnThisThread() {
+        const u64 addr = WatchpointAddress();
+        if (!addr) return;
+        if (addr & 7ull) {
+            LOG_WARN(Kernel, "PCSX5_WATCH_ADDR 0x%llx is not 8-byte aligned; watchpoint not armed", addr);
+            return;
+        }
+        CONTEXT ctx{};
+        ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        const HANDLE self = GetCurrentThread();
+        if (!GetThreadContext(self, &ctx)) return;
+        ctx.Dr0 = addr;
+        ctx.Dr7 = (ctx.Dr7 & ~0xFF0000ull & ~0x3ull) | 0x1ull | (0x1ull << 16) | (0x3ull << 18);
+        ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        if (!SetThreadContext(self, &ctx)) {
+            LOG_WARN(Kernel, "Failed to arm watchpoint on thread %lu", GetCurrentThreadId());
+        }
     }
 
     // ------------------------------------------------------------------
@@ -126,6 +156,10 @@ namespace Kernel {
 
     void SetCrashDumpDir(const std::string& dir) {
         if (!dir.empty()) g_crash_dump_dir = dir;
+    }
+
+    void ArmWatchpointForCurrentThread() {
+        ArmWatchpointOnThisThread();
     }
     static PVOID g_veh_handler = nullptr;
     static LPTOP_LEVEL_EXCEPTION_FILTER g_prev_exception_filter = nullptr;
@@ -1160,6 +1194,7 @@ namespace Kernel {
         // This thread executes guest code: bind its guest thread pointer for
         // the patched TLS stubs and reserve stack for the overflow handler.
         TlsPatch::BindCurrentThread(g_guest_tls.ThreadPointer());
+        ArmWatchpointOnThisThread();   // no-op unless PCSX5_WATCH_ADDR is set
         ArmStackGuarantee();
 
         g_guest_segments = main_module.segments;
@@ -1646,6 +1681,40 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
 
         PEXCEPTION_RECORD exception_record = exception_info->ExceptionRecord;
         PCONTEXT context = exception_info->ContextRecord;
+
+        // Diagnostic write-watchpoint.  A hardware data breakpoint reports as
+        // a single-step AFTER the store retires, so the value now at the
+        // address is the one just written and RIP is the instruction that
+        // wrote it.  DR6 bit 0 identifies DR0 as the source and is sticky, so
+        // it must be cleared or every later trap looks identical.  Entirely
+        // inert unless PCSX5_WATCH_ADDR is set.
+        if (exception_record->ExceptionCode == EXCEPTION_SINGLE_STEP &&
+            WatchpointAddress() != 0 && (context->Dr6 & 0x1ull) != 0) {
+            const u64 watch = WatchpointAddress();
+            u64 value = 0;
+            const bool readable = Memory::IsReadable(watch, sizeof(u64));
+            if (readable) Memory::ReadBuffer(watch, &value, sizeof(value));
+            // A host RIP means the emulator itself performed the store, not
+            // guest code.  The raw address moves with ASLR, so resolve it to
+            // module+offset, which is stable across runs and identifiable.
+            char mod_desc[MAX_PATH + 32] = "";
+            HMODULE mod = nullptr;
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   reinterpret_cast<LPCSTR>(context->Rip), &mod) && mod) {
+                char path[MAX_PATH] = "";
+                GetModuleFileNameA(mod, path, MAX_PATH);
+                const char* base_name = std::strrchr(path, static_cast<int>(92));
+                std::snprintf(mod_desc, sizeof(mod_desc), "  [%s+0x%llx]",
+                              base_name ? base_name + 1 : path,
+                              context->Rip - reinterpret_cast<u64>(mod));
+            }
+            LOG_ERROR(Kernel, "WATCHPOINT [0x%llx] = 0x%llx written by RIP=0x%llx guest-thread=%llu%s%s",
+                      watch, value, context->Rip, CpuCore::GetCurrentThreadId(),
+                      mod_desc, readable ? "" : "  [target not readable]");
+            context->Dr6 = 0;
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
 
         // Debug-output exceptions (raised by OutputDebugString, e.g. from the
         // GPU driver during Vulkan init) are informational, not faults.  Pass

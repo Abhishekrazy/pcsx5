@@ -182,6 +182,11 @@ unsigned long __stdcall GuestThread::ThreadEntrypoint(void* arg) {
              id, self->tls_base, resolved_tp,
              resolved_tp == self->tls_base ? "" : "  *** SHARED-TLS FALLBACK ***");
     Kernel::TlsPatch::BindCurrentThread(resolved_tp);
+
+    // Debug registers are per-thread, so a watchpoint has to be armed on every
+    // thread that executes guest code or the writer simply runs on one that
+    // is not watched.  No-op unless PCSX5_WATCH_ADDR is set.
+    Kernel::ArmWatchpointForCurrentThread();
     {
         ULONG guarantee = 64 * 1024;
         SetThreadStackGuarantee(&guarantee);

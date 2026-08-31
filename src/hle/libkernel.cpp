@@ -1090,7 +1090,7 @@ namespace HLE {
             guest_addr_t slot_va = AllocAttrSlot();
             if (!slot_va) return 12; // ENOMEM
             Memory::Write<u64>(attr, slot_va);
-            LOG_DEBUG(HLE, "PthreadAttrInit(0x%llx) -> slot=0x%llx", attr, slot_va);
+            LOG_INFO(HLE, "PthreadAttrInit: wrote slot 0x%llx into guest 0x%llx", slot_va, attr);
             return 0;
         };
 
@@ -1277,6 +1277,11 @@ namespace HLE {
             guest_addr_t slot = ResolveAttrPtr(attr_ptr);
             if (!slot || slot == attr_ptr) {
                 slot = AllocAttrSlot();
+                // This overwrites whatever the guest already had at attr_ptr.
+                // If attr_ptr is not actually an attribute variable, that is a
+                // destructive write into live guest data.
+                LOG_INFO(HLE, "PthreadAttrGet: thread=0x%llx attr_ptr=0x%llx had 0x%llx, writing slot 0x%llx",
+                         thread_id, attr_ptr, static_cast<u64>(Memory::Read<u64>(attr_ptr)), slot);
                 Memory::Write<u64>(attr_ptr, slot);
             }
 
