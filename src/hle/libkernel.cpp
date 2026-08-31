@@ -60,6 +60,13 @@ namespace HLE {
         constexpr u64  PHYS_COMMIT_CHUNK = 16ULL * 1024 * 1024; // 16 MB
         guest_addr_t   g_phys_pool_base = 0;
         u64            g_phys_pool_offset = 0x10000; // start past offset 0
+
+        // Direct-memory blocks handed to the guest, so that a release can
+        // actually return one.  Without this the pool only ever grew: the guest
+        // released memory every frame, the release did nothing, and the pool
+        // kept climbing while the guest believed its frees had succeeded.
+        struct PhysBlock { u64 offset; u64 size; bool free; };
+        std::vector<PhysBlock> g_phys_blocks;
         u64            g_phys_pool_committed = 0;    // bytes committed from base
         std::mutex     g_phys_mutex;
 
@@ -323,16 +330,62 @@ namespace HLE {
         std::lock_guard<std::mutex> lk(g_phys_mutex);
         if (!EnsurePhysPool()) return 0x800D0006;
 
-        u64 phys_offset = (g_phys_pool_offset + alignment - 1) & ~(alignment - 1);
-        if (phys_offset + aligned_size > PHYS_POOL_SIZE) {
-            LOG_ERROR(HLE, "sceKernelAllocateDirectMemory: out of physical pool space!");
-            return 0x800D0006;
+        // First fit among released blocks, so a guest that allocates and frees
+        // each frame reuses the same memory instead of walking the pool.
+        u64 phys_offset = 0;
+        bool reused = false;
+        for (auto& b : g_phys_blocks) {
+            if (!b.free || b.size < aligned_size) continue;
+            if ((b.offset & (alignment - 1)) != 0) continue;
+            b.free = false;
+            phys_offset = b.offset;
+            reused = true;
+            break;
         }
-        g_phys_pool_offset = phys_offset + aligned_size;
-        if (!EnsurePhysCommitted(phys_offset + aligned_size)) return 0x800D0006;
+
+        if (!reused) {
+            phys_offset = (g_phys_pool_offset + alignment - 1) & ~(alignment - 1);
+            if (phys_offset + aligned_size > PHYS_POOL_SIZE) {
+                LOG_ERROR(HLE, "sceKernelAllocateDirectMemory: out of physical pool space!");
+                return 0x800D0006;
+            }
+            g_phys_pool_offset = phys_offset + aligned_size;
+            if (!EnsurePhysCommitted(phys_offset + aligned_size)) return 0x800D0006;
+            g_phys_blocks.push_back({phys_offset, aligned_size, false});
+        }
 
         Memory::Write<u64>(out_ptr, phys_offset);
         LOG_INFO(HLE, "sceKernelAllocateDirectMemory -> physOffset: 0x%llx (size: 0x%llx)", phys_offset, aligned_size);
+        return 0;
+    }
+
+    // sceKernelReleaseDirectMemory(off_t start, size_t len)
+    //
+    // Was not implemented at all.  The guest calls it every frame, so the
+    // auto-stub reported success while nothing was reclaimed: 152 MB requested
+    // across one 25-second run of PPSA02929 against a single release call.
+    // Returning a block to the free list lets the next allocation reuse it,
+    // which is what the guest is entitled to assume.
+    u64 SceKernelReleaseDirectMemory(const GuestArgs& args) {
+        const u64 start = args.arg1;
+        const u64 len   = args.arg2;
+        std::lock_guard<std::mutex> lk(g_phys_mutex);
+        for (auto& b : g_phys_blocks) {
+            if (b.offset != start) continue;
+            if (b.free) {
+                LOG_WARN(HLE, "sceKernelReleaseDirectMemory(0x%llx, 0x%llx): already free",
+                         start, len);
+                return 0;
+            }
+            b.free = true;
+            LOG_DEBUG(HLE, "sceKernelReleaseDirectMemory(0x%llx, 0x%llx) -> released 0x%llx",
+                      start, len, b.size);
+            return 0;
+        }
+        // A range we never handed out.  Report it rather than pretending:
+        // silently succeeding here is what hid the missing implementation.
+        LOG_WARN(HLE, "sceKernelReleaseDirectMemory(0x%llx, 0x%llx): not an allocated block",
+                 start, len);
         return 0;
     }
 
@@ -1719,6 +1772,8 @@ namespace HLE {
         // sceKernelAllocateDirectMemory (rTXw65xmLIA#S#N)
         RegisterSymbol("libkernel", "rTXw65xmLIA#S#N", SceKernelAllocateDirectMemory);
         RegisterSymbol("libkernel", "sceKernelAllocateDirectMemory", SceKernelAllocateDirectMemory);
+        RegisterSymbol("libkernel", "sceKernelReleaseDirectMemory", SceKernelReleaseDirectMemory);
+        RegisterSymbol("libkernel", "MBuItvba6z8", SceKernelReleaseDirectMemory);
 
         RegisterSymbol("libkernel", "L-Q3LEjIbgA#S#N", SceKernelMapDirectMemory);
         // NOTE: NID 7oxv3PPCumo is sceKernelReserveVirtualRange (verified via
