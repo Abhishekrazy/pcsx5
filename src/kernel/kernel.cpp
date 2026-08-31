@@ -716,10 +716,42 @@ namespace Kernel {
             }
         }
 
+        // The libcxxabi RTTI vtables are data, and libc.prx defines them: at
+        // runtime 0x81010d718 holds real function pointers put there by the
+        // module's own RELATIVE relocations. HLE answers for them with the
+        // address of a call thunk, which is the right shape for a function and
+        // the wrong shape for a table the guest reads through -- the eboot
+        // computes vtable = symbol + 0x10 and calls [vtable + 0x28], landing in
+        // thunk bytes. Prefer the module's definition for these three.
+        //
+        // Deliberately not generalised to every STT_OBJECT import: that was
+        // tried and regressed PPSA02929 badly, because other data symbols are
+        // served correctly by HLE today. These three are named because they are
+        // the ones whose contract is established.
+        static const char* const kModuleOwnedData[] = {
+            "pZ9WXcClPO8",  // _ZTVN10__cxxabiv120__si_class_type_infoE
+            "byV+FWlAnB4",  // _ZTVN10__cxxabiv117__class_type_infoE
+            "9ByRMdo7ywg",  // _ZTVN10__cxxabiv121__vmi_class_type_infoE
+        };
+
         auto resolve_external = [&](const std::string& sym_name) -> guest_addr_t {
             auto it_exact = exact_exports.find(sym_name);
             if (it_exact != exact_exports.end()) {
                 return it_exact->second;
+            }
+            {
+                const auto p = sym_name.find('#');
+                const std::string nid = p == std::string::npos ? sym_name : sym_name.substr(0, p);
+                for (const char* known : kModuleOwnedData) {
+                    if (nid != known) continue;
+                    auto it = base_exports.find(nid);
+                    if (it != base_exports.end()) {
+                        LOG_DEBUG(Kernel, "Data import '%s' resolved to the defining module at 0x%llx",
+                                  sym_name.c_str(), it->second);
+                        return it->second;
+                    }
+                    break;
+                }
             }
             if (HLE::HasRealImplementation(sym_name)) {
                 return HLE::ResolveAny(sym_name);
