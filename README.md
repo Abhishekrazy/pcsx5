@@ -54,15 +54,29 @@ What does not work yet:
 
 ## Compatibility
 
-Tracked in [`tests/runtime_baseline.json`](tests/runtime_baseline.json), which is
-generated from real runs rather than maintained by hand.
+Community reports live in a separate repository:
+**[PCSX5 Game Compatibility](https://github.com/Abhishekrazy/Pcsx5-Game-Compatibility)**.
+If you try a title, a report there is genuinely useful — including one that does
+nothing at all.
 
-| Title | ID | Status | Sustained | Reached |
-|---|---|---|---|---|
-| Dreaming Sarah | PPSA02929 | Crashes | ~24 s | content load, menus, guest threads |
-| ASTRO BOT | PPSA21564 | Crashes | ~35 s | guest threads |
+The titles below are the ones tracked in development. Their state is recorded in
+[`tests/runtime_baseline.json`](tests/runtime_baseline.json), generated from real
+runs rather than maintained by hand, and every run is classified by whether the
+process rendered and whether the picture actually changed.
 
-Both terminate with `STATUS_ACCESS_VIOLATION`.
+**No title is playable. Every one crashes during boot.** They do so in different
+ways, which is the useful part:
+
+| Title | ID | Crashes after | Failure |
+|---|---|---|---|
+| Dead Cells | PPSA15552 | ~4 s | Access violation inside `libc.prx` initialisation |
+| Super Monkey Ball Banana Mania | PPSA01668 | ~6 s | Indirect call through a null pointer |
+| SILENT HILL: The Short Message | PPSA10112 | ~14 s | Illegal instruction |
+| Poppy Playtime Chapter 1 | PPSA20591 | ~15 s | Access violation; on-screen content was changing |
+| ASTRO BOT | PPSA21564 | ~21 s | Guest engine assertion in its own lock code |
+| Dreaming Sarah | PPSA02929 | ~23 s | Access violation; reached content load and menus |
+
+Several reach a splash or early screen before stopping. None reaches gameplay.
 
 ## Screenshots
 
