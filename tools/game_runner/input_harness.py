@@ -13,6 +13,15 @@ VK_CODE = {
     'b': 0x42,
     'x': 0x58,
     'y': 0x59,
+    # Face-button and shoulder letters. KytyPS5 binds J/I/K/L to
+    # Cross/Triangle/Square/Circle and Q/E to L1/R1, so a keyboard script can
+    # drive either emulator through the same names.
+    'j': 0x4A,
+    'i': 0x49,
+    'k': 0x4B,
+    'l': 0x4C,
+    'q': 0x51,
+    'e': 0x45,
 }
 
 PUL = ctypes.POINTER(ctypes.c_ulong)

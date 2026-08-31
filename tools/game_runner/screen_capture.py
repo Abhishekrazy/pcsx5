@@ -23,7 +23,12 @@ def find_window_by_title(window_title_substring):
                     hwnd_found[0] = hwnd
         return True
 
-    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+    # HWND and LPARAM are pointer-sized. Declaring them c_int truncates them on
+    # 64-bit Windows and the handle no longer resolves, so a window that does
+    # exist is reported as absent -- indistinguishable from an emulator that
+    # never opened one.
+    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND,
+                                         ctypes.wintypes.LPARAM)
     user32.EnumWindows(EnumWindowsProc(enum_handler), 0)
     return hwnd_found[0]
 
@@ -47,7 +52,12 @@ def find_window_by_pid(pid):
             return False
         return True
 
-    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+    # HWND and LPARAM are pointer-sized. Declaring them c_int truncates them on
+    # 64-bit Windows and the handle no longer resolves, so a window that does
+    # exist is reported as absent -- indistinguishable from an emulator that
+    # never opened one.
+    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND,
+                                         ctypes.wintypes.LPARAM)
     user32.EnumWindows(EnumWindowsProc(enum_handler), 0)
     return found[0]
 
