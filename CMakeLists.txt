@@ -1004,6 +1004,16 @@ add_executable(dump_imports
     target_compile_options(pcsx5_compat PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
     add_test(NAME pcsx5_compat COMMAND pcsx5_compat --root $<CONFIG>/compat_seed list)
 
+    # A NID registered to the wrong handler silently sends the guest to another
+    # function; nothing fails to build and nothing fails at load.  This checks
+    # the registrations in src/hle against assets/nid_db.txt.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME nid_registrations
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/check_nid_registrations.py --strict)
+    endif()
+
     # ------------------------------------------------------------------------
     # pcsx5_ui — the desktop UI for end users.  Compiled in C# (WPF) with
     # native Windows 11 Mica.  Hosts the emulator core in-process via

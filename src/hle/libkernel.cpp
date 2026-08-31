@@ -1309,9 +1309,14 @@ namespace HLE {
         RegisterSymbol("libkernel", "wtkt-teR1so", PthreadAttrInitImpl);
         RegisterSymbol("libkernel", "wtkt-teR1so#T#T", PthreadAttrInitImpl);
         RegisterSymbol("libkernel", "wtkt-teR1so#S#N", PthreadAttrInitImpl);
-        RegisterSymbol("libkernel", "aI+OeCz8xrQ", PthreadAttrInitImpl);
-        RegisterSymbol("libkernel", "aI+OeCz8xrQ#T#T", PthreadAttrInitImpl);
-        RegisterSymbol("libkernel", "aI+OeCz8xrQ#S#N", PthreadAttrInitImpl);
+        // aI+OeCz8xrQ is scePthreadSelf, NOT an attribute function: the name
+        // hashes to it under the PS5 name->NID scheme, and assets/nid_db.txt
+        // already recorded it correctly.  Registering it here sent every
+        // scePthreadSelf call - which takes no arguments - into AttrInit,
+        // which treats RDI as an attribute out-pointer and writes to it.  With
+        // a live object's `this` in RDI that overwrote the object's vtable
+        // pointer, and the next virtual call on it jumped through the attr
+        // slot's zeroed field.  It is registered with PthreadSelfImpl below.
 
         RegisterSymbol("libkernel", "scePthreadAttrDestroy", PthreadAttrDestroyImpl);
         RegisterSymbol("libkernel", "pthread_attr_destroy", PthreadAttrDestroyImpl);
@@ -2348,7 +2353,9 @@ namespace HLE {
             LOG_DEBUG(HLE, "scePthreadSelf() -> 0x%llx", tid);
             return tid;
         };
+        RegisterSymbol("libkernel", "aI+OeCz8xrQ", PthreadSelfImpl);
         RegisterSymbol("libkernel", "aI+OeCz8xrQ#T#T", PthreadSelfImpl);
+        RegisterSymbol("libkernel", "aI+OeCz8xrQ#S#N", PthreadSelfImpl);
         RegisterSymbol("libkernel", "pthread_self", PthreadSelfImpl);
         RegisterSymbol("libkernel", "scePthreadSelf", PthreadSelfImpl);
 
