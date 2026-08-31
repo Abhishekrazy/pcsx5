@@ -74,7 +74,13 @@ struct PatchRecord {
     u8 orig[16] = {};
     u32 len = 0;
     u64 stub = 0;
-    u32 retries = 0;
+    // Retries are counted per thread, not per site. The budget exists to stop a
+    // single thread spinning forever on a patch that is genuinely broken; it is
+    // not a lifetime allowance for the site. Counting per site meant a hot
+    // address touched by many threads drained the budget between them and then
+    // killed the process -- PPSA02929 died on its allocator's TLS site after
+    // exactly kMaxRetries recoveries spread across three threads.
+    std::unordered_map<DWORD, u32> retries;
 };
 
 // Function-local statics: no CRT static-init / teardown ordering hazards in
@@ -372,9 +378,16 @@ bool ShouldRetry(u64 rip) {
     // mid-rewrite.  Re-executing is correct once the write has landed; bound
     // the retries so a genuinely broken patch cannot loop forever.
     constexpr u32 kMaxRetries = 8;
-    if (it->second.retries >= kMaxRetries) return false;
-    ++it->second.retries;
-    LOG_WARN(Kernel, "TlsPatch: retrying torn patch site 0x%llx (%u/%u)", rip, it->second.retries, kMaxRetries);
+    const DWORD tid = GetCurrentThreadId();
+    u32& count = it->second.retries[tid];
+    if (count >= kMaxRetries) {
+        LOG_WARN(Kernel, "TlsPatch: site 0x%llx exhausted %u retries on thread %lu; "
+                         "letting the fault stand", rip, kMaxRetries, tid);
+        return false;
+    }
+    ++count;
+    LOG_DEBUG(Kernel, "TlsPatch: retrying torn patch site 0x%llx on thread %lu (%u/%u)",
+              rip, tid, count, kMaxRetries);
     return true;
 }
 
