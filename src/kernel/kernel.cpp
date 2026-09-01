@@ -167,6 +167,41 @@ namespace Kernel {
     // Suspends each guest thread just long enough to read its RIP. Sampling is
     // the only way to see a guest that is stuck without faulting; a frozen run
     // otherwise leaves nothing behind but its last unrelated log line.
+    // Threads currently blocked inside each named primitive.
+    static std::mutex g_wait_mutex;
+    static std::unordered_map<std::string, long long> g_wait_counts;
+    static std::unordered_map<std::string, long long> g_wait_totals;
+
+    void NoteWaitEnter(const char* name) {
+        if (!name) return;
+        std::lock_guard<std::mutex> lk(g_wait_mutex);
+        ++g_wait_counts[name];
+        ++g_wait_totals[name];
+    }
+
+    void NoteWaitExit(const char* name) {
+        if (!name) return;
+        std::lock_guard<std::mutex> lk(g_wait_mutex);
+        auto it = g_wait_counts.find(name);
+        if (it != g_wait_counts.end() && it->second > 0) --it->second;
+    }
+
+    static void ReportWaits() {
+        std::vector<std::pair<std::string, std::pair<long long, long long>>> rows;
+        {
+            std::lock_guard<std::mutex> lk(g_wait_mutex);
+            for (const auto& kv : g_wait_totals) {
+                rows.push_back({kv.first, {g_wait_counts[kv.first], kv.second}});
+            }
+        }
+        std::sort(rows.begin(), rows.end(),
+                  [](const auto& a, const auto& b) { return a.second.first > b.second.first; });
+        for (const auto& r : rows) {
+            LOG_ERROR(Kernel, "SAMPLER:   waiting in %-28s %lld now, %lld entered total",
+                      r.first.c_str(), r.second.first, r.second.second);
+        }
+    }
+
     static void SamplerLoopMarker() {}   // address used to locate this module
     static std::atomic<bool> g_sampler_run{false};
     static std::thread*      g_sampler_thread = nullptr;
@@ -205,6 +240,7 @@ namespace Kernel {
         std::vector<std::pair<u64, u64>> hranked(host_hits.begin(), host_hits.end());
         std::sort(hranked.begin(), hranked.end(),
                   [](const auto& a, const auto& b) { return a.second > b.second; });
+        ReportWaits();
         for (size_t i = 0; i < hranked.size() && i < 10; ++i) {
             LOG_ERROR(Kernel, "SAMPLER:   host %-40s %llu samples (%.1f%%)",
                       DescribeHostAddress(hranked[i].first).c_str(), hranked[i].second,

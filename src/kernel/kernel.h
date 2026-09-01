@@ -51,6 +51,13 @@ namespace Kernel {
     // logging, so there is no way to see where it is spinning. This suspends
     // each guest thread briefly, records its RIP, and reports the hot addresses
     // at shutdown. Off unless the variable is set.
+    // Named wait accounting. The sampler can say that guest threads are parked
+    // inside pcsx5_core but not which call, because the Release build ships no
+    // symbols. Having each blocking primitive announce itself answers that
+    // directly and costs an atomic increment.
+    void NoteWaitEnter(const char* name);
+    void NoteWaitExit(const char* name);
+
     void StartGuestSampler();
     void StopGuestSampler();
 

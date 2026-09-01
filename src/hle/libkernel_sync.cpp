@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "libkernel_sync.h"
 #include "../kernel/thread.h"
+#include "../kernel/kernel.h"   // Kernel::NoteWaitEnter/Exit
 #include "../kernel/guest_clock.h"
 #include "../memory/memory.h"
 #include "../common/log.h"
@@ -255,6 +256,8 @@ u64 MutexLockImpl(GuestMutex& mtx, u64 tid, bool try_only, DWORD timeout_ms) {
         return 0;
     }
     if (try_only) return SCE_KERNEL_ERROR_EBUSY;
+    Kernel::NoteWaitEnter("scePthreadMutexLock");
+    struct WaitExit { ~WaitExit() { Kernel::NoteWaitExit("scePthreadMutexLock"); } } we;
     mtx.waiters.push_back(tid);
     // The head waiter is granted ownership directly by MutexHandoffLocked.
     if (timeout_ms == INFINITE) {
@@ -737,6 +740,12 @@ static u64 CondWaitImpl(guest_addr_t cond_var, guest_addr_t mutex_var, DWORD tim
 
     bool ok;
     {
+        Kernel::NoteWaitEnter(timeout_ms == INFINITE ? "scePthreadCondWait"
+                                                     : "scePthreadCondTimedwait");
+        struct WaitExit {
+            const char* n;
+            ~WaitExit() { Kernel::NoteWaitExit(n); }
+        } we{timeout_ms == INFINITE ? "scePthreadCondWait" : "scePthreadCondTimedwait"};
         std::unique_lock<std::mutex> clk(g_cond_map_lock);
         if (timeout_ms == INFINITE) {
             c->cv.wait(clk);
@@ -763,8 +772,23 @@ u64 ScePthreadCondWait(const GuestArgs& args) {
 }
 
 u64 ScePthreadCondTimedwait(const GuestArgs& args) {
-    const u64 usec = args.arg3;
-    u64 ms = (usec + 999ULL) / 1000ULL;
+    // The timeout is a 32-bit microsecond count. Reading it as 64-bit unsigned
+    // turned a small negative value into an enormous positive one: PPSA02929
+    // passes 0xFFFFFC18 on every call, which is (int32_t)-1000, and that became
+    // a 71-minute wait. Twenty-six of its guest threads entered this function
+    // once and never returned, which is why the title renders its splash and
+    // then does nothing.
+    //
+    // A deadline that has already passed is not a wait. POSIX returns ETIMEDOUT
+    // immediately for one, and doing the same here is the only reading of a
+    // negative duration that is not simply "wait forever".
+    const s32 usec_signed = static_cast<s32>(static_cast<u32>(args.arg3));
+    if (usec_signed <= 0) {
+        LOG_DEBUG(HLE, "scePthreadCondTimedwait(0x%llx): deadline already passed (%d us)",
+                  args.arg1, usec_signed);
+        return CondWaitImpl(args.arg1, args.arg2, 0 /* poll, then time out */);
+    }
+    u64 ms = (static_cast<u64>(usec_signed) + 999ULL) / 1000ULL;
     if (ms > 0xFFFFFFFEULL) ms = 0xFFFFFFFEULL;
     return CondWaitImpl(args.arg1, args.arg2, static_cast<DWORD>(ms));
 }
@@ -1449,6 +1473,8 @@ u64 SceKernelWaitEqueue(const GuestArgs& args) {
     };
 
     if (!has_pending()) {
+        Kernel::NoteWaitEnter("sceKernelWaitEqueue");
+        struct WaitExit { ~WaitExit() { Kernel::NoteWaitExit("sceKernelWaitEqueue"); } } we;
         if (timo == 0) {
             eq->cv.wait(lk, has_pending);
         } else if (timo == 1) {
