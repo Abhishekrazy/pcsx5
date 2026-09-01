@@ -1,6 +1,7 @@
 import os
 import time
 import ctypes
+import threading
 import ctypes.wintypes
 import hashlib
 from PIL import ImageGrab, Image
@@ -185,7 +186,48 @@ def _window_is_unobstructed(hwnd, rect):
     return True
 
 
-def _capture_window_surface(hwnd, width, height):
+_surface_capture_disabled = [False]
+
+
+def surface_capture_available():
+    """False once PrintWindow has hung on this run, so callers can report why
+    they fell back."""
+    return not _surface_capture_disabled[0]
+
+
+def _capture_window_surface(hwnd, width, height, timeout_s=4.0):
+    """Run the surface capture on a worker thread and give up after
+    `timeout_s`.
+
+    PrintWindow is synchronous with the target window's message loop: it blocks
+    until that window services the request.  An emulator that has stopped
+    pumping messages therefore blocks the caller for as long as it stays stuck --
+    measured at 23 and 38 seconds against this build.  A harness whose whole
+    purpose is detecting hangs must not itself hang on one, so the call is made
+    on a worker and abandoned on timeout.
+
+    The abandoned thread cannot be killed, so after the first timeout this path
+    is disabled for the rest of the run rather than leaking a thread per sample."""
+    if _surface_capture_disabled[0]:
+        return None
+    result = [None]
+
+    def work():
+        result[0] = _capture_window_surface_blocking(hwnd, width, height)
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    if t.is_alive():
+        _surface_capture_disabled[0] = True
+        print("[capture] PrintWindow did not return within %.1fs -- the window is "
+              "not servicing messages; surface capture disabled for this run"
+              % timeout_s)
+        return None
+    return result[0]
+
+
+def _capture_window_surface_blocking(hwnd, width, height):
     """Ask the window to render itself into a bitmap via PrintWindow, and return
     a PIL image, or None if it declines.
 

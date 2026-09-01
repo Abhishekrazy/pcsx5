@@ -352,6 +352,7 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
     click_events = parse_clicks(getattr(args, "clicks", None))
     click_index = 0
     frames = []
+    capture_failures = [0]
     prev_img = None
     first_frame_t = None
     longest_freeze = 0.0
@@ -417,6 +418,14 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
                 # on stdout, else the one owned by its own pid, else no frame.
                 hwnd = hwnd_box[0] or sc.find_window_by_pid(proc.pid)
                 img = sc.capture_hwnd(hwnd, path) if hwnd else None
+                if img is None:
+                    # A refused sample is not a neutral gap. Everything below
+                    # divides by the number of frames that survived, so silently
+                    # dropping samples raises the distinct ratio and shortens the
+                    # measured freeze -- both of which push the verdict toward
+                    # "progressing". Count them so the classifier can refuse to
+                    # claim progress it did not observe.
+                    capture_failures[0] += 1
                 if img is not None:
                     if first_frame_t is None:
                         first_frame_t = elapsed
@@ -497,7 +506,22 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
     freeze_dominates = (run_seconds > 0 and longest_freeze >= 0.25 * run_seconds)
     distinct_ratio = (len({f["hash"] for f in frames}) / len(frames)) if frames else 0.0
     mostly_distinct = distinct_ratio >= 0.5
-    progressing = changed_enough and not freeze_dominates and mostly_distinct
+    # Coverage: frames actually captured, against samples attempted. A run whose
+    # captures mostly failed cannot support a progression claim -- the surviving
+    # frames are an unrepresentative subset, and the arithmetic above is biased
+    # toward "progressing" precisely when data is missing. Replaying this
+    # classifier over a real frozen run (PPSA02929_20260901_202810: 89 frames,
+    # 36 unique, 52.3s freeze) with two thirds of its samples dropped reports it
+    # as progressing, so this is not a theoretical concern.
+    attempted = len(frames) + capture_failures[0]
+    capture_coverage = (len(frames) / attempted) if attempted else 0.0
+    good_coverage = capture_coverage >= 0.8
+    progressing = (changed_enough and not freeze_dominates and mostly_distinct
+                   and good_coverage)
+    if capture_failures[0]:
+        print("[session] %d of %d captures refused (coverage %.0f%%)%s"
+              % (capture_failures[0], attempted, 100.0 * capture_coverage,
+                 "" if good_coverage else " -- too few to judge progression"))
     if termination == "process-exit" and (scan["fatal"] or exception_exit):
         status = "crashed"
     elif termination == "process-exit":
@@ -532,6 +556,8 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
         "execution": {
             "process_alive_s": round(ended - started, 2),
             "rendering": rendering,
+            "capture_failures": capture_failures[0],
+            "capture_coverage": round(capture_coverage, 4),
             "progressing": progressing,
             "first_frame_s": None if first_frame_t is None else round(first_frame_t, 2),
             "frame_count": len(frames),
