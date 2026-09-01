@@ -1975,6 +1975,27 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                     text[got] = 0;
                 }
             }
+            // rsi/rdx are the second and third SysV arguments; for a string
+            // builder they carry the source pointer and its length, which is
+            // what identifies a value the first argument cannot show.
+            char text2[128] = "";
+            const char* note2 = "";
+            if (context->Rsi == 0) {
+                note2 = "  [null]";
+            } else if (!Memory::IsReadable(context->Rsi, 1)) {
+                note2 = "  [not readable]";
+            } else {
+                const u64 l2 = Memory::GuardedStrlen(context->Rsi, sizeof(text2) - 1);
+                if (l2 == 0) {
+                    note2 = "  [EMPTY]";
+                } else {
+                    u64 g2 = 0;
+                    Memory::GuardedRead(text2, context->Rsi, l2, &g2);
+                    text2[g2] = 0;
+                }
+            }
+            LOG_ERROR(Kernel, "BREAKPOINT   rsi=0x%llx str2='%s'%s rdx=0x%llx",
+                      context->Rsi, text2, note2, context->Rdx);
             LOG_ERROR(Kernel, "BREAKPOINT 0x%llx rdi=0x%llx str='%s'%s ret=0x%llx guest-thread=%llu",
                       BreakpointAddress(), arg, text, note,
                       Memory::IsReadable(context->Rsp, sizeof(u64))
