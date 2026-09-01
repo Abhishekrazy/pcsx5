@@ -17,6 +17,7 @@
 #include "../common/log.h"
 #include "../gpu/gpu.h"
 #include <windows.h>
+#include <psapi.h>   // MODULEINFO, for locating this module in the sampler
 #include <intrin.h>
 #include <iostream>
 #include <cstring>
@@ -166,6 +167,7 @@ namespace Kernel {
     // Suspends each guest thread just long enough to read its RIP. Sampling is
     // the only way to see a guest that is stuck without faulting; a frozen run
     // otherwise leaves nothing behind but its last unrelated log line.
+    static void SamplerLoopMarker() {}   // address used to locate this module
     static std::atomic<bool> g_sampler_run{false};
     static std::thread*      g_sampler_thread = nullptr;
 
@@ -210,6 +212,47 @@ namespace Kernel {
         }
     }
 
+    // Range of pcsx5_core in this process, resolved once.
+    static bool CoreRange(u64& lo, u64& hi) {
+        static u64 s_lo = 0, s_hi = 0;
+        if (!s_lo) {
+            HMODULE mod = nullptr;
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   reinterpret_cast<LPCSTR>(&SamplerLoopMarker), &mod) && mod) {
+                MODULEINFO mi{};
+                if (GetModuleInformation(GetCurrentProcess(), mod, &mi, sizeof(mi))) {
+                    s_lo = reinterpret_cast<u64>(mi.lpBaseOfDll);
+                    s_hi = s_lo + mi.SizeOfImage;
+                }
+            }
+        }
+        lo = s_lo; hi = s_hi;
+        return s_lo != 0;
+    }
+
+    // Scan a suspended thread's stack for the first return address that lands in
+    // pcsx5_core. Reading another thread's stack is safe here: it is suspended,
+    // and the read is guarded so a bad frame cannot fault the sampler.
+    static u64 NearestCoreReturn(const CONTEXT& ctx) {
+        u64 lo = 0, hi = 0;
+        if (!CoreRange(lo, hi)) return 0;
+        const u64 sp = ctx.Rsp;
+        if (!sp) return 0;
+        constexpr int kDepth = 128;   // qwords of stack to inspect
+        for (int i = 0; i < kDepth; ++i) {
+            const u64 slot = sp + static_cast<u64>(i) * 8;
+            u64 value = 0;
+            if (!ReadProcessMemory(GetCurrentProcess(),
+                                   reinterpret_cast<LPCVOID>(slot),
+                                   &value, sizeof(value), nullptr)) {
+                break;
+            }
+            if (value >= lo && value < hi) return value & ~0xFull;
+        }
+        return 0;
+    }
+
     static void SamplerLoop(unsigned interval_ms) {
         std::unordered_map<u64, u64> hits;        // guest RIP -> count
         std::unordered_map<u64, u64> host_hits;   // host page -> count
@@ -237,7 +280,12 @@ namespace Kernel {
                     // a title that renders but never progresses. Bucket by the
                     // module that owns the address.
                     ++off_guest;
-                    ++host_hits[ctx.Rip & ~0xFFFull];
+                    // "Blocked in ntdll" says only that the thread is waiting.
+                    // What matters is which of our HLE calls it is waiting
+                    // inside, so walk its stack for the nearest return address
+                    // in pcsx5_core and attribute the sample there.
+                    const u64 caller = NearestCoreReturn(ctx);
+                    ++host_hits[caller ? caller : (ctx.Rip & ~0xFFFull)];
                 }
             }
             if (std::chrono::steady_clock::now() >= next_report) {
