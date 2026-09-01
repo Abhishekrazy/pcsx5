@@ -93,13 +93,23 @@ namespace Kernel {
         return v;
     }
 
+    // Diagnostic execute-breakpoint.  Traps the first instruction of a guest
+    // function and logs its first argument as a string, which is how a caller
+    // that passes an unexpected value gets identified without modifying guest
+    // code.  Zero disables it, and that is the default.
+    u64 BreakpointAddress() {
+        static const u64 v = EnvU64("PCSX5_BP_ADDR", 0);
+        return v;
+    }
+
     // Arms DR0 as an 8-byte write watch on the configured address.  DR7 bits:
     // L0 (bit 0) enables DR0 locally, R/W0 = 01 breaks on data write, and
     // LEN0 = 11 selects an 8-byte range, which requires 8-byte alignment.
     void ArmWatchpointOnThisThread() {
         const u64 addr = WatchpointAddress();
-        if (!addr) return;
-        if (addr & 7ull) {
+        const u64 bp   = BreakpointAddress();
+        if (!addr && !bp) return;
+        if (addr && (addr & 7ull)) {
             LOG_WARN(Kernel, "PCSX5_WATCH_ADDR 0x%llx is not 8-byte aligned; watchpoint not armed", addr);
             return;
         }
@@ -107,11 +117,21 @@ namespace Kernel {
         ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         const HANDLE self = GetCurrentThread();
         if (!GetThreadContext(self, &ctx)) return;
-        ctx.Dr0 = addr;
-        ctx.Dr7 = (ctx.Dr7 & ~0xFF0000ull & ~0x3ull) | 0x1ull | (0x1ull << 16) | (0x3ull << 18);
+        // Bits 16-23 of DR7 hold R/W and LEN for DR0 and DR1; clearing them
+        // leaves DR1 as an execute breakpoint (R/W1 = 00, LEN1 = 00), which is
+        // the only encoding that traps on instruction fetch.
+        ctx.Dr7 &= ~0xFF0000ull;
+        if (addr) {
+            ctx.Dr0 = addr;
+            ctx.Dr7 = (ctx.Dr7 & ~0x3ull) | 0x1ull | (0x1ull << 16) | (0x3ull << 18);
+        }
+        if (bp) {
+            ctx.Dr1 = bp;
+            ctx.Dr7 = (ctx.Dr7 & ~0xCull) | (0x1ull << 2);
+        }
         ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         if (!SetThreadContext(self, &ctx)) {
-            LOG_WARN(Kernel, "Failed to arm watchpoint on thread %lu", GetCurrentThreadId());
+            LOG_WARN(Kernel, "Failed to arm debug registers on thread %lu", GetCurrentThreadId());
         }
     }
 
@@ -1931,6 +1951,41 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         // wrote it.  DR6 bit 0 identifies DR0 as the source and is sticky, so
         // it must be cleared or every later trap looks identical.  Entirely
         // inert unless PCSX5_WATCH_ADDR is set.
+        // Execute breakpoint (DR1, DR6 bit 1).  Traps before the instruction
+        // runs, so RDI still holds the first argument under the SysV ABI that
+        // guest code uses.  Setting EFlags.RF suppresses a re-trap on the same
+        // instruction when execution resumes, which would otherwise loop
+        // forever.  Inert unless PCSX5_BP_ADDR is set.
+        if (exception_record->ExceptionCode == EXCEPTION_SINGLE_STEP &&
+            BreakpointAddress() != 0 && (context->Dr6 & 0x2ull) != 0) {
+            const u64 arg = context->Rdi;
+            char text[128] = "";
+            const char* note = "";
+            if (arg == 0) {
+                note = "  [null]";
+            } else if (!Memory::IsReadable(arg, 1)) {
+                note = "  [not readable]";
+            } else {
+                const u64 len = Memory::GuardedStrlen(arg, sizeof(text) - 1);
+                if (len == 0) {
+                    note = "  [EMPTY STRING]";
+                } else {
+                    u64 got = 0;
+                    Memory::GuardedRead(text, arg, len, &got);
+                    text[got] = 0;
+                }
+            }
+            LOG_ERROR(Kernel, "BREAKPOINT 0x%llx rdi=0x%llx str='%s'%s ret=0x%llx guest-thread=%llu",
+                      BreakpointAddress(), arg, text, note,
+                      Memory::IsReadable(context->Rsp, sizeof(u64))
+                          ? [&] { u64 r = 0; Memory::GuardedRead(&r, context->Rsp, sizeof(r)); return r; }()
+                          : 0ull,
+                      CpuCore::GetCurrentThreadId());
+            context->Dr6 = 0;
+            context->EFlags |= 0x10000u; // RF
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+
         if (exception_record->ExceptionCode == EXCEPTION_SINGLE_STEP &&
             WatchpointAddress() != 0 && (context->Dr6 & 0x1ull) != 0) {
             const u64 watch = WatchpointAddress();
