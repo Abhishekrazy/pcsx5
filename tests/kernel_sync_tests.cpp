@@ -602,6 +602,56 @@ void TestSyncClusterAdditions() {
     std::printf("  sync cluster additions: OK\n");
 }
 
+// A signal delivered while the waiter is between releasing the guest mutex and
+// entering the wait must still wake it. The existing condvar test sleeps 50ms
+// before signalling, so the waiter is always parked by then and that window is
+// never exercised. Here the signal is fired with no delay, so it lands inside
+// the window often across many iterations.
+//
+// Before the sequence counter existed this failed: the notification reached a
+// condition variable that had no waiter registered yet, was dropped, and the
+// wait then ran to its full timeout and returned ETIMEDOUT.
+static void TestCondvarSignalRace() {
+    const guest_addr_t mtx = g_page + 0x300;
+    const guest_addr_t cond = g_page + 0x308;
+    assert(ScePthreadMutexInit(Args(mtx, 0, 0)) == 0);
+    assert(ScePthreadCondInit(Args(cond, 0)) == 0);
+
+    const int kIterations = 200;
+    int timed_out = 0;
+    for (int i = 0; i < kIterations; ++i) {
+        std::atomic<bool> holding{false};
+        u64 result = 1;
+        std::thread w([&] {
+            assert(ScePthreadMutexLock(Args(mtx)) == 0);
+            holding = true;
+            // 200ms is far longer than a signalled wait needs, so a non-zero
+            // return means the wakeup was lost rather than merely slow.
+            result = ScePthreadCondTimedwait(Args(cond, mtx, 200000));
+            ScePthreadMutexUnlock(Args(mtx));
+        });
+        while (!holding) {
+            std::this_thread::yield();
+        }
+        // The waiter owns the mutex until it releases it inside the wait, so
+        // this lock cannot succeed before then. It can, and often does, succeed
+        // in the window before the waiter is actually parked on the condition
+        // variable -- which is exactly the window under test.
+        assert(ScePthreadMutexLock(Args(mtx)) == 0);
+        ScePthreadCondSignal(Args(cond));
+        ScePthreadMutexUnlock(Args(mtx));
+        w.join();
+        if (result != 0) {
+            ++timed_out;
+        }
+    }
+    if (timed_out != 0) {
+        std::printf("  lost %d of %d condvar wakeups\n", timed_out, kIterations);
+    }
+    assert(timed_out == 0);
+    std::printf("  condvar signal race OK (%d iterations)\n", kIterations);
+}
+
 int main() {
     LogConfig::SetLevel(LogCategory::HLE, LogLevel::Warn);
 
@@ -620,6 +670,7 @@ int main() {
     TestMutexHandoff();
     TestMutexStress();
     TestCondvar();
+    TestCondvarSignalRace();
     TestRwlock();
     TestSyncClusterAdditions();
     TestTlsKeys();

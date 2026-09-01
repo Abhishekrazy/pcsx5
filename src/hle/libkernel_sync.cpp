@@ -343,6 +343,10 @@ GuestMutex* LookupOrCreateMutex(guest_addr_t var, bool create_if_missing) {
 // ---------------------------------------------------------------------------
 struct GuestCond {
     std::condition_variable cv;
+    // Advanced by every signal and broadcast, always under g_cond_map_lock.
+    // A waiter samples it before it releases the guest mutex, so a signal it
+    // did not observe is detectable after the fact rather than being lost.
+    u64 sequence = 0;
 };
 
 std::mutex g_cond_map_lock;
@@ -721,38 +725,52 @@ static u64 CondWaitImpl(guest_addr_t cond_var, guest_addr_t mutex_var, DWORD tim
     GuestMutex* m = LookupOrCreateMutex(mutex_var, true);
     if (!c || !m) return SCE_KERNEL_ERROR_EINVAL;
     const u64 tid = CurrentTlsIdentity();
-    {
-        std::unique_lock<std::mutex> lk(m->m);
-        // Games occasionally condwait on a mutex they never locked; adopt
-        // ownership so the unlock/wait/re-lock cycle stays balanced and the
-        // mutex is actually released while waiting.
-        if (m->owner == 0 && m->recursion == 0) {
-            MutexAcquireLocked(*m, tid);
-        }
-        if (m->owner != tid || m->recursion != 1) {
-            return SCE_KERNEL_ERROR_EINVAL;
-        }
-        // Caller holds the mutex: release it (handing off to any head waiter)
-        // while waiting and re-acquire before returning.
-        m->recursion = 0;
-        MutexHandoffLocked(*m);
-    }
 
     bool ok;
     {
+        // The sequence is sampled while this thread still owns the guest mutex,
+        // and g_cond_map_lock is held from that sample until the wait begins.
+        // A signaller must take the same lock to advance the sequence, so it
+        // either runs wholly before the sample or lands after the wait has
+        // started; there is no window in which it can be missed.
+        //
+        // Previously the guest mutex was dropped before this lock was taken. A
+        // signal delivered in that gap notified a condition variable with no
+        // waiter on it yet and was simply lost, and the waiter then blocked for
+        // its whole timeout. PPSA02929 passes a timeout of 0xFFFFFC18 us, about
+        // 71 minutes, so "the whole timeout" and "forever" were the same thing:
+        // 26 of its threads entered this function once and never came back.
+        std::unique_lock<std::mutex> clk(g_cond_map_lock);
+        const u64 seq = c->sequence;
+        {
+            std::unique_lock<std::mutex> lk(m->m);
+            // Games occasionally condwait on a mutex they never locked; adopt
+            // ownership so the unlock/wait/re-lock cycle stays balanced and the
+            // mutex is actually released while waiting.
+            if (m->owner == 0 && m->recursion == 0) {
+                MutexAcquireLocked(*m, tid);
+            }
+            if (m->owner != tid || m->recursion != 1) {
+                return SCE_KERNEL_ERROR_EINVAL;
+            }
+            // Caller holds the mutex: release it (handing off to any head
+            // waiter) while waiting and re-acquire before returning.
+            m->recursion = 0;
+            MutexHandoffLocked(*m);
+        }
+
         Kernel::NoteWaitEnter(timeout_ms == INFINITE ? "scePthreadCondWait"
                                                      : "scePthreadCondTimedwait");
         struct WaitExit {
             const char* n;
             ~WaitExit() { Kernel::NoteWaitExit(n); }
         } we{timeout_ms == INFINITE ? "scePthreadCondWait" : "scePthreadCondTimedwait"};
-        std::unique_lock<std::mutex> clk(g_cond_map_lock);
+        const auto signalled = [&] { return c->sequence != seq; };
         if (timeout_ms == INFINITE) {
-            c->cv.wait(clk);
+            c->cv.wait(clk, signalled);
             ok = true;
         } else {
-            ok = c->cv.wait_for(clk, std::chrono::milliseconds(timeout_ms)) ==
-                 std::cv_status::no_timeout;
+            ok = c->cv.wait_for(clk, std::chrono::milliseconds(timeout_ms), signalled);
         }
     }
 
@@ -772,23 +790,13 @@ u64 ScePthreadCondWait(const GuestArgs& args) {
 }
 
 u64 ScePthreadCondTimedwait(const GuestArgs& args) {
-    // The timeout is a 32-bit microsecond count. Reading it as 64-bit unsigned
-    // turned a small negative value into an enormous positive one: PPSA02929
-    // passes 0xFFFFFC18 on every call, which is (int32_t)-1000, and that became
-    // a 71-minute wait. Twenty-six of its guest threads entered this function
-    // once and never returned, which is why the title renders its splash and
-    // then does nothing.
-    //
-    // A deadline that has already passed is not a wait. POSIX returns ETIMEDOUT
-    // immediately for one, and doing the same here is the only reading of a
-    // negative duration that is not simply "wait forever".
-    const s32 usec_signed = static_cast<s32>(static_cast<u32>(args.arg3));
-    if (usec_signed <= 0) {
-        LOG_DEBUG(HLE, "scePthreadCondTimedwait(0x%llx): deadline already passed (%d us)",
-                  args.arg1, usec_signed);
-        return CondWaitImpl(args.arg1, args.arg2, 0 /* poll, then time out */);
-    }
-    u64 ms = (static_cast<u64>(usec_signed) + 999ULL) / 1000ULL;
+    // A 32-bit unsigned microsecond count. PPSA02929 passes 0xFFFFFC18 on every
+    // call, which is about 71 minutes -- long enough that the wait is only ever
+    // meant to end in a signal, not in the timeout. Reading it as signed and
+    // returning ETIMEDOUT immediately was tried and is wrong: it made the guest
+    // spin rather than block, and the reference implementation types this
+    // argument unsigned and waits the full duration too.
+    u64 ms = (static_cast<u64>(static_cast<u32>(args.arg3)) + 999ULL) / 1000ULL;
     if (ms > 0xFFFFFFFEULL) ms = 0xFFFFFFFEULL;
     return CondWaitImpl(args.arg1, args.arg2, static_cast<DWORD>(ms));
 }
@@ -796,19 +804,27 @@ u64 ScePthreadCondTimedwait(const GuestArgs& args) {
 u64 ScePthreadCondSignal(const GuestArgs& args) {
     GuestCond* c = LookupOrCreateCond(args.arg1, true);
     if (!c) return SCE_KERNEL_ERROR_EINVAL;
+    {
+        std::lock_guard<std::mutex> lk(g_cond_map_lock);
+        c->sequence++;
+    }
     c->cv.notify_one();
     return 0;
 }
 
 // Wake one named thread.  A std::condition_variable cannot target a specific
 // waiter, so every waiter is woken and the intended thread is guaranteed to be
-// among them.  CondWaitImpl already waits without a predicate, so the guest
+// among them.  The sequence advances for every waiter, so the guest
 // re-checks its own condition on wake and the extra wakeups are indistinguishable
 // from the spurious ones it must already tolerate.  Documented divergence: this
 // is a conservative over-wake, not a targeted signal.
 u64 ScePthreadCondSignalto(const GuestArgs& args) {
     GuestCond* c = LookupOrCreateCond(args.arg1, true);
     if (!c) return SCE_KERNEL_ERROR_EINVAL;
+    {
+        std::lock_guard<std::mutex> lk(g_cond_map_lock);
+        c->sequence++;
+    }
     c->cv.notify_all();
     return 0;
 }
@@ -816,6 +832,10 @@ u64 ScePthreadCondSignalto(const GuestArgs& args) {
 u64 ScePthreadCondBroadcast(const GuestArgs& args) {
     GuestCond* c = LookupOrCreateCond(args.arg1, true);
     if (!c) return SCE_KERNEL_ERROR_EINVAL;
+    {
+        std::lock_guard<std::mutex> lk(g_cond_map_lock);
+        c->sequence++;
+    }
     c->cv.notify_all();
     return 0;
 }
