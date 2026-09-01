@@ -56,79 +56,128 @@ machinery outranks one game's next step.
 
 ---
 
-## Now
+## Plan
 
-- [ ] **Execute every targetless draw, not just the last one**
-  `AgcExecuteDraw` stashes a draw with no colour target in `st.pending_targetless`,
-  a **single slot**, so every earlier draw in the frame is overwritten and lost;
-  only the last is replayed at the flip. Measured loss: **87–88% of all guest
-  draws** across two independent runs (2995 submitted / 372 executed; 2715 / 352).
-  Blast radius: any title whose draws are classified targetless.
-  - [ ] Replace the single slot with an ordered queue of owned calls
-  - [ ] Replay the queue in submission order against the buffer the flip names
-  - [ ] Test: a submit carrying N targetless draws executes N, not 1
-  *Done when:* the executed/dropped counters show no drops for a normal frame,
-  and a test fails before and passes after.
+A roadmap survey (7 subsystem surveys, 3 competing roadmaps, 2 judge panels)
+settled on this spine:
 
-- [ ] **Recover why the colour-target binding is never observed**
-  `DecodeRenderTarget` returns false on every draw of the run: CB_COLOR0
-  registers `0x318`/`0x319`/`0x31C`/`0x3B0` appear in **zero** of 784 captured
-  submits, and 2477 indirect context-register writes per frame collapse to 53
-  distinct registers — no viewport, no scissors, no blend. Either
-  `ApplySubmittedRegisters` is losing the writes, or the guest binds its target
-  through a packet the walker does not decode.
-  *Confirm before coding:* dump the guest blocks each `kRCxRegsIndirect` packet
-  names and answer one binary question — does any entry target `0x318`/`0x319`/
-  `0x31C`/`0x3B0`? Record the recovered layout in an audit (Rule 04).
+> The unit of planning is a defect **class**, not a title and not a lifecycle
+> stage - because every expensive defect this project has paid for was one class:
+> a refusal wearing the costume of a success. A class is cross-title and
+> cross-subsystem by construction.
+
+Order: make the instruments incapable of lying, close the APIs where discarding a
+result is the easy path, give threads and TLS a real owner, make fabricated HLE
+success and dropped GPU work loud, then ratchet each swept class shut.
 
 ---
 
-## Next
+## Phase 1 - Instruments that cannot lie (NOW)
+
+Sweeping silent failure while measuring it with silently-failing instruments
+produces unfalsifiable results.
+
+- [ ] **Two CTest cases pass while the process aborts** (VERIFIED here)
+  `CMakeLists.txt:858-874` sets `PASS_REGULAR_EXPRESSION` on `guest_syscall_smoke`
+  and `guest_tls_smoke`; CMake documents that as *replacing* the return-code
+  check. `ctest -R "^guest_syscall_smoke$" -V` prints
+  `FATAL: abort() raised (signal 22)` and reports **Passed**. Every
+  "ctest 50/50" claim in this project is weaker than it sounds.
+  - [ ] Require a zero exit code as well as the marker
+  - [ ] Root-cause the teardown abort the newly-red test exposes, or classify it
+        as a boundary. Do not suppress it (Rule 07).
+
+- [ ] **The `menus` progress marker is a false positive** (VERIFIED here)
+  `session.py:76` matches the bare substring `"menu"`, so it fires on
+  `images/menutitle-sheet0.png` - a filename being loaded, not a menu reached.
+  Cited as evidence of progress throughout the recent single-title work.
+  - [ ] One shared marker vocabulary for `session.py` and `tools/autorun.py`
+  - [ ] Record the loss of a false signal as such, not as a regression
+
+- [ ] **No run has ever produced an import report**
+  `PersistSummary` is reachable only from a clean `pcsx5_shutdown` that no title
+  run performs: 0 of 195 archived runs contain `import_report.json`, though 135
+  requested it. Rule 04 permits an observable stub *only because* this inventory
+  sees it, so the stub regime has been unenforced.
+
+- [ ] **The stub-classification regime is inert** - `RegisterStubContract`
+  (`hle.cpp:462`) has no production callers, so `GetStubContract` always returns
+  UNKNOWN.
+
+- [ ] **`boot_success` is true for a frozen run** - `session.py:654` defines it
+  as `status not in ("crashed","no-frame")`, contradicting CLAUDE.md.
+  - [ ] Stamp a `classifier_version` into every record and baseline entry
+
+- [ ] **Baseline promotion trusts a single sample** - `baseline --update` resets
+  every stability flag to true from one run; a stored PPSA21564 run (29 frames,
+  3 unique, 42.3s freeze in 60s) is recorded as *progressing*.
+
+- [ ] **Python test infrastructure (the repository's first)** - lock the run
+  classifier against the 175 stored `record.json` fixtures, so loosening any
+  threshold fails a test.
+
+- [ ] **Documentation paths cited by CLAUDE.md do not exist** - `docs/tasks`,
+  `docs/audits`, `docs/walkthroughs`, `docs/evidence` are absent;
+  `RUNTIME_LIFECYCLE.md` lives under `architecture/`. Rules 03/04/07/09 all
+  discharge into "the owning audit", which has nowhere to go.
+
+---
+
+## Phase 2 - GPU: stop discarding work
+
+- [ ] **Execute every targetless draw, not just the last one**
+  `st.pending_targetless` is a **single slot**, so all but the last targetless
+  draw in a frame are overwritten. Measured loss: **87-88% of all guest draws**
+  (2995/372 and 2715/352 across two runs). Now visible per-submit (`8b3bb45`).
+  - [ ] Replace the slot with an ordered queue replayed at the flip
+  - [ ] Test: a submit carrying N targetless draws executes N, not 1
+
+- [ ] **Recover why the colour-target binding is never observed**
+  CB_COLOR0 registers `0x318`/`0x319`/`0x31C`/`0x3B0` appear in zero of 784
+  captured submits; 2477 indirect context-register writes per frame collapse to
+  53 distinct registers, with no viewport, scissors or blend.
+  *Confirm before coding:* dump the guest blocks each `kRCxRegsIndirect` names -
+  do the writes exist and we lose them, or does the guest bind through a packet
+  we never decode? Record in an audit (Rule 04).
+
+- [ ] **Execute or explain the skipped AGC packets** - NOP `0x19` (DMA data),
+  `IT_EVENT_WRITE` (`0x46`), op `0x76`.
+
+---
+
+## Phase 3 - Input, and the rest
 
 - [ ] **Synthetic / keyboard input path in the core**
-  There is no keyboard input anywhere in `src/` — no `GetAsyncKeyState`, no
-  `WM_KEYDOWN`. Pad state comes only from physical controllers, so any title
-  waiting for a button cannot be satisfied without hardware, and **no automated
-  test can drive input at all**. Whole-project blast radius: unblocks input
-  regression testing and users without a DualSense.
+  No keyboard input exists anywhere in `src/` - no `GetAsyncKeyState`, no
+  `WM_KEYDOWN`. No automated test can drive input at all, and any title waiting
+  for a button needs physical hardware. Whole-project blast radius.
   - [ ] Synthetic pad state injectable from the harness
-  - [ ] Keyboard bindings, including analog sticks simulated from keys
-  - [ ] Test: a scripted button press reaches `scePadReadState`
+  - [ ] Keyboard bindings, analog sticks simulated from keys
+  - [ ] Test: a scripted press reaches `scePadReadState`
 
-- [ ] **A guest-filesystem test fixture**
-  Several HLE implementations cannot be tested because exercising them needs a
-  mounted guest filesystem with real descriptors. This blocks tests for
-  `feof`/`fgets`/`fgetc` and for the guarded-transfer reporters.
+- [ ] **A guest-filesystem test fixture** - blocks tests for `feof`/`fgets`/
+  `fgetc` and for the guarded-transfer reporters.
 
-- [ ] **Execute or explain the AGC packets the walker skips**
-  Submitted by the guest, not executed: NOP sub-op `0x19` (DMA data),
-  `IT_EVENT_WRITE` (`0x46`, logged only), op `0x76`.
+- [ ] **Save-data mount returns an empty mount point** - the guest builds
+  `/-saveindex` with no prefix; `sceSaveDataSetParam`/`SaveIcon` are stubs.
 
-- [ ] **Save-data mount returns an empty mount point**
-  The guest builds `/-saveindex` with no prefix, and `sceSaveDataSetParam` /
-  `sceSaveDataSaveIcon` are unimplemented stubs.
+- [ ] **Performance: ~9 fps against a reference emulator's 60 fps.** Measure
+  honestly first: flip rate is not uniform, so flips divided by duration compares
+  nothing across runs of different lengths.
 
-- [ ] **Performance: ~9 fps against a reference emulator's 60 fps on the same dump**
-  Measure honestly first — flip rate is not uniform across a run, so
-  flips ÷ duration compares nothing between runs of different lengths. Needs
-  flips counted in a fixed window after a fixed marker.
+---
 
 ## Later
 
-- [ ] **DualSense features confirmed broken against real hardware** — vibration,
-  lightbar, mic-mute, analog sticks not registering, misaligned diagram
-  overlays, no live test panel. Needs the user's hardware to verify. Queued
-  behind the synthetic input path.
-- [ ] **Multiple controllers** — never exercised.
-- [ ] **UI ratchet** — 229 hardcoded XAML strings, 0 of 119 interactive controls
-  with `AutomationProperties.Name`, 0 `DynamicResource` references.
-- [ ] **Committed build outputs** — `src/ui_csharp/bin/**` contains three copies
-  of `pcsx5_core.dll`. CLAUDE.md forbids committing build outputs.
-- [ ] **`tools/dream_tool.py`** is named for Dreaming Sarah but hardcodes a
-  different title's eboot path.
-- [ ] **`GetWindowRect` includes the DWM invisible resize border** (~7px), so the
-  harness's screen-grab fallback frames a few foreign pixels.
-  `DWMWA_EXTENDED_FRAME_BOUNDS` is the correct source.
+- [ ] DualSense: vibration, lightbar, mic-mute, analog sticks not registering,
+  misaligned diagram overlays, no live test panel. Needs the user's hardware.
+- [ ] Multiple controllers - never exercised.
+- [ ] UI ratchet - 229 hardcoded XAML strings, 0 of 119 controls with
+  `AutomationProperties.Name`, 0 `DynamicResource`.
+- [ ] Committed build outputs under `src/ui_csharp/bin/**`.
+- [ ] `tools/dream_tool.py` targets the wrong title's eboot.
+- [ ] `GetWindowRect` includes the DWM resize border (~7px);
+  `DWMWA_EXTENDED_FRAME_BOUNDS` is correct for the fallback path.
 
 ---
 
