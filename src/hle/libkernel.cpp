@@ -2255,20 +2255,76 @@ namespace HLE {
         RegisterSymbol("libc", "6LDBEaH-R00", [](const GuestArgs&) -> u64 { return 0; }); // libc fflush NID
         RegisterSymbol("libc", "6LDBEaH-R00#T#T", [](const GuestArgs&) -> u64 { return 0; });
 
-        // feof (always return 1/EOF for fake files)
-        RegisterSymbol("libc", "feof", [](const GuestArgs&) -> u64 { return 1; });
-        RegisterSymbol("libc", "LxcEU+ICu8U", [](const GuestArgs&) -> u64 { return 1; });
-        RegisterSymbol("libc", "LxcEU+ICu8U#T#T", [](const GuestArgs&) -> u64 { return 1; });
+        // feof, fgets and fgetc previously returned "end of file" for every
+        // file: feof -> 1, fgets -> NULL, fgetc -> -1. Any guest reading a file
+        // through them saw an immediately empty file and carried on with
+        // nothing, which is the failure mode Rule 04 exists to prevent -- the
+        // caller cannot tell an empty file from a stub. They now answer from
+        // the real descriptor.
+        auto FeofImpl = [](const GuestArgs& args) -> u64 {
+            const u64 f = args.arg1;
+            if (!f) return 1;
+            const int fd = FakeFileFd(f);
+            if (fd < 0) return ::feof(reinterpret_cast<FILE*>(f)) != 0 ? 1 : 0;
+            const s64 pos = _lseeki64(fd, 0, SEEK_CUR);
+            const s64 end = _lseeki64(fd, 0, SEEK_END);
+            if (pos >= 0) _lseeki64(fd, pos, SEEK_SET);
+            if (pos < 0 || end < 0) return 1;
+            return pos >= end ? 1 : 0;
+        };
+        RegisterSymbol("libc", "feof", FeofImpl);
+        RegisterSymbol("libc", "LxcEU+ICu8U", FeofImpl);
+        RegisterSymbol("libc", "LxcEU+ICu8U#T#T", FeofImpl);
 
-        // fgets (always return 0/NULL for fake files)
-        RegisterSymbol("libc", "fgets", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libc", "KdP-nULpuGw", [](const GuestArgs&) -> u64 { return 0; });
-        RegisterSymbol("libc", "KdP-nULpuGw#T#T", [](const GuestArgs&) -> u64 { return 0; });
+        // fgets(buf, size, stream): up to size-1 bytes, stopping after a
+        // newline, NUL-terminated; NULL at end of file with nothing read.
+        auto FgetsImpl = [](const GuestArgs& args) -> u64 {
+            const guest_addr_t buf  = args.arg1;
+            const s64          size = static_cast<s64>(args.arg2);
+            const u64          f    = args.arg3;
+            if (!buf || size <= 0 || !f) return 0;
+            const int fd = FakeFileFd(f);
+            if (fd < 0) {
+                LOG_WARN(HLE, "libc::fgets(0x%llx): not a tracked file handle", f);
+                return 0;
+            }
+            std::string line;
+            line.reserve(static_cast<size_t>(size));
+            while (static_cast<s64>(line.size()) < size - 1) {
+                char c = 0;
+                const int n = _read(fd, &c, 1);
+                if (n <= 0) break;
+                line.push_back(c);
+                if (c == '\n') break;
+            }
+            if (line.empty()) return 0; // end of file, nothing read
+            line.push_back('\0');
+            u64 written = 0;
+            if (!Memory::GuardedWrite(buf, line.data(), line.size(), &written) ||
+                written != line.size()) {
+                LOG_ERROR(HLE, "libc::fgets(0x%llx): wrote only %llu of %zu bytes",
+                          buf, written, line.size());
+                return 0;
+            }
+            return buf;
+        };
+        RegisterSymbol("libc", "fgets", FgetsImpl);
+        RegisterSymbol("libc", "KdP-nULpuGw", FgetsImpl);
+        RegisterSymbol("libc", "KdP-nULpuGw#T#T", FgetsImpl);
 
-        // fgetc (always return -1/EOF for fake files)
-        RegisterSymbol("libc", "fgetc", [](const GuestArgs&) -> u64 { return (u64)-1; });
-        RegisterSymbol("libc", "w3S10hD3pAA", [](const GuestArgs&) -> u64 { return (u64)-1; });
-        RegisterSymbol("libc", "w3S10hD3pAA#T#T", [](const GuestArgs&) -> u64 { return (u64)-1; });
+        auto FgetcImpl = [](const GuestArgs& args) -> u64 {
+            const u64 f = args.arg1;
+            if (!f) return (u64)-1;
+            const int fd = FakeFileFd(f);
+            if (fd < 0) return (u64)-1;
+            unsigned char c = 0;
+            const int n = _read(fd, &c, 1);
+            if (n <= 0) return (u64)-1; // EOF
+            return static_cast<u64>(c);
+        };
+        RegisterSymbol("libc", "fgetc", FgetcImpl);
+        RegisterSymbol("libc", "w3S10hD3pAA", FgetcImpl);
+        RegisterSymbol("libc", "w3S10hD3pAA#T#T", FgetcImpl);
 
         // printf (hcuQgD53UxM#T#T) — just log to stderr
         RegisterSymbol("libkernel", "hcuQgD53UxM#T#T", [](const GuestArgs& args) -> u64 {
