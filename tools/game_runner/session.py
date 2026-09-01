@@ -482,10 +482,22 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
     # forty-two of them -- the emulator's own boot screen, never the game.
     # A run dominated by one freeze is frozen, which the project treats as a
     # failure and never as success.
+    # Progression means the picture keeps changing, not that it changed once.
+    # Three independent conditions, because each alone was permissive enough to
+    # pass a run that was plainly stuck:
+    #   - some change large enough to count at all
+    #   - no single freeze covering a quarter of the run
+    #   - most sampled frames actually distinct
+    # A run showing six distinct frames in sixty seconds with a twenty-eight
+    # second freeze was reported as progressing; its final frame was a blank
+    # screen. Kyty playing this same title samples every frame distinct, so a
+    # genuinely running game clears these easily.
     changed_enough = bool(changes) and max(changes) >= args.change_threshold
     run_seconds = max(0.0, ended - started)
-    freeze_dominates = (run_seconds > 0 and longest_freeze >= 0.5 * run_seconds)
-    progressing = changed_enough and not freeze_dominates
+    freeze_dominates = (run_seconds > 0 and longest_freeze >= 0.25 * run_seconds)
+    distinct_ratio = (len({f["hash"] for f in frames}) / len(frames)) if frames else 0.0
+    mostly_distinct = distinct_ratio >= 0.5
+    progressing = changed_enough and not freeze_dominates and mostly_distinct
     if termination == "process-exit" and (scan["fatal"] or exception_exit):
         status = "crashed"
     elif termination == "process-exit":
@@ -627,6 +639,7 @@ def entry_from_record(rec, previous=None, stability=None):
         # Whether the fatal signature and faulting RIP were the same in every
         # sample. Both vary run to run for some titles, so a change in either is
         # only worth reporting when it was steady to begin with.
+        "status_stable": stability.get("status_stable", True) if stability else True,
         "signature_stable": stability.get("signature_stable", True) if stability else True,
         "rip_stable": stability.get("rip_stable", True) if stability else True,
         "crash_location": {
@@ -666,10 +679,17 @@ def compare_to_baseline(rec, db):
             "frozen": 4, "progressing": 5}
     new_r = rank.get(rec["status"], 1)
     old_r = rank.get(base.get("status", ""), 1)
-    if new_r < old_r:
-        worse("status %s -> %s" % (base.get("status"), rec["status"]))
-    elif new_r > old_r:
-        better("status %s -> %s" % (base.get("status"), rec["status"]))
+    if new_r != old_r:
+        if base.get("status_stable", True):
+            (better if new_r > old_r else worse)(
+                "status %s -> %s" % (base.get("status"), rec["status"]))
+        else:
+            # The title did not settle on one status across the baseline
+            # samples, so a single run landing on a different one is a sample
+            # from the same distribution, not a change.
+            notes.append("status %s -> %s, but status was not stable across the "
+                         "baseline samples (not a change)"
+                         % (base.get("status"), rec["status"]))
 
     # Only markers seen in every baseline sample can support a verdict. An
     # intermittent marker missing from one run says nothing, and calling that a
@@ -795,6 +815,7 @@ def cmd_measure(args):
         prev = db.get("titles", {}).get(title_id)
         stability = {"stable": everywhere, "intermittent": intermittent,
                      "samples": len(runs),
+                     "status_stable": len(statuses) == 1,
                      "signature_stable": len(sigs) == 1,
                      "rip_stable": len(rips) == 1}
         db.setdefault("titles", {})[title_id] = entry_from_record(runs[-1], prev, stability)

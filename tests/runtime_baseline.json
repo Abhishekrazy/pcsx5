@@ -1,13 +1,13 @@
 {
   "schema": "pcsx5-runtime-baseline/1",
-  "updated": "2026-08-31T23:37:06",
-  "git_revision": "fa740cd",
+  "updated": "2026-09-01T02:53:27",
+  "git_revision": "629a950",
   "titles": {
     "PPSA02929": {
       "eboot": "Games/PPSA02929-app0/eboot.bin",
       "boot_success": false,
       "first_frame_s": 2.02,
-      "sustained_runtime_s": 21.52,
+      "sustained_runtime_s": 26.54,
       "status": "crashed",
       "markers": [
         "content",
@@ -23,14 +23,15 @@
         "first-draw",
         "shaders"
       ],
-      "samples": 3,
+      "samples": 4,
+      "status_stable": false,
       "signature_stable": false,
       "rip_stable": false,
       "crash_location": {
         "signature": "exception-exit",
-        "rip": "0x80016ab48",
+        "rip": "0x800128791",
         "module": null,
-        "thread": "46212"
+        "thread": "61056"
       },
       "current_boundary": {
         "summary": "Deterministic termination with STATUS_ACCESS_VIOLATION (0xC0000005) after ~23s, reproduced across three runs. The content and menus markers are reached first, so this is a post-content-load failure. Last logged VEH fault site is guest RIP 0x80016ab48; earlier faults were logged at 0x800133d7c and 0x800120d58, and it is not yet established which is fatal.",
@@ -39,14 +40,14 @@
         "next_step": "Run the investigate-boundary skill; the fatal site is not yet distinguished from handled faults.",
         "doc": null
       },
-      "last_run_id": "PPSA02929_20260831_233644_r2",
-      "git_revision": "fa740cd",
+      "last_run_id": "PPSA02929_20260901_025300_r3",
+      "git_revision": "629a950",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2630144,
-        "mtime": "2026-08-31T23:21:49"
+        "size": 2634240,
+        "mtime": "2026-09-01T02:16:00"
       },
-      "updated": "2026-08-31T23:37:06"
+      "updated": "2026-09-01T02:53:27"
     },
     "PPSA21564": {
       "eboot": "Games/PPSA21564-app/eboot.bin",
