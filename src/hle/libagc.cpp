@@ -473,6 +473,12 @@ struct AgcSubmitShadow {
     u32 instances = 1;
     u64 indirect_args = 0;
     u64 total_draws = 0;
+    // Draws the guest submitted that we actually issued, and those we threw
+    // away. A draw with no colour target is stashed for the flip, but the stash
+    // is a single slot, so all but the last are lost. That loss was completely
+    // silent, and it is large.
+    u64 total_draws_executed = 0;
+    u64 total_draws_dropped = 0;
     u64 total_dispatches = 0;
     u64 total_flips = 0;
     // M3.3 deferred composite: a targetless draw that samples textures is
@@ -1344,8 +1350,10 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
 
     if (has_target) {
         // A real targeted draw supersedes any stale deferred composite.
+        if (st.has_pending_targetless) ++st.total_draws_dropped;
         st.has_pending_targetless = false;
         AgcNoteFirstDraw();
+        ++st.total_draws_executed;
         GPU::VkDrawExecute(call);
         return;
     }
@@ -1354,6 +1362,7 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
     // texture — a targetless draw with no sampled source can never be
     // consumed, so it is dropped.
     if (call.textures.empty()) {
+        ++st.total_draws_dropped;
         LOG_DEBUG(HLE, "M3: draw skipped — no CB_COLOR0 target and no textures "
                   "(es=0x%llx ps=0x%llx)", es, ps);
         return;
@@ -1367,6 +1376,10 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
         st.pending_ps_words.assign(call.ps_words, call.ps_words + call.ps_word_count);
     } else {
         st.pending_ps_words.clear();
+    }
+    if (st.has_pending_targetless) {
+        // The slot already held a draw for this frame; it is now lost.
+        ++st.total_draws_dropped;
     }
     st.pending_targetless = call;
     st.pending_targetless.vs_words = st.pending_vs_words.empty() ? nullptr
@@ -1403,6 +1416,7 @@ void AgcFlushPendingTargetlessDraw(AgcSubmitShadow& st, u32 handle, s32 buffer_i
     LOG_INFO(HLE, "M3: executing deferred composite -> display buffer 0x%llx %ux%u",
              addr, width, height);
     AgcNoteFirstDraw();
+    ++st.total_draws_executed;
     GPU::VkDrawExecute(call);
 }
 
@@ -1618,8 +1632,10 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
     }
 
     if (draws || dispatches || flips) {
-        LOG_INFO(HLE, "AGC %s: walked %u dwords — %u draws, %u dispatches, %u flips",
-                 queue_name, offset, draws, dispatches, flips);
+        LOG_INFO(HLE, "AGC %s: walked %u dwords — %u draws (%llu executed, %llu dropped "
+                 "since start), %u dispatches, %u flips",
+                 queue_name, offset, draws, st.total_draws_executed,
+                 st.total_draws_dropped, dispatches, flips);
     } else {
         LOG_DEBUG(HLE, "AGC %s: walked %u dwords (no draw/dispatch/flip)",
                   queue_name, offset);
