@@ -1994,8 +1994,21 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                     text2[g2] = 0;
                 }
             }
-            LOG_ERROR(Kernel, "BREAKPOINT   rsi=0x%llx str2='%s'%s rdx=0x%llx",
-                      context->Rsi, text2, note2, context->Rdx);
+            // Raw bytes of the object RSI points at.  The guest's std::string
+            // keeps its inline buffer at +8 and its size at +0x18, so reading a
+            // C string at +0 reports the pointer field rather than the text and
+            // makes a populated short string look empty.
+            char dump[3 * 32 + 1] = "";
+            if (context->Rsi && Memory::IsReadable(context->Rsi, 32)) {
+                u8 raw[32] = {};
+                u64 gotr = 0;
+                Memory::GuardedRead(raw, context->Rsi, sizeof(raw), &gotr);
+                for (u64 i = 0; i < gotr; ++i) {
+                    std::snprintf(dump + i * 3, 4, "%02x ", raw[i]);
+                }
+            }
+            LOG_ERROR(Kernel, "BREAKPOINT   rsi=0x%llx str2='%s'%s rdx=0x%llx raw=[%s]",
+                      context->Rsi, text2, note2, context->Rdx, dump);
             LOG_ERROR(Kernel, "BREAKPOINT 0x%llx rdi=0x%llx str='%s'%s ret=0x%llx guest-thread=%llu",
                       BreakpointAddress(), arg, text, note,
                       Memory::IsReadable(context->Rsp, sizeof(u64))

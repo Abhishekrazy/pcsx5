@@ -2006,7 +2006,20 @@ namespace HLE {
 
             LOG_DEBUG(HLE, "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                Memory::GuardedCopy(dest, src, count);
+                // Rule 05: a guarded transfer reports what it actually moved.
+                // Discarding that turned a failed copy into a silent one -- the
+                // caller sees memcpy succeed, and the destination keeps whatever
+                // it held before, which is far harder to diagnose than the fault
+                // would have been.
+                u64 copied = 0;
+                if (!Memory::GuardedCopy(dest, src, count, &copied) || copied != count) {
+                    LOG_ERROR(HLE,
+                              "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu): "
+                              "copied only %llu -- dest writable=%d src readable=%d",
+                              dest, src, count, copied,
+                              Memory::IsWritable(dest, count) ? 1 : 0,
+                              Memory::IsReadable(src, count) ? 1 : 0);
+                }
             }
             return dest;
         };
