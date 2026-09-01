@@ -31,6 +31,25 @@
 #define NOMINMAX
 #include <windows.h>
 
+
+// A guarded transfer that moves less than asked has failed. Saying nothing
+// about it is what kept a module's read-only .bss invisible for so long: the
+// guest saw memcpy succeed, the destination kept its old bytes, and the
+// consequence surfaced far away as an unexplained empty string. Rule 05
+// requires the result to be checked; these report the shortfall instead of
+// discarding it.
+static void ReportShortFill(const char* fn, guest_addr_t dest, u64 want, u64 moved) {
+    LOG_ERROR(HLE, "%s(dest: 0x%llx, size: %llu): filled only %llu -- writable=%d",
+              fn, dest, want, moved, Memory::IsWritable(dest, want) ? 1 : 0);
+}
+
+static void ReportFailedStr(const char* fn, guest_addr_t dest, guest_addr_t src) {
+    LOG_ERROR(HLE, "%s(dest: 0x%llx, src: 0x%llx): copied nothing -- dest writable=%d "
+              "src readable=%d", fn, dest, src,
+              Memory::IsWritable(dest, 1) ? 1 : 0,
+              Memory::IsReadable(src, 1) ? 1 : 0);
+}
+
 namespace HLE {
 
 namespace {
@@ -2459,7 +2478,10 @@ void RegisterLibLibc() {
                     s_heap_trace_block = 0;
                     return 0;
                 }
-                Memory::GuardedSet(s_heap_trace_block, 0, bytes);
+                u64 filled = 0;
+        if (!Memory::GuardedSet(s_heap_trace_block, 0, bytes, &filled) || filled != bytes) {
+            ReportShortFill("libc::heap-trace-init", s_heap_trace_block, bytes, filled);
+        }
                 LOG_INFO(HLE, "libc heap-trace block at 0x%llx (mask + %llu-entry mstate table)",
                          s_heap_trace_block, kMstateTableSize / sizeof(u64));
             }
@@ -2736,17 +2758,24 @@ void RegisterLibLibc() {
     auto StrcatImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1 || !args.arg2) return args.arg1;
         const u64 dst_len = Memory::GuardedStrlen(args.arg1);
-        Memory::GuardedStrcpy(args.arg1 + dst_len, args.arg2);
+        if (!Memory::GuardedStrcpy(args.arg1 + dst_len, args.arg2)) {
+            ReportFailedStr("libc::strcat", args.arg1 + dst_len, args.arg2);
+        }
         return args.arg1;
     };
     auto StrncatImpl = [](const GuestArgs& args) -> u64 {
         if (!args.arg1 || !args.arg2 || !args.arg3) return args.arg1;
         const u64 dst_len = Memory::GuardedStrlen(args.arg1);
         const u64 n = args.arg3;
-        Memory::GuardedStrncpy(args.arg1 + dst_len, args.arg2, n);
+        if (!Memory::GuardedStrncpy(args.arg1 + dst_len, args.arg2, n)) {
+            ReportFailedStr("libc::strncat", args.arg1 + dst_len, args.arg2);
+        }
         // Ensure null-terminated
         u8 zero = 0;
-        Memory::GuardedWrite(args.arg1 + dst_len + n, &zero, 1);
+        u64 wrote = 0;
+        if (!Memory::GuardedWrite(args.arg1 + dst_len + n, &zero, 1, &wrote) || wrote != 1) {
+            ReportShortFill("libc::strncat-terminator", args.arg1 + dst_len + n, 1, wrote);
+        }
         return args.arg1;
     };
 

@@ -30,6 +30,34 @@
 #include <string>
 #include <sys/stat.h>
 
+
+// A guarded transfer that moves less than asked has failed. Saying nothing
+// about it is what kept a module's read-only .bss invisible for so long: the
+// guest saw memcpy succeed, the destination kept its old bytes, and the
+// consequence surfaced far away as an unexplained empty string. Rule 05
+// requires the result to be checked; these report the shortfall instead of
+// discarding it.
+static void ReportShortMove(const char* fn, guest_addr_t dest, guest_addr_t src,
+                            u64 want, u64 moved) {
+    LOG_ERROR(HLE, "%s(dest: 0x%llx, src: 0x%llx, size: %llu): moved only %llu "
+              "-- dest writable=%d src readable=%d",
+              fn, dest, src, want, moved,
+              Memory::IsWritable(dest, want) ? 1 : 0,
+              Memory::IsReadable(src, want) ? 1 : 0);
+}
+
+static void ReportShortFill(const char* fn, guest_addr_t dest, u64 want, u64 moved) {
+    LOG_ERROR(HLE, "%s(dest: 0x%llx, size: %llu): filled only %llu -- writable=%d",
+              fn, dest, want, moved, Memory::IsWritable(dest, want) ? 1 : 0);
+}
+
+static void ReportFailedStr(const char* fn, guest_addr_t dest, guest_addr_t src) {
+    LOG_ERROR(HLE, "%s(dest: 0x%llx, src: 0x%llx): copied nothing -- dest writable=%d "
+              "src readable=%d", fn, dest, src,
+              Memory::IsWritable(dest, 1) ? 1 : 0,
+              Memory::IsReadable(src, 1) ? 1 : 0);
+}
+
 namespace HLE {
 
     // SysVAmd64VaList / GetNextVaListArg / SafeReadCharacter / FormatGuestString
@@ -1716,7 +1744,11 @@ namespace HLE {
 
             LOG_DEBUG(HLE, "libkernel::memset(dest: 0x%llx, ch: %u, count: %llu)", dest, ch, count);
             if (dest && count > 0) {
-                Memory::GuardedSet(dest, static_cast<int>(ch & 0xFF), count);
+                u64 filled = 0;
+                if (!Memory::GuardedSet(dest, static_cast<int>(ch & 0xFF), count, &filled) ||
+                    filled != count) {
+                    ReportShortFill("libkernel::memset", dest, count, filled);
+                }
             }
             return dest;
         };
@@ -1968,7 +2000,10 @@ namespace HLE {
             }
             LOG_DEBUG(HLE, "libkernel::memmove(dest: 0x%llx, src: 0x%llx, count: %llu)", dest, src, count);
             if (dest && src && count > 0) {
-                Memory::GuardedCopy(dest, src, count);
+                u64 moved = 0;
+                if (!Memory::GuardedCopy(dest, src, count, &moved) || moved != count) {
+                    ReportShortMove("libkernel::memmove", dest, src, count, moved);
+                }
             }
             return dest;
         };
@@ -1987,7 +2022,10 @@ namespace HLE {
                 return 0;
             }
             if (old_ptr) {
-                Memory::GuardedCopy(mem, old_ptr, new_size);
+                u64 moved = 0;
+                if (!Memory::GuardedCopy(mem, old_ptr, new_size, &moved) || moved != new_size) {
+                    ReportShortMove("libkernel::realloc", mem, old_ptr, new_size, moved);
+                }
             }
             LOG_DEBUG(HLE, "libkernel::realloc(ptr: 0x%llx, size: %llu) -> 0x%llx", old_ptr, new_size, mem);
             return mem;
@@ -2666,7 +2704,9 @@ namespace HLE {
             guest_addr_t dst = args.arg1, src = args.arg2;
             u64 n = args.arg3;
             if (dst && n > 0 && n < 0x10000000ULL) {
-                Memory::GuardedStrncpy(dst, src, n);
+                if (!Memory::GuardedStrncpy(dst, src, n)) {
+                    ReportFailedStr("libkernel::strncpy", dst, src);
+                }
             }
             return dst;
         };
@@ -2677,7 +2717,9 @@ namespace HLE {
         auto StrcpyImpl = [](const GuestArgs& args) -> u64 {
             guest_addr_t dst = args.arg1, src = args.arg2;
             if (dst && src) {
-                Memory::GuardedStrcpy(dst, src);
+                if (!Memory::GuardedStrcpy(dst, src)) {
+                    ReportFailedStr("libkernel::strcpy", dst, src);
+                }
             }
             return dst;
         };
@@ -2689,7 +2731,9 @@ namespace HLE {
             guest_addr_t dst = args.arg1, src = args.arg2;
             if (dst && src) {
                 u64 dst_len = Memory::GuardedStrlen(dst, UINT64_MAX);
-                Memory::GuardedStrcpy(dst + dst_len, src);
+                if (!Memory::GuardedStrcpy(dst + dst_len, src)) {
+                    ReportFailedStr("libkernel::strcat", dst + dst_len, src);
+                }
             }
             return dst;
         };

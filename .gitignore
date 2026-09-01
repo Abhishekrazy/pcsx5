@@ -148,3 +148,6 @@ GEMINI.md
 /temp/
 /memory/
 /tools/validate_ai_framework.py
+
+# Reference-only clone of shadPS4, not part of the repo
+shadps4_clone/
