@@ -77,15 +77,21 @@ success and dropped GPU work loud, then ratchet each swept class shut.
 Sweeping silent failure while measuring it with silently-failing instruments
 produces unfalsifiable results.
 
-- [ ] **Two CTest cases pass while the process aborts** (VERIFIED here)
-  `CMakeLists.txt:858-874` sets `PASS_REGULAR_EXPRESSION` on `guest_syscall_smoke`
-  and `guest_tls_smoke`; CMake documents that as *replacing* the return-code
-  check. `ctest -R "^guest_syscall_smoke$" -V` prints
-  `FATAL: abort() raised (signal 22)` and reports **Passed**. Every
-  "ctest 50/50" claim in this project is weaker than it sounds.
-  - [ ] Require a zero exit code as well as the marker
-  - [ ] Root-cause the teardown abort the newly-red test exposes, or classify it
-        as a boundary. Do not suppress it (Rule 07).
+- [~] **Two CTest cases pass while the process aborts** (VERIFIED here)
+  `CMakeLists.txt` set `PASS_REGULAR_EXPRESSION` on `guest_syscall_smoke` and
+  `guest_tls_smoke`; CMake documents that as *replacing* the return-code check.
+  Both now run through `tools/run_guest_smoke.cmake`, which requires the marker
+  AND a zero exit AND no `FATAL:` line.
+  - [x] Require a zero exit code as well as the marker
+  - [x] Also reject a `FATAL:` line — needed because the emulator prints
+        `FATAL: abort() raised (signal 22)` and then **exits 0**, so an exit-code
+        check alone still could not catch it. (The roadmap survey reported exit
+        2; measured here it is 0.)
+  - [ ] **Root-cause the teardown abort now exposed.** Both tests are red, which
+        is correct and must not be suppressed (Rule 07). The guest itself
+        succeeds — it prints its marker and calls `sys_exit(status=0)` — and the
+        abort fires *after* that, during emulator teardown. Suite is now 48/50
+        with 2 legitimately red.
 
 - [ ] **The `menus` progress marker is a false positive** (VERIFIED here)
   `session.py:76` matches the bare substring `"menu"`, so it fires on

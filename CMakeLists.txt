@@ -852,23 +852,27 @@ if(BUILD_TESTING)
 
         # Syscall smoke test: writes "Hello Guest\n" via sys_write and exits.
         add_test(NAME guest_syscall_smoke
-            COMMAND pcsx5_cli --strict-imports --report=${CMAKE_BINARY_DIR}/guest_syscall_report.json
-                    ${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
+            COMMAND ${CMAKE_COMMAND}
+                    -DEXE=$<TARGET_FILE:pcsx5_cli>
+                    -DELF=${CMAKE_BINARY_DIR}/test_elf/test_guest.elf
+                    -DREPORT=${CMAKE_BINARY_DIR}/guest_syscall_report.json
+                    -DMARKER=Hello\ Guest
+                    -P ${CMAKE_SOURCE_DIR}/tools/run_guest_smoke.cmake
         )
         set_tests_properties(guest_syscall_smoke PROPERTIES
-            WILL_FAIL FALSE
-            PASS_REGULAR_EXPRESSION "Hello Guest"
             DEPENDS guest_test_elfs
         )
 
         # TLS smoke test: uses fs:0 read/write to verify the VEH trap.
         add_test(NAME guest_tls_smoke
-            COMMAND pcsx5_cli --strict-imports --report=${CMAKE_BINARY_DIR}/guest_tls_report.json
-                    ${CMAKE_BINARY_DIR}/test_elf/tls_guest.elf
+            COMMAND ${CMAKE_COMMAND}
+                    -DEXE=$<TARGET_FILE:pcsx5_cli>
+                    -DELF=${CMAKE_BINARY_DIR}/test_elf/tls_guest.elf
+                    -DREPORT=${CMAKE_BINARY_DIR}/guest_tls_report.json
+                    -DMARKER=TLS\ OK
+                    -P ${CMAKE_SOURCE_DIR}/tools/run_guest_smoke.cmake
         )
         set_tests_properties(guest_tls_smoke PROPERTIES
-            WILL_FAIL FALSE
-            PASS_REGULAR_EXPRESSION "TLS OK"
             DEPENDS guest_test_elfs
         )
     else()
