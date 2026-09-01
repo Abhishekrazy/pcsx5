@@ -542,6 +542,47 @@ void TestOwnershipContract() {
     Memory::Shutdown();
 }
 
+// Protecting one part of a region must not change what is reported for the
+// rest of it. A module is tracked as a single region, and its ELF segments are
+// protected one at a time; recording each segment's rights on the whole region
+// made the last segment processed define them for every page. That is how a
+// title's writable .bss came to be reported read-only while the host pages
+// were genuinely PAGE_READWRITE, so every guarded write into it silently did
+// nothing.
+static void TestPartialProtectKeepsRestWritable() {
+    Memory::Initialize();
+
+    guest_addr_t base = 0;
+    CheckStatus(Memory::Reserve(0, 4 * PAGE_SIZE, &base), Memory::Status::Ok,
+                __FILE__, __LINE__, "reserve four pages");
+    CheckStatus(Memory::Commit(base, 4 * PAGE_SIZE,
+                               Memory::PROT_READ | Memory::PROT_WRITE),
+                Memory::Status::Ok, __FILE__, __LINE__, "commit them read-write");
+
+    EXPECT(Memory::IsWritable(base + 2 * PAGE_SIZE, PAGE_SIZE),
+           "third page writable before any partial protect");
+
+    // Make only the first page read-only, as a loader does for one segment of
+    // a module while the rest of the module stays writable.
+    CheckStatus(Memory::Protect(base, PAGE_SIZE, Memory::PROT_READ),
+                Memory::Status::Ok, __FILE__, __LINE__, "protect first page read-only");
+
+    EXPECT(!Memory::IsWritable(base, PAGE_SIZE),
+           "first page is read-only after protect");
+    EXPECT(Memory::IsWritable(base + 2 * PAGE_SIZE, PAGE_SIZE),
+           "third page still writable after protecting the first");
+
+    Memory::MemoryInfo info{};
+    CheckStatus(Memory::Query(base + 2 * PAGE_SIZE, &info), Memory::Status::Ok,
+                __FILE__, __LINE__, "query the untouched page");
+    EXPECT((info.protection & Memory::PROT_WRITE) != 0,
+           "untouched page reports write permission");
+
+    CheckStatus(Memory::Unmap(base, 4 * PAGE_SIZE), Memory::Status::Ok,
+                __FILE__, __LINE__, "cleanup");
+    Memory::Shutdown();
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
@@ -556,6 +597,7 @@ int main() {
     TestCommitOnFault();
     TestHighProtBitsIgnored();
     TestOwnershipContract();
+    TestPartialProtectKeepsRestWritable();
 
     std::fprintf(stdout, "Memory query: %d check(s), %d failure(s)\n", g_checks, g_failures);
     if (g_failures == 0) {

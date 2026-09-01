@@ -2013,12 +2013,19 @@ namespace HLE {
                 // would have been.
                 u64 copied = 0;
                 if (!Memory::GuardedCopy(dest, src, count, &copied) || copied != count) {
+                    Memory::MemoryInfo di{};
+                    const bool dq = Memory::Query(dest, &di) == Memory::Status::Ok;
                     LOG_ERROR(HLE,
                               "libkernel::memcpy(dest: 0x%llx, src: 0x%llx, count: %llu): "
-                              "copied only %llu -- dest writable=%d src readable=%d",
+                              "copied only %llu -- dest writable=%d src readable=%d | "
+                              "dest query=%d base=0x%llx size=0x%llx prot=0x%x committed=%d "
+                              "reserved=%d win32=0x%x",
                               dest, src, count, copied,
                               Memory::IsWritable(dest, count) ? 1 : 0,
-                              Memory::IsReadable(src, count) ? 1 : 0);
+                              Memory::IsReadable(src, count) ? 1 : 0,
+                              dq ? 1 : 0, di.base_address, di.size, di.protection,
+                              di.is_committed ? 1 : 0, di.is_reserved ? 1 : 0,
+                              di.win32_protection);
                 }
             }
             return dest;

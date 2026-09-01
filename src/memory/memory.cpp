@@ -23,6 +23,10 @@ struct Region {
     u32          protection;  // PROT_* bitmask
     u32          win32_prot;
     bool         committed;
+    // Set when part of this region has been protected differently from the
+    // rest. One protection value cannot describe the region any more, so
+    // Query must take the OS per-page state as authoritative instead.
+    bool         mixed_protection = false;
     Owner        owner   = Owner::None;
     std::string  name;         // diagnostic label (module name, "stack", ...)
     // True when THIS manager performed the host allocation (Reserve/Map/
@@ -722,8 +726,19 @@ Status Protect(guest_addr_t address, u64 size, u32 protection) {
         std::lock_guard<std::mutex> lock(g_regions_mutex);
         for (auto& r : g_regions) {
             if (r.base <= address && address + aligned_size <= r.base + r.size) {
-                r.protection = protection;
-                r.win32_prot = win_prot;
+                if (address == r.base && aligned_size == r.size) {
+                    // The whole region changed, so one value still describes it.
+                    r.protection = protection;
+                    r.win32_prot = win_prot;
+                    r.mixed_protection = false;
+                } else if (protection != r.protection) {
+                    // A sub-range changed. Recording it on the region would
+                    // claim the whole region has these rights, which is how a
+                    // module's writable .bss came to be reported read-only:
+                    // each ELF segment protected in turn overwrote the record
+                    // for all 8MB, and the last segment processed won.
+                    r.mixed_protection = true;
+                }
                 break;
             }
         }
@@ -778,7 +793,8 @@ Status Query(guest_addr_t address, MemoryInfo* out_info) {
         out_info->size         = matched_region->size;
         if (out_info->is_committed) {
             u32 host_prot = TranslateFromWin32(mbi.Protect);
-            out_info->protection = (matched_region->protection != PROT_NONE)
+            out_info->protection = (matched_region->protection != PROT_NONE &&
+                                    !matched_region->mixed_protection)
                                        ? (host_prot & matched_region->protection)
                                        : host_prot;
             if (out_info->protection == PROT_NONE && host_prot != PROT_NONE) {
