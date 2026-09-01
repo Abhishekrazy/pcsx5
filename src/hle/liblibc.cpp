@@ -2609,7 +2609,7 @@ void RegisterLibLibc() {
         char preview[24] = {};
         const char* src = reinterpret_cast<const char*>(args.arg1);
         for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
-        if (args.arg1 > 0x10000) LOG_INFO(HLE, "strtoll(0x%llx,'%s') -> %lld (end+%ld)", args.arg1, preview, v, end - src);
+        if (args.arg1 > 0x10000) LOG_DEBUG(HLE, "strtoll(0x%llx,'%s') -> %lld (end+%ld)", args.arg1, preview, v, end - src);
         
         return static_cast<u64>(v);
     };
@@ -2623,7 +2623,7 @@ void RegisterLibLibc() {
         char preview[24] = {};
         const char* src = reinterpret_cast<const char*>(args.arg1);
         for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
-        if (args.arg1 > 0x10000) LOG_INFO(HLE, "strtoull(0x%llx,'%s') -> %llu (end+%ld)", args.arg1, preview, v, end - src);
+        if (args.arg1 > 0x10000) LOG_DEBUG(HLE, "strtoull(0x%llx,'%s') -> %llu (end+%ld)", args.arg1, preview, v, end - src);
         
         return static_cast<u64>(v);
     };
@@ -2642,7 +2642,7 @@ void RegisterLibLibc() {
             char preview[24] = {};
             const char* src = reinterpret_cast<const char*>(args.arg1);
             for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
-            LOG_INFO(HLE, "strtod(0x%llx,'%s') -> %g (end+%ld)", args.arg1, preview, v,
+            LOG_DEBUG(HLE, "strtod(0x%llx,'%s') -> %g (end+%ld)", args.arg1, preview, v,
                      static_cast<long>(end - reinterpret_cast<const char*>(args.arg1)));
         }
         return bits;
@@ -2659,7 +2659,7 @@ void RegisterLibLibc() {
             char preview[24] = {};
             const char* src = reinterpret_cast<const char*>(args.arg1);
             for (int i = 0; i < 23 && src[i]; ++i) preview[i] = src[i];
-            if (args.arg1 > 0x10000) LOG_INFO(HLE, "strtof(0x%llx,'%s') -> %g (end+%ld)", args.arg1, preview, v,
+            if (args.arg1 > 0x10000) LOG_DEBUG(HLE, "strtof(0x%llx,'%s') -> %g (end+%ld)", args.arg1, preview, v,
                      static_cast<long>(end - reinterpret_cast<const char*>(args.arg1)));
         }
         return static_cast<u64>(bits);
