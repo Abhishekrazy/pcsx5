@@ -982,7 +982,7 @@ namespace HLE {
             Memory::Write<u64>(out + 0x118, mod->eh_frame_hdr_size);
             Memory::Write<u64>(out + 0x120, mod->base_address);
             Memory::Write<u64>(out + 0x128, mod->image_size);
-            LOG_DEBUG(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx, flags=%d, out=0x%llx) -> '%s' "
+            LOG_INFO(HLE, "sceKernelGetModuleInfoForUnwind(addr=0x%llx, flags=%d, out=0x%llx) -> '%s' "
                       "base=0x%llx eh_hdr=0x%llx size=0x%llx",
                       addr, flags, out, mod->name.c_str(), mod->base_address,
                       mod->eh_frame_hdr_addr, mod->image_size);
