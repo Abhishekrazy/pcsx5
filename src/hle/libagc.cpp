@@ -817,9 +817,22 @@ struct AgcGlobalBuffer {
 u64 AgcDrawLayoutHash(const std::vector<AgcGlobalBuffer>& buffers,
                       size_t vs_image_count, size_t ps_image_count) {
     u64 h = 0xCBF29CE484222325ull;
+    h = AgcHashU64(h, buffers.size());
     for (const auto& b : buffers) {
-        h = AgcHashU64(h, b.base);
-        h = AgcHashU64(h, b.size);
+        // Only what the translation actually consumes: which SGPR holds the
+        // base, and the instruction PCs the buffer is used at. b.base and
+        // b.size are runtime bindings -- they reach the GPU through
+        // VkDrawBuffer on every draw and are never read while translating.
+        //
+        // Hashing b.base defeated the cache completely. The base comes from a
+        // ring allocator and moves every frame, so five distinct shader pairs
+        // re-translated 2,536 times in a two-minute run of PPSA02929, one of
+        // them 867 times, each miss rebuilding SPIR-V that was already correct.
+        h = AgcHashU64(h, b.scalar_address);
+        h = AgcHashU64(h, b.vs_pcs.size());
+        for (u32 pc : b.vs_pcs) h = AgcHashU64(h, pc);
+        h = AgcHashU64(h, b.ps_pcs.size());
+        for (u32 pc : b.ps_pcs) h = AgcHashU64(h, pc);
     }
     h = AgcHashU64(h, vs_image_count);
     h = AgcHashU64(h, ps_image_count);
@@ -1618,6 +1631,21 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
 // ---------------------------------------------------------------------------
 // Test/introspection hooks (declared in hle.h).
 // ---------------------------------------------------------------------------
+u64 AgcTestLayoutHash(const u64* bases, const u32* scalar_addrs, u64 count,
+                      u64 vs_image_count, u64 ps_image_count) {
+    std::vector<AgcGlobalBuffer> buffers;
+    buffers.reserve(static_cast<size_t>(count));
+    for (u64 i = 0; i < count; ++i) {
+        AgcGlobalBuffer b;
+        b.base           = bases ? bases[i] : 0;
+        b.size           = 0x1000;
+        b.scalar_address = scalar_addrs ? scalar_addrs[i] : 0;
+        buffers.push_back(b);
+    }
+    return AgcDrawLayoutHash(buffers, static_cast<size_t>(vs_image_count),
+                             static_cast<size_t>(ps_image_count));
+}
+
 u64 AgcGetSubmittedStats(u32 which) {
     std::lock_guard<std::mutex> lk(g_agc_submit_mutex);
     switch (which) {

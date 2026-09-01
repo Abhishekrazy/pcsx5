@@ -273,6 +273,13 @@ namespace HLE {
     // Reads the graphics-queue register shadow (space: 0 = cx, 1 = sh, 2 = uc).
     bool AgcGetShadowRegister(u32 space, u32 reg, u32* value_out);
 
+    // Test hook: the draw-program cache key. Takes plain arrays so the test
+    // does not need the internal buffer struct. Two draws whose buffers differ
+    // only by base address must produce the same key, because the base is a
+    // runtime binding the translation never reads.
+    u64 AgcTestLayoutHash(const u64* bases, const u32* scalar_addrs, u64 count,
+                          u64 vs_image_count, u64 ps_image_count);
+
     // Cooperative guest shutdown ------------------------------------------------
     // The GLFW window lives on the process main thread (which runs the event
     // loop); guest code runs on a dedicated worker thread.  Window close sets

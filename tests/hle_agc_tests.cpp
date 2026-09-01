@@ -779,7 +779,37 @@ void TestDcbDmaData() {
 
 } // namespace
 
+// The draw-program cache key must not move when only a buffer's base address
+// changes. Bases come from a ring allocator and differ every frame, so
+// including one in the key made five distinct shader pairs re-translate 2,536
+// times in a two-minute run of PPSA02929 -- one of them 867 times -- rebuilding
+// SPIR-V that was already correct. The translation reads the scalar address and
+// the instruction PCs; the base reaches the GPU separately as a binding.
+static void TestDrawLayoutHashIgnoresBufferBase() {
+    std::fprintf(stdout, "[TEST] draw layout hash ignores buffer base\n");
+
+    const u32 scalars[2] = {0x8C, 0x0C};
+    const u64 frame0[2]  = {0x2102f2040ull, 0x21139ce00ull};
+    const u64 frame1[2]  = {0x2102f2170ull, 0x21139d200ull}; // same draw, next frame
+
+    const u64 h0 = HLE::AgcTestLayoutHash(frame0, scalars, 2, 1, 1);
+    const u64 h1 = HLE::AgcTestLayoutHash(frame1, scalars, 2, 1, 1);
+    EXPECT_EQ(h0, h1, "same layout at a different base hashes the same");
+
+    // A real layout change must still miss the cache.
+    const u32 other_scalars[2] = {0x8C, 0x0B};
+    EXPECT(HLE::AgcTestLayoutHash(frame0, other_scalars, 2, 1, 1) != h0,
+           "a different scalar address changes the key");
+    EXPECT(HLE::AgcTestLayoutHash(frame0, scalars, 1, 1, 1) != h0,
+           "a different buffer count changes the key");
+    EXPECT(HLE::AgcTestLayoutHash(frame0, scalars, 2, 2, 1) != h0,
+           "a different vs image count changes the key");
+    EXPECT(HLE::AgcTestLayoutHash(frame0, scalars, 2, 1, 2) != h0,
+           "a different ps image count changes the key");
+}
+
 int main() {
+    TestDrawLayoutHashIgnoresBufferBase();
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
 
