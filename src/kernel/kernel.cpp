@@ -161,6 +161,109 @@ namespace Kernel {
     void ArmWatchpointForCurrentThread() {
         ArmWatchpointOnThisThread();
     }
+
+    // ---- guest execution sampler ----------------------------------------
+    // Suspends each guest thread just long enough to read its RIP. Sampling is
+    // the only way to see a guest that is stuck without faulting; a frozen run
+    // otherwise leaves nothing behind but its last unrelated log line.
+    static std::atomic<bool> g_sampler_run{false};
+    static std::thread*      g_sampler_thread = nullptr;
+
+    static std::string DescribeHostAddress(u64 addr) {
+        HMODULE mod = nullptr;
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                   GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               reinterpret_cast<LPCSTR>(addr), &mod) && mod) {
+            char path[MAX_PATH] = "";
+            GetModuleFileNameA(mod, path, MAX_PATH);
+            const char* base = std::strrchr(path, static_cast<int>(92));
+            char buf[MAX_PATH + 32];
+            std::snprintf(buf, sizeof(buf), "%s+0x%llx", base ? base + 1 : path,
+                          addr - reinterpret_cast<u64>(mod));
+            return buf;
+        }
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "0x%llx", addr);
+        return buf;
+    }
+
+    static void ReportSamples(const std::unordered_map<u64, u64>& hits,
+                              const std::unordered_map<u64, u64>& host_hits,
+                              u64 total, u64 off_guest) {
+        std::vector<std::pair<u64, u64>> ranked(hits.begin(), hits.end());
+        std::sort(ranked.begin(), ranked.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        LOG_ERROR(Kernel, "SAMPLER: %llu samples, %llu inside guest code, %llu elsewhere",
+                  total, total - off_guest, off_guest);
+        for (size_t i = 0; i < ranked.size() && i < 10; ++i) {
+            LOG_ERROR(Kernel, "SAMPLER:   guest+0x%llx  %llu samples (%.1f%%)",
+                      ranked[i].first - 0x800000000ull, ranked[i].second,
+                      total ? (100.0 * ranked[i].second / total) : 0.0);
+        }
+        std::vector<std::pair<u64, u64>> hranked(host_hits.begin(), host_hits.end());
+        std::sort(hranked.begin(), hranked.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        for (size_t i = 0; i < hranked.size() && i < 10; ++i) {
+            LOG_ERROR(Kernel, "SAMPLER:   host %-40s %llu samples (%.1f%%)",
+                      DescribeHostAddress(hranked[i].first).c_str(), hranked[i].second,
+                      total ? (100.0 * hranked[i].second / total) : 0.0);
+        }
+    }
+
+    static void SamplerLoop(unsigned interval_ms) {
+        std::unordered_map<u64, u64> hits;        // guest RIP -> count
+        std::unordered_map<u64, u64> host_hits;   // host page -> count
+        u64 total = 0, off_guest = 0;
+        // Report as we go, not only at shutdown: a crashing run never reaches a
+        // clean shutdown, and those are exactly the runs worth sampling.
+        auto next_report = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (g_sampler_run.load()) {
+            for (auto* gt : CpuCore::GetAllThreads()) {
+                if (!gt || !gt->host_thread) continue;
+                const HANDLE h = reinterpret_cast<HANDLE>(gt->host_thread);
+                if (::SuspendThread(h) == (DWORD)-1) continue;
+                CONTEXT ctx{};
+                ctx.ContextFlags = CONTEXT_CONTROL;
+                const bool ok = ::GetThreadContext(h, &ctx) != 0;
+                ::ResumeThread(h);
+                if (!ok) continue;
+                ++total;
+                if (ctx.Rip >= 0x800000000ull && ctx.Rip < 0x900000000ull) {
+                    ++hits[ctx.Rip & ~0xFull];   // bucket to 16 bytes
+                } else {
+                    // Host code. Guest threads spend most of their time inside
+                    // HLE calls, so where they are parked matters as much as
+                    // guest RIPs -- a thread blocked in a wait is the shape of
+                    // a title that renders but never progresses. Bucket by the
+                    // module that owns the address.
+                    ++off_guest;
+                    ++host_hits[ctx.Rip & ~0xFFFull];
+                }
+            }
+            if (std::chrono::steady_clock::now() >= next_report) {
+                ReportSamples(hits, host_hits, total, off_guest);
+                next_report = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+        }
+        ReportSamples(hits, host_hits, total, off_guest);
+    }
+
+    void StartGuestSampler() {
+        const u64 interval = EnvU64("PCSX5_SAMPLE_MS", 0);
+        if (!interval || g_sampler_thread) return;
+        g_sampler_run.store(true);
+        g_sampler_thread = new std::thread(SamplerLoop, static_cast<unsigned>(interval));
+        LOG_INFO(Kernel, "Guest sampler running every %llu ms", interval);
+    }
+
+    void StopGuestSampler() {
+        if (!g_sampler_thread) return;
+        g_sampler_run.store(false);
+        if (g_sampler_thread->joinable()) g_sampler_thread->join();
+        delete g_sampler_thread;
+        g_sampler_thread = nullptr;
+    }
     static PVOID g_veh_handler = nullptr;
     static LPTOP_LEVEL_EXCEPTION_FILTER g_prev_exception_filter = nullptr;
     static GuestTlsContext g_guest_tls;
@@ -1233,6 +1336,7 @@ namespace Kernel {
         // the patched TLS stubs and reserve stack for the overflow handler.
         TlsPatch::BindCurrentThread(g_guest_tls.ThreadPointer());
         ArmWatchpointOnThisThread();   // no-op unless PCSX5_WATCH_ADDR is set
+        StartGuestSampler();           // no-op unless PCSX5_SAMPLE_MS is set
         ArmStackGuarantee();
 
         g_guest_segments = main_module.segments;

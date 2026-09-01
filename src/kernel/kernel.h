@@ -46,6 +46,14 @@ namespace Kernel {
     // thread that runs guest code must arm itself.
     void ArmWatchpointForCurrentThread();
 
+    // Periodic sampler for guest execution, enabled with PCSX5_SAMPLE_MS.
+    // A frozen guest reports nothing: it is not faulting, not crashing and not
+    // logging, so there is no way to see where it is spinning. This suspends
+    // each guest thread briefly, records its RIP, and reports the hot addresses
+    // at shutdown. Off unless the variable is set.
+    void StartGuestSampler();
+    void StopGuestSampler();
+
     // Configure PRX module resolution.  `game_dir` is the directory of the
     // main module (its `sce_module/` sub-directory is searched first);
     // `firmware_modules_dir` (may be empty) holds user-supplied firmware
