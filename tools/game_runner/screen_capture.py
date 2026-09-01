@@ -7,6 +7,28 @@ from PIL import ImageGrab, Image
 import math
 
 user32 = ctypes.windll.user32
+gdi32 = ctypes.windll.gdi32
+
+
+class _POINT(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+class _BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_int32),
+                ("biHeight", ctypes.c_int32), ("biPlanes", ctypes.c_uint16),
+                ("biBitCount", ctypes.c_uint16), ("biCompression", ctypes.c_uint32),
+                ("biSizeImage", ctypes.c_uint32), ("biXPelsPerMeter", ctypes.c_int32),
+                ("biYPelsPerMeter", ctypes.c_int32), ("biClrUsed", ctypes.c_uint32),
+                ("biClrImportant", ctypes.c_uint32)]
+
+
+# WindowFromPoint takes POINT by value and returns a handle; without these the
+# handle is truncated on 64-bit Windows and every occlusion check misreports.
+user32.WindowFromPoint.argtypes = [_POINT]
+user32.WindowFromPoint.restype = ctypes.wintypes.HWND
+user32.GetAncestor.argtypes = [ctypes.wintypes.HWND, ctypes.c_uint]
+user32.GetAncestor.restype = ctypes.wintypes.HWND
 
 def find_window_by_title(window_title_substring):
     """Return the HWND of the first visible window whose title contains the
@@ -134,13 +156,119 @@ def capture_rect(rect, output_path):
         return None
 
 
+def _window_is_unobstructed(hwnd, rect):
+    """True when `hwnd` (or one of its children) is the top-level window at
+    every sampled point of its own rectangle.
+
+    Used only to decide whether a screen grab would photograph the emulator or
+    whatever happens to be lying on top of it.  Sampling five points rather than
+    the whole rect keeps this cheap; a window covered only in a corner still
+    reads as obstructed at one of the samples in practice, and the cost of a
+    false "obstructed" is a skipped frame, which is safe."""
+    left, top, right, bottom = rect
+    w, h = right - left, bottom - top
+    if w <= 2 or h <= 2:
+        return False
+    xs = (left + w // 4, left + w // 2, right - w // 4)
+    ys = (top + h // 4, top + h // 2, bottom - h // 4)
+    points = ((xs[1], ys[1]), (xs[0], ys[0]), (xs[2], ys[0]),
+              (xs[0], ys[2]), (xs[2], ys[2]))
+    GA_ROOT = 2
+    for x, y in points:
+        pt = _POINT(x, y)
+        top_hwnd = user32.WindowFromPoint(pt)
+        if not top_hwnd:
+            return False
+        root = user32.GetAncestor(top_hwnd, GA_ROOT) or top_hwnd
+        if root != hwnd:
+            return False
+    return True
+
+
+def _capture_window_surface(hwnd, width, height):
+    """Ask the window to render itself into a bitmap via PrintWindow, and return
+    a PIL image, or None if it declines.
+
+    This reads the window's own surface rather than the screen, so an overlapping
+    window cannot contaminate the result.  It was assumed this would fail for a
+    Vulkan-presented window and return black; measured on this emulator it does
+    not -- PrintWindow returns the drawn frame, non-client frame included, which
+    is the same framing the previous screen-rect grab produced."""
+    hdc = user32.GetDC(hwnd)
+    if not hdc:
+        return None
+    mem_dc = bmp = None
+    try:
+        mem_dc = gdi32.CreateCompatibleDC(hdc)
+        bmp = gdi32.CreateCompatibleBitmap(hdc, width, height)
+        if not mem_dc or not bmp:
+            return None
+        gdi32.SelectObject(mem_dc, bmp)
+        # PW_RENDERFULLCONTENT (2) is required for windows whose content is
+        # composited by the GPU; without it some of them print blank.
+        if not user32.PrintWindow(hwnd, mem_dc, 2):
+            return None
+        buf = ctypes.create_string_buffer(width * height * 4)
+        info = _BITMAPINFOHEADER()
+        info.biSize = ctypes.sizeof(_BITMAPINFOHEADER)
+        info.biWidth = width
+        info.biHeight = -height          # negative: top-down rows
+        info.biPlanes = 1
+        info.biBitCount = 32
+        info.biCompression = 0           # BI_RGB
+        if not gdi32.GetDIBits(mem_dc, bmp, 0, height, buf,
+                               ctypes.byref(info), 0):
+            return None
+        return Image.frombuffer("RGBA", (width, height), buf,
+                                "raw", "BGRA", 0, 1).convert("RGB")
+    except Exception:
+        return None
+    finally:
+        if bmp:
+            gdi32.DeleteObject(bmp)
+        if mem_dc:
+            gdi32.DeleteDC(mem_dc)
+        user32.ReleaseDC(hwnd, hdc)
+
+
 def capture_hwnd(hwnd, output_path):
-    """Capture an explicit window handle.  Returns None when the window is not
-    on screen, which the caller must distinguish from 'captured a black frame'."""
+    """Capture an explicit window handle.  Returns None when the window cannot
+    be photographed, which the caller must distinguish from 'captured a black
+    frame'.
+
+    The window's own surface is read first.  A screen grab is used only when
+    that fails AND the window is verified to be the top-level window across its
+    rectangle, because a screen grab of a covered window returns the covering
+    window's pixels.  That is not a hypothetical: a 20-minute run recorded an
+    unrelated editor window as emulator frames, and its frozen/unique-frame
+    figures were computed from them.
+
+    A frame is never invented.  If neither route can produce the emulator's own
+    pixels, the caller sees None and the run is reported as having no frame at
+    that sample, which is the honest outcome."""
+    if not hwnd or not user32.IsWindow(hwnd):
+        return None
+    if user32.IsIconic(hwnd):
+        return None
     rect = get_hwnd_rect(hwnd)
     if rect is None:
         return None
-    return capture_rect(rect, output_path)
+    left, top, right, bottom = rect
+    if left < -32000 or right <= left or bottom <= top:
+        return None
+
+    img = _capture_window_surface(hwnd, right - left, bottom - top)
+    if img is None:
+        if not _window_is_unobstructed(hwnd, rect):
+            return None
+        img = capture_rect(rect, output_path)
+        return img
+    try:
+        img.save(output_path)
+    except Exception as e:
+        print(f"Screen capture failed: {e}")
+        return None
+    return img
 
 
 def frame_diff_ratio(img1, img2, size=(128, 128)):
