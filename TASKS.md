@@ -379,6 +379,29 @@ surface, so where it differs from us the difference is usually load-bearing.
   carries offset 0, measured across a full run, so the title cannot show the
   difference.
 
+- [x] **CB_COLOR0 high address bits read from the right register** — IMPLEMENTED
+  `kCbColor0BaseHi` was `0x319`, which is not a register — it looks like a guess
+  at "the one after BASE". The high bits are `CB_COLOR0_BASE_EXT` at `0x390`:
+  both reference emulators name it that, and **our own Gen5 defaults table
+  contains 0x390 and no 0x319 at all**, which is the local evidence the old
+  value was never real. Composition unchanged and matches GFX10:
+  `(BASE_EXT << 40) | (BASE << 8)`.
+  Unverifiable at runtime: no tracked title sets either register, so
+  `vs baseline unchanged` is the most that can be said. ctest 52/52.
+
+- [ ] **A way to drive the PM4 walker without a GPU**
+  Testing anything in the walker currently means `sceAgcDriverSubmitDcb`, which
+  reaches real GPU work and segfaults `hle_agc_tests`. Four routes around it were
+  tried and all crashed — mapped index buffer, memory inside the command buffer,
+  a zero index count, and recording state at parse time rather than at
+  execution. `VkDrawExecute` is documented as a safe no-op without a device, so
+  the crash is elsewhere in the submit path and has not been located.
+  This blocks tests for the index-offset fix and for every other walker
+  behaviour, so it is worth more than any single one of them.
+  *Note:* the emulator arguably should not crash when walking a command buffer
+  with no GPU present, so this may be a robustness defect rather than only a
+  test-harness gap.
+
 - [ ] **Execute or explain the skipped AGC packets** - NOP `0x19` (DMA data),
   `IT_EVENT_WRITE` (`0x46`), op `0x76`.
 

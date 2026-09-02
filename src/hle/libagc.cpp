@@ -705,7 +705,15 @@ constexpr u32 kPaClVportXScale     = 0x10F; // XOFFSET 0x110, YSCALE 0x111, YOFF
 constexpr u32 kCbBlend0Control     = 0x1E0;
 constexpr u32 kPaSuScModeCntl      = 0x205;
 constexpr u32 kCbColor0Base        = 0x318;
-constexpr u32 kCbColor0BaseHi      = 0x319;
+// CB_COLOR0_BASE_EXT. The high address bits do not live at 0x319 -- that was a
+// guess at "the register after BASE" and there is no such register. Both
+// reference emulators name this 0x390 (SharpEmu calls it CbColor0BaseExt), and
+// our own Gen5 register-defaults table contains 0x390 while containing no 0x319
+// at all, which is the local evidence that the old value was never real.
+//
+// The composition below is unchanged and matches GFX10: the address is
+// (BASE_EXT << 40) | (BASE << 8).
+constexpr u32 kCbColor0BaseHi      = 0x390;
 constexpr u32 kCbColor0Info        = 0x31C;
 constexpr u32 kCbColor0Attrib2     = 0x3B0;
 constexpr u32 kVgtPrimitiveTypeUc  = 0x242; // uconfig space
