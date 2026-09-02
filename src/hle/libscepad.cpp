@@ -22,11 +22,33 @@ namespace HLE {
 
             LOG_DEBUG(HLE, "scePadGetData(port: %u, data: 0x%llx) called", port, data_ptr);
 
-            // Return 0 (no data/error) - pad not connected
+            // Return 0 (no data/error) - pad not connected.
+            //
+            // This used to zero the buffer with a loop of Memory::Write<u64>,
+            // which is a raw `*(T*)addr = value` host store: no page check, no
+            // demand-commit, no failure report.  Rule 05 forbids it precisely
+            // because a guest page can be unwritable or uncommitted, and a raw
+            // store there faults where the fault cannot be handled.  A
+            // PROT_READ guest page is genuinely host-read-only -- a plain
+            // memset to one terminates the process -- so this was writing into
+            // memory whose protection nothing had consulted.
+            //
+            // The 64-byte length is inherited and deliberately unchanged:
+            // ScePadData is 0x78 bytes, so 64 is either wrong or an older
+            // layout, and settling which needs a caller observed at runtime
+            // rather than a guess made while fixing something else.
             if (data_ptr) {
-                // Zero out the pad data structure
-                for (u32 i = 0; i < 64; i += 8) {
-                    Memory::Write<u64>(data_ptr + i, 0);
+                static const u8 kZeroed[64] = {};
+                u64 written = 0;
+                if (!Memory::GuardedWrite(data_ptr, kZeroed, sizeof(kZeroed),
+                                          &written) ||
+                    written != sizeof(kZeroed)) {
+                    LOG_WARN(HLE, "scePadGetData: buffer 0x%llx unwritable "
+                                  "(%llu of %llu bytes); reporting failure",
+                             static_cast<unsigned long long>(data_ptr),
+                             static_cast<unsigned long long>(written),
+                             static_cast<unsigned long long>(sizeof(kZeroed)));
+                    return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
                 }
             }
 

@@ -336,7 +336,9 @@ void TestPadRejectsUnwritableBuffer() {
     const u64 init_id      = SymbolId("libScePad", "scePadInit");
     const u64 readstate_id = SymbolId("libScePad", "scePadReadState");
     const u64 read_id      = SymbolId("libScePad", "scePadRead");
-    EXPECT(readstate_id && read_id, "pad write-path symbols resolve");
+    const u64 getdata_id   = SymbolId("libScePad", "scePadGetData");
+    EXPECT(readstate_id && read_id && getdata_id,
+           "pad write-path symbols resolve");
 
     HleDispatch(init_id, 0, 0, 0, 0, 0, 0, 0x2100, 0);
 
@@ -355,6 +357,11 @@ void TestPadRejectsUnwritableBuffer() {
               "ReadState(unwritable buffer) must not report success");
     EXPECT_EQ(HleDispatch(read_id, 1, ro, 1, 0, 0, 0, 0x2102, 0), (u64)0,
               "Read(unwritable buffer) must report 0 entries read");
+    // scePadGetData zeroed the buffer through a raw host store that consulted
+    // no page protection at all; it must now refuse the same way.
+    EXPECT_EQ(HleDispatch(getdata_id, 0, ro, 0, 0, 0, 0, 0x2103, 0),
+              ORBIS_GEN2_ERROR_INVALID_ARGUMENT,
+              "GetData(unwritable buffer) must not report success");
 
     Memory::Unmap(ro, 0x1000);
 }

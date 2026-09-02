@@ -469,18 +469,22 @@ surface, so where it differs from us the difference is usually load-bearing.
   analogy. What retail firmware does here is UNKNOWN — on hardware the store
   would most likely fault inside the guest rather than return at all.
 
-- [ ] **`scePadGetData` writes through a raw, unguarded host store**
-  `src/hle/libscepad.cpp:19` zeroes 64 bytes of the guest's buffer with a loop
-  of `Memory::Write<u64>`, which is `*reinterpret_cast<T*>(addr) = value` — no
-  page check, no commit-on-fault, no failure report. Rule 05 forbids exactly
-  this. Not fixed here only because it is a different function with a different
-  contract (it currently reports "no data" unconditionally), and the change
-  budget is one concern per iteration.
-  Evidence: a `PROT_READ` guest page is genuinely host-read-only — a plain
-  `memset` to one segfaults the test process (exit 139), so this store is
-  writing into memory whose protection nothing consulted.
-  Done means: guarded write, checked result, and a case in
-  `TestPadRejectsUnwritableBuffer`.
+- [x] **`scePadGetData` wrote through a raw, unguarded host store** — FIXED
+  `src/hle/libscepad.cpp` zeroed 64 bytes of the guest's buffer with a loop of
+  `Memory::Write<u64>`, which is `*reinterpret_cast<T*>(addr) = value`: no page
+  check, no demand-commit, no failure report. Rule 05 forbids exactly this.
+  Evidence that it mattered: a `PROT_READ` guest page is genuinely host
+  read-only — a plain `memset` to one terminates the process (exit 139) — so
+  this store was writing into memory whose protection nothing had consulted.
+  Now a checked `GuardedWrite`. Before: `GetData(unwritable buffer)` returned 0,
+  reporting success (`lhs=0`). After: returns the invalid-argument error and
+  logs `scePadGetData: buffer 0x... unwritable (0 of 64 bytes)`.
+  **Two things deliberately left alone**, both noted in the source so they are
+  not mistaken for settled: the 64-byte length is inherited and probably wrong
+  (`ScePadData` is 0x78), but fixing it needs a caller observed at runtime, not
+  a guess made while fixing something adjacent; and the error code is INFERRED
+  by analogy with the null-pointer case — what retail firmware returns for an
+  unwritable buffer is UNKNOWN.
 
 - [ ] **`Memory::WriteBuffer` returns `void`, at 45 call sites**
   It wraps `GuardedWrite` and discards the result, so every caller is one line
