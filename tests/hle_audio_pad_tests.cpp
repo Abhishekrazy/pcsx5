@@ -320,6 +320,45 @@ void TestPad() {
     Memory::Unmap(data, 0x1000);
 }
 
+
+// ---------------------------------------------------------------------------
+// The pad read path must not report success for a write the guest never got.
+//
+// scePadReadState and scePadRead each take a guest pointer and fill it. If that write fails -- an unmapped or read-only buffer -- the guest is
+// left holding whatever was in its buffer before, while the call reports 0.
+// A game polling the pad then reads stale bytes forever and has no way to
+// discover why, which is the silent-divergence shape Rule 04 exists to stop.
+//
+// A read-only page is the cheapest way to make a guarded write fail without
+// leaving unmapped memory lying around mid-suite.
+// ---------------------------------------------------------------------------
+void TestPadRejectsUnwritableBuffer() {
+    const u64 init_id      = SymbolId("libScePad", "scePadInit");
+    const u64 readstate_id = SymbolId("libScePad", "scePadReadState");
+    const u64 read_id      = SymbolId("libScePad", "scePadRead");
+    EXPECT(readstate_id && read_id, "pad write-path symbols resolve");
+
+    HleDispatch(init_id, 0, 0, 0, 0, 0, 0, 0x2100, 0);
+
+    guest_addr_t ro = 0;
+    EXPECT_EQ(Memory::Map(0, 0x1000, Memory::PROT_READ, &ro),
+              Memory::Status::Ok, "read-only pad buffer mapped");
+    if (!ro) return;
+
+    EXPECT(!Memory::IsWritable(ro, 0x78),
+           "the buffer really is unwritable, or this test proves nothing");
+
+    // Each must refuse rather than claim success. scePadRead returns a count,
+    // so 0 entries read is its way of saying the same thing.
+    EXPECT_EQ(HleDispatch(readstate_id, 1, ro, 0, 0, 0, 0, 0x2101, 0),
+              ORBIS_GEN2_ERROR_INVALID_ARGUMENT,
+              "ReadState(unwritable buffer) must not report success");
+    EXPECT_EQ(HleDispatch(read_id, 1, ro, 1, 0, 0, 0, 0x2102, 0), (u64)0,
+              "Read(unwritable buffer) must report 0 entries read");
+
+    Memory::Unmap(ro, 0x1000);
+}
+
 } // namespace
 
 int main() {
@@ -339,6 +378,7 @@ int main() {
 
     TestAudioOut();
     TestPad();
+    TestPadRejectsUnwritableBuffer();
 
     HLE::Shutdown();
     Memory::Shutdown();

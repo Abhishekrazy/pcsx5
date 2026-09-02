@@ -439,7 +439,60 @@ surface, so where it differs from us the difference is usually load-bearing.
   **Still unverified at the guest level:** no tracked title calls
   `scePadReadState`, so nothing yet proves an injected button reaches guest
   code. Closing that needs either a title that polls the pad or a guest test ELF
-  that does.
+  that does. **The guest-ELF route is not cheap**, which is worth writing down
+  before someone reaches for it: `tests/test_elf/*.cpp` are freestanding clang
+  binaries that talk to the emulator through raw `syscall` instructions. They
+  have no PS5 import table, so they cannot reach `scePadReadState`, which is
+  resolved by NID through `PT_SCE_DYNLIBDATA`. Using one as a pad instrument
+  means hand-building a PS5-shaped import table first.
+
+- [x] **The pad read path reported success for writes the guest never got**
+  `scePadReadState` and `scePadRead` filled the guest's buffer through
+  `Memory::WriteBuffer`, which is guarded but returns `void`. A buffer the
+  emulator could not write to therefore produced a cheerful `0` from
+  `scePadReadState` and `1 entry read` from `scePadRead`, while the guest kept
+  whatever bytes were already in its buffer — a controller frozen mid-state,
+  with no error to test and nothing logged where it broke.
+  The memory subsystem was already detecting it and saying so
+  (`GuardedWrite: invalid write at 0x... (copied 0 of 120 bytes)`); the pad code
+  simply ignored the answer. That is the whole defect, and it is the same shape
+  as `MemcpyImpl` and as `--play-input` being accepted and unread.
+  Both now check the guarded write. `scePadRead` additionally counts only
+  entries the guest actually received, so failed writes no longer consume ring
+  samples the guest never saw.
+  Test: `TestPadRejectsUnwritableBuffer` in `tests/hle_audio_pad_tests.cpp`
+  maps a `PROT_READ` page and passes it in. Before: 2 failures (`lhs=0` for
+  ReadState, `lhs=1` for Read). After: suite passes, with
+  `scePadRead: entry 0 unwritable at 0x... (0 of 120 bytes); returning 0`.
+  INFERRED, and flagged as such in the code: returning the invalid-argument
+  error for an *unwritable* rather than null buffer matches the null case by
+  analogy. What retail firmware does here is UNKNOWN — on hardware the store
+  would most likely fault inside the guest rather than return at all.
+
+- [ ] **`scePadGetData` writes through a raw, unguarded host store**
+  `src/hle/libscepad.cpp:19` zeroes 64 bytes of the guest's buffer with a loop
+  of `Memory::Write<u64>`, which is `*reinterpret_cast<T*>(addr) = value` — no
+  page check, no commit-on-fault, no failure report. Rule 05 forbids exactly
+  this. Not fixed here only because it is a different function with a different
+  contract (it currently reports "no data" unconditionally), and the change
+  budget is one concern per iteration.
+  Evidence: a `PROT_READ` guest page is genuinely host-read-only — a plain
+  `memset` to one segfaults the test process (exit 139), so this store is
+  writing into memory whose protection nothing consulted.
+  Done means: guarded write, checked result, and a case in
+  `TestPadRejectsUnwritableBuffer`.
+
+- [ ] **`Memory::WriteBuffer` returns `void`, at 45 call sites**
+  It wraps `GuardedWrite` and discards the result, so every caller is one line
+  away from the pad defect above: `syscalls.cpp` (15 sites), `libatrac9.cpp`
+  (9), `libscepad.cpp` (3), `libsavedata.cpp` (3), `libpad.cpp` (3, now fixed),
+  `elf.cpp`, `kernel.cpp`, `libaudioout.cpp`, `libuser_service.cpp`, `libnp.cpp`.
+  A convenience wrapper that throws away the one fact its caller needs is a
+  defect generator, not a convenience.
+  This is a survey, not a rewrite: audit the 45 sites, fix the ones on a
+  guest-observable path, and decide whether `WriteBuffer` should return `bool`
+  (with `[[nodiscard]]`) or be retired in favour of `GuardedWrite` outright.
+  Do it as one subsystem per change, not all 45 at once.
 
 - [ ] **ADR-001 steps 2–4 remain** — the pad-state ABI entry point, retiring
   `WindowsDualSenseReader.cs`, and relaxing the single-pad `scePadOpen`

@@ -203,7 +203,30 @@ namespace HLE {
             // Retrieve keyboard/gamepad-mapped controller state from GPU/GLFW
             ScePadData pad_data;
             FillPadData(&pad_data);
-            Memory::WriteBuffer(data_ptr, &pad_data, sizeof(ScePadData));
+
+            // Report the write, do not assume it.  Memory::WriteBuffer is
+            // guarded, but its result is void, so a buffer the guest cannot be
+            // written to used to leave this returning 0 while the guest kept
+            // whatever bytes were already there -- a controller frozen in
+            // whatever state it happened to hold, with nothing logged at the
+            // point of failure and no error for the guest to test.
+            u64 written = 0;
+            if (!Memory::GuardedWrite(data_ptr, &pad_data, sizeof(ScePadData),
+                                      &written) ||
+                written != sizeof(ScePadData)) {
+                LOG_WARN(HLE, "scePadReadState: buffer 0x%llx unwritable "
+                              "(%llu of %llu bytes); reporting failure",
+                         static_cast<unsigned long long>(data_ptr),
+                         static_cast<unsigned long long>(written),
+                         static_cast<unsigned long long>(sizeof(ScePadData)));
+                // Same class of fault as a null pointer -- an output buffer
+                // the call cannot use -- so it takes the same error.  INFERRED:
+                // what retail firmware returns for an unwritable (rather than
+                // null) buffer is UNKNOWN; on hardware the store would most
+                // likely fault inside the guest instead of returning at all.
+                // Resolving that needs a title observed passing a bad pointer.
+                return ORBIS_GEN2_ERROR_INVALID_ARGUMENT;
+            }
             return 0; // Success
         };
         RegisterSymbol("libScePad", "scePadReadState", PadReadState);
@@ -236,15 +259,32 @@ namespace HLE {
 
             const u32 to_read = static_cast<u32>(count) < s_ring_size
                 ? static_cast<u32>(count) : s_ring_size;
-            // Drain oldest-first.
+            // Drain oldest-first, and count only what the guest actually
+            // received.  Consuming ring entries for writes that failed would
+            // discard samples the guest never saw.
             const u32 oldest = (s_ring_head + 64 - s_ring_size) % 64;
+            u32 delivered = 0;
             for (u32 i = 0; i < to_read; ++i) {
                 const ScePadData& entry = s_ring[(oldest + i) % 64];
-                Memory::WriteBuffer(data_ptr + static_cast<u64>(i) * sizeof(ScePadData),
-                                    &entry, sizeof(ScePadData));
+                u64 written = 0;
+                if (!Memory::GuardedWrite(
+                        data_ptr + static_cast<u64>(i) * sizeof(ScePadData),
+                        &entry, sizeof(ScePadData), &written) ||
+                    written != sizeof(ScePadData)) {
+                    LOG_WARN(HLE, "scePadRead: entry %u unwritable at 0x%llx "
+                                  "(%llu of %llu bytes); returning %u",
+                             i,
+                             static_cast<unsigned long long>(
+                                 data_ptr + static_cast<u64>(i) * sizeof(ScePadData)),
+                             static_cast<unsigned long long>(written),
+                             static_cast<unsigned long long>(sizeof(ScePadData)),
+                             delivered);
+                    break;
+                }
+                ++delivered;
             }
-            s_ring_size -= to_read;
-            return to_read;
+            s_ring_size -= delivered;
+            return delivered;
         };
         RegisterSymbol("libScePad", "scePadRead", PadRead);
         RegisterSymbol("libkernel", "q1cHNfGycLI#L#M", PadRead);
