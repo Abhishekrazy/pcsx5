@@ -301,11 +301,17 @@ surface, so where it differs from us the difference is usually load-bearing.
       queue       (after)     8 of 44, black from frame 8 onward
       after revert           39 of 39 had content again
 
-  So the 87% "loss" is not a loss. In a targetless composite model only the
-  final draw composites to the scanout buffer; the earlier ones are intermediate
-  passes that would each need their own render target, and we have none to give
-  them. Replaying them all into the display buffer paints intermediates over the
-  finished image. SharpEmu keeping a single slot is deliberate, not a shortcut.
+  **Why it goes black is NOT established.** I first wrote that the earlier draws
+  are intermediate passes being painted over the finished image. That was
+  reasoning, not measurement, and a later probe contradicts it: the 9–12
+  targetless draws in a frame are *identical in every respect we can observe* —
+  same vertex and pixel shader, same source texture at the same address, the
+  same 6-vertex full-screen quad, and the sampled texture's contents hash the
+  same across all of them. They are not a chain of passes over changing data.
+  A plausible alternative I have not tested: 6x the draw work on a title already
+  at ~9 fps may simply stop frames being presented, and the capture then records
+  black. Until that is measured, "the queue makes it worse" is the observation
+  and the cause is UNKNOWN.
   Reverted (Rule 10) rather than kept and tuned.
   **What this means for the phase:** "stop discarding work" was the wrong frame.
   The draws are discarded because we cannot represent what they render *into*.
@@ -329,6 +335,19 @@ surface, so where it differs from us the difference is usually load-bearing.
   regardless. SharpEmu names the high bits `CbColor0BaseExt = 0x390`, and 0x319
   is absent from our own defaults table while 0x390 is present. Harmless today
   because no title in the fleet sets either, but wrong for one that does.
+
+- [ ] **Where does the differentiating state for these draws live?** — the real
+      Phase 2 question
+  Nine to twelve targetless draws per frame are indistinguishable to us: same
+  shaders, same source texture, same contents, same geometry, no render target.
+  Something must differ between them or the guest would not issue them, and that
+  something is not in any register or packet we currently decode.
+  The unhandled packets are the first place to look — `op 0x76` and NOP sub-op
+  `0x19`, both submitted by the guest and both walked past. If a render target
+  or a per-draw target index is carried there, it would explain both the
+  identical draws and the absent CB_COLOR0 at once.
+  *Confirm before coding:* dump the payload of every `op 0x76` and NOP `0x19`
+  packet for one frame and look for an address that matches a known allocation.
 
 - [ ] **Execute or explain the skipped AGC packets** - NOP `0x19` (DMA data),
   `IT_EVENT_WRITE` (`0x46`), op `0x76`.
