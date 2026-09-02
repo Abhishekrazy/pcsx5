@@ -184,6 +184,10 @@ namespace Kernel {
 
     void SetGuestExitHook(void (*hook)()) { g_guest_exit_hook = hook; }
 
+    static void (*g_periodic_report_hook)() = nullptr;
+
+    void SetPeriodicReportHook(void (*hook)()) { g_periodic_report_hook = hook; }
+
     void RunGuestExitHook() {
         if (!g_guest_exit_hook) return;
         // Run once: a guest that calls exit twice, or exits while another
@@ -411,6 +415,10 @@ namespace Kernel {
             LOG_INFO(Kernel, "Heartbeat: process alive, elapsed=%llds, tls_traps=%llu, tls_patches=%llu, os_thread=%lu",
                      static_cast<long long>(elapsed), TlsPatch::TrapCount(),
                      TlsPatch::PatchedCount(), ::GetCurrentThreadId());
+            // Leave an inventory behind for a run that is killed rather than
+            // exiting: the harness terminates most title runs on a timeout, so
+            // without this they produce no report at all.
+            if (g_periodic_report_hook) g_periodic_report_hook();
         }
     }
 

@@ -49,6 +49,13 @@ namespace Kernel {
     void SetGuestExitHook(void (*hook)());
     void RunGuestExitHook();
 
+    // Run periodically while the guest is alive, to leave an inventory behind
+    // for a run that never exits cleanly. Most title runs are killed by their
+    // harness timeout, so the exit hook above never fires for them and they
+    // would still produce nothing. Unlike that hook this one is repeatable and
+    // must be idempotent: it overwrites its output rather than appending.
+    void SetPeriodicReportHook(void (*hook)());
+
     // Diagnostic data write-watchpoint, selected with PCSX5_WATCH_ADDR (hex,
     // 8-byte aligned).  Uses a hardware debug register rather than page
     // protection: it is exact to the qword, so unrelated writes to the same

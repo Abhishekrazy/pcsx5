@@ -121,9 +121,19 @@ produces unfalsifiable results.
   exit hook now writes it before the process goes down.
   Before/after on the same ELF: report written **NO -> YES**.
 
-- [ ] **The stub-classification regime is inert** - `RegisterStubContract`
-  (`hle.cpp:462`) has no production callers, so `GetStubContract` always returns
-  UNKNOWN.
+- [~] **The stub-classification regime is inert**
+  `RegisterStubContract` (`hle.cpp:462`) has no production callers, so
+  `g_stub_contracts` is always empty and `GetStubContract` always returns
+  `UNKNOWN`. Three call sites branch on that classification and none of them can
+  ever see anything else.
+  - [x] The inventory it depends on now exists. Reports were only written on a
+        clean `sys_exit`, which no title run performs — they are killed by the
+        harness timeout. A periodic flush (30s heartbeat) writes the import
+        report regardless, and a killed PPSA02929 run now yields one:
+        **165 stubs**, with a call-count heat map.
+  - [ ] Populate contracts, which is Rule 04 contract-recovery work per symbol
+        and does not belong in this phase. The inventory above is what makes it
+        possible to do it in call-count order rather than arbitrarily.
 
 - [x] **`boot_success` was true for a frozen run** — FIXED
   It was `status not in ("crashed","no-frame")`, so `frozen`, `exited` and
@@ -170,6 +180,25 @@ produces unfalsifiable results.
         link makes it red, and removing it makes it green again.
 
 ---
+
+## Discovered — from the first stub inventory this project has had
+
+The 165-stub heat map from run PPSA02929_20260902_150735 raises three things
+worth their own investigation. None is understood yet; each is recorded so it is
+not lost.
+
+- [ ] **`_Getptolower` is called 320,567 times in 95 seconds** — more often than
+  `memcpy`. A locale helper is the single hottest HLE call in the emulator.
+  Either the guest genuinely lowercases strings that hard, or we are re-entering
+  it. Worth understanding before any performance work.
+
+- [ ] **Unresolved NID `9BcDykPmo1I` is called 308,960 times** — the second
+  hottest call in the run is a symbol we never resolved. Recovering its name and
+  contract is high-value precisely because of the call count.
+
+- [ ] **`5OqszGpy7Mg` at 151,684 calls is `strtoull`** — matches an independent
+  count taken earlier, which is a useful corroboration that the new inventory
+  reports real numbers.
 
 ## Phase 2 - GPU: stop discarding work
 

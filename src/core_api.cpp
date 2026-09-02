@@ -249,6 +249,18 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     // never reaches pcsx5_shutdown, so the end-of-run report has to be written
     // from there. Before this, 0 of 195 archived runs contained an
     // import_report.json even though 135 asked for one.
+    Kernel::SetPeriodicReportHook([] {
+        // Only the import/stub inventory, which overwrites in place.
+        // PersistSummary also appends to the compat history and writes a
+        // regression report; running that on a timer would add a history entry
+        // every thirty seconds and corrupt the very baseline it feeds.
+        if (!g_state.report_path.empty()) {
+            const std::filesystem::path import_json =
+                std::filesystem::path(g_state.report_path).parent_path() / "import_report.json";
+            HLE::WriteImportReportJson(import_json.string());
+        }
+    });
+
     Kernel::SetGuestExitHook([] {
         if (g_state.loaded || !g_state.summary.target.empty()) {
             PersistSummary(g_state.summary, g_state.report_path,
