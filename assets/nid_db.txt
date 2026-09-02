@@ -1039,3 +1039,6 @@ UaLjloJinow	libSceShareUtility	sceSharePlayTerminate
 bwFjS+bX9mA	libSceUserService	sceUserServiceTerminate
 jqb7HntFQFc	libkernel	sceWebBrowserDialogInitialize
 ocHtyBwHfys	libkernel	sceWebBrowserDialogTerminate
+5OqszGpy7Mg	libSceLibcInternal	strtoull
+QxmSHBCuKTk	libSceLibcInternal	strtoul
+VOBg+iNwB-4	libSceLibcInternal	strtoll

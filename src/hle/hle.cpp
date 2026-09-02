@@ -512,6 +512,25 @@ namespace HLE {
                 return std::string(*friendly);
             }
         }
+        // ParseNidString wants 11 encoded characters PLUS a 4-character tag, so
+        // a symbol registered as a bare NID never parsed and never resolved.
+        // The inventory then printed raw NIDs for exactly the symbols nobody can
+        // recognise: 9BcDykPmo1I is __error, and it sat in the top ten of the
+        // first heat map this project produced, read as an unresolved unknown
+        // when its name was in assets/nid_db.txt all along.
+        //
+        // The decode is only accepted when the table actually knows the value.
+        // A bare 11-character symbol can legitimately be a name rather than a
+        // NID -- "scePadClose" is eleven characters of the same alphabet --
+        // and requiring a hit means such a name is returned unchanged instead
+        // of being renamed into something wrong.
+        if (raw.size() == Common::kPs5NidEncodedLen) {
+            if (auto nid = Common::DecodeNid(raw)) {
+                if (auto friendly = Common::LookupNidName(*nid)) {
+                    return std::string(*friendly);
+                }
+            }
+        }
         return raw;
     }
 

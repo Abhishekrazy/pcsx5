@@ -190,24 +190,40 @@ produces unfalsifiable results.
 
 ---
 
-## Discovered — from the first stub inventory this project has had
+## Resolved — the three items the first stub inventory raised
 
-The 165-stub heat map from run PPSA02929_20260902_150735 raises three things
-worth their own investigation. None is understood yet; each is recorded so it is
-not lost.
+All three were investigated and none was a defect. Kept with their evidence so
+they are not re-opened.
 
-- [ ] **`_Getptolower` is called 320,567 times in 95 seconds** — more often than
-  `memcpy`. A locale helper is the single hottest HLE call in the emulator.
-  Either the guest genuinely lowercases strings that hard, or we are re-entering
-  it. Worth understanding before any performance work.
+- [x] **`_Getptolower`, the hottest call in the emulator** — not a defect. It is
+  implemented at `libkernel.cpp:2088` and builds its table exactly once under
+  `std::call_once`; every later call returns a cached address. It is hot because
+  the guest's Dinkum CRT calls it per case-insensitive operation, which a
+  Construct engine parsing JSON does constantly. The only cost on our side is
+  HLE dispatch, which belongs to the general performance task, not here.
 
-- [ ] **Unresolved NID `9BcDykPmo1I` is called 308,960 times** — the second
-  hottest call in the run is a symbol we never resolved. Recovering its name and
-  contract is high-value precisely because of the call count.
+- [x] **`9BcDykPmo1I`, "an unresolved NID called 308,960 times"** — my record was
+  wrong. It is `__error`, the BSD per-thread errno accessor, it was already in
+  `assets/nid_db.txt` at line 169, and it is implemented at
+  `liblibc.cpp:2569`. Every `errno` check in the guest's libc calls it, so the
+  count is expected.
 
-- [ ] **`5OqszGpy7Mg` at 151,684 calls is `strtoull`** — matches an independent
-  count taken earlier, which is a useful corroboration that the new inventory
-  reports real numbers.
+- [x] **`5OqszGpy7Mg` is `strtoull`** — now VERIFIED rather than inferred from a
+  matching call count. Recomputing the NID of "strtoull" yields `5OqszGpy7Mg`
+  exactly; the same computation reproduces `_Getptolower` and `__error`, which
+  checks the algorithm itself.
+
+### The real defect underneath them
+
+- [x] **The inventory printed raw NIDs for the symbols nobody can recognise**
+  `ParseNidString` requires 11 encoded characters PLUS a 4-character tag, so a
+  symbol registered as a bare NID never parsed and never resolved — which is
+  exactly why `__error` read as an unknown and was recorded as one. The report
+  path now decodes a bare NID too, and accepts it only when the table knows the
+  value, so an 11-character *name* is left alone rather than renamed into
+  something wrong. Three verified `strto*` NIDs added to the database.
+  Top ten went from three opaque NIDs to none; 36 of 165 still show raw NIDs,
+  which is honest — those names are genuinely unknown.
 
 ## Phase 2 - GPU: stop discarding work
 
