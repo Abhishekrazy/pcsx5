@@ -292,20 +292,28 @@ surface, so where it differs from us the difference is usually load-bearing.
 
 ## Phase 2 - GPU: stop discarding work
 
-- [ ] **Execute every targetless draw, not just the last one**
+- [ ] **Execute every targetless draw, not just the last one** — THE FIX
   `st.pending_targetless` is a **single slot**, so all but the last targetless
   draw in a frame are overwritten. Measured loss: **87-88% of all guest draws**
   (2995/372 and 2715/352 across two runs). Now visible per-submit (`8b3bb45`).
   - [ ] Replace the slot with an ordered queue replayed at the flip
   - [ ] Test: a submit carrying N targetless draws executes N, not 1
 
-- [ ] **Recover why the colour-target binding is never observed**
-  CB_COLOR0 registers `0x318`/`0x319`/`0x31C`/`0x3B0` appear in zero of 784
-  captured submits; 2477 indirect context-register writes per frame collapse to
-  53 distinct registers, with no viewport, scissors or blend.
-  *Confirm before coding:* dump the guest blocks each `kRCxRegsIndirect` names -
-  do the writes exist and we lose them, or does the guest bind through a packet
-  we never decode? Record in an audit (Rule 04).
+- [-] **FALSIFIED: "the colour-target binding is never observed" is not a defect**
+  Measured directly by logging every context register the guest sets through the
+  indirect patch path. It sets **54 distinct registers and not one of them is a
+  colour-target register** — none of `0x318`, `0x319`, `0x31C`, `0x390`, `0x3B0`.
+  The full set is shader state only: `SPI_PS_INPUT_CNTL` (0x191–0x1AF), shader
+  configs (0x1B1–0x1C5), `CB_SHADER_MASK`, `CB_TARGET_MASK`, and no viewport,
+  scissor, blend or raster mode either.
+  So the guest genuinely never binds a render target; it composites straight to
+  the scanout buffer. `DecodeRenderTarget` returning false is correct, and the
+  targetless path is the right path for this title — which is precisely why
+  SharpEmu, the emulator ours was modelled on, carries `PendingTargetlessDraw`.
+  Separately noted while checking: `kCbColor0BaseHi = 0x319` looks wrong
+  regardless. SharpEmu names the high bits `CbColor0BaseExt = 0x390`, and 0x319
+  is absent from our own defaults table while 0x390 is present. Harmless today
+  because no title in the fleet sets either, but wrong for one that does.
 
 - [ ] **Execute or explain the skipped AGC packets** - NOP `0x19` (DMA data),
   `IT_EVENT_WRITE` (`0x46`), op `0x76`.
