@@ -225,6 +225,28 @@ they are not re-opened.
   Top ten went from three opaque NIDs to none; 36 of 165 still show raw NIDs,
   which is honest — those names are genuinely unknown.
 
+## Discovered — cached textures are never invalidated
+
+- [ ] **A texture is cached by its descriptor, never by its contents**
+  `TextureIdentity` (`src/gpu/vk_draw.cpp:403`) hashes guest address, width,
+  height, pitch, format, tile mode, mip count and array shape — and nothing
+  about the pixels. If the guest rewrites the data at that address with the same
+  dimensions and format, the key is unchanged, the lookup hits, and the old
+  image is displayed for the rest of the run. Nothing invalidates the entry: the
+  only eviction is capacity (`> 512` entries clears everything).
+  Blast radius: **many titles**. Anything that updates a texture in place —
+  render-to-texture, animated or procedural textures, streamed atlases, dynamic
+  UI, video-on-polygon — shows its first frame forever.
+  The reference emulator tracks this explicitly: `host_gpu/memoryTracker` and
+  `pageManager` maintain dirty ranges per page, with `ValidateGpuDirtyPages` /
+  `ValidateGpuDirtyOwnership` deciding when a cached GPU resource is stale.
+  - [ ] Confirm a title actually rewrites a texture in place before building
+        page tracking — hash contents for small textures as a cheap probe first,
+        and measure how often the hash changes for a fixed descriptor
+  - [ ] Only then decide between content hashing and write-tracking; page
+        protection is the expensive answer and should be justified by a
+        measurement, not adopted because the reference has it
+
 ## Phase 2 - GPU: stop discarding work
 
 - [ ] **Execute every targetless draw, not just the last one**
