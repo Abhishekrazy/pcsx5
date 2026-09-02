@@ -137,9 +137,17 @@ produces unfalsifiable results.
         record judged under older rules is distinguishable rather than silently
         keeping its verdict
 
-- [ ] **Baseline promotion trusts a single sample** - `baseline --update` resets
-  every stability flag to true from one run; a stored PPSA21564 run (29 frames,
-  3 unique, 42.3s freeze in 60s) is recorded as *progressing*.
+- [x] **Baseline promotion trusted a single sample** — FIXED
+  `baseline --update` passed no stability study, and the three stability flags
+  defaulted to `True`, so one run of a title whose status varies between crashed
+  and frozen was written down as having a stable status — and every later
+  comparison trusted it. They now default to **False**: one sample cannot
+  establish stability, and only `measure` can.
+  - [x] Refuse promotion from a record the current classifier did not judge.
+        Verified: an unversioned record is refused with exit 1; a current one
+        promotes normally.
+  - [x] Baseline re-established for PPSA02929 from 3 samples — status frozen,
+        `boot_success` false, stability flags earned rather than assumed.
 
 - [ ] **Python test infrastructure (the repository's first)** - lock the run
   classifier against the 175 stored `record.json` fixtures, so loosening any

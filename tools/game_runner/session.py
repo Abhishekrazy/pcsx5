@@ -678,9 +678,16 @@ def entry_from_record(rec, previous=None, stability=None):
         # Whether the fatal signature and faulting RIP were the same in every
         # sample. Both vary run to run for some titles, so a change in either is
         # only worth reporting when it was steady to begin with.
-        "status_stable": stability.get("status_stable", True) if stability else True,
-        "signature_stable": stability.get("signature_stable", True) if stability else True,
-        "rip_stable": stability.get("rip_stable", True) if stability else True,
+        # One sample cannot establish that anything is stable, so a promotion
+        # without a stability study records "not known to be stable" rather than
+        # asserting it. These defaulted to True, which meant a single run of a
+        # title whose status varies between crashed and frozen was written down
+        # as having a stable status, and every later comparison trusted it.
+        # `measure` sets them from repeated samples; that is the only thing that
+        # can.
+        "status_stable": stability.get("status_stable", False) if stability else False,
+        "signature_stable": stability.get("signature_stable", False) if stability else False,
+        "rip_stable": stability.get("rip_stable", False) if stability else False,
         "crash_location": {
             "signature": rec["crash"]["fatal_signature"],
             "rip": rec["crash"]["last_rip"],
@@ -953,6 +960,16 @@ def cmd_baseline(args):
     db = load_baseline()
     if args.update:
         rec = load_record(args.update)
+        # A record judged by a different classifier cannot be promoted: its
+        # status was decided by rules that no longer apply, and promoting it
+        # would launder an old verdict into the current baseline.
+        rec_version = rec.get("classifier_version")
+        if rec_version != CLASSIFIER_VERSION:
+            print("refusing to promote %s: it was judged by classifier version %s, "
+                  "this is version %d. Re-run the title and promote that record."
+                  % (args.update, rec_version if rec_version is not None else "(unversioned)",
+                     CLASSIFIER_VERSION))
+            return 1
         tid = rec["title_id"]
         db.setdefault("titles", {})
         verdict, notes = compare_to_baseline(rec, db)

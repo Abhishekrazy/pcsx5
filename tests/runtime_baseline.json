@@ -1,13 +1,14 @@
 {
   "schema": "pcsx5-runtime-baseline/1",
-  "updated": "2026-09-01T11:19:01",
-  "git_revision": "1548f21",
+  "updated": "2026-09-02T11:00:53",
+  "git_revision": "fd1a56f",
   "titles": {
     "PPSA02929": {
       "eboot": "Games/PPSA02929-app0/eboot.bin",
       "boot_success": false,
+      "classifier_version": 1,
       "first_frame_s": 2.02,
-      "sustained_runtime_s": 60.26,
+      "sustained_runtime_s": 60.24,
       "status": "frozen",
       "markers": [
         "content",
@@ -17,19 +18,16 @@
         "content",
         "pthreads"
       ],
-      "markers_intermittent": [
-        "first-draw",
-        "shaders"
-      ],
-      "samples": 4,
-      "status_stable": false,
-      "signature_stable": false,
-      "rip_stable": false,
+      "markers_intermittent": [],
+      "samples": 3,
+      "status_stable": true,
+      "signature_stable": true,
+      "rip_stable": true,
       "crash_location": {
         "signature": null,
-        "rip": "0x80012a682",
+        "rip": "0x800201657",
         "module": null,
-        "thread": "62964"
+        "thread": "3864"
       },
       "current_boundary": {
         "summary": "Deterministic termination with STATUS_ACCESS_VIOLATION (0xC0000005) after ~23s, reproduced across three runs. The content and menus markers are reached first, so this is a post-content-load failure. Last logged VEH fault site is guest RIP 0x80016ab48; earlier faults were logged at 0x800133d7c and 0x800120d58, and it is not yet established which is fatal.",
@@ -38,15 +36,14 @@
         "next_step": "Run the investigate-boundary skill; the fatal site is not yet distinguished from handled faults.",
         "doc": null
       },
-      "last_run_id": "PPSA02929_20260901_111800_r3",
-      "git_revision": "1548f21",
+      "last_run_id": "PPSA02929_20260902_105953_r2",
+      "git_revision": "fd1a56f",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2634240,
-        "mtime": "2026-09-01T02:16:00"
+        "size": 2654720,
+        "mtime": "2026-09-02T05:19:08"
       },
-      "updated": "2026-09-01T11:19:01",
-      "classifier_version": 1
+      "updated": "2026-09-02T11:00:53"
     },
     "PPSA21564": {
       "eboot": "Games/PPSA21564-app/eboot.bin",
