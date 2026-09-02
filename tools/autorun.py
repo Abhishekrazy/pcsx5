@@ -31,13 +31,12 @@ CFG = os.path.join(REPO, "pcsx5_config")
 LOGDIR = os.path.join(REPO, ".work", "autologs")
 HIST = os.path.join(REPO, ".work", "autorun_history.jsonl")
 
-MARKERS = {
-    "first-draw": "First guest draw executed",
-    "shaders": "Translating shaders",
-    "pthreads": "scePthreadCreate",
-    "content": "Done load",
-    "menus": "menu",
-}
+# Shared with tools/game_runner/session.py; see boot_markers.py for why the
+# "menus" entry was retired rather than narrowed.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "game_runner"))
+from boot_markers import MARKERS as _MARKER_LIST  # noqa: E402
+MARKERS = dict(_MARKER_LIST)
 
 
 def sh(cmd, timeout=None, cwd=REPO):

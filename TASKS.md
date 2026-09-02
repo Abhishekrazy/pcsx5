@@ -100,12 +100,19 @@ produces unfalsifiable results.
         abort fires *after* that, during emulator teardown. Suite is now 48/50
         with 2 legitimately red.
 
-- [ ] **The `menus` progress marker is a false positive** (VERIFIED here)
-  `session.py:76` matches the bare substring `"menu"`, so it fires on
-  `images/menutitle-sheet0.png` - a filename being loaded, not a menu reached.
-  Cited as evidence of progress throughout the recent single-title work.
-  - [ ] One shared marker vocabulary for `session.py` and `tools/autorun.py`
-  - [ ] Record the loss of a false signal as such, not as a regression
+- [x] **The `menus` progress marker is a false positive** — FIXED
+  `session.py` matched the bare substring `"menu"`, so it fired on
+  `images/menutitle-sheet0.png` — a filename being loaded, not a menu reached.
+  Reported as evidence of progress throughout the recent single-title work.
+  - [x] Marker table moved to `tools/game_runner/boot_markers.py`, imported by
+        both `session.py` and `tools/autorun.py`, which previously kept separate
+        copies "kept identical" by a comment — and both carried the bad entry
+  - [x] Retired rather than narrowed: no substring of the current log
+        distinguishes "a menu is on screen" from "a file with menu in its name
+        was opened". `RETIRED_MARKERS` records why, so it is not reintroduced
+  - [x] Baseline updated (documented golden change, Rule 07); a run afterwards
+        reports `vs baseline unchanged`, so the loss of a false signal did not
+        masquerade as a regression
 
 - [x] **No run has ever produced an import report** — FIXED
   `sys_exit` called Win32 `ExitProcess`, which never returns and so never

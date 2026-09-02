@@ -66,15 +66,11 @@ CLI_CANDIDATES = [
     os.path.join(REPO, "dist", "pcsx5_cli.exe"),
 ]
 
-# Boot-progress markers, kept identical to tools/autorun.py so that the two
-# harnesses report the same vocabulary.
-MARKERS = [
-    ("first-draw", "First guest draw executed"),
-    ("shaders", "Translating shaders"),
-    ("pthreads", "scePthreadCreate"),
-    ("content", "Done load"),
-    ("menus", "menu"),
-]
+# Boot-progress markers live in boot_markers.py so the two harnesses cannot
+# drift apart, and cannot disagree about which markers are trustworthy. They
+# previously kept separate copies "kept identical" by a comment; both copies
+# carried the same false-positive entry.
+from boot_markers import MARKERS  # noqa: E402
 
 # Formats emitted by src/kernel/kernel.cpp.  Parsed, never guessed.
 RE_RIP = re.compile(r"RIP[=:]\s*(0x[0-9a-fA-F]+)")

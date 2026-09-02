@@ -1,22 +1,20 @@
 {
   "schema": "pcsx5-runtime-baseline/1",
-  "updated": "2026-09-01T02:53:27",
-  "git_revision": "629a950",
+  "updated": "2026-09-01T11:19:01",
+  "git_revision": "1548f21",
   "titles": {
     "PPSA02929": {
       "eboot": "Games/PPSA02929-app0/eboot.bin",
-      "boot_success": false,
+      "boot_success": true,
       "first_frame_s": 2.02,
-      "sustained_runtime_s": 26.54,
-      "status": "crashed",
+      "sustained_runtime_s": 60.26,
+      "status": "frozen",
       "markers": [
         "content",
-        "menus",
         "pthreads"
       ],
       "markers_stable": [
         "content",
-        "menus",
         "pthreads"
       ],
       "markers_intermittent": [
@@ -28,10 +26,10 @@
       "signature_stable": false,
       "rip_stable": false,
       "crash_location": {
-        "signature": "exception-exit",
-        "rip": "0x800128791",
+        "signature": null,
+        "rip": "0x80012a682",
         "module": null,
-        "thread": "61056"
+        "thread": "62964"
       },
       "current_boundary": {
         "summary": "Deterministic termination with STATUS_ACCESS_VIOLATION (0xC0000005) after ~23s, reproduced across three runs. The content and menus markers are reached first, so this is a post-content-load failure. Last logged VEH fault site is guest RIP 0x80016ab48; earlier faults were logged at 0x800133d7c and 0x800120d58, and it is not yet established which is fatal.",
@@ -40,30 +38,33 @@
         "next_step": "Run the investigate-boundary skill; the fatal site is not yet distinguished from handled faults.",
         "doc": null
       },
-      "last_run_id": "PPSA02929_20260901_025300_r3",
-      "git_revision": "629a950",
+      "last_run_id": "PPSA02929_20260901_111800_r3",
+      "git_revision": "1548f21",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
         "size": 2634240,
         "mtime": "2026-09-01T02:16:00"
       },
-      "updated": "2026-09-01T02:53:27"
+      "updated": "2026-09-01T11:19:01"
     },
     "PPSA21564": {
       "eboot": "Games/PPSA21564-app/eboot.bin",
-      "boot_success": false,
+      "boot_success": true,
       "first_frame_s": 2.02,
-      "sustained_runtime_s": 34.64,
-      "status": "crashed",
-      "markers": [
-        "pthreads"
-      ],
+      "sustained_runtime_s": 60.18,
+      "status": "frozen",
+      "markers": [],
+      "markers_stable": [],
+      "markers_intermittent": [],
+      "samples": 4,
+      "status_stable": true,
+      "signature_stable": true,
+      "rip_stable": true,
       "crash_location": {
-        "signature": "guest-null-call",
-        "rip": "0x80105ffdb",
+        "signature": null,
+        "rip": null,
         "module": null,
-        "thread": "4420",
-        "rip_note": "last logged RIP; not yet confirmed as the fatal site"
+        "thread": null
       },
       "current_boundary": {
         "summary": "GUEST NULL-CALL after ~35s: an indirect call through a null function pointer (logged RIP=0x0, code=0xC0000005, RAX=0x80faf00c0, RDI=0x80eb9f880), followed by termination with 0xC0000005. Only the pthreads marker is reached, so this precedes content load. Frame change stays low (max 0.034), consistent with a boot screen rather than game content.",
@@ -72,99 +73,113 @@
         "next_step": "Identify the caller of the null pointer and whether it is an unresolved import; run investigate-boundary then recover-contract.",
         "doc": null
       },
-      "last_run_id": "PPSA21564_20260830_065127_baseline",
-      "git_revision": "66e0369",
+      "last_run_id": "PPSA21564_20260901_111432_r3",
+      "git_revision": "1548f21",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2625024,
-        "mtime": "2026-08-29T22:43:28"
+        "size": 2634240,
+        "mtime": "2026-09-01T02:16:00"
       },
-      "updated": "2026-08-30T06:52:09",
-      "regression_state": "unknown"
+      "updated": "2026-09-01T11:15:33"
     },
     "PPSA10112": {
       "eboot": "Games/PPSA10112-app/eboot.bin",
       "boot_success": false,
-      "first_frame_s": 2.37,
-      "sustained_runtime_s": 16.24,
+      "first_frame_s": 2.02,
+      "sustained_runtime_s": 15.06,
       "status": "crashed",
       "markers": [],
+      "markers_stable": [],
+      "markers_intermittent": [],
+      "samples": 4,
+      "status_stable": true,
+      "signature_stable": true,
+      "rip_stable": true,
       "crash_location": {
         "signature": "exception-exit",
         "rip": "0x800a2bd0c",
         "module": null,
-        "thread": "42368"
+        "thread": "61768"
       },
       "current_boundary": {
         "summary": null,
         "classification": "UNKNOWN",
         "doc": null
       },
-      "last_run_id": "PPSA10112_20260831_100617",
-      "git_revision": "2db595e",
+      "last_run_id": "PPSA10112_20260901_111113_r3",
+      "git_revision": "1548f21",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2627584,
-        "mtime": "2026-08-31T09:42:04"
+        "size": 2634240,
+        "mtime": "2026-09-01T02:16:00"
       },
-      "updated": "2026-08-31T10:08:48",
-      "regression_state": "unknown"
+      "updated": "2026-09-01T11:11:29"
     },
     "PPSA15552": {
       "eboot": "Games/PPSA15552-app/eboot.bin",
       "boot_success": false,
       "first_frame_s": 2.02,
-      "sustained_runtime_s": 4.45,
+      "sustained_runtime_s": 4.17,
       "status": "crashed",
       "markers": [],
+      "markers_stable": [],
+      "markers_intermittent": [],
+      "samples": 4,
+      "status_stable": true,
+      "signature_stable": true,
+      "rip_stable": true,
       "crash_location": {
         "signature": "exception-exit",
-        "rip": "0x81000addd",
+        "rip": "0x81000b87f",
         "module": null,
-        "thread": "43596"
+        "thread": "46116"
       },
       "current_boundary": {
         "summary": null,
         "classification": "UNKNOWN",
         "doc": null
       },
-      "last_run_id": "PPSA15552_20260831_100634",
-      "git_revision": "2db595e",
+      "last_run_id": "PPSA15552_20260901_110845_r3",
+      "git_revision": "1548f21",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2627584,
-        "mtime": "2026-08-31T09:42:04"
+        "size": 2634240,
+        "mtime": "2026-09-01T02:16:00"
       },
-      "updated": "2026-08-31T10:08:49",
-      "regression_state": "unknown"
+      "updated": "2026-09-01T11:08:49"
     },
     "PPSA20591": {
       "eboot": "Games/Poppy Playtime Chapter 1     01.002 PPSA20591/eboot.bin",
       "boot_success": false,
       "first_frame_s": 2.02,
-      "sustained_runtime_s": 15.6,
+      "sustained_runtime_s": 15.37,
       "status": "crashed",
       "markers": [],
+      "markers_stable": [],
+      "markers_intermittent": [],
+      "samples": 4,
+      "status_stable": true,
+      "signature_stable": true,
+      "rip_stable": true,
       "crash_location": {
         "signature": "exception-exit",
         "rip": "0x801399fa0",
         "module": null,
-        "thread": "26696"
+        "thread": "60228"
       },
       "current_boundary": {
         "summary": null,
         "classification": "UNKNOWN",
         "doc": null
       },
-      "last_run_id": "PPSA20591_20260831_100639",
-      "git_revision": "2db595e",
+      "last_run_id": "PPSA20591_20260901_111006_r3",
+      "git_revision": "1548f21",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2627584,
-        "mtime": "2026-08-31T09:42:04"
+        "size": 2634240,
+        "mtime": "2026-09-01T02:16:00"
       },
-      "updated": "2026-08-31T10:08:49",
-      "regression_state": "unknown"
+      "updated": "2026-09-01T11:10:22"
     },
     "PPSA01668": {
       "eboot": "Games/[SuperPSX]-Super.Monkey.Ball.Banana.Mania-PPSA01668-USA-Game(v01.004) [APR-EMU]-PS5/eboot.bin",
@@ -173,26 +188,31 @@
       "sustained_runtime_s": 5.86,
       "status": "crashed",
       "markers": [],
+      "markers_stable": [],
+      "markers_intermittent": [],
+      "samples": 4,
+      "status_stable": true,
+      "signature_stable": true,
+      "rip_stable": true,
       "crash_location": {
         "signature": "guest-null-call",
         "rip": "0x0",
         "module": "Unknown",
-        "thread": "40068"
+        "thread": "64684"
       },
       "current_boundary": {
         "summary": null,
         "classification": "UNKNOWN",
         "doc": null
       },
-      "last_run_id": "PPSA01668_20260831_100655",
-      "git_revision": "2db595e",
+      "last_run_id": "PPSA01668_20260901_110912_r3",
+      "git_revision": "1548f21",
       "build_revision": {
         "binary": "build/bin/Release/pcsx5_core.dll",
-        "size": 2627584,
-        "mtime": "2026-08-31T09:42:04"
+        "size": 2634240,
+        "mtime": "2026-09-01T02:16:00"
       },
-      "updated": "2026-08-31T10:08:49",
-      "regression_state": "unknown"
+      "updated": "2026-09-01T11:09:18"
     }
   }
 }
