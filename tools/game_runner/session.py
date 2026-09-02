@@ -74,6 +74,48 @@ CLI_CANDIDATES = [
 #      progression additionally requires >=80% capture coverage.
 CLASSIFIER_VERSION = 1
 
+# Progression thresholds. Named rather than inlined so a test can assert that
+# loosening any one of them changes a verdict -- the failure mode this guards
+# against is not a bug but an edit, made to turn a run green.
+CHANGE_THRESHOLD_DEFAULT = 0.005
+FREEZE_FRACTION_MAX = 0.25    # no single freeze may cover this much of a run
+DISTINCT_RATIO_MIN = 0.5      # most sampled frames must actually differ
+COVERAGE_MIN = 0.8            # captures that succeeded, of samples attempted
+
+
+def classify_progression(frames, longest_freeze, run_seconds, capture_failures,
+                         change_threshold=CHANGE_THRESHOLD_DEFAULT):
+    """Decide whether a run was observed progressing. Pure, so it can be
+    replayed over stored records.
+
+    Four independent conditions, because each alone passed a run that was
+    plainly stuck:
+
+      - some change large enough to count at all;
+      - no single freeze covering a quarter of the run;
+      - most sampled frames actually distinct;
+      - enough captures succeeded to make the sample representative.
+
+    The last exists because the other three are computed over the frames that
+    survived, so dropping samples raises the distinct ratio and shortens the
+    measured freeze -- both pushing toward "progressing" exactly when the data
+    is worst. Replaying this over a real frozen run with two thirds of its
+    samples removed reports it as progressing.
+
+    Returns (progressing, capture_coverage).
+    """
+    changes = [f["change"] for f in frames if f.get("change") is not None]
+    changed_enough = bool(changes) and max(changes) >= change_threshold
+    freeze_dominates = (run_seconds > 0 and
+                        longest_freeze >= FREEZE_FRACTION_MAX * run_seconds)
+    distinct_ratio = (len({f["hash"] for f in frames}) / len(frames)) if frames else 0.0
+    mostly_distinct = distinct_ratio >= DISTINCT_RATIO_MIN
+    attempted = len(frames) + capture_failures
+    coverage = (len(frames) / attempted) if attempted else 0.0
+    progressing = (changed_enough and not freeze_dominates and mostly_distinct
+                   and coverage >= COVERAGE_MIN)
+    return progressing, coverage
+
 # Boot-progress markers live in boot_markers.py so the two harnesses cannot
 # drift apart, and cannot disagree about which markers are trustworthy. They
 # previously kept separate copies "kept identical" by a comment; both copies
@@ -505,23 +547,10 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
     # second freeze was reported as progressing; its final frame was a blank
     # screen. Kyty playing this same title samples every frame distinct, so a
     # genuinely running game clears these easily.
-    changed_enough = bool(changes) and max(changes) >= args.change_threshold
     run_seconds = max(0.0, ended - started)
-    freeze_dominates = (run_seconds > 0 and longest_freeze >= 0.25 * run_seconds)
-    distinct_ratio = (len({f["hash"] for f in frames}) / len(frames)) if frames else 0.0
-    mostly_distinct = distinct_ratio >= 0.5
-    # Coverage: frames actually captured, against samples attempted. A run whose
-    # captures mostly failed cannot support a progression claim -- the surviving
-    # frames are an unrepresentative subset, and the arithmetic above is biased
-    # toward "progressing" precisely when data is missing. Replaying this
-    # classifier over a real frozen run (PPSA02929_20260901_202810: 89 frames,
-    # 36 unique, 52.3s freeze) with two thirds of its samples dropped reports it
-    # as progressing, so this is not a theoretical concern.
-    attempted = len(frames) + capture_failures[0]
-    capture_coverage = (len(frames) / attempted) if attempted else 0.0
-    good_coverage = capture_coverage >= 0.8
-    progressing = (changed_enough and not freeze_dominates and mostly_distinct
-                   and good_coverage)
+    progressing, capture_coverage = classify_progression(
+        frames, longest_freeze, run_seconds, capture_failures[0],
+        args.change_threshold)
     if capture_failures[0]:
         print("[session] %d of %d captures refused (coverage %.0f%%)%s"
               % (capture_failures[0], attempted, 100.0 * capture_coverage,

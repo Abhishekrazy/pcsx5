@@ -1025,6 +1025,15 @@ add_executable(dump_imports
         add_test(NAME doc_links
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/tools/check_doc_links.py)
+
+        # "progressing" is the only verdict this project treats as success, and
+        # it rests on four thresholds with no test. The risk is not a bug but an
+        # edit -- loosening one to turn a red run green. This replays the stored
+        # runs and fails if a known-stuck run passes, or if a threshold could be
+        # relaxed without changing any verdict.
+        add_test(NAME run_classifier
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/check_run_classifier.py)
     endif()
 
     # ------------------------------------------------------------------------

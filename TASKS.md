@@ -159,9 +159,23 @@ produces unfalsifiable results.
   - [x] Baseline re-established for PPSA02929 from 3 samples — status frozen,
         `boot_success` false, stability flags earned rather than assumed.
 
-- [ ] **Python test infrastructure (the repository's first)** - lock the run
-  classifier against the 175 stored `record.json` fixtures, so loosening any
-  threshold fails a test.
+- [x] **The run classifier is now locked against stored runs** — FIXED
+  "progressing" is the only verdict this project treats as success, and it rested
+  on four thresholds with no test. The risk is not a bug but an edit: loosening
+  one to turn a red run green.
+  - [x] Classifier extracted into a pure `classify_progression`, so it can be
+        replayed over stored records rather than only over live runs
+  - [x] `tools/check_run_classifier.py`, registered as the `run_classifier`
+        CTest: replays **179 stored runs**, requires known-stuck runs to be
+        rejected, and requires every threshold to be load-bearing
+  - [x] Proven to catch an edit: quietly loosening `DISTINCT_RATIO_MIN` from
+        0.5 to 0.05 turns it red; restoring turns it green
+  - [x] No new dependency — plain Python and CTest, matching
+        `check_nid_registrations.py` and `check_doc_links.py`, rather than
+        adding pytest
+  Note: `COVERAGE_MIN` gets a synthetic fixture rather than a corpus assertion.
+  Every archived record predates `capture_failures`, so all replay at 100%
+  coverage and the corpus cannot exercise that guard at all.
 
 - [x] **Documentation paths cited by CLAUDE.md did not exist** — FIXED
   Seven paths every session is told to read led nowhere. `docs/tasks`,
