@@ -268,7 +268,9 @@ namespace HLE {
     void VideoOutSetVrrMode(bool active);
 
     // AGC submitted-DCB walker introspection (libagc.cpp; tests + M1-M3).
-    // which: 0 = total draws, 1 = total dispatches, 2 = total flips (graphics queue).
+    // which: 0 = total draws, 1 = total dispatches, 2 = total flips (graphics queue),
+    //        3 = the index address the most recent draw resolved to, which is the
+    //            index base advanced by DRAW_INDEX_OFFSET_2 first-index.
     u64 AgcGetSubmittedStats(u32 which);
     // Reads the graphics-queue register shadow (space: 0 = cx, 1 = sh, 2 = uc).
     bool AgcGetShadowRegister(u32 space, u32 reg, u32* value_out);

@@ -469,6 +469,16 @@ struct AgcSubmitShadow {
     std::unordered_map<u32, u32> cx, sh, uc;
     u64 index_addr = 0;
     u32 index_count = 0;
+    // DRAW_INDEX_OFFSET_2 carries a first-index in dword 2. It was written by
+    // our own packet emitter and never read back by the walker, so every such
+    // draw rendered from index 0 regardless of which slice the guest asked for.
+    // Measured as 0 on every draw of PPSA02929, so it changes nothing there --
+    // but a title that batches sprites into one index buffer and walks it by
+    // offset would draw its first primitive over and over.
+    u32 index_offset = 0;
+    // The index address the most recent draw resolved to, exposed through
+    // AgcGetSubmittedStats(3) so a test can assert the offset was applied.
+    u64 last_draw_index_addr = 0;
     u32 index_size = 0;
     u32 instances = 1;
     u64 indirect_args = 0;
@@ -601,6 +611,15 @@ void Pm4CaptureSubmit(const char* queue_name, guest_addr_t addr, u32 dword_count
     js << "}\n";
     LOG_INFO(HLE, "PM4 capture: submit %u (%s, %u dwords) -> %s", n, queue_name,
              dword_count, dir);
+}
+
+// Where this draw's indices begin: the bound index base advanced by the
+// first-index that DRAW_INDEX_OFFSET_2 carries. Starting the snapshot here
+// rather than passing a firstIndex to the draw keeps the copied range to
+// exactly the indices the draw uses.
+u64 ResolvedIndexAddr(const AgcSubmitShadow& st) {
+    const u32 stride = st.index_size != 0 ? 4u : 2u;
+    return st.index_addr + static_cast<u64>(st.index_offset) * stride;
 }
 
 void ApplySubmittedRegisters(AgcSubmitShadow& st, guest_addr_t packet,
@@ -1342,7 +1361,8 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
         call.rt_number_type = rt.number_type;
     }
 
-    call.index_addr  = st.index_addr;
+    call.index_addr  = ResolvedIndexAddr(st);
+    st.last_draw_index_addr = call.index_addr;
     call.index_count = draw_count;
     call.index_size  = st.index_size;
     call.instances   = st.instances;
@@ -1525,6 +1545,7 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
         if (op == kItNop && (reg == kRDrawReset || reg == kRAcbReset) && length >= 2) {
             st.cx.clear(); st.sh.clear(); st.uc.clear();
             st.index_addr = 0; st.index_count = 0; st.index_size = 0;
+            st.index_offset = 0;
             st.instances = 1; st.indirect_args = 0;
             st.has_pending_targetless = false;
         }
@@ -1559,6 +1580,12 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
             LOG_INFO(HLE, "AGC %s: draw op=0x%02X count=%u instances=%u (frame draw #%u)",
                      queue_name, op, draw_count, st.instances, draws);
             AgcExecuteDraw(st, draw_count, true);
+        }
+        if (op == kItDrawIndexOffset2 && length >= 5) {
+            st.index_offset = Memory::Read<u32>(packet + 8);
+            // Recorded at parse time so the resolution is observable without
+            // executing a draw, which needs a live GPU.
+            st.last_draw_index_addr = ResolvedIndexAddr(st);
         }
         if (op == kItNop && reg == kRDrawIndexAuto && length >= 2) {
             const u32 auto_count = Memory::Read<u32>(packet + 4);
@@ -1668,6 +1695,7 @@ u64 AgcGetSubmittedStats(u32 which) {
         case 0: return g_agc_graphics_shadow.total_draws;
         case 1: return g_agc_graphics_shadow.total_dispatches;
         case 2: return g_agc_graphics_shadow.total_flips;
+        case 3: return g_agc_graphics_shadow.last_draw_index_addr;
         default: return 0;
     }
 }

@@ -267,7 +267,7 @@ surface, so where it differs from us the difference is usually load-bearing.
   needs one.
 
 - [ ] **Keyboard and mouse input mapped to the pad**
-  `src/input/input_handler.h:199` defines `string_to_keyboard_key_map`, a
+  shadPS4's `input/input_handler.h:199` defines `string_to_keyboard_key_map`, a
   configurable key-to-button binding, alongside `input_mouse.cpp`. We have no
   keyboard path at all. This is already Phase 3's first task; the reference
   gives it a concrete shape to follow rather than inventing one.
@@ -361,6 +361,23 @@ surface, so where it differs from us the difference is usually load-bearing.
 
   Two real defects were found along the way and are recorded separately —
   the texture cache never invalidating, and `kCbColor0BaseHi = 0x319`.
+
+- [x] **DRAW_INDEX_OFFSET_2's first-index is now read** — IMPLEMENTED, not VERIFIED
+  Our packet emitter writes `index_offset` at `packet+8`; the walker never read
+  it back, so every such draw rendered from index 0 whatever slice the guest
+  asked for. A title batching sprites into one index buffer and walking it by
+  offset would draw its first primitive repeatedly.
+  `ResolvedIndexAddr` now advances the index base by the first-index, and the
+  snapshot starts there so the copied range is exactly the indices drawn.
+  **No test.** One was written and abandoned: exercising it through
+  `sceAgcDriverSubmitDcb` segfaults `hle_agc_tests`, because that path reaches
+  real GPU work the test harness has no device for. A crashing test is worse
+  than none, so it was removed rather than committed. Covering this needs a way
+  to drive the walker without executing draws — worth building, and it would
+  cover several other AGC behaviours at once.
+  **No runtime evidence either:** every `DRAW_INDEX_OFFSET_2` in PPSA02929
+  carries offset 0, measured across a full run, so the title cannot show the
+  difference.
 
 - [ ] **Execute or explain the skipped AGC packets** - NOP `0x19` (DMA data),
   `IT_EVENT_WRITE` (`0x46`), op `0x76`.
