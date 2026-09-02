@@ -336,18 +336,31 @@ surface, so where it differs from us the difference is usually load-bearing.
   is absent from our own defaults table while 0x390 is present. Harmless today
   because no title in the fleet sets either, but wrong for one that does.
 
-- [ ] **Where does the differentiating state for these draws live?** — the real
-      Phase 2 question
-  Nine to twelve targetless draws per frame are indistinguishable to us: same
-  shaders, same source texture, same contents, same geometry, no render target.
-  Something must differ between them or the guest would not issue them, and that
-  something is not in any register or packet we currently decode.
-  The unhandled packets are the first place to look — `op 0x76` and NOP sub-op
-  `0x19`, both submitted by the guest and both walked past. If a render target
-  or a per-draw target index is carried there, it would explain both the
-  identical draws and the absent CB_COLOR0 at once.
-  *Confirm before coding:* dump the payload of every `op 0x76` and NOP `0x19`
-  packet for one frame and look for an address that matches a known allocation.
+- [-] **ANSWERED: nothing differentiates them. They are duplicate draws.**
+  Five independent measurements, each expecting to find the differentiator and
+  each finding none:
+
+  | measured | result |
+  |---|---|
+  | vertex + pixel shader addresses | identical across all draws |
+  | source texture address and size | identical (0x215ed0000, 1280x720) |
+  | source texture *contents* (hashed) | identical — one hash |
+  | vertex buffer address, size, *contents* | identical — one hash |
+  | `DRAW_INDEX_OFFSET_2` index offset | **0 on every draw** |
+
+  So the 9–12 targetless draws per frame are byte-for-byte the same draw. The
+  single slot loses nothing, executing one is equivalent to executing twelve,
+  and the "87% discarded" figure counts redundant work rather than lost content.
+  Phase 2's premise — *stop discarding work* — is retired: there is no work to
+  recover.
+
+  **And the draws are identical because the game is frozen.** It is redrawing an
+  unchanging frame, so of course every draw matches. This whole line of
+  investigation was measuring a consequence of the stall, not a cause. That is
+  the useful result: the GPU path is not what is holding this title back.
+
+  Two real defects were found along the way and are recorded separately —
+  the texture cache never invalidating, and `kCbColor0BaseHi = 0x319`.
 
 - [ ] **Execute or explain the skipped AGC packets** - NOP `0x19` (DMA data),
   `IT_EVENT_WRITE` (`0x46`), op `0x76`.
