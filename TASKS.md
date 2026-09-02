@@ -153,10 +153,21 @@ produces unfalsifiable results.
   classifier against the 175 stored `record.json` fixtures, so loosening any
   threshold fails a test.
 
-- [ ] **Documentation paths cited by CLAUDE.md do not exist** - `docs/tasks`,
-  `docs/audits`, `docs/walkthroughs`, `docs/evidence` are absent;
-  `RUNTIME_LIFECYCLE.md` lives under `architecture/`. Rules 03/04/07/09 all
-  discharge into "the owning audit", which has nowhere to go.
+- [x] **Documentation paths cited by CLAUDE.md did not exist** — FIXED
+  Seven paths every session is told to read led nowhere. `docs/tasks`,
+  `docs/audits`, `docs/walkthroughs` and `docs/evidence` were absent entirely,
+  while `RUNTIME_LIFECYCLE.md` and `PS5_BOOT_PIPELINE.md` live under
+  `architecture/`. Rules 03/04/07/09 all discharge into "the owning audit",
+  so those rules were unenforceable and nothing said so.
+  - [x] Four directories created, each with a README stating its purpose
+  - [x] References repointed across 12 files
+  - [x] `docs/templates/{TASK,AUDIT,WALKTHROUGH}.md` created — the evidence
+        skill cited templates that did not exist
+  - [x] A cited audit that was never written is now a pointer to `docs/audits/`
+        rather than a ghost filename
+  - [x] `tools/check_doc_links.py`, registered as the `doc_links` CTest: 216
+        referenced paths, all resolve. Proven to fail — a deliberately broken
+        link makes it red, and removing it makes it green again.
 
 ---
 

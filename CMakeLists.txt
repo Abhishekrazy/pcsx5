@@ -1016,6 +1016,15 @@ add_executable(dump_imports
         add_test(NAME nid_registrations
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/tools/check_nid_registrations.py --strict)
+
+        # The engineering rules discharge into documents -- "record it in the
+        # owning audit", "write the task spec". Seven such paths led nowhere,
+        # including four directories that did not exist, so those rules were
+        # unenforceable and nothing said so. This fails when a documented path
+        # stops resolving.
+        add_test(NAME doc_links
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/check_doc_links.py)
     endif()
 
     # ------------------------------------------------------------------------
