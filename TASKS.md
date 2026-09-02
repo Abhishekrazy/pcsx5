@@ -237,15 +237,58 @@ they are not re-opened.
   Blast radius: **many titles**. Anything that updates a texture in place —
   render-to-texture, animated or procedural textures, streamed atlases, dynamic
   UI, video-on-polygon — shows its first frame forever.
-  The reference emulator tracks this explicitly: `host_gpu/memoryTracker` and
-  `pageManager` maintain dirty ranges per page, with `ValidateGpuDirtyPages` /
-  `ValidateGpuDirtyOwnership` deciding when a cached GPU resource is stale.
+  **Both** reference emulators solve this the same way, arrived at
+  independently, which is the strongest signal available that it is the right
+  architecture: Kyty's `host_gpu/memoryTracker` + `pageManager` keep dirty
+  ranges per page (`ValidateGpuDirtyPages`), and shadPS4's
+  `video_core/page_manager.cpp` write-protects pages via
+  `Protect(VAddr, size, MemoryPermission)` and invalidates on the fault.
+  shadPS4 also carries `multi_level_page_table.h`, as does Kyty.
   - [ ] Confirm a title actually rewrites a texture in place before building
         page tracking — hash contents for small textures as a cheap probe first,
         and measure how often the hash changes for a fixed descriptor
   - [ ] Only then decide between content hashing and write-tracking; page
         protection is the expensive answer and should be justified by a
         measurement, not adopted because the reference has it
+
+## Discovered — from the shadPS4 comparison
+
+shadPS4 runs commercial PS4 titles, and PS5 shares most of the Orbis API
+surface, so where it differs from us the difference is usually load-bearing.
+
+- [ ] **Neither reference has a "targetless draw" concept — because both decode
+      the colour-target registers**
+  shadPS4 keeps `color_buffers[NUM_COLOR_BUFFERS]` in its register state
+  (`video_core/amdgpu/regs.h:150`) with a full `ColorBuffer` layout
+  (`regs_color.h:116`), and Kyty decodes the same registers. Our
+  `pending_targetless` path exists only because `DecodeRenderTarget` never sees
+  CB_COLOR0 — which is Phase 2's second task. This raises its priority: the
+  fallback is not an architecture, it is a symptom, and no working emulator
+  needs one.
+
+- [ ] **Keyboard and mouse input mapped to the pad**
+  `src/input/input_handler.h:199` defines `string_to_keyboard_key_map`, a
+  configurable key-to-button binding, alongside `input_mouse.cpp`. We have no
+  keyboard path at all. This is already Phase 3's first task; the reference
+  gives it a concrete shape to follow rather than inventing one.
+
+- [ ] **Audio decode is far thinner on our side** — LOW priority
+  shadPS4 implements the Audio Job Manager with AT9 and AAC decoders
+  (`core/libraries/ajm/`, ~2,137 lines). We have `libatrac9.cpp` at 370 lines
+  registering 5 symbols. Recorded for completeness rather than urgency:
+  PPSA02929 makes exactly **one** AJM/Atrac call in a full run, because it ships
+  `.ogg`/`.flac` and decodes them itself. Worth doing when a title needs it,
+  not before.
+
+- [ ] **RECTLIST is mapped to a triangle strip** — latent, affects any title using it
+  Kyty carries a dedicated `shader/rectListShader.cpp`. Our
+  `PrimitiveTopologyFromVgt` maps VGT type `0x11` (DI_PT_RECTLIST) to
+  `VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP`. A rect list defines a rectangle per
+  three vertices with the fourth corner computed, which a strip cannot express,
+  so each rectangle renders as one triangle. Measured **not** to affect
+  PPSA02929 — its draws are `vgt_primitive_type=0x4` (TRILIST), verified by
+  logging at pipeline creation — so this is a real defect waiting for the title
+  that uses it, not a current one.
 
 ## Phase 2 - GPU: stop discarding work
 
