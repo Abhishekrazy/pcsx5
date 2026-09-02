@@ -427,9 +427,19 @@ surface, so where it differs from us the difference is usually load-bearing.
   frames)` and `Input replay active`; a missing file logs the failure and says
   live input is unchanged rather than pretending.
 
-- [ ] **Drive the harness from replays** — now possible, not yet done.
-  `session.py` can pass `--play-input` to reach a deterministic in-game state.
-  Note PPSA02929 cannot demonstrate it: it never calls `scePadReadState`.
+- [x] **Drive the harness from replays** — DONE, and it needed no harness change
+  `session.py` already had `--input`, which passes `--play-input=`, plus
+  `--keys` and `--clicks` schedules. The pipeline was built end to end on the
+  harness side and was dead only because the core ignored the flag.
+  Verified: `session.py run --title PPSA02929 --input <replay>` logs
+  `InputBot: loaded 3 events (120 frames)` and `Input replay active`.
+  Worth noting what this means about the earlier defect — someone built the
+  harness expecting replay to work, and it silently did not, for as long as the
+  option went unread.
+  **Still unverified at the guest level:** no tracked title calls
+  `scePadReadState`, so nothing yet proves an injected button reaches guest
+  code. Closing that needs either a title that polls the pad or a guest test ELF
+  that does.
 
 - [ ] **ADR-001 steps 2–4 remain** — the pad-state ABI entry point, retiring
   `WindowsDualSenseReader.cs`, and relaxing the single-pad `scePadOpen`
