@@ -367,6 +367,9 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     if (options && options->record_input_path && options->record_input_path[0]) {
         GPU::StartInputRecording(options->record_input_path, options->title_id);
     }
+    if (options && options->play_input_path && options->play_input_path[0]) {
+        GPU::StartInputReplay(options->play_input_path);
+    }
 
     LOG_INFO(General, "All subsystems initialized successfully.");
     g_state.initialized = true;

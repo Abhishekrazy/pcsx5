@@ -72,6 +72,9 @@ namespace GPU {
     // I1.3: Input recording — writes live controller state to a file.
     // path is the JSON output file path; title_id used for metadata.
     void StartInputRecording(const char* path, const char* title_id);
+    // Drive the pad from a recorded replay instead of live devices.
+    void StartInputReplay(const char* path);
+    void StopInputReplay();
     void StopInputRecording();
 
     // Drive the primary XInput controller's rumble motors (0..255 each).

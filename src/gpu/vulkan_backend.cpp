@@ -49,6 +49,8 @@ namespace GPU {
     static std::vector<u32> g_vk_pixels;
 
     static PadButtonState g_pad_state = { 0, 127, 127, 127, 127, 0, 0, {0, 0} };
+    // Active only when --play-input names a replay; see StartInputReplay.
+    static std::unique_ptr<InputBotBackend> g_input_bot;
     static u32            g_keyboard_buttons = 0;
     static std::mutex     g_pad_mutex;
 
@@ -998,6 +1000,25 @@ namespace GPU {
             }
         }
 
+        // Replay supersedes live devices: a run driven from a recording must
+        // not also pick up whatever is plugged in, or the replay is not
+        // reproducible. Placed here rather than as a multiplexer backend for
+        // the same reason -- the multiplexer merges sources, and a replay has
+        // to replace them.
+        if (g_input_bot && g_input_bot->IsInitialized()) {
+            ControllerState cs{};
+            if (g_input_bot->Poll(cs)) {
+                new_state.buttons        = cs.buttons;
+                new_state.left_analog_x  = cs.left_x;
+                new_state.left_analog_y  = cs.left_y;
+                new_state.right_analog_x = cs.right_x;
+                new_state.right_analog_y = cs.right_y;
+                new_state.l2_trigger     = cs.l2;
+                new_state.r2_trigger     = cs.r2;
+                new_state.touch_count    = cs.touch_count;
+            }
+        }
+
         std::lock_guard<std::mutex> lock(g_pad_mutex);
         g_pad_state = new_state;
 
@@ -1040,6 +1061,28 @@ namespace GPU {
 
     // I1.3: Input recording — start/stop functions.  The global instance
     // (g_input_recorder) lives at file scope above.
+    // --play-input was parsed into a field that nothing ever read, so the flag
+    // was accepted, documented in --help, and silently did nothing. This is the
+    // consumer it never had.
+    void StartInputReplay(const char* path) {
+        if (!path || !*path) return;
+        auto bot = std::make_unique<InputBotBackend>(path);
+        if (!bot->Initialize(0)) {
+            LOG_WARN(GPU, "StartInputReplay: could not load replay '%s'; "
+                          "live input is unchanged", path);
+            return;
+        }
+        LOG_INFO(GPU, "Input replay active from '%s'", path);
+        g_input_bot = std::move(bot);
+    }
+
+    void StopInputReplay() {
+        if (g_input_bot) {
+            g_input_bot->Shutdown();
+            g_input_bot.reset();
+        }
+    }
+
     void StartInputRecording(const char* path, const char* title_id) {
         std::string tid = title_id ? title_id : "";
         if (!g_input_recorder.Start(path, tid)) {

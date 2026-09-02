@@ -409,13 +409,31 @@ surface, so where it differs from us the difference is usually load-bearing.
 
 ## Phase 3 - Input, and the rest
 
-- [ ] **Synthetic / keyboard input path in the core**
-  No keyboard input exists anywhere in `src/` - no `GetAsyncKeyState`, no
-  `WM_KEYDOWN`. No automated test can drive input at all, and any title waiting
-  for a button needs physical hardware. Whole-project blast radius.
-  - [ ] Synthetic pad state injectable from the harness
-  - [ ] Keyboard bindings, analog sticks simulated from keys
-  - [ ] Test: a scripted press reaches `scePadReadState`
+- [x] **CORRECTED: the input path already existed. `--play-input` was the gap.**
+  I repeatedly claimed the core had "no keyboard input path at all — no
+  `GetAsyncKeyState`, no `WM_KEYDOWN` anywhere in `src/`". That was wrong: I
+  grepped for the wrong APIs. The window is GLFW, so keyboard input goes through
+  `glfwGetKey`, and `src/gpu/input/glfw_keyboard_backend.cpp` maps 25 keys.
+  There are **six** input backends — keyboard, DualSense, XInput, SDL
+  GameController, a multiplexer, and `input_bot.cpp`, which synthesises
+  controller state from a JSON replay. `--record-input` and `--play-input` are
+  both documented in `--help`.
+  **The real defect:** `play_input_path` was declared in `core_api.h` and set in
+  `main.cpp` and **read nowhere**. The flag was accepted, advertised, and did
+  nothing — the same silent-success class as the rest of this project's worst
+  defects. Now wired: replay supersedes live devices, so a replay-driven run is
+  reproducible and does not also pick up whatever is plugged in.
+  Verified both ways: a valid replay logs `InputBot: loaded 3 events (120
+  frames)` and `Input replay active`; a missing file logs the failure and says
+  live input is unchanged rather than pretending.
+
+- [ ] **Drive the harness from replays** — now possible, not yet done.
+  `session.py` can pass `--play-input` to reach a deterministic in-game state.
+  Note PPSA02929 cannot demonstrate it: it never calls `scePadReadState`.
+
+- [ ] **ADR-001 steps 2–4 remain** — the pad-state ABI entry point, retiring
+  `WindowsDualSenseReader.cs`, and relaxing the single-pad `scePadOpen`
+  restriction. These need the user's hardware to verify.
 
 - [ ] **A guest-filesystem test fixture** - blocks tests for `feof`/`fgets`/
   `fgetc` and for the guarded-transfer reporters.
