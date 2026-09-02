@@ -125,9 +125,17 @@ produces unfalsifiable results.
   (`hle.cpp:462`) has no production callers, so `GetStubContract` always returns
   UNKNOWN.
 
-- [ ] **`boot_success` is true for a frozen run** - `session.py:654` defines it
-  as `status not in ("crashed","no-frame")`, contradicting CLAUDE.md.
-  - [ ] Stamp a `classifier_version` into every record and baseline entry
+- [x] **`boot_success` was true for a frozen run** — FIXED
+  It was `status not in ("crashed","no-frame")`, so `frozen`, `exited` and
+  `ran-headless` all counted as a successful boot. CLAUDE.md is explicit that a
+  live process painting one unchanging frame is never reported as success, and
+  that `ran-headless` means frame validation was impossible by construction.
+  Now `status == "progressing"`.
+  Two baseline entries claimed success while frozen (PPSA02929, PPSA21564);
+  both corrected as a documented golden update.
+  - [x] Stamp a `classifier_version` into every record and baseline entry, so a
+        record judged under older rules is distinguishable rather than silently
+        keeping its verdict
 
 - [ ] **Baseline promotion trusts a single sample** - `baseline --update` resets
   every stability flag to true from one run; a stored PPSA21564 run (29 frames,

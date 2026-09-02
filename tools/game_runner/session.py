@@ -66,6 +66,14 @@ CLI_CANDIDATES = [
     os.path.join(REPO, "dist", "pcsx5_cli.exe"),
 ]
 
+# Bumped whenever the run classifier's rules change, so a stored record or
+# baseline entry can be told apart from one judged by different rules. Without
+# it, a baseline promoted under old rules is indistinguishable from a current
+# one and silently keeps its verdict.
+#   1: boot_success means status == "progressing" (was: not crashed/no-frame);
+#      progression additionally requires >=80% capture coverage.
+CLASSIFIER_VERSION = 1
+
 # Boot-progress markers live in boot_markers.py so the two harnesses cannot
 # drift apart, and cannot disagree about which markers are trustworthy. They
 # previously kept separate copies "kept identical" by a comment; both copies
@@ -533,6 +541,7 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
 
     record = {
         "schema": "pcsx5-runtime-run/1",
+        "classifier_version": CLASSIFIER_VERSION,
         "run_id": run_id,
         "kind": launch["kind"] if launch else "title",
         "title_id": title_id,
@@ -647,7 +656,15 @@ def entry_from_record(rec, previous=None, stability=None):
         {"summary": None, "classification": "UNKNOWN", "doc": None})
     return {
         "eboot": rec["eboot"],
-        "boot_success": rec["status"] not in ("crashed", "no-frame"),
+        # Only a run observed to keep changing counts as a successful boot.
+        # This was "not crashed and not no-frame", which made frozen a success --
+        # directly against CLAUDE.md, which states that a live process painting
+        # one unchanging frame is not stable execution and is never reported as
+        # success. It also admitted ran-headless, where frame validation was
+        # impossible by construction and nothing about rendering was observed at
+        # all, and exited, where the process is gone.
+        "boot_success": rec["status"] == "progressing",
+        "classifier_version": CLASSIFIER_VERSION,
         "first_frame_s": ex["first_frame_s"],
         "sustained_runtime_s": rec["duration_s"],
         "status": rec["status"],
