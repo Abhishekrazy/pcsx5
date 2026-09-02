@@ -179,6 +179,20 @@ namespace Kernel {
         if (!dir.empty()) g_crash_dump_dir = dir;
     }
 
+    // Installed by whoever owns end-of-run reporting; see SetGuestExitHook.
+    static void (*g_guest_exit_hook)() = nullptr;
+
+    void SetGuestExitHook(void (*hook)()) { g_guest_exit_hook = hook; }
+
+    void RunGuestExitHook() {
+        if (!g_guest_exit_hook) return;
+        // Run once: a guest that calls exit twice, or exits while another
+        // thread is already exiting, must not re-enter the writer.
+        void (*hook)() = g_guest_exit_hook;
+        g_guest_exit_hook = nullptr;
+        hook();
+    }
+
     void ArmWatchpointForCurrentThread() {
         ArmWatchpointOnThisThread();
     }

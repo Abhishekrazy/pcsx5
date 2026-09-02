@@ -87,7 +87,14 @@ produces unfalsifiable results.
         `FATAL: abort() raised (signal 22)` and then **exits 0**, so an exit-code
         check alone still could not catch it. (The roadmap survey reported exit
         2; measured here it is 0.)
-  - [ ] **Root-cause the teardown abort now exposed.** Both tests are red, which
+  - [~] **Root-cause the teardown abort now exposed.** ROOT CAUSE FOUND:
+        `SysExit` (`syscalls.cpp:229`) calls Win32 `ExitProcess(status)`. That
+        commits the exit code *before* teardown, which is why the process reports
+        0 while announcing a fatal abort, and it terminates worker threads at
+        arbitrary points before DLL detach, which is where the abort comes from.
+        The remaining work is to shut down in the documented order instead of
+        abruptly — a lifecycle change (Rule 06), so it is deliberately not
+        bundled with the reporting fix. Both tests are red, which
         is correct and must not be suppressed (Rule 07). The guest itself
         succeeds — it prints its marker and calls `sys_exit(status=0)` — and the
         abort fires *after* that, during emulator teardown. Suite is now 48/50
@@ -100,11 +107,12 @@ produces unfalsifiable results.
   - [ ] One shared marker vocabulary for `session.py` and `tools/autorun.py`
   - [ ] Record the loss of a false signal as such, not as a regression
 
-- [ ] **No run has ever produced an import report**
-  `PersistSummary` is reachable only from a clean `pcsx5_shutdown` that no title
-  run performs: 0 of 195 archived runs contain `import_report.json`, though 135
-  requested it. Rule 04 permits an observable stub *only because* this inventory
-  sees it, so the stub regime has been unenforced.
+- [x] **No run has ever produced an import report** — FIXED
+  `sys_exit` called Win32 `ExitProcess`, which never returns and so never
+  reached `pcsx5_shutdown`, the only caller of `PersistSummary`. 0 of 195
+  archived runs contained `import_report.json` though 135 requested one. A guest
+  exit hook now writes it before the process goes down.
+  Before/after on the same ELF: report written **NO -> YES**.
 
 - [ ] **The stub-classification regime is inert** - `RegisterStubContract`
   (`hle.cpp:462`) has no production callers, so `GetStubContract` always returns

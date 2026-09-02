@@ -244,6 +244,17 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     // The VEH crash dumps belong next to the crash bundle, not in the process
     // working directory.
     Kernel::SetCrashDumpDir(g_state.crash_dir);
+
+    // A guest that exits normally goes through sys_exit -> ExitProcess and
+    // never reaches pcsx5_shutdown, so the end-of-run report has to be written
+    // from there. Before this, 0 of 195 archived runs contained an
+    // import_report.json even though 135 asked for one.
+    Kernel::SetGuestExitHook([] {
+        if (g_state.loaded || !g_state.summary.target.empty()) {
+            PersistSummary(g_state.summary, g_state.report_path,
+                           g_state.regression_report_path);
+        }
+    });
     g_state.strict_imports = g_state.strict_imports || cfg.hle.strict_imports;
 
     // Hand the audio output settings to libSceAudioOut (0 = Off / silent-paced).

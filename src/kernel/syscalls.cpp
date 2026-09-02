@@ -226,6 +226,11 @@ s64 SysExit(s32 status, CONTEXT*) {
         HLE::ExitGuestProcess(static_cast<u32>(status));
     }
     if (status != 0x999999) {
+        // ExitProcess never returns, so anything owed at end of run has to be
+        // done here. Without this the import/stub inventory is never written
+        // for any title that exits normally, and Rule 04 permits an observable
+        // stub only because that inventory sees it.
+        Kernel::RunGuestExitHook();
         ExitProcess(static_cast<UINT>(status));
     }
     return 0;

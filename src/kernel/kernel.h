@@ -38,6 +38,17 @@ namespace Kernel {
     // process working directory.  Defaults to "pcsx5_crash" if never called.
     void SetCrashDumpDir(const std::string& dir);
 
+    // Run just before the guest's sys_exit terminates the process.
+    //
+    // sys_exit calls Win32 ExitProcess, which never returns and so never
+    // reaches pcsx5_shutdown. That is why no run has ever written an import
+    // report: the only call to PersistSummary is on the clean shutdown path,
+    // and a guest that exits normally does not take it. The owner of that
+    // report installs a hook here rather than the kernel reaching up into
+    // core_api.
+    void SetGuestExitHook(void (*hook)());
+    void RunGuestExitHook();
+
     // Diagnostic data write-watchpoint, selected with PCSX5_WATCH_ADDR (hex,
     // 8-byte aligned).  Uses a hardware debug register rather than page
     // protection: it is exact to the qword, so unrelated writes to the same
