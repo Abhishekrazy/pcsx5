@@ -77,28 +77,23 @@ success and dropped GPU work loud, then ratchet each swept class shut.
 Sweeping silent failure while measuring it with silently-failing instruments
 produces unfalsifiable results.
 
-- [~] **Two CTest cases pass while the process aborts** (VERIFIED here)
+- [x] **Two CTest cases passed while the process aborted** — FIXED
   `CMakeLists.txt` set `PASS_REGULAR_EXPRESSION` on `guest_syscall_smoke` and
-  `guest_tls_smoke`; CMake documents that as *replacing* the return-code check.
-  Both now run through `tools/run_guest_smoke.cmake`, which requires the marker
-  AND a zero exit AND no `FATAL:` line.
+  `guest_tls_smoke`; CMake documents that as *replacing* the return-code check,
+  so neither could fail on a crash. Both now run through
+  `tools/run_guest_smoke.cmake`, requiring the marker AND a zero exit AND no
+  `FATAL:` line.
   - [x] Require a zero exit code as well as the marker
-  - [x] Also reject a `FATAL:` line — needed because the emulator prints
-        `FATAL: abort() raised (signal 22)` and then **exits 0**, so an exit-code
-        check alone still could not catch it. (The roadmap survey reported exit
-        2; measured here it is 0.)
-  - [~] **Root-cause the teardown abort now exposed.** ROOT CAUSE FOUND:
-        `SysExit` (`syscalls.cpp:229`) calls Win32 `ExitProcess(status)`. That
-        commits the exit code *before* teardown, which is why the process reports
-        0 while announcing a fatal abort, and it terminates worker threads at
-        arbitrary points before DLL detach, which is where the abort comes from.
-        The remaining work is to shut down in the documented order instead of
-        abruptly — a lifecycle change (Rule 06), so it is deliberately not
-        bundled with the reporting fix. Both tests are red, which
-        is correct and must not be suppressed (Rule 07). The guest itself
-        succeeds — it prints its marker and calls `sys_exit(status=0)` — and the
-        abort fires *after* that, during emulator teardown. Suite is now 48/50
-        with 2 legitimately red.
+  - [x] Also reject a `FATAL:` line — needed because the emulator printed
+        `FATAL: abort() raised (signal 22)` and then **exited 0**
+  - [x] **Teardown abort root-caused and fixed.** `g_heartbeat_thread` is a
+        static `std::thread`; `sys_exit` calls `ExitProcess`, whose
+        `DLL_PROCESS_DETACH` runs its destructor while the thread is still
+        parked on its 30s wait. A `std::thread` destroyed while joinable calls
+        `std::terminate` — which *is* `abort()`, signal 22. The guest run had
+        already succeeded, which is why the abort looked unrelated to it.
+        The guest exit path now joins the thread first. Both tests pass
+        legitimately; **suite is 52/52 and can now actually fail.**
 
 - [x] **The `menus` progress marker is a false positive** — FIXED
   `session.py` matched the bare substring `"menu"`, so it fired on

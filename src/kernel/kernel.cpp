@@ -188,7 +188,20 @@ namespace Kernel {
 
     void SetPeriodicReportHook(void (*hook)()) { g_periodic_report_hook = hook; }
 
+    // Defined below; the guest exit path must stop it before the process goes
+    // down. See RunGuestExitHook.
+    static void StopHeartbeat();
+
     void RunGuestExitHook() {
+        // A std::thread destroyed while still joinable calls std::terminate,
+        // which is abort() -- signal 22, the "FATAL: abort() raised" this
+        // emulator prints on every clean guest exit. g_heartbeat_thread is a
+        // static std::thread, so ExitProcess runs its destructor during
+        // DLL_PROCESS_DETACH while it is still parked on its 30-second wait.
+        // The guest run itself has already succeeded by this point, which is
+        // why the abort looked unrelated to anything the guest did.
+        StopHeartbeat();
+
         if (!g_guest_exit_hook) return;
         // Run once: a guest that calls exit twice, or exits while another
         // thread is already exiting, must not re-enter the writer.

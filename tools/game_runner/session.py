@@ -552,9 +552,11 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
         frames, longest_freeze, run_seconds, capture_failures[0],
         args.change_threshold)
     if capture_failures[0]:
+        attempted = len(frames) + capture_failures[0]
         print("[session] %d of %d captures refused (coverage %.0f%%)%s"
               % (capture_failures[0], attempted, 100.0 * capture_coverage,
-                 "" if good_coverage else " -- too few to judge progression"))
+                 "" if capture_coverage >= COVERAGE_MIN
+                 else " -- too few to judge progression"))
     if termination == "process-exit" and (scan["fatal"] or exception_exit):
         status = "crashed"
     elif termination == "process-exit":
