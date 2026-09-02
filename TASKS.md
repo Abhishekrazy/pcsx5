@@ -292,12 +292,27 @@ surface, so where it differs from us the difference is usually load-bearing.
 
 ## Phase 2 - GPU: stop discarding work
 
-- [ ] **Execute every targetless draw, not just the last one** — THE FIX
-  `st.pending_targetless` is a **single slot**, so all but the last targetless
-  draw in a frame are overwritten. Measured loss: **87-88% of all guest draws**
-  (2995/372 and 2715/352 across two runs). Now visible per-submit (`8b3bb45`).
-  - [ ] Replace the slot with an ordered queue replayed at the flip
-  - [ ] Test: a submit carrying N targetless draws executes N, not 1
+- [-] **FALSIFIED: executing every targetless draw makes the picture WORSE**
+  Implemented and measured. The queue works mechanically — executed draws rose
+  from 207 to 1317, and composites per flip went from always 1 to 9–12 — but the
+  screen goes black:
+
+      single slot (before)   37 of 37 captured frames had content
+      queue       (after)     8 of 44, black from frame 8 onward
+      after revert           39 of 39 had content again
+
+  So the 87% "loss" is not a loss. In a targetless composite model only the
+  final draw composites to the scanout buffer; the earlier ones are intermediate
+  passes that would each need their own render target, and we have none to give
+  them. Replaying them all into the display buffer paints intermediates over the
+  finished image. SharpEmu keeping a single slot is deliberate, not a shortcut.
+  Reverted (Rule 10) rather than kept and tuned.
+  **What this means for the phase:** "stop discarding work" was the wrong frame.
+  The draws are discarded because we cannot represent what they render *into*.
+  The real question is whether these intermediate passes need offscreen targets
+  of their own — which is a much larger design question than a queue, and one
+  that should start from what the guest's shaders actually write.
+  Draw accounting from `8b3bb45` stays: it is what made this measurable.
 
 - [-] **FALSIFIED: "the colour-target binding is never observed" is not a defect**
   Measured directly by logging every context register the guest sets through the
