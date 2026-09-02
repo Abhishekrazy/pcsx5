@@ -486,17 +486,39 @@ surface, so where it differs from us the difference is usually load-bearing.
   by analogy with the null-pointer case — what retail firmware returns for an
   unwritable buffer is UNKNOWN.
 
-- [ ] **`Memory::WriteBuffer` returns `void`, at 45 call sites**
-  It wraps `GuardedWrite` and discards the result, so every caller is one line
-  away from the pad defect above: `syscalls.cpp` (15 sites), `libatrac9.cpp`
-  (9), `libscepad.cpp` (3), `libsavedata.cpp` (3), `libpad.cpp` (3, now fixed),
-  `elf.cpp`, `kernel.cpp`, `libaudioout.cpp`, `libuser_service.cpp`, `libnp.cpp`.
-  A convenience wrapper that throws away the one fact its caller needs is a
-  defect generator, not a convenience.
-  This is a survey, not a rewrite: audit the 45 sites, fix the ones on a
-  guest-observable path, and decide whether `WriteBuffer` should return `bool`
-  (with `[[nodiscard]]`) or be retired in favour of `GuardedWrite` outright.
-  Do it as one subsystem per change, not all 45 at once.
+- [ ] **`Memory::WriteBuffer` returns `void` — audited, and the count I first
+  wrote was wrong.** I recorded "45 call sites, `syscalls.cpp` (15)". The audit
+  says otherwise and the correction changes where the work should go.
+  `src/kernel/syscalls.cpp:94` defines its own `SafeWriteBuffer`, which calls
+  `Memory::GuardedWrite` and returns `bool`, and 10 of its 14 call sites check
+  it. So the kernel is largely *not* exposed — someone there hit this problem
+  and solved it locally. That is precisely why it survived everywhere else, and
+  the helper is itself a Rule 05 violation (a competing per-subsystem primitive
+  instead of a fix to the shared one).
+  The genuinely unchecked `Memory::WriteBuffer` sites number **20**:
+  `libatrac9.cpp` (9), `libsavedata.cpp` (3), `libaudioout.cpp` (2),
+  `elf.cpp` (2), `kernel.cpp` (2), `libuser_service.cpp` (1), `libnp.cpp` (1),
+  plus 4 unchecked `SafeWriteBuffer` calls in `syscalls.cpp`
+  (lines 641, 955, 1054, 1055 — `nanosleep` remainder, and the `accept`/
+  `recvfrom` address-length out-parameters).
+  Subtasks, ordered by blast radius rather than count:
+  - [ ] **`src/loader/elf.cpp:393` and `:402` — do these first.** The loader
+    writes `PT_LOAD` segment contents, and then zero-fills `.bss`, with
+    unchecked writes. A segment that silently fails to land leaves a module
+    loaded with missing code or data, and every later observation of that run
+    is uninterpretable — the exact failure this project has burned the most
+    time on. It is also the earliest divergence in the lifecycle, which Rule 10
+    says outranks anything downstream. Note the resonance: the `.bss`
+    protection defect fixed earlier in `memory.cpp` was in this same area.
+    Done means: checked writes, a load that fails loudly rather than silently,
+    and a test that makes a segment write fail.
+  - [ ] `src/kernel/kernel.cpp:2626,2648` — TLS writes on the fault path.
+  - [ ] `libatrac9.cpp` (9 sites) — audio decode output.
+  - [ ] The 4 unchecked `SafeWriteBuffer` calls in `syscalls.cpp`.
+  - [ ] Then decide the API: `WriteBuffer` returning `bool` with `[[nodiscard]]`,
+    or retiring it in favour of `GuardedWrite` and folding `SafeWriteBuffer`'s
+    address check into the memory subsystem where Rule 05 says it belongs.
+    **This one needs the user's sign-off** — it touches every caller.
 
 - [ ] **ADR-001 steps 2–4 remain** — the pad-state ABI entry point, retiring
   `WindowsDualSenseReader.cs`, and relaxing the single-pad `scePadOpen`
