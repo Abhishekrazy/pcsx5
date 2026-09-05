@@ -599,32 +599,59 @@
                             </StackPanel>
                             <TextBlock Grid.Column="1" x:Name="FullLibraryCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeM}" Foreground="#6FA0A0A5" VerticalAlignment="Center"/>
                         </Grid>
+                        <!-- "View All" shows the library as a grid of cover tiles
+                             (asked 2026-09-06), not a table. It stays a ListView
+                             under the same name so the pad navigation, the count
+                             and the item source are unchanged; only the item
+                             layout differs. Tiles are 180 px square with the
+                             title over the bottom edge, matching the shelf. -->
                         <ListView x:Name="FullLibraryListView" FocusVisualStyle="{StaticResource AccentFocusVisual}" Grid.Row="1" Background="Transparent" Foreground="White" BorderThickness="0"
-                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
-                            <ListView.View>
-                                <GridView>
-                                    <GridViewColumn Header="{loc:Tr Key=ui.title}" Width="250" DisplayMemberBinding="{Binding Title}"/>
-                                    <GridViewColumn Header="{loc:Tr Key=ui.title_id}" Width="110" DisplayMemberBinding="{Binding TitleId}"/>
-                                    <GridViewColumn Header="{loc:Tr Key=ui.size}" Width="90" DisplayMemberBinding="{Binding SizeStr}"/>
-                                    <GridViewColumn Header="{loc:Tr Key=ui.status}" Width="100" DisplayMemberBinding="{Binding CompatStatus}"/>
-                                    <GridViewColumn Header="{loc:Tr Key=ui.path}" Width="200" DisplayMemberBinding="{Binding EbootPath}"/>
-                                </GridView>
-                            </ListView.View>
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  SelectionMode="Single" SelectionChanged="FullLibraryListView_SelectionChanged" MouseDoubleClick="FullLibraryListView_MouseDoubleClick"
+                                  AutomationProperties.Name="{loc:Tr Key=ui.view_all}">
+                            <ListView.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ListView.ItemsPanel>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="Tile" Width="180" Height="180" CornerRadius="8" BorderThickness="2" BorderBrush="Transparent" Background="#33000000" ClipToBounds="True">
+                                        <Grid>
+                                            <Border CornerRadius="6" ClipToBounds="True">
+                                                <Image Source="{Binding CoverPath}" Stretch="UniformToFill"/>
+                                            </Border>
+                                            <Border VerticalAlignment="Bottom" Height="52" CornerRadius="0,0,6,6">
+                                                <Border.Background>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                        <GradientStop Color="#00000000" Offset="0"/>
+                                                        <GradientStop Color="#CC000000" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Border.Background>
+                                                <TextBlock Text="{Binding Title}" Foreground="White" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="36" VerticalAlignment="Bottom" Margin="8,0,8,6"/>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem">
                                     <Setter Property="Background" Value="Transparent"/>
-                                    <Setter Property="Foreground" Value="White"/>
                                     <Setter Property="BorderThickness" Value="0"/>
-                                    <Setter Property="Margin" Value="0,1,0,1"/>
-                                    <Setter Property="Padding" Value="4,4,4,4"/>
-                                    <Style.Triggers>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter Property="Background" Value="#3F0099FF"/>
-                                        </Trigger>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background" Value="#20FFFFFF"/>
-                                        </Trigger>
-                                    </Style.Triggers>
+                                    <Setter Property="Margin" Value="0,0,14,14"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListViewItem">
+                                                <ContentPresenter/>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
                                 </Style>
                             </ListView.ItemContainerStyle>
                         </ListView>

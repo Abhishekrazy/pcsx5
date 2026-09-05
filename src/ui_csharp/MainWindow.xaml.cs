@@ -3314,14 +3314,21 @@ namespace Pcsx5Ui
         /// previously had none -- opening it stranded a pad user with no way to
         /// choose a game or return. Circle backs out, matching the shell-wide
         /// convention that Circle is Back.</summary>
-        private void HandleFullLibraryNav(bool up, bool down, bool cross, bool circle)
+        private void HandleFullLibraryNav(bool up, bool down, bool left, bool right, bool cross, bool circle)
         {
             int count = FullLibraryListView.Items.Count;
-            if (count > 0 && (up || down))
+            if (count > 0 && (up || down || left || right))
             {
+                // The grid wraps, so up/down step by one row. The row length is
+                // measured from the panel rather than assumed, so it follows the
+                // window width.
+                int cols = FullLibraryColumns();
                 int i = FullLibraryListView.SelectedIndex;
-                if (up) i = (i <= 0) ? count - 1 : i - 1;
-                else i = (i >= count - 1) ? 0 : i + 1;
+                if (i < 0) i = 0;
+                else if (left)  i = (i <= 0) ? count - 1 : i - 1;
+                else if (right) i = (i >= count - 1) ? 0 : i + 1;
+                else if (up)    i = (i - cols >= 0) ? i - cols : i;
+                else if (down)  i = (i + cols < count) ? i + cols : i;
                 FullLibraryListView.SelectedIndex = i;
                 FullLibraryListView.ScrollIntoView(FullLibraryListView.Items[i]);
                 if (FullLibraryListView.Items[i] is GameEntry g) SelectGame(g);
@@ -3336,6 +3343,32 @@ namespace Pcsx5Ui
             {
                 ToggleFullLibrary_Click(this, null);
             }
+        }
+
+        /// <summary>Tiles per row in the "View All" grid: the first item's
+        /// rendered width (tile plus margin) against the list's width.</summary>
+        private int FullLibraryColumns()
+        {
+            if (FullLibraryListView.Items.Count == 0) return 1;
+            if (FullLibraryListView.ItemContainerGenerator.ContainerFromIndex(0) is FrameworkElement first && first.ActualWidth > 0)
+            {
+                double w = first.ActualWidth + first.Margin.Left + first.Margin.Right;
+                int cols = (int)Math.Floor(FullLibraryListView.ActualWidth / w);
+                return Math.Max(1, cols);
+            }
+            return 1;
+        }
+
+        // Mouse on the grid: a click selects the game (the header follows), a
+        // double-click also collapses back to the shelf, which is what Cross does.
+        private void FullLibraryListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (FullLibraryListView.SelectedItem is GameEntry g && g != _selectedGame) SelectGame(g);
+        }
+
+        private void FullLibraryListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (FullLibraryListView.SelectedItem is GameEntry) ToggleFullLibrary_Click(this, null);
         }
 
         private void ShowHints(string key)
@@ -4530,7 +4563,7 @@ namespace Pcsx5Ui
                     if (FullLibraryGrid != null && FullLibraryGrid.Visibility == Visibility.Visible)
                     {
                         ShowHints("hints.full_library");
-                        HandleFullLibraryNav(upPressed, downPressed, aPressed, bPressed);
+                        HandleFullLibraryNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
                         _prevInputState = state;
                         return;
                     }

@@ -318,6 +318,14 @@ Ordered by dependency, one subsystem per change (Rule 10):
     tile wrote "Selected: <id>" into the footer status, duplicating the
     header. The write is gone; the footer keeps its real status. Seen:
     artifacts/runtime/SHELL_20260906_024019/frames/frame_0010.png
+  - [x] **"View All" is a cover-tile grid** - DONE. Asked 2026-09-06: "view
+    all games should show games in grid view". It was a five-column table.
+    Same ListView under the same name, now a wrapping panel of 180 px cover
+    tiles with the title over the bottom edge; pad navigation gained
+    left/right and row-wise up/down with the column count measured from the
+    panel; a mouse click selects, a double-click returns to the shelf. The
+    search box beside it was already unwired and still is. Seen:
+    artifacts/runtime/SHELL_20260906_024352/frames/frame_0009.png
   - [ ] The mapping editor's side columns scroll inside 260 px strips with
     tiny viewports (thumbs visible in the after-frame). A page-level scroll
     for the Controller tab would read better than three nested ones.
