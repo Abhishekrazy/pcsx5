@@ -30,14 +30,14 @@
             <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="False">
                 <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center"
                            Text="{loc:Tr Key=input.controller}"
-                           Foreground="{DynamicResource ForegroundMutedBrush}"
+                           Foreground="{DynamicResource ThemeTextMuted}"
                            FontSize="{DynamicResource TypeM}" Margin="0,0,10,0"/>
                 <ComboBox x:Name="PadPicker" DockPanel.Dock="Left" MinWidth="220"
                           AutomationProperties.Name="{loc:Tr Key=input.controller}"
                           SelectionChanged="PadPicker_SelectionChanged"/>
                 <TextBlock x:Name="TransportText" DockPanel.Dock="Left" VerticalAlignment="Center"
                            Margin="14,0,0,0" FontSize="{DynamicResource TypeM}"
-                           Foreground="{DynamicResource ForegroundMutedBrush}"/>
+                           Foreground="{DynamicResource ThemeTextMuted}"/>
             </DockPanel>
 
             <!-- Controller canvas.  1150x850 is the theme's design space. -->
@@ -45,7 +45,7 @@
                  to the full width, and at 1920x1080 that alone is taller than
                  the window, pushing the tests and the whole mapping editor
                  off-screen. 560 keeps the pad readable and leaves room below. -->
-            <Border Grid.Row="1" Background="{DynamicResource GlassBackgroundBrush}"
+            <Border Grid.Row="1" Background="{DynamicResource ThemeSurface}"
                     CornerRadius="12" Padding="8" MaxHeight="560">
                 <Viewbox Stretch="Uniform">
                     <Canvas x:Name="PadCanvas" Width="1150" Height="850"/>
@@ -66,14 +66,14 @@
                 <TextBlock x:Name="TestStatusText" VerticalAlignment="Center" Margin="6,0,0,8"
                            TextWrapping="Wrap" MaxWidth="520"
                            FontSize="{DynamicResource TypeM}"
-                           Foreground="{DynamicResource ForegroundMutedBrush}"/>
+                           Foreground="{DynamicResource ThemeTextMuted}"/>
             </WrapPanel>
         </Grid>
 
         <!-- RIGHT: device information + motion -->
         <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <Border Background="{DynamicResource GlassBackgroundBrush}" CornerRadius="12" Padding="14" Margin="0,0,0,10">
+                <Border Background="{DynamicResource ThemeSurface}" CornerRadius="12" Padding="14" Margin="0,0,0,10">
                     <StackPanel>
                         <TextBlock Text="{loc:Tr Key=input.device_info}" FontWeight="Bold"
                                    FontSize="{DynamicResource TypeL}" Margin="0,0,0,8"/>
@@ -86,21 +86,21 @@
                                 <RowDefinition/><RowDefinition/><RowDefinition/>
                                 <RowDefinition/><RowDefinition/><RowDefinition/>
                             </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr Key=input.battery}" Foreground="{DynamicResource ForegroundMutedBrush}" Margin="0,2,12,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr Key=input.battery}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,12,2"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" x:Name="BatteryText" Margin="0,2,0,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr Key=input.connection}" Foreground="{DynamicResource ForegroundMutedBrush}" Margin="0,2,12,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr Key=input.connection}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,12,2"/>
                             <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ConnectionText" TextWrapping="Wrap" Margin="0,2,0,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Tr Key=input.headphones}" Foreground="{DynamicResource ForegroundMutedBrush}" Margin="0,2,12,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Tr Key=input.headphones}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,12,2"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" x:Name="HeadphoneText" Margin="0,2,0,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:Tr Key=input.microphone}" Foreground="{DynamicResource ForegroundMutedBrush}" Margin="0,2,12,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:Tr Key=input.microphone}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,12,2"/>
                             <TextBlock Grid.Row="3" Grid.Column="1" x:Name="MicText" Margin="0,2,0,2"/>
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="{loc:Tr Key=input.usb}" Foreground="{DynamicResource ForegroundMutedBrush}" Margin="0,2,12,2"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="{loc:Tr Key=input.usb}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,12,2"/>
                             <TextBlock Grid.Row="4" Grid.Column="1" x:Name="UsbText" Margin="0,2,0,2"/>
                         </Grid>
                     </StackPanel>
                 </Border>
 
-                <Border Background="{DynamicResource GlassBackgroundBrush}" CornerRadius="12" Padding="14" Margin="0,0,0,10">
+                <Border Background="{DynamicResource ThemeSurface}" CornerRadius="12" Padding="14" Margin="0,0,0,10">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
                             <Button x:Name="FirmwareRefreshBtn" DockPanel.Dock="Right" Padding="10,4"
@@ -113,13 +113,13 @@
                     </StackPanel>
                 </Border>
 
-                <Border Background="{DynamicResource GlassBackgroundBrush}" CornerRadius="12" Padding="14">
+                <Border Background="{DynamicResource ThemeSurface}" CornerRadius="12" Padding="14">
                     <StackPanel>
                         <TextBlock Text="{loc:Tr Key=input.motion}" FontWeight="Bold"
                                    FontSize="{DynamicResource TypeL}" Margin="0,0,0,8"/>
-                        <TextBlock Text="{loc:Tr Key=input.accelerometer}" Foreground="{DynamicResource ForegroundMutedBrush}"/>
+                        <TextBlock Text="{loc:Tr Key=input.accelerometer}" Foreground="{DynamicResource ThemeTextMuted}"/>
                         <Canvas x:Name="AccelGraph" Height="90" Margin="0,4,0,10" ClipToBounds="True"/>
-                        <TextBlock Text="{loc:Tr Key=input.gyroscope}" Foreground="{DynamicResource ForegroundMutedBrush}"/>
+                        <TextBlock Text="{loc:Tr Key=input.gyroscope}" Foreground="{DynamicResource ThemeTextMuted}"/>
                         <Canvas x:Name="GyroGraph" Height="90" Margin="0,4,0,0" ClipToBounds="True"/>
                     </StackPanel>
                 </Border>

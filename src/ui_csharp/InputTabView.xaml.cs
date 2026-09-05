@@ -439,13 +439,13 @@ namespace Pcsx5Ui
                     break;
 
                 case NodeKind.TrailPad:
-                    n.Dot = new Ellipse { Width = n.W, Height = n.H, Fill = Brushes.DeepSkyBlue, Opacity = 0.9, IsHitTestVisible = false };
+                    n.Dot = new Ellipse { Width = n.W, Height = n.H, Fill = (Brush)Application.Current.Resources["ThemeAccent"], Opacity = 0.9, IsHitTestVisible = false };
                     Canvas.SetLeft(n.Dot, n.X - n.W / 2); Canvas.SetTop(n.Dot, n.Y - n.H / 2);
                     n.Dot.Visibility = Visibility.Collapsed;
                     n.TrailDots = new List<Ellipse>();
                     for (int i = 0; i < 12; i++)
                     {
-                        var e = new Ellipse { Width = n.W * 0.7, Height = n.H * 0.7, Fill = Brushes.DeepSkyBlue, Opacity = 0.0, IsHitTestVisible = false };
+                        var e = new Ellipse { Width = n.W * 0.7, Height = n.H * 0.7, Fill = (Brush)Application.Current.Resources["ThemeAccent"], Opacity = 0.0, IsHitTestVisible = false };
                         PadCanvas.Children.Add(e); n.TrailDots.Add(e);
                     }
                     PadCanvas.Children.Add(n.Dot);
@@ -740,7 +740,7 @@ namespace Pcsx5Ui
             double scale = peak > prevScale ? peak : prevScale * 0.985 + peak * 0.015;
             if (scale < 1) scale = 1;
 
-            canvas.Children.Add(new Line { X1 = 0, X2 = w, Y1 = h / 2, Y2 = h / 2, Stroke = Brushes.Gray, StrokeThickness = 0.5, Opacity = 0.6 });
+            canvas.Children.Add(new Line { X1 = 0, X2 = w, Y1 = h / 2, Y2 = h / 2, Stroke = (Brush)Application.Current.Resources["ThemeHairline"], StrokeThickness = 0.5, Opacity = 0.6 });
             for (int axis = 0; axis < 3; axis++)
             {
                 var pl = new Polyline { Stroke = AxisBrushes[axis], StrokeThickness = 1.2, IsHitTestVisible = false };

@@ -391,7 +391,18 @@ Ordered by dependency, one subsystem per change (Rule 10):
     cut clips the element so the stroke follows the chamfer; sharp clips
     nothing. Seen: cut artifacts/runtime/SHELL_20260906_043015/frames/frame_0005.png,
     rounded SHELL_20260906_043026/frames/frame_0005.png.
-  - [ ] Step 5 - Input. Steps 6-11 - Tools, Console,
+  - [x] **Step 5 - Input on tokens** - DONE. InputTabView.xaml referenced
+    the old fixed brushes (10 ForegroundMutedBrush, 4 GlassBackgroundBrush),
+    now ThemeTextMuted / ThemeSurface; its code-behind's touch-point dots
+    follow the accent and the graph midlines the hairline (the three axis
+    trace colours stay fixed as chart series). The mapping editor below it
+    in MainWindow.xaml had 79 literals (white text, #0099FF accents,
+    hairlines, raised fills, the combo boxes) - all on tokens now. Seen:
+    dark artifacts/runtime/SHELL_20260906_043210/frames/frame_0006.png; light
+    with coral SHELL_20260906_043222/frames/frame_0006.png (pad was off, so
+    the device panel shows dashes; the mapping editor is below the fold at
+    the harness height and was verified by the literal count, not seen).
+  - [ ] Step 6 - Tools. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
