@@ -414,6 +414,11 @@ namespace Pcsx5Ui
                 Path.Combine(dir, "pcsx5_cli.exe"),
                 Path.Combine(dir, "..", "..", "..", "..", "bin", "Release", "pcsx5_cli.exe"),
                 Path.Combine(dir, "..", "..", "..", "..", "..", "build", "bin", "Release", "pcsx5_cli.exe"),
+                // From the shell's own build output
+                // (src/ui_csharp/bin/Release/net9.0-windows/win-x64) the repository
+                // root is six levels up, not five; the entry above never matched
+                // there, so Play from a dev build reported "cannot find the file".
+                Path.Combine(dir, "..", "..", "..", "..", "..", "..", "build", "bin", "Release", "pcsx5_cli.exe"),
             };
             foreach (var c in candidates)
             {

@@ -142,6 +142,11 @@ namespace Pcsx5Ui
     public partial class MainWindow : Window
     {
         private List<GameEntry> _games = new List<GameEntry>();
+        // The shelf on the Library tab: recently played titles, most recent
+        // first, or every title when nothing has been played yet. View All
+        // always lists _games in full.
+        private List<GameEntry> _shelf = new List<GameEntry>();
+        private RecentPlays _recent;
         private GameEntry _selectedGame = null;
         private string _gamesDir = "Games";
         private string _coversDir = "Covers";
@@ -617,7 +622,6 @@ namespace Pcsx5Ui
                             if (!_games.Any(g => g.TitleId == entry.TitleId))
                             {
                                 _games.Add(entry);
-                                AddGameTile(entry);
                             }
                         }
                     }
@@ -628,16 +632,39 @@ namespace Pcsx5Ui
                 }
             }
 
+            // Most recently played first everywhere; never-played titles keep
+            // their discovery order after them.
+            _recent ??= new RecentPlays(Path.Combine(Path.GetDirectoryName(_iniPath) ?? AppDomain.CurrentDomain.BaseDirectory, "recent_plays.json"));
+            _games = _games
+                .Select((g, i) => (g, i))
+                .OrderByDescending(t => _recent.LastPlayed(t.g.TitleId) ?? DateTime.MinValue)
+                .ThenBy(t => t.i)
+                .Select(t => t.g)
+                .ToList();
+
             FooterGamesCount.Text = $"Games Loaded: {_games.Count}";
             LibraryGameCount.Text = $"{_games.Count} games";
             FullLibraryCount.Text = $"{_games.Count} games";
             FullLibraryListView.ItemsSource = null;
             FullLibraryListView.ItemsSource = _games;
 
-            if (_games.Count > 0)
+            RebuildShelf();
+            if (_shelf.Count > 0)
             {
-                SelectGame(_games[0]);
+                SelectGame(_shelf[0]);
             }
+        }
+
+        /// <summary>Recompute the Library shelf from the recency order: titles
+        /// with a last-played time, most recent first; or all titles if nothing
+        /// has been played yet, so a fresh install is not an empty shelf.</summary>
+        private void RebuildShelf()
+        {
+            _shelf = _games.Where(g => _recent.LastPlayed(g.TitleId) != null).ToList();
+            if (_shelf.Count == 0) _shelf = new List<GameEntry>(_games);
+            GamesWrapPanel.Children.Clear();
+            foreach (var g in _shelf) AddGameTile(g);
+            if (_selectedGame != null && _shelf.Contains(_selectedGame)) SelectGame(_selectedGame);
         }
 
         private GameEntry ParseGameDirectory(string dir)
@@ -1305,6 +1332,18 @@ namespace Pcsx5Ui
         {
             LogConsole($"[Session] Game session started: {game.Title}");
             FooterStatus.Text = $"{game.Title} - Starting";
+
+            // Recently played first. Stamped here, once the core process has
+            // actually started, not at the Play click: a launch that fails to
+            // start is not a play. This handler is dispatched to the UI thread.
+            if (_recent != null && game != null)
+            {
+                if (!_recent.Record(game.TitleId)) LogConsole("Could not save recent_plays.json");
+                _games.Remove(game); _games.Insert(0, game);
+                FullLibraryListView.ItemsSource = null;
+                FullLibraryListView.ItemsSource = _games;
+                RebuildShelf();
+            }
         }
 
         private void OnBootPhaseChanged(BootPhase phase, string message)
@@ -4580,16 +4619,16 @@ namespace Pcsx5Ui
                         return;
                     }
 
-                    if (_games.Count > 0)
+                    if (_shelf.Count > 0)
                     {
                         if (leftPressed || rightPressed)
                         {
-                            int currentIndex = _selectedGame != null ? _games.IndexOf(_selectedGame) : 0;
-                            int newIndex = leftPressed ? (currentIndex - 1 + _games.Count) % _games.Count : (currentIndex + 1) % _games.Count;
-                            SelectGame(_games[newIndex]);
+                            int currentIndex = _selectedGame != null ? Math.Max(0, _shelf.IndexOf(_selectedGame)) : 0;
+                            int newIndex = leftPressed ? (currentIndex - 1 + _shelf.Count) % _shelf.Count : (currentIndex + 1) % _shelf.Count;
+                            SelectGame(_shelf[newIndex]);
                             foreach (Border card in GamesWrapPanel.Children)
                             {
-                                if (card.Tag == _games[newIndex])
+                                if (card.Tag == _shelf[newIndex])
                                 {
                                     card.BringIntoView();
                                     break;

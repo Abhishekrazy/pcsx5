@@ -326,6 +326,26 @@ Ordered by dependency, one subsystem per change (Rule 10):
     panel; a mouse click selects, a double-click returns to the shelf. The
     search box beside it was already unwired and still is. Seen:
     artifacts/runtime/SHELL_20260906_024352/frames/frame_0009.png
+  - [x] **Shelf shows recently played first** - DONE. Asked 2026-09-06:
+    "last played title to first ... all recent played should be shown on
+    main menu and other in view all". A focused RecentPlays class keeps a
+    per-title last-launch time in recent_plays.json beside config.ini (shell
+    state, kept out of the core's versioned global.json). The Library shelf
+    lists only titles with a stamp, most recent first, or every title while
+    nothing has been played so a fresh install is not an empty shelf; View All
+    lists everything in the same order. The stamp is written from
+    OnGameStarted, once the core process exists, not at the Play click - a
+    launch that fails to start is not a play. Seen: seeded stamp puts Dreaming
+    Sarah alone on the shelf (SHELL_20260906_024629/frames/frame_0006.png);
+    a real Play from a clean file stamped the launched title
+    (SHELL_20260906_024839, recent_plays.json read back afterwards).
+  - [x] **Play from a dev build could not find pcsx5_cli.exe** - DONE, found
+    while verifying the above. IpcSession.LocateCoreExe walked five levels up
+    from src/ui_csharp/bin/Release/net9.0-windows/win-x64, which is src/, not
+    the repository root, so the build/bin/Release candidate never matched and
+    Play reported "The system cannot find the file specified"
+    (SHELL_20260906_024642/frames/frame_0025.png). A six-level candidate is
+    added beside the existing ones; the next run launched the core.
   - [ ] The mapping editor's side columns scroll inside 260 px strips with
     tiny viewports (thumbs visible in the after-frame). A page-level scroll
     for the Controller tab would read better than three nested ones.
