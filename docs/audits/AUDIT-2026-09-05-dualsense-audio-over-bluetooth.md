@@ -6,6 +6,121 @@ Can PCSX5 do the same on Windows over Bluetooth?
 
 ## Classification
 
+**Superseded on 2026-09-05, the same day it was written.** See "Correction"
+immediately below. The original conclusion — `HARD BOUNDARY` over Bluetooth —
+is `FALSIFIED`.
+
+Current classification:
+
+| Capability | Class | Basis |
+|---|---|---|
+| Haptics over Bluetooth | `SOFT BOUNDARY` | Working open-source implementations exist |
+| Speaker over Bluetooth | `SOFT BOUNDARY` | Claimed and implemented by DualSenseClient |
+| Microphone **input** over Bluetooth | `UNKNOWN` | No source consulted confirms it |
+| Speaker / mic over USB | `SOFT BOUNDARY` | Windows exposes the endpoints natively |
+
+## Correction — the original analysis was wrong
+
+The user supplied <https://github.com/DualSenseClient/DualSenseClient>, which
+does the thing this document had just declared impossible: DualSense audio and
+haptics over Bluetooth on Windows, in **user-space software**, with no dongle
+and no custom driver, driving the native Windows Bluetooth radio through
+P/Invoke.
+
+Three claims made below in the original text were wrong, and each is worth
+naming because the reasoning failed in a different way.
+
+### Wrong claim 1: "the pipe is the wrong size"
+
+The bandwidth argument assumed the controller is fed **raw PCM**. It is not.
+
+`SAxense`, the project whose reverse-engineering the others build on, documents
+the haptics stream as **8-bit PCM, 3000 Hz, stereo** — about **6 KB/s**. That
+fits inside the ~20 KB/s HID report stream with room to spare. DualSenseClient
+additionally describes **Opus-encoded** haptics over Bluetooth, which is smaller
+still.
+
+The error was assuming console-quality PCM because "audio" was the word in play.
+Haptics are low-frequency by nature and a 3 kHz 8-bit channel is entirely
+adequate for them. A calculation resting on an unstated assumption produced a
+confident, wrong, quantitative answer — which is more dangerous than a vague one,
+because the number made it persuasive.
+
+### Wrong claim 2: "the protocol is UNKNOWN"
+
+It is reverse-engineered and published:
+
+- **SAxense** (MPL-2.0) — the original packet-framing research
+- **dualsense-bt-haptics** (**MIT**) — a C# implementation on Windows
+- **DS5Dongle** — Bluetooth audio reports, feature reports, firmware info
+- **LinuxAudio4Dualsense5** — a working producer profile
+
+`UNKNOWN` was a statement about what this project had looked for, not about what
+exists. The audit searched for "is this possible" and stopped at the first
+consistent story; it never searched for the specific artefact — a Windows
+Bluetooth haptics implementation — that would have contradicted it.
+
+### Wrong claim 3: "the community built hardware, so software must be blocked"
+
+The dongle solutions are real, but they were treated as *evidence of
+impossibility* rather than as one option among several. That is an argument from
+absence, and the absence was in the search, not in the world.
+
+## What is actually true
+
+VERIFIED, and unchanged: Windows enumerates **no audio endpoint** for the
+DualSense over Bluetooth on this machine, while other Bluetooth devices list
+`A2DP SNK` and `Hands-Free HF Audio`. That observation was correct. The mistake
+was concluding from it that the audio could not be delivered at all, when the
+actual route is **HID output reports**, not an audio endpoint. No endpoint is
+needed because the controller is not a Bluetooth audio device — it is a HID
+device that happens to accept audio frames.
+
+`UNKNOWN`, genuinely: **microphone input over Bluetooth.** Every source found
+concerns the *output* direction — haptics and speaker. None documents capturing
+the microphone over Bluetooth, and it is a different data path. It should not be
+assumed to work because output does.
+
+Also noted, so expectations are set honestly: `dualsense-bt-haptics` reports
+**~200 ms latency** and limited game compatibility. This is demonstrated, not
+polished.
+
+## Licensing, before any code is written
+
+PCSX5 is GPL-2.0.
+
+- **dualsense-bt-haptics is MIT** — compatible, and the closest reference since
+  it is C# on Windows.
+- **SAxense is MPL-2.0** — compatible with GPL-2.0 via the secondary-licence
+  provision (MPL 2.0 §3.3), but verify the repository is not marked
+  "Incompatible With Secondary Licenses" before relying on it.
+- **DualSenseClient's licence has not been checked.** Do that before reading its
+  source with intent to reimplement.
+
+The protocol itself — report IDs, framing, sample rates — is factual and not
+subject to copyright. The intended approach is to learn the format and write a
+PCSX5 implementation in this project's own idiom, which is both the user's
+standing preference for reference projects and the cleanest licensing position.
+
+## What to do
+
+1. Confirm the USB path first — it is simpler, Windows exposes the endpoints,
+   and `DualSenseAudio.cs` already aims at it.
+2. Then Bluetooth haptics and speaker via HID output reports, using the MIT
+   implementation as the primary reference.
+3. Treat microphone-over-Bluetooth as unproven until someone demonstrates it.
+4. Regardless: the shell must not offer controls that silently do nothing.
+
+---
+
+## Original analysis (retained, wrong in its conclusion)
+
+Kept per Rule 02: a superseded analysis is deleted only at the cost of a future
+session repeating the same reasoning. Everything below the line predates the
+correction above.
+
+
+
 `HARD BOUNDARY` over Bluetooth on a stock Windows stack.
 `SOFT BOUNDARY` over USB — see "What is actually achievable".
 
