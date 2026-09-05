@@ -1452,13 +1452,13 @@
                         </Grid.RowDefinitions>
 
                         <!-- Emulator window is reparented into this area (HwndHost) -->
-                        <Border x:Name="EmulatorHostBorder" Grid.Row="0" Grid.Column="0" Background="Black">
+                        <Border x:Name="EmulatorHostBorder" Grid.Row="0" Grid.Column="0" Background="{DynamicResource ThemeGround}">
                             <ContentControl x:Name="EmulatorHostPresenter"/>
                         </Border>
 
                         <!-- Console panel — changes position based on dock mode -->
                         <Border x:Name="GameConsolePanel" Grid.Row="0" Grid.Column="1" Width="380" Visibility="Collapsed" Panel.ZIndex="10"
- Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1,0,0,0">
+ Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1,0,0,0">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -1471,7 +1471,7 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.console}" FontSize="{DynamicResource TypeML}" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.console}" FontSize="{DynamicResource TypeML}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                                         <Button x:Name="ConsoleDockBottomBtn" MinWidth="68" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="4,0" ToolTip="{loc:Tr Key=ui.dock_bottom}"
  Click="ConsoleDockMode_Click" Tag="Bottom" Style="{StaticResource ModernButtonStyle}">⬇ Bottom</Button>
@@ -1484,7 +1484,7 @@
                                     </StackPanel>
                                 </Grid>
                                 <Border x:Name="GameConsoleSlot" Grid.Row="1" Margin="6,0,6,6">
-                                    <Border x:Name="ConsoleBorder" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="8">
+                                    <Border x:Name="ConsoleBorder" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="8">
                                         <RichTextBox x:Name="ConsoleOutputBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="{DynamicResource TypeM}"
  BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
  HorizontalScrollBarVisibility="Disabled" IsDocumentEnabled="True">
@@ -1497,7 +1497,7 @@
                                 <!-- Console action buttons -->
                                 <Grid Grid.Row="2" Margin="10,4,10,8">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <CheckBox x:Name="AutoScrollCheck" Content="{loc:Tr Key=ui.scroll}" IsChecked="True" Foreground="#FFA0A0A5" FontSize="{DynamicResource TypeS}"
+                                        <CheckBox x:Name="AutoScrollCheck" Content="{loc:Tr Key=ui.scroll}" IsChecked="True" Foreground="{DynamicResource ThemeTextMuted}" FontSize="{DynamicResource TypeS}"
  VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <Button Content="{loc:Tr Key=ui.copy}" MinWidth="60" MinHeight="28" FontSize="{DynamicResource TypeS}" Padding="6,0" Style="{StaticResource ModernButtonStyle}" Click="CopyConsole_Click"/>
                                         <Button Content="{loc:Tr Key=ui.clear}" MinWidth="60" MinHeight="28" FontSize="{DynamicResource TypeS}" Padding="6,0" Margin="6,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="ClearConsole_Click"/>
@@ -1508,8 +1508,8 @@
 
 
                         <!-- PLAYSTATION 5 PROGRESSIVE BOOT LOADER OVERLAY -->
-                        <Grid x:Name="GameBootOverlay" Grid.ColumnSpan="1" Grid.RowSpan="1" Visibility="Collapsed" Background="#EB05060A">
-                            <Border Background="#121622" BorderBrush="#350070D1" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerL}" Padding="32,28" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid x:Name="GameBootOverlay" Grid.ColumnSpan="1" Grid.RowSpan="1" Visibility="Collapsed" Background="{DynamicResource ThemeSurface}">
+                            <Border Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeAccent}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerL}" Padding="32,28" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Border.Effect>
                                     <DropShadowEffect Color="#0070D1" BlurRadius="50" Opacity="0.5" ShadowDepth="0"/>
                                 </Border.Effect>

@@ -2328,17 +2328,23 @@ namespace Pcsx5Ui
             }
         }
 
+        /// <summary>Console line colour by log level, from the theme tokens so the
+        /// console reads in both palettes (bright green and yellow on a white
+        /// surface did not). Lines already written keep the colour they had;
+        /// new lines follow a theme change.</summary>
         private static System.Windows.Media.Color ConsoleLevelToColor(int level)
         {
+            static System.Windows.Media.Color Tok(string key) =>
+                Application.Current.Resources[key] is SolidColorBrush b ? b.Color : System.Windows.Media.Colors.Gray;
             switch (level)
             {
-                case 0: return System.Windows.Media.Color.FromRgb(0xCC, 0xCC, 0xCC); // Trace: gray
-                case 1: return System.Windows.Media.Color.FromRgb(0x88, 0xCC, 0xFF); // Debug: light blue
-                case 2: return System.Windows.Media.Color.FromRgb(0x66, 0xDD, 0x66); // Info: green
-                case 3: return System.Windows.Media.Color.FromRgb(0xFF, 0xCC, 0x44); // Warn: yellow
-                case 4: return System.Windows.Media.Color.FromRgb(0xFF, 0x55, 0x55); // Error: red
-                case 5: return System.Windows.Media.Color.FromRgb(0x44, 0x99, 0xFF); // Critical: blue
-                default: return System.Windows.Media.Color.FromRgb(0xFF, 0xCC, 0x66); // fallback: orange
+                case 0: return Tok("ThemeTextMuted");   // Trace
+                case 1: return Tok("ThemeTextMuted");   // Debug
+                case 2: return Tok("ThemeText");        // Info
+                case 3: return Tok("ThemeWarning");     // Warn
+                case 4: return Tok("ThemeDanger");      // Error
+                case 5: return Tok("ThemeDanger");      // Critical
+                default: return Tok("ThemeTextMuted");
             }
         }
 

@@ -417,7 +417,16 @@ Ordered by dependency, one subsystem per change (Rule 10):
     as the panel title. The "yellow" was ClearType fringing on small glyphs
     read by eye. Lesson recorded: judge colour by sampling pixels, not by
     looking at a downscaled frame.
-  - [ ] Step 7 - Console. Steps 6-11 - Tools, Console,
+  - [x] **Step 7 - Console on tokens** - DONE. The console panel's ten XAML
+    literals (surface, hairlines, muted labels, the ground behind the host
+    presenter, an accent-tinted border) are on tokens, and the six fixed
+    per-level line colours (green info, yellow warn, ...) now come from the
+    tokens - muted for trace/debug, text for info, warning and danger for
+    the rest - so lines read on a white surface too. Lines already written
+    keep their colour on a theme change; new ones follow. Seen: dark
+    artifacts/runtime/SHELL_20260906_044710/frames/frame_0006.png; light with
+    coral SHELL_20260906_044722/frames/frame_0006.png.
+  - [ ] Step 8 - Error. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
