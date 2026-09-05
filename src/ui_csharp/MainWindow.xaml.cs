@@ -947,7 +947,7 @@ namespace Pcsx5Ui
             {
                 if (_selectedGame != game)
                 {
-                    border.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 153, 255));
+                    border.BorderBrush = (Brush)FindResource("ThemeAccent");
                     overlay.Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
                     border.Opacity = 0.85;
                 }
@@ -993,14 +993,14 @@ namespace Pcsx5Ui
             {
                 case "PLAYABLE":
                 case "COMPLETE":
-                    DetailCompatBadge.Background = new SolidColorBrush(Color.FromRgb(46, 125, 50));
+                    DetailCompatBadge.Background = (Brush)FindResource("ThemeSuccess"); DetailCompatText.Foreground = (Brush)FindResource("ThemeGround");
                     break;
                 case "MENU":
                 case "INTRO":
-                    DetailCompatBadge.Background = new SolidColorBrush(Color.FromRgb(239, 108, 0));
+                    DetailCompatBadge.Background = (Brush)FindResource("ThemeWarning"); DetailCompatText.Foreground = (Brush)FindResource("ThemeGround");
                     break;
                 default:
-                    DetailCompatBadge.Background = new SolidColorBrush(Color.FromRgb(117, 117, 117));
+                    DetailCompatBadge.Background = (Brush)FindResource("ThemeRaised"); DetailCompatText.Foreground = (Brush)FindResource("ThemeText");
                     break;
             }
 
@@ -3199,19 +3199,21 @@ namespace Pcsx5Ui
 
         private void UpdateTabHighlight(Button activeBtn)
         {
-            var activeBrush = new SolidColorBrush(Color.FromRgb(0, 153, 255));
-            var inactiveBrush = new SolidColorBrush(Color.FromRgb(160, 160, 165));
+            // Theme tokens (ADR-003), so the active tab follows the user's accent.
+            var activeBrush = (Brush)FindResource("ThemeAccent");
+            var inactiveBrush = (Brush)FindResource("ThemeTextMuted");
+            var textBrush = (Brush)FindResource("ThemeText");
 
-            TabLibraryBtn.Foreground = activeBtn == TabLibraryBtn ? Brushes.White : inactiveBrush;
+            TabLibraryBtn.Foreground = activeBtn == TabLibraryBtn ? textBrush : inactiveBrush;
             TabLibraryBtn.BorderBrush = activeBtn == TabLibraryBtn ? activeBrush : Brushes.Transparent;
 
-            TabAnalyzerBtn.Foreground = activeBtn == TabAnalyzerBtn ? Brushes.White : inactiveBrush;
+            TabAnalyzerBtn.Foreground = activeBtn == TabAnalyzerBtn ? textBrush : inactiveBrush;
             TabAnalyzerBtn.BorderBrush = activeBtn == TabAnalyzerBtn ? activeBrush : Brushes.Transparent;
 
-            TabControllerBtn.Foreground = activeBtn == TabControllerBtn ? Brushes.White : inactiveBrush;
+            TabControllerBtn.Foreground = activeBtn == TabControllerBtn ? textBrush : inactiveBrush;
             TabControllerBtn.BorderBrush = activeBtn == TabControllerBtn ? activeBrush : Brushes.Transparent;
 
-            TabSettingsBtn.Foreground = activeBtn == TabSettingsBtn ? Brushes.White : inactiveBrush;
+            TabSettingsBtn.Foreground = activeBtn == TabSettingsBtn ? textBrush : inactiveBrush;
             TabSettingsBtn.BorderBrush = activeBtn == TabSettingsBtn ? activeBrush : Brushes.Transparent;
 
             }
@@ -4804,7 +4806,7 @@ namespace Pcsx5Ui
 
                 // Game library shelf header
                 if (LibraryHeaderTextBlock != null)
-                    LibraryHeaderTextBlock.Text = I18n.Tr("library.header");
+                    LibraryHeaderTextBlock.Text = I18n.Tr("ui.recent");
 
                 // Search placeholder
                 if (SearchPlaceholder != null)

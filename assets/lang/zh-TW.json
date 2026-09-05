@@ -441,5 +441,7 @@
   "settings.ground": "背景色",
   "settings.ground_desc": "每個畫面背後的背景",
   "settings.ground_default": "主題預設",
-  "settings.ground_default_desc": "使用調色盤自身的背景"
+  "settings.ground_default_desc": "使用調色盤自身的背景",
+  "ui.continue_playing": "繼續遊戲",
+  "ui.recent": "最近"
 }

@@ -441,5 +441,7 @@
   "settings.ground": "背景色",
   "settings.ground_desc": "すべての画面の背景",
   "settings.ground_default": "テーマの既定",
-  "settings.ground_default_desc": "パレット本来の背景を使う"
+  "settings.ground_default_desc": "パレット本来の背景を使う",
+  "ui.continue_playing": "つづきから",
+  "ui.recent": "最近"
 }

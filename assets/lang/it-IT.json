@@ -441,5 +441,7 @@
   "settings.ground": "Colore di sfondo",
   "settings.ground_desc": "Lo sfondo dietro ogni schermata",
   "settings.ground_default": "Predefinito del tema",
-  "settings.ground_default_desc": "Usa lo sfondo proprio della palette"
+  "settings.ground_default_desc": "Usa lo sfondo proprio della palette",
+  "ui.continue_playing": "CONTINUA",
+  "ui.recent": "RECENTI"
 }

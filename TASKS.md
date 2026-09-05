@@ -316,7 +316,20 @@ Ordered by dependency, one subsystem per change (Rule 10):
     screen below. Colour-name labels for the ground presets are hardcoded
     English in C# (proper-noun-like); to localize if the ratchet ever
     counts C#.
-  - [ ] Step 2 - Library (main): hero, five-title shelf, legend, on tokens.
+  - [x] **Step 2 - Library (main) on tokens** - DONE. Window ground and
+    text, title bar and tabs, the hero (CONTINUE eyebrow, title, mono pills,
+    accent Play with on-accent text and a focus glow), the cover card, the
+    RECENT shelf header, scroll arrows, the secondary button style and the
+    footer legend all reference theme tokens; the tab highlight, tile
+    selection ring and compat badge colours come from the tokens in
+    code-behind. Every x:Name the code-behind uses is unchanged. The
+    bottom-anchored hero had grown past its row and clipped its first child
+    (the eyebrow) - fixed by shrinking the shelf row to 400 px. Seen: dark
+    with cyan - artifacts/runtime/SHELL_20260906_034913/frames/frame_0005.png;
+    light with coral - SHELL_20260906_034731/frames/frame_0005.png (same
+    layout, before the row fix). DynamicResource Theme* references in
+    MainWindow.xaml: 34 (was 0). Still literal on this screen: the search box,
+    the tile placeholder brush and the blurred backdrop overlay.
   - [ ] Step 3 - All games: grid, search, sort, favourites (per-title flag).
   - [ ] Step 4 - Settings. Step 5 - Input. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.

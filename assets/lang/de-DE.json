@@ -441,5 +441,7 @@
   "settings.ground": "Hintergrundfarbe",
   "settings.ground_desc": "Der Hintergrund hinter jedem Bildschirm",
   "settings.ground_default": "Design-Standard",
-  "settings.ground_default_desc": "Den eigenen Hintergrund der Palette verwenden"
+  "settings.ground_default_desc": "Den eigenen Hintergrund der Palette verwenden",
+  "ui.continue_playing": "WEITERSPIELEN",
+  "ui.recent": "ZULETZT"
 }

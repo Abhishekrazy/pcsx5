@@ -441,5 +441,7 @@
   "settings.ground": "背景色",
   "settings.ground_desc": "每个界面背后的背景",
   "settings.ground_default": "主题默认",
-  "settings.ground_default_desc": "使用调色板自带的背景"
+  "settings.ground_default_desc": "使用调色板自带的背景",
+  "ui.continue_playing": "继续游戏",
+  "ui.recent": "最近"
 }

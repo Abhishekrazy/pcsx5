@@ -441,5 +441,7 @@
   "settings.ground": "Цвет фона",
   "settings.ground_desc": "Фон позади каждого экрана",
   "settings.ground_default": "По умолчанию темы",
-  "settings.ground_default_desc": "Использовать собственный фон палитры"
+  "settings.ground_default_desc": "Использовать собственный фон палитры",
+  "ui.continue_playing": "ПРОДОЛЖИТЬ",
+  "ui.recent": "НЕДАВНИЕ"
 }

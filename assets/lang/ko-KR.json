@@ -441,5 +441,7 @@
   "settings.ground": "배경 색상",
   "settings.ground_desc": "모든 화면 뒤의 배경",
   "settings.ground_default": "테마 기본값",
-  "settings.ground_default_desc": "팔레트 고유의 배경 사용"
+  "settings.ground_default_desc": "팔레트 고유의 배경 사용",
+  "ui.continue_playing": "이어하기",
+  "ui.recent": "최근"
 }

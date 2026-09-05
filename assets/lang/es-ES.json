@@ -441,5 +441,7 @@
   "settings.ground": "Color de fondo",
   "settings.ground_desc": "El fondo detrás de cada pantalla",
   "settings.ground_default": "Predeterminado del tema",
-  "settings.ground_default_desc": "Usar el fondo propio de la paleta"
+  "settings.ground_default_desc": "Usar el fondo propio de la paleta",
+  "ui.continue_playing": "CONTINUAR",
+  "ui.recent": "RECIENTES"
 }

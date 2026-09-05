@@ -6,8 +6,8 @@
  Title="PCSX5 - PlayStation 5 Emulator" Height="780" Width="1200"
  MinWidth="1050" MinHeight="680"
  WindowStartupLocation="CenterScreen"
- Background="#0A0D14"
- Foreground="White"
+ Background="{DynamicResource ThemeGround}"
+ Foreground="{DynamicResource ThemeText}"
  FontFamily="Segoe UI Semibold, Inter, Outfit, Arial"
  Loaded="Window_Loaded"
  PreviewKeyDown="Window_PreviewKeyDown"
@@ -45,9 +45,9 @@
         <Style x:Key="NavTabButtonStyle" TargetType="Button">
             <Setter Property="FocusVisualStyle" Value="{StaticResource AccentFocusVisual}"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#FFA0A0A5"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextMuted}"/>
+            <Setter Property="FontSize" Value="{DynamicResource TypeL}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Height" Value="46"/>
             <Setter Property="Padding" Value="20,0,20,0"/>
             <Setter Property="Margin" Value="5,0,5,0"/>
@@ -71,12 +71,12 @@
         <!-- Standard Button Style -->
         <Style x:Key="ModernButtonStyle" TargetType="Button">
             <Setter Property="FocusVisualStyle" Value="{StaticResource AccentFocusVisual}"/>
-            <Setter Property="Background" Value="#1EFFFFFF"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#2FFFFFFF"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeRaised}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeHairline}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="15,8,15,8"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="{DynamicResource TypeS}"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -94,12 +94,12 @@
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#3DFFFFFF"/>
-                    <Setter Property="BorderBrush" Value="#4FFFFFFF"/>
+                    <Setter Property="Background" Value="{DynamicResource ThemeSurface}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeTextMuted}"/>
                 </Trigger>
                 <Trigger Property="IsKeyboardFocused" Value="True">
-                    <Setter Property="Background" Value="#3F0099FF"/>
-                    <Setter Property="BorderBrush" Value="#0099FF"/>
+                    <Setter Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
                     <Setter Property="BorderThickness" Value="2"/>
                 </Trigger>
             </Style.Triggers>
@@ -338,15 +338,7 @@
 
         <!-- Dark gradient overlay to fade the background art to black at the edges -->
         <Grid>
-            <Grid.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <LinearGradientBrush.GradientStops>
-                        <GradientStop Color="#8F0A0D14" Offset="0.0"/>
-                        <GradientStop Color="#BF0A0D14" Offset="0.6"/>
-                        <GradientStop Color="#FD05060A" Offset="1.0"/>
-                    </LinearGradientBrush.GradientStops>
-                </LinearGradientBrush>
-            </Grid.Background>
+            <Grid.Background><SolidColorBrush Color="Transparent"/></Grid.Background>
         </Grid>
 
         <!-- Main Window Layout -->
@@ -361,7 +353,7 @@
             </Grid.RowDefinitions>
 
             <!-- Title Bar & Navigation Grid -->
-            <Border x:Name="TitleBarBorder" Grid.Row="0" Background="#4F05060A" BorderBrush="#15FFFFFF" BorderThickness="0,0,0,1">
+            <Border x:Name="TitleBarBorder" Grid.Row="0" Background="{DynamicResource ThemeGround}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="0,0,0,1">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="200"/>
@@ -371,8 +363,8 @@
                     
                     <!-- Logo -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="25,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
-                        <TextBlock Text="PCSX5" Foreground="#0099FF" FontSize="{DynamicResource Type4XL}" FontWeight="ExtraBold" VerticalAlignment="Center"/>
-                        <TextBlock Text="PS5" Foreground="#A0A0A5" FontSize="{DynamicResource TypeM}" Margin="8,4,0,0" VerticalAlignment="Center"/>
+                        <Border Width="12" Height="12" CornerRadius="3" Background="{DynamicResource ThemeAccent}" VerticalAlignment="Center" Margin="0,0,10,0"/><TextBlock Text="PCSX5" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource Type2XL}" FontWeight="Bold" VerticalAlignment="Center"><TextBlock.LayoutTransform><ScaleTransform/></TextBlock.LayoutTransform></TextBlock>
+                        <TextBlock Text="PS5" Foreground="{DynamicResource ThemeTextMuted}" FontSize="{DynamicResource TypeM}" Margin="8,4,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
 
                     <!-- Navigation Tabs -->
@@ -449,7 +441,7 @@
                         <!-- Upper details area -->
                         <RowDefinition Height="*"/>
                         <!-- Lower carousel shelf -->
-                        <RowDefinition Height="420"/>
+                        <RowDefinition Height="400"/>
                     </Grid.RowDefinitions>
 
                     <!-- Upper details area: details about selected game -->
@@ -463,24 +455,28 @@
                              Bottom-anchored so the title and its action sit
                              directly above the tile row, as on the PS5 home
                              screen, rather than centred with dead space below. -->
-                        <StackPanel Grid.Column="0" VerticalAlignment="Bottom" Margin="0,0,0,26">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Bottom" Margin="0,0,0,14">
+                            <!-- Void console (TASKS 4.13 step 2): every colour here is a
+                                 theme token, never a literal, so this screen follows
+                                 dark/light and the user's accent. -->
+                            <TextBlock x:Name="DetailEyebrow" Text="{loc:Tr Key=ui.continue_playing}" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"><TextBlock.LayoutTransform><ScaleTransform/></TextBlock.LayoutTransform></TextBlock>
                             <!-- Game Title -->
-                            <TextBlock x:Name="DetailTitle" Text="{loc:Tr Key=ui.select_a_game}" FontSize="{DynamicResource TypeDisplayL}" FontWeight="ExtraBold" Foreground="White" TextWrapping="Wrap" LineHeight="48"/>
+                            <TextBlock x:Name="DetailTitle" Text="{loc:Tr Key=ui.select_a_game}" FontSize="{DynamicResource TypeDisplayL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}" TextWrapping="Wrap" LineHeight="46"/>
                             
                             <!-- Metadata badges & ID -->
                             <!-- Metadata as pills (design pass 2026-09-06): each fact in
                                  its own rounded chip instead of bullet-separated text, so
                                  the row scans at console distance. The status badge keeps
                                  its name; code-behind colours it by compatibility. -->
-                            <StackPanel Orientation="Horizontal" Margin="0,12,0,20">
-                                <Border Padding="12,4,12,4" CornerRadius="999" Background="#22FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0">
-                                    <TextBlock x:Name="DetailTitleId" Text="{loc:Tr Key=ui.no_game_selected}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#FFC8C8CD" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,12">
+                                <Border Padding="12,5,12,5" CornerRadius="999" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock x:Name="DetailTitleId" Text="{loc:Tr Key=ui.no_game_selected}" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                 </Border>
-                                <Border Padding="12,4,12,4" CornerRadius="999" Background="#22FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0">
-                                    <TextBlock x:Name="DetailSize" Text="-" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#FFC8C8CD" VerticalAlignment="Center"/>
+                                <Border Padding="12,5,12,5" CornerRadius="999" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock x:Name="DetailSize" Text="-" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                 </Border>
-                                <Border x:Name="DetailCompatBadge" Padding="12,4,12,4" CornerRadius="999" Background="#3F555555" VerticalAlignment="Center">
-                                    <TextBlock x:Name="DetailCompatText" Text="{loc:Tr Key=ui.unknown}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="White"/>
+                                <Border x:Name="DetailCompatBadge" Padding="12,5,12,5" CornerRadius="999" Background="{DynamicResource ThemeRaised}" VerticalAlignment="Center">
+                                    <TextBlock x:Name="DetailCompatText" Text="{loc:Tr Key=ui.unknown}" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
                                 </Border>
                             </StackPanel>
 
@@ -488,34 +484,37 @@
                                  quiet. A full filesystem path shouting at the
                                  user is the opposite of a console dashboard. -->
                             <TextBlock x:Name="DetailPath" Text="-" FontSize="{DynamicResource TypeS}"
-                                       Foreground="#59A0A0A5" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource ThemeTextMuted}" Opacity="0.6" TextTrimming="CharacterEllipsis"
                                        ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
-                                       Margin="0,0,0,22"/>
+                                       Margin="0,0,0,14"/>
 
                             <!-- Play/Launch Button -->
                             <StackPanel Orientation="Horizontal">
-                                <Button x:Name="LaunchButton" Content="{loc:Tr Key=ui.play_game}" MinWidth="200" MinHeight="48" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Cursor="Hand" Click="LaunchButton_Click">
+                                <Button x:Name="LaunchButton" Content="{loc:Tr Key=ui.play_game}" MinWidth="180" MinHeight="56" FontSize="{DynamicResource Type2XL}" FontWeight="Bold" Cursor="Hand" Click="LaunchButton_Click" AutomationProperties.Name="{loc:Tr Key=ui.play_game}">
                                     <Button.Style>
                                         <Style TargetType="Button">
-                                            <Setter Property="Background" Value="#0078D4"/>
-                                            <Setter Property="Foreground" Value="White"/>
+                                            <Setter Property="Background" Value="{DynamicResource ThemeAccent}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource ThemeOnAccent}"/>
+                                            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
                                             <Setter Property="Template">
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}" CornerRadius="24" BorderBrush="#3FFFFFFF" BorderThickness="1">
-                                                            <Border.Effect>
-                                                                <DropShadowEffect Color="#0078D4" BlurRadius="15" Opacity="0.5" ShadowDepth="0"/>
-                                                            </Border.Effect>
+                                                        <Border x:Name="PlayRing" Background="{TemplateBinding Background}" CornerRadius="12" BorderBrush="Transparent" BorderThickness="0" Padding="28,0,28,0">
                                                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                         </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                                                <Setter TargetName="PlayRing" Property="Effect">
+                                                                    <Setter.Value><DropShadowEffect BlurRadius="18" ShadowDepth="0" Opacity="0.55"/></Setter.Value>
+                                                                </Setter>
+                                                            </Trigger>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="PlayRing" Property="Opacity" Value="0.9"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
                                                     </ControlTemplate>
                                                 </Setter.Value>
                                             </Setter>
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background" Value="#0099FF"/>
-                                                </Trigger>
-                                            </Style.Triggers>
                                         </Style>
                                     </Button.Style>
                                 </Button>
@@ -546,11 +545,11 @@
                         </StackPanel>
 
                         <!-- Right Column: Visual Art Preview of Selected Game -->
-                        <Border x:Name="GameCoverDisplayBorder" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,10,0" Width="300" MinHeight="300" CornerRadius="16" BorderBrush="#2FFFFFFF" BorderThickness="1" Background="#1F000000"/>
+                        <Border x:Name="GameCoverDisplayBorder" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,10,0" Width="300" MinHeight="300" CornerRadius="16" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}"><Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="16" Direction="270" Opacity="0.5"/></Border.Effect></Border>
                     </Grid>
 
                     <!-- Lower Carousel shelf: horizontal scrolling game icons -->
-                    <Grid x:Name="LibraryCarousel" Grid.Row="1" Background="#2F05060A">
+                    <Grid x:Name="LibraryCarousel" Grid.Row="1" Background="Transparent">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
@@ -562,9 +561,9 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="LibraryHeaderTextBlock" Grid.Column="0" Text="{loc:Tr Key=ui.game_library_2}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="LibraryHeaderTextBlock" Grid.Column="0" Text="{loc:Tr Key=ui.recent}" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock x:Name="LibraryGameCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeM}" Foreground="#6FA0A0A5" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <TextBlock x:Name="LibraryGameCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" Margin="0,0,12,0"/>
                                 <Button x:Name="FullLibraryToggleBtn" Content="{loc:Tr Key=ui.view_all}" MinWidth="110" MinHeight="28" FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Click="ToggleFullLibrary_Click"/>
                             </StackPanel>
                         </Grid>
@@ -576,10 +575,10 @@
 
                             <!-- Scroll arrows -->
                             <Button x:Name="LibraryScrollLeft" Content="◀" MinWidth="52" MinHeight="52" HorizontalAlignment="Left" VerticalAlignment="Center"
- Background="#59000000" Foreground="White" FontSize="{DynamicResource TypeL}" BorderThickness="0" Margin="8,0,0,0"
+ Background="{DynamicResource ThemeRaised}" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeL}" BorderThickness="0" Margin="8,0,0,0"
  Visibility="Collapsed" Click="LibraryScrollLeft_Click" Panel.ZIndex="10"/>
                             <Button x:Name="LibraryScrollRight" Content="▶" MinWidth="52" MinHeight="52" HorizontalAlignment="Right" VerticalAlignment="Center"
- Background="#59000000" Foreground="White" FontSize="{DynamicResource TypeL}" BorderThickness="0" Margin="0,0,8,0"
+ Background="{DynamicResource ThemeRaised}" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeL}" BorderThickness="0" Margin="0,0,8,0"
  Visibility="Collapsed" Click="LibraryScrollRight_Click" Panel.ZIndex="10"/>
                         </Grid>
 
@@ -1622,7 +1621,7 @@
             </Grid>
 
             <!-- FOOTER STATUS BAR -->
-            <Border Grid.Row="2" Background="#A0050508" BorderBrush="#15FFFFFF" BorderThickness="0,1,0,0">
+            <Border Grid.Row="2" Background="{DynamicResource ThemeGround}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="0,1,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -1630,15 +1629,15 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="25,0,0,0">
-                        <TextBlock x:Name="FooterGamesCount" Text="{loc:Tr Key=ui.games_loaded_0}" FontSize="{DynamicResource TypeM}" Foreground="#6FA0A0A5"/>
+                        <TextBlock x:Name="FooterGamesCount" Text="{loc:Tr Key=ui.games_loaded_0}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}"/>
                         <TextBlock Text="|" Foreground="#25FFFFFF" Margin="12,0,12,0"/>
-                        <TextBlock x:Name="FooterStatus" Text="{loc:Tr Key=ui.ready}" FontSize="{DynamicResource TypeM}" Foreground="#0099FF"/>
+                        <TextBlock x:Name="FooterStatus" Text="{loc:Tr Key=ui.ready}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeAccent}"/>
                         <TextBlock Text="|" Foreground="#25FFFFFF" Margin="12,0,12,0"/>
                         <!-- The pad legend sits in a chip (design pass 2026-09-06) so it
                              reads as one control-hint surface, as the SharpEmu launcher's
                              shoulder-button hints do. -->
-                        <Border CornerRadius="6" Background="#1AFFFFFF" Padding="10,3,10,3" VerticalAlignment="Center">
-                            <TextBlock x:Name="FooterGamepadHints" Text="{loc:Tr Key=ui.l1_r1_tabs_d_pad_move_select_back_settings}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#0099FF"/>
+                        <Border CornerRadius="6" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Padding="10,3,10,3" VerticalAlignment="Center">
+                            <TextBlock x:Name="FooterGamepadHints" Text="{loc:Tr Key=ui.l1_r1_tabs_d_pad_move_select_back_settings}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeText}"/>
                         </Border>
                     </StackPanel>
 

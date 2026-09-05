@@ -441,5 +441,7 @@
   "settings.ground": "Background colour",
   "settings.ground_desc": "The ground behind every screen",
   "settings.ground_default": "Theme default",
-  "settings.ground_default_desc": "Use the palette's own ground"
+  "settings.ground_default_desc": "Use the palette's own ground",
+  "ui.continue_playing": "CONTINUE",
+  "ui.recent": "RECENT"
 }
