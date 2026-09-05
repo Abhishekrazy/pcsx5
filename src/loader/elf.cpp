@@ -390,7 +390,41 @@ namespace Loader {
                 LOG_DEBUG(Loader, "Segment p_offset: 0x%llx, VAddr: 0x%llx, First bytes: %s",
                           phdr.p_offset, seg_start, hex_buf);
 
-                Memory::WriteBuffer(seg_start, seg_data.data(), phdr.p_filesz);
+                // A short read means the file is truncated. seg_data was sized
+                // to p_filesz and zero-initialised, so writing it anyway would
+                // put a block of zeros into the middle of the module's code and
+                // report success -- exactly the divergence that makes every
+                // later observation of the run meaningless.
+                const std::streamsize got = file.gcount();
+                if (got != static_cast<std::streamsize>(phdr.p_filesz)) {
+                    LOG_ERROR(Loader,
+                              "Segment at 0x%llx: read %lld of %llu bytes from "
+                              "offset 0x%llx; the file is truncated",
+                              (unsigned long long)seg_start, (long long)got,
+                              (unsigned long long)phdr.p_filesz,
+                              (unsigned long long)phdr.p_offset);
+                    return false;
+                }
+
+                // Report the write instead of assuming it. Memory::WriteBuffer
+                // is guarded but returns void, so a segment that failed to land
+                // used to leave the module loaded with a hole in it and nothing
+                // said. A call through a function pointer in that hole is an
+                // access violation thousands of instructions later, with no
+                // trace back to here.
+                u64 written = 0;
+                if (!Memory::GuardedWrite(seg_start, seg_data.data(),
+                                          phdr.p_filesz, &written) ||
+                    written != phdr.p_filesz) {
+                    LOG_ERROR(Loader,
+                              "Segment write failed at 0x%llx: %llu of %llu "
+                              "bytes landed. The module would be loaded with a "
+                              "hole in it; refusing to continue.",
+                              (unsigned long long)seg_start,
+                              (unsigned long long)written,
+                              (unsigned long long)phdr.p_filesz);
+                    return false;
+                }
             }
 
             // Zero-fill remaining space (BSS)
@@ -399,7 +433,21 @@ namespace Loader {
                 guest_addr_t zero_start = seg_start + phdr.p_filesz;
                 
                 std::vector<u8> zero_buf(zero_size, 0);
-                Memory::WriteBuffer(zero_start, zero_buf.data(), zero_size);
+                u64 zeroed = 0;
+                if (!Memory::GuardedWrite(zero_start, zero_buf.data(), zero_size,
+                                          &zeroed) ||
+                    zeroed != zero_size) {
+                    // .bss holds the globals the guest expects to start at zero.
+                    // Leaving it uninitialised is how a run ends up branching on
+                    // whatever the allocator last left there.
+                    LOG_ERROR(Loader,
+                              "BSS zero-fill failed at 0x%llx: %llu of %llu "
+                              "bytes; refusing to continue.",
+                              (unsigned long long)zero_start,
+                              (unsigned long long)zeroed,
+                              (unsigned long long)zero_size);
+                    return false;
+                }
             }
 
             LOG_DEBUG(Loader, "Loaded PT_LOAD segment: [0x%llx - 0x%llx] (File Size: %llu, Mem Size: %llu, Flags: %s%s%s)",

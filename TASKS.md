@@ -572,16 +572,18 @@ surface, so where it differs from us the difference is usually load-bearing.
   (lines 641, 955, 1054, 1055 — `nanosleep` remainder, and the `accept`/
   `recvfrom` address-length out-parameters).
   Subtasks, ordered by blast radius rather than count:
-  - [ ] **`src/loader/elf.cpp:393` and `:402` — do these first.** The loader
-    writes `PT_LOAD` segment contents, and then zero-fills `.bss`, with
-    unchecked writes. A segment that silently fails to land leaves a module
-    loaded with missing code or data, and every later observation of that run
-    is uninterpretable — the exact failure this project has burned the most
-    time on. It is also the earliest divergence in the lifecycle, which Rule 10
-    says outranks anything downstream. Note the resonance: the `.bss`
-    protection defect fixed earlier in `memory.cpp` was in this same area.
-    Done means: checked writes, a load that fails loudly rather than silently,
-    and a test that makes a segment write fail.
+  - [x] **`src/loader/elf.cpp` — DONE, and it FALSIFIED the hypothesis behind it.**
+    Segment writes, `.bss` zero-fill and the `file.read` byte count are now all
+    checked, and a failure refuses the load instead of leaving a module with a
+    hole in it. The reason for doing it first was a hypothesis: a segment that
+    silently failed to land would produce a call through an unpopulated pointer,
+    which is what the crashing titles looked like.
+    **FALSIFIED.** All four crashing titles were re-run against the checked
+    loader and produced **zero** loader errors — no failed segment write, no
+    failed zero-fill, no truncated read. The loader is not the cause of any of
+    them. Recorded rather than deleted so it is not re-tried.
+    The work still stands on its own: the loader is now trustworthy, which is a
+    precondition for interpreting anything downstream of it.
   - [ ] `src/kernel/kernel.cpp:2626,2648` — TLS writes on the fault path.
   - [ ] `libatrac9.cpp` (9 sites) — audio decode output.
   - [ ] The 4 unchecked `SafeWriteBuffer` calls in `syscalls.cpp`.
