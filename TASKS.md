@@ -653,17 +653,37 @@ surface, so where it differs from us the difference is usually load-bearing.
   as every other defect this project has hunted, arriving from the hardware
   rather than from our own code.
 
-- [ ] **DualSense speaker audio over Bluetooth** - a different lane from
-  haptics: report `0x35`, 334 bytes, carrying a 200-byte **Opus** frame
-  (48 kHz stereo, 160 kbps CBR). A combined `0x36` report carries state, haptics
-  and audio together.
-  Blocked on a decision rather than on knowledge: this needs an **Opus encoder**,
-  a new third-party dependency, which needs an owner, version pin, licence check
-  and an ADR. Do not add one without that.
+- [ ] **DualSense speaker audio over Bluetooth - needs a decision, not research**
+  A different lane from haptics: report `0x35`, 334 bytes, carrying a 200-byte
+  **Opus** frame (48 kHz stereo, 10 ms, 160 kbps CBR - the arithmetic is exact,
+  160 kbps x 10 ms = 1600 bits = 200 bytes). There is no PCM speaker lane over
+  Bluetooth, so Opus is not a choice; it is what the device decodes.
+  Assessed in `architecture/decisions/ADR-002-opus-for-dualsense-speaker.md`.
+  **Writing our own encoder was considered seriously and rejected.** A
+  conformant CELT-mode encoder needs a bit-exact range coder, Opus's MDCT
+  windowing, 21-band energy coding, PVQ with exact V(N,K) indexing, and above
+  all the bit-allocation logic that the decoder independently recomputes - any
+  divergence desynchronises it completely. libopus is ~50k lines by codec
+  specialists. There is no partial credit: 95% correct produces noise, not
+  slightly worse audio.
+  Recommendation: vendor **libopus** (BSD-3-Clause, GPL-2.0 compatible, no
+  external dependencies), following the `LibAtrac9` precedent.
+  **Awaiting the user's decision**, because a new dependency is theirs to
+  approve. Note the cheapest correct outcome is also on the table: over USB the
+  speaker is an ordinary Windows audio endpoint needing no codec at all, so if
+  Bluetooth speaker audio is not actually wanted, this dependency should not be
+  added.
 
 - [ ] **DualSense microphone input over Bluetooth - still `UNKNOWN`**
   Every source examined covers the output direction only. It is a different data
   path and must not be assumed to work because output does.
+
+- [ ] **`third_party/LibAtrac9` has no README.md, which the vendoring policy
+  requires.** Found while checking precedent for the Opus decision. The policy
+  in `CLAUDE.md` requires every vendored library to record upstream URL, author,
+  pinned commit, licence, GPL-2.0 compatibility, owner, build wiring, update
+  procedure and local modifications. `DualSenseWindows` has one; LibAtrac9 does
+  not, so its provenance is currently unrecorded.
 
 - [ ] **Wire haptics into the emulator, not just the probe.**
   `PlayHapticsPcmBlocking` blocks for the duration of the audio, which suits a
