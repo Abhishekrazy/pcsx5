@@ -439,8 +439,24 @@ def _observe(args, run_id, run_dir, frames_dir, log_path, argv, cwd,
 
         while click_index < len(click_events) and click_events[click_index][0] <= elapsed:
             _, cx, cy = click_events[click_index]
-            print("[session] t=%6.1fs click (%d,%d)" % (elapsed, cx, cy))
-            click_at(cx, cy)
+            # Click coordinates are relative to the window's client area, not
+            # the screen. click_at() takes a screen point and the harness used
+            # to hand it the raw schedule value, so a click landed wherever the
+            # window happened to be placed -- silently. Two verification runs
+            # missed a tab button that way with no error either time. Resolve
+            # against the window rect and say where the click actually went.
+            hwnd = hwnd_box[0] or sc.find_window_by_pid(proc.pid)
+            rect = sc.get_hwnd_rect(hwnd) if hwnd else None
+            if rect is not None:
+                left = getattr(rect, "left", None)
+                top = getattr(rect, "top", None)
+                if left is None:
+                    left, top = rect[0], rect[1]
+                sx, sy = int(left) + cx, int(top) + cy
+                print("[session] t=%6.1fs click (%d,%d) -> screen (%d,%d)" % (elapsed, cx, cy, sx, sy))
+                click_at(sx, sy)
+            else:
+                print("[session] t=%6.1fs click (%d,%d) -- no window rect; NOT clicked" % (elapsed, cx, cy))
             click_index += 1
 
         if ps is not None:

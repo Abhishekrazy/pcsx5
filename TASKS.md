@@ -234,6 +234,63 @@ Ordered by dependency, one subsystem per change (Rule 10):
   DualSenseWindows, LibAtrac9, libopus, NAudio, Squirrel) shown under the
   System Information hub, in all eleven locales.
 
+- [~] **D-pad decoded wrongly since the reader swap: Up asserted at rest,
+  every direction mis-mapped.** DualSenseWindows already converts the hat into
+  a bitmask (LEFT 0x01, DOWN 0x02, RIGHT 0x04, UP 0x08) in the low nibble of
+  `buttonsAndDpad`; `MapButtons` still read that nibble as the raw 0..7/8 hat
+  value the previous in-header reader exposed. So centred (0) became Up, a
+  real Up (0x08) became nothing, Left became up-right. Observed twice
+  independently: the hardware probe reported `buttons 0x00000010` before
+  anything was touched, and the rebuilt Input tab lit the Up sprite on an idle
+  pad. Games received D-pad Up held forever. Fixed in `MapButtons` with four
+  bit tests; awaiting the native rebuild, the probe showing `0x00000000` at
+  rest, and 52/52. No unit test covers `MapButtons` (anonymous namespace) -
+  recorded as a gap rather than papered over.
+
+- [ ] **4.10 Full controller support for shell navigation** (asked 2026-09-06:
+  "I want full support of the Controller for UI navigation"). Today the shell
+  has partial pad navigation - L1/R1 switch tabs, D-pad and Cross/Circle work
+  on the Library grid and the Controller-setup control list - driven from
+  `ControllerTimer_Tick` through the C# reader. "Full" means every screen and
+  every interactive control reachable and operable by pad: Settings hubs and
+  their rows, the Input tab's picker and test buttons, dialogs, the console
+  dock, the folder picker, first-run setup. Done means: a focus model that
+  every view registers with rather than a per-screen control list, visible
+  focus, PS4-style on-screen hints on every screen, and the pad read through
+  the core (which makes this the same change as 4.9, not a separate one).
+  Verify by driving every screen with the pad alone and screenshotting each.
+
+- [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
+  the UI"). Screenshot every screen of the shell, judge each against the
+  standing preference for a PS5-console look, and fix what is wrong: spacing,
+  hierarchy, dead space, inconsistent cards, the stale About rows. Each fix is
+  its own small change with a before/after capture. Not started until 4.5 is
+  seen running.
+
+  First concrete item, asked 2026-09-06 while the tab was being placed:
+  "button name and their values taking too much space - we can make them like
+  input field with label type of look, that way they take less space." The
+  mapping editor's binding rows are a label plus a wide button, stacked in two
+  260 px side columns; each row costs ~26 px for one short value. Done means:
+  each binding rendered as a compact labelled field (label left, value inline
+  right, one row, click-to-rebind unchanged), the side columns visibly
+  shorter, and the pad-navigation order (`GetControllerSetupControls`) still
+  correct. Before/after screenshots.
+
+- [x] **Harness: `--clicks` clicked screen coordinates, not the window.** FIXED
+  `click_at(x, y)` moves the cursor to an absolute screen point, and
+  `session.py` never offsets by the rect of the window it located by pid. A
+  click schedule therefore lands wherever the window happens to be placed,
+  silently. Found while trying to open the Input tab for a screenshot: two
+  runs, two misses, no error. Done means: clicks are window-client relative
+  when a window is known, and the log line says the screen point it resolved
+  to.
+  Now resolved against the rect of the window the harness located by pid, and
+  the log line prints both: `click (565,40) -> screen (925,166)`. Verified by
+  the click that had missed twice landing on the Input tab on the first try
+  after the change. If no window rect is known the click is refused and says
+  so, rather than landing somewhere else silently.
+
 - [ ] **4.9 Retire `WindowsDualSenseReader.cs`** - once 4.5 reads through
   4.1 and nothing else references it. Its 767 lines and the interleaving
   defect go with it. ADR-001 step 3, finally done.
