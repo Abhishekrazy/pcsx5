@@ -755,7 +755,7 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="0,0,0,10">
-                        <TextBlock x:Name="AnalyzerHeaderTextBlock" Text="{loc:Tr Key=ui.executable_boot_amp_memory_analyzer}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="AnalyzerHeaderTextBlock" Text="{loc:Tr Key=ui.executable_boot_amp_memory_analyzer}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                         
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                             <Button Content="{loc:Tr Key=ui.analyze_all_games}" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeAll_Click"/>
@@ -770,8 +770,8 @@
                         </Grid.ColumnDefinitions>
 
                         <!-- ListView -->
-                        <Border Grid.Column="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Margin="0,0,10,0">
-                            <ListView x:Name="AnalyzerListView" FocusVisualStyle="{StaticResource AccentFocusVisual}" Background="Transparent" Foreground="White" BorderThickness="0" SelectionChanged="AnalyzerListView_SelectionChanged">
+                        <Border Grid.Column="0" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Margin="0,0,10,0">
+                            <ListView x:Name="AnalyzerListView" FocusVisualStyle="{StaticResource AccentFocusVisual}" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" SelectionChanged="AnalyzerListView_SelectionChanged">
                                 <ListView.View>
                                     <GridView>
                                         <GridViewColumn Header="{loc:Tr Key=ui.game_title}" Width="220" DisplayMemberBinding="{Binding Title}"/>
@@ -785,16 +785,16 @@
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="Background" Value="Transparent"/>
-                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
                                         <Setter Property="BorderThickness" Value="0"/>
                                         <Setter Property="Margin" Value="0,2,0,2"/>
                                         <Style.Triggers>
                                             <Trigger Property="IsSelected" Value="True">
-                                                <Setter Property="Background" Value="#3F0099FF"/>
-                                                <Setter Property="Foreground" Value="White"/>
+                                                <Setter Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
                                             </Trigger>
                                             <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Background" Value="#20FFFFFF"/>
+                                                <Setter Property="Background" Value="{DynamicResource ThemeRaised}"/>
                                             </Trigger>
                                         </Style.Triggers>
                                     </Style>
@@ -803,14 +803,14 @@
                         </Border>
 
                         <!-- Raw Log View on the Right -->
-                        <Border Grid.Column="1" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12">
+                        <Border Grid.Column="1" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.detailed_parser_analysis_log}" FontSize="{DynamicResource TypeM}" Foreground="#FFA0A0A5" Margin="0,0,0,8"/>
-                                <TextBox x:Name="AnalyzerOutputTextBox" Grid.Row="1" Background="Transparent" Foreground="#FFCC66" FontFamily="Consolas, Courier New" FontSize="10.5" 
+                                <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.detailed_parser_analysis_log}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,8"/>
+                                <TextBox x:Name="AnalyzerOutputTextBox" Grid.Row="1" Background="Transparent" Foreground="{DynamicResource ThemeTextMuted}" FontFamily="Consolas, Courier New" FontSize="10.5" 
  BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsReadOnly="True" AcceptsReturn="True"/>
                             </Grid>
                         </Border>

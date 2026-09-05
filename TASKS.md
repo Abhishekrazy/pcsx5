@@ -402,7 +402,22 @@ Ordered by dependency, one subsystem per change (Rule 10):
     with coral SHELL_20260906_043222/frames/frame_0006.png (pad was off, so
     the device panel shows dashes; the mapping editor is below the fold at
     the harness height and was verified by the literal count, not seen).
-  - [ ] Step 6 - Tools. Steps 6-11 - Tools, Console,
+  - [x] **Step 6 - Tools on tokens** - DONE. The Boot Analyzer view's
+    literals (muted text, hairlines, surface, the list's item-container
+    style with its selection and hover fills, the log box) are on tokens; the
+    log box uses the muted-text token rather than warning yellow, matching
+    the concept's console. Seen: dark
+    artifacts/runtime/SHELL_20260906_043547/frames/frame_0006.png; light with
+    coral SHELL_20260906_044218/frames/frame_0006.png.
+    FALSIFIED on the way: "the log box ignores a DynamicResource foreground"
+    - two tokens and a code-assigned brush all looked the same yellow to me
+    at 10.5 px, while a literal red clearly painted. A runtime dump showed
+    the box, its resource and its inner TextBoxView all at #5B6373, and a
+    pixel sample of the frame put the log text at exactly #5B6373, the same
+    as the panel title. The "yellow" was ClearType fringing on small glyphs
+    read by eye. Lesson recorded: judge colour by sampling pixels, not by
+    looking at a downscaled frame.
+  - [ ] Step 7 - Console. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
