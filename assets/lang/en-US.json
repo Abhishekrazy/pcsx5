@@ -449,5 +449,13 @@
   "ui.sort_size_short": "Size",
   "ui.search_hint": "Search",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "Corner style",
+  "settings.corners_desc": "Rounded, hard edge, or corner cut",
+  "settings.corners_rounded": "Rounded",
+  "settings.corners_rounded_desc": "Soft corners on cards, buttons and tiles",
+  "settings.corners_sharp": "Hard edge",
+  "settings.corners_sharp_desc": "Square corners everywhere",
+  "settings.corners_cut": "Corner cut",
+  "settings.corners_cut_desc": "Chamfered corners on cards and tiles"
 }

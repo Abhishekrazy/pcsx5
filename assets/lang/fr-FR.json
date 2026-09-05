@@ -449,5 +449,13 @@
   "ui.sort_size_short": "Taille",
   "ui.search_hint": "Rechercher",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "Style des coins",
+  "settings.corners_desc": "Arrondis, bord net ou coupés",
+  "settings.corners_rounded": "Arrondis",
+  "settings.corners_rounded_desc": "Coins doux sur les cartes, boutons et tuiles",
+  "settings.corners_sharp": "Bord net",
+  "settings.corners_sharp_desc": "Coins carrés partout",
+  "settings.corners_cut": "Coupés",
+  "settings.corners_cut_desc": "Coins chanfreinés sur les cartes et tuiles"
 }

@@ -15,7 +15,7 @@
 
     <WindowChrome.WindowChrome>
         <WindowChrome GlassFrameThickness="-1" 
- CornerRadius="12" 
+ CornerRadius="{DynamicResource ThemeCornerM}" 
  CaptionHeight="50" 
  ResizeBorderThickness="6"/>
     </WindowChrome.WindowChrome>
@@ -85,7 +85,7 @@
                         <Border Background="{TemplateBinding Background}" 
  BorderBrush="{TemplateBinding BorderBrush}" 
  BorderThickness="{TemplateBinding BorderThickness}" 
- CornerRadius="6"
+ CornerRadius="{DynamicResource ThemeCornerS}"
  Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -119,7 +119,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource ThemeCornerS}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -180,7 +180,7 @@
                         <Border x:Name="TileBorder" Background="{TemplateBinding Background}" 
  BorderBrush="{TemplateBinding BorderBrush}" 
  BorderThickness="{TemplateBinding BorderThickness}" 
- CornerRadius="14" Padding="16,14">
+ CornerRadius="{DynamicResource ThemeCornerL}" Padding="16,14">
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -213,7 +213,7 @@
                         <Border x:Name="RowBorder" Background="{TemplateBinding Background}" 
  BorderBrush="{TemplateBinding BorderBrush}" 
  BorderThickness="{TemplateBinding BorderThickness}" 
- CornerRadius="12" Padding="18,12">
+ CornerRadius="{DynamicResource ThemeCornerM}" Padding="18,12">
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -246,7 +246,7 @@
                         <Border x:Name="OptionBorder" Background="{TemplateBinding Background}" 
  BorderBrush="{TemplateBinding BorderBrush}" 
  BorderThickness="{TemplateBinding BorderThickness}" 
- CornerRadius="12" Padding="20,14">
+ CornerRadius="{DynamicResource ThemeCornerM}" Padding="20,14">
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -279,7 +279,7 @@
                         <Border x:Name="PillBorder" Background="{TemplateBinding Background}" 
  BorderBrush="{TemplateBinding BorderBrush}" 
  BorderThickness="{TemplateBinding BorderThickness}" 
- CornerRadius="12" Padding="24,0">
+ CornerRadius="{DynamicResource ThemeCornerM}" Padding="24,0">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -363,7 +363,7 @@
                     
                     <!-- Logo -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="25,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Border Width="12" Height="12" CornerRadius="3" Background="{DynamicResource ThemeAccent}" VerticalAlignment="Center" Margin="0,0,10,0"/><TextBlock Text="PCSX5" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource Type2XL}" FontWeight="Bold" VerticalAlignment="Center"><TextBlock.LayoutTransform><ScaleTransform/></TextBlock.LayoutTransform></TextBlock>
+                        <Border Width="12" Height="12" CornerRadius="{DynamicResource ThemeCornerS}" Background="{DynamicResource ThemeAccent}" VerticalAlignment="Center" Margin="0,0,10,0"/><TextBlock Text="PCSX5" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource Type2XL}" FontWeight="Bold" VerticalAlignment="Center"><TextBlock.LayoutTransform><ScaleTransform/></TextBlock.LayoutTransform></TextBlock>
                         <TextBlock Text="PS5" Foreground="{DynamicResource ThemeTextMuted}" FontSize="{DynamicResource TypeM}" Margin="8,4,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
 
@@ -413,7 +413,7 @@
                         <!-- Search box below controls -->
                         <Grid Width="200" Height="30" Margin="0,0,25,6" HorizontalAlignment="Right" VerticalAlignment="Bottom" WindowChrome.IsHitTestVisibleInChrome="True">
                             <!-- Background Pill -->
-                            <Border x:Name="SearchBoxBorder" CornerRadius="15" Background="#2FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1">
+                            <Border x:Name="SearchBoxBorder" CornerRadius="{DynamicResource ThemeCornerL}" Background="#2FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="30"/>
@@ -469,13 +469,13 @@
                                  the row scans at console distance. The status badge keeps
                                  its name; code-behind colours it by compatibility. -->
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,12">
-                                <Border Padding="12,5,12,5" CornerRadius="999" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,8,0">
+                                <Border Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,8,0">
                                     <TextBlock x:Name="DetailTitleId" Text="{loc:Tr Key=ui.no_game_selected}" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                 </Border>
-                                <Border Padding="12,5,12,5" CornerRadius="999" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,8,0">
+                                <Border Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,8,0">
                                     <TextBlock x:Name="DetailSize" Text="-" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                 </Border>
-                                <Border x:Name="DetailCompatBadge" Padding="12,5,12,5" CornerRadius="999" Background="{DynamicResource ThemeRaised}" VerticalAlignment="Center">
+                                <Border x:Name="DetailCompatBadge" Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeRaised}" VerticalAlignment="Center">
                                     <TextBlock x:Name="DetailCompatText" Text="{loc:Tr Key=ui.unknown}" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
                                 </Border>
                             </StackPanel>
@@ -499,7 +499,7 @@
                                             <Setter Property="Template">
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="Button">
-                                                        <Border x:Name="PlayRing" Background="{TemplateBinding Background}" CornerRadius="12" BorderBrush="Transparent" BorderThickness="0" Padding="28,0,28,0">
+                                                        <Border x:Name="PlayRing" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource ThemeCornerM}" BorderBrush="Transparent" BorderThickness="0" Padding="28,0,28,0">
                                                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                         </Border>
                                                         <ControlTemplate.Triggers>
@@ -527,7 +527,7 @@
                                             <Setter Property="Template">
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}" CornerRadius="24" BorderBrush="#3FFFFFFF" BorderThickness="1">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="{DynamicResource ThemeCornerXL}" BorderBrush="#3FFFFFFF" BorderThickness="1">
                                                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                         </Border>
                                                     </ControlTemplate>
@@ -545,7 +545,7 @@
                         </StackPanel>
 
                         <!-- Right Column: Visual Art Preview of Selected Game -->
-                        <Border x:Name="GameCoverDisplayBorder" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,10,0" Width="300" MinHeight="300" CornerRadius="16" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}"><Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="16" Direction="270" Opacity="0.5"/></Border.Effect></Border>
+                        <Border x:Name="GameCoverDisplayBorder" local:Theme.ClipCorners="16" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,10,0" Width="300" MinHeight="300" CornerRadius="{DynamicResource ThemeCornerL}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}"><Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="16" Direction="270" Opacity="0.5"/></Border.Effect></Border>
                     </Grid>
 
                     <!-- Lower Carousel shelf: horizontal scrolling game icons -->
@@ -632,13 +632,13 @@
                                 <TextBlock x:Name="FullLibraryCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" Margin="14,4,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Border Height="44" Width="260" CornerRadius="10" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}" Margin="0,0,12,0">
+                                <Border Height="44" Width="260" CornerRadius="{DynamicResource ThemeCornerM}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}" Margin="0,0,12,0">
                                     <Grid>
                                         <TextBlock x:Name="LibrarySearchHint" Text="{loc:Tr Key=ui.search_hint}" FontSize="{DynamicResource TypeML}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False"/>
                                         <TextBox x:Name="LibrarySearchBox" AutomationProperties.Name="{loc:Tr Key=ui.search_hint}" FontSize="{DynamicResource TypeML}" Background="Transparent" Foreground="{DynamicResource ThemeText}" CaretBrush="{DynamicResource ThemeAccent}" BorderThickness="0" VerticalContentAlignment="Center" Padding="12,0,12,0" TextChanged="LibrarySearchBox_TextChanged"/>
                                     </Grid>
                                 </Border>
-                                <Border Height="44" CornerRadius="10" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" ClipToBounds="True">
+                                <Border Height="44" CornerRadius="{DynamicResource ThemeCornerM}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" ClipToBounds="True">
                                     <StackPanel Orientation="Horizontal">
                                         <Button x:Name="SortRecentBtn" Tag="0" Content="{loc:Tr Key=ui.sort_recent}" AutomationProperties.Name="{loc:Tr Key=ui.sort_recent}" Click="LibrarySortSegment_Click" Style="{StaticResource SortSegmentStyle}"/>
                                         <Button x:Name="SortTitleBtn" Tag="1" Content="{loc:Tr Key=ui.sort_title}" AutomationProperties.Name="{loc:Tr Key=ui.sort_title}" Click="LibrarySortSegment_Click" Style="{StaticResource SortSegmentStyle}"/>
@@ -678,11 +678,11 @@
                                                 <TranslateTransform x:Name="TileLift" Y="0"/>
                                             </TransformGroup>
                                         </StackPanel.RenderTransform>
-                                        <Border x:Name="Tile" Width="160" Height="160" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="{DynamicResource ThemeSurface}" Margin="2,6,2,0">
+                                        <Border x:Name="Tile" local:Theme.ClipCorners="9" Width="160" Height="160" CornerRadius="{DynamicResource ThemeCornerM}" BorderThickness="2" BorderBrush="Transparent" Background="{DynamicResource ThemeSurface}" Margin="2,6,2,0">
                                             <Border.Effect>
                                                 <DropShadowEffect BlurRadius="22" ShadowDepth="8" Direction="270" Opacity="0.45"/>
                                             </Border.Effect>
-                                            <Border CornerRadius="7" ClipToBounds="True" Background="{Binding PlaceholderBrush}">
+                                            <Border CornerRadius="{DynamicResource ThemeCornerS}" ClipToBounds="True" Background="{Binding PlaceholderBrush}">
                                                 <Grid>
                                                     <!-- Initials stand in when a dump has no cover, so a tile is never a blank square. -->
                                                     <TextBlock Text="{Binding Title}" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="10"/>
@@ -770,7 +770,7 @@
                         </Grid.ColumnDefinitions>
 
                         <!-- ListView -->
-                        <Border Grid.Column="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Margin="0,0,10,0">
+                        <Border Grid.Column="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Margin="0,0,10,0">
                             <ListView x:Name="AnalyzerListView" FocusVisualStyle="{StaticResource AccentFocusVisual}" Background="Transparent" Foreground="White" BorderThickness="0" SelectionChanged="AnalyzerListView_SelectionChanged">
                                 <ListView.View>
                                     <GridView>
@@ -803,7 +803,7 @@
                         </Border>
 
                         <!-- Raw Log View on the Right -->
-                        <Border Grid.Column="1" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="8" Padding="12">
+                        <Border Grid.Column="1" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -832,7 +832,7 @@
                          assets/gamepad/dualsense. All logic lives in InputTabView (Rule 11). -->
                     <local:InputTabView x:Name="InputTab" Grid.Row="1" Margin="0,0,0,12"/>
 
-                    <Border Grid.Row="2" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="15">
+                    <Border Grid.Row="2" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="15">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <!-- Left side mapping (D-Pad, L1/L2, Left Stick, Deadzone) -->
@@ -847,7 +847,7 @@
                             <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel Margin="0,0,10,0">
                                     <!-- D-PAD CARD -->
-                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.d_pad}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,1,0,1">
@@ -870,7 +870,7 @@
                                     </Border>
 
                                     <!-- L1 and L2 CARD -->
-                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.l1_and_l2}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,1,0,1">
@@ -885,7 +885,7 @@
                                     </Border>
 
                                     <!-- LEFT STICK DEADZONE CARD -->
-                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.left_stick_deadzone}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <TextBlock Text="{loc:Tr Key=ui.min_deadzone_def_2_max_127}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
@@ -910,7 +910,7 @@
                                     </Border>
 
                                     <!-- LEFT STICK CARD -->
-                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.left_stick}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,1,0,1">
@@ -944,7 +944,7 @@
                                 </Grid.RowDefinitions>
 
                                 <!-- Config Selection Card -->
-                                <Border Grid.Row="0" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                                <Border Grid.Row="0" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12" Margin="0,0,0,10">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -977,7 +977,7 @@
 
                                 <!-- Controller Image with live input overlays (1017x1017 design space, scaled by the Viewbox) -->
                                 <!-- Bottom buttons (L3, Options, R3, Touchpad) -->
-                                <Border Grid.Row="1" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,10,0,10">
+                                <Border Grid.Row="1" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,10,0,10">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -1018,7 +1018,7 @@
                                 </Border>
 
                                 <!-- Color Adjustment & Rumble Card -->
-                                <Border Grid.Row="2" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                <Border Grid.Row="2" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="2*"/>
@@ -1061,7 +1061,7 @@
 
                                         <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                                             <CheckBox x:Name="CtrlOverrideColorCheck" Content="{loc:Tr Key=ui.override_color}" Foreground="White" FontSize="{DynamicResource TypeS}" IsChecked="True" Margin="0,0,0,6"/>
-                                            <Border Background="Blue" MinHeight="24" BorderBrush="White" BorderThickness="1" CornerRadius="4" x:Name="CtrlColorBox"/>
+                                            <Border Background="Blue" MinHeight="24" BorderBrush="White" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" x:Name="CtrlColorBox"/>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -1084,7 +1084,7 @@
                             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel Margin="10,0,0,0">
                                     <!-- FACE BUTTONS CARD -->
-                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.face_buttons}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,1,0,1">
@@ -1107,7 +1107,7 @@
                                     </Border>
 
                                     <!-- R1 and R2 CARD -->
-                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.r1_and_r2}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,1,0,1">
@@ -1122,7 +1122,7 @@
                                     </Border>
 
                                     <!-- RIGHT STICK DEADZONE CARD -->
-                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.right_stick_deadzone}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <TextBlock Text="{loc:Tr Key=ui.min_deadzone_def_2_max_127}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,4"/>
@@ -1147,7 +1147,7 @@
                                     </Border>
 
                                     <!-- RIGHT STICK CARD -->
-                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.right_stick}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
                                             <Grid Margin="0,1,0,1">
@@ -1208,7 +1208,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#200099FF" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#200099FF" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="🖥️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -1227,7 +1227,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#2000C853" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#2000C853" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="🔊" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -1246,7 +1246,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FF9100" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#20FF9100" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="🎮" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -1265,7 +1265,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#209C27B0" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#209C27B0" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="💾" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -1284,7 +1284,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20E91E63" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#20E91E63" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="⚙️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -1303,7 +1303,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#2000E5FF" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#2000E5FF" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="📜" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -1322,7 +1322,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FFD600" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#20FFD600" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="🌐" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -1341,7 +1341,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FFFFFF" CornerRadius="10" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#20FFFFFF" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="ℹ️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -1484,7 +1484,7 @@
                                     </StackPanel>
                                 </Grid>
                                 <Border x:Name="GameConsoleSlot" Grid.Row="1" Margin="6,0,6,6">
-                                    <Border x:Name="ConsoleBorder" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="6" Padding="8">
+                                    <Border x:Name="ConsoleBorder" Background="#E0050508" BorderBrush="#1EFFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="8">
                                         <RichTextBox x:Name="ConsoleOutputBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="{DynamicResource TypeM}"
  BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
  HorizontalScrollBarVisibility="Disabled" IsDocumentEnabled="True">
@@ -1509,18 +1509,18 @@
 
                         <!-- PLAYSTATION 5 PROGRESSIVE BOOT LOADER OVERLAY -->
                         <Grid x:Name="GameBootOverlay" Grid.ColumnSpan="1" Grid.RowSpan="1" Visibility="Collapsed" Background="#EB05060A">
-                            <Border Background="#121622" BorderBrush="#350070D1" BorderThickness="1.5" CornerRadius="18" Padding="32,28" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border Background="#121622" BorderBrush="#350070D1" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerL}" Padding="32,28" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Border.Effect>
                                     <DropShadowEffect Color="#0070D1" BlurRadius="50" Opacity="0.5" ShadowDepth="0"/>
                                 </Border.Effect>
                                 <StackPanel HorizontalAlignment="Stretch">
                                     <!-- PS5 Pulse Icon -->
-                                    <Border Background="#1F0070D1" BorderBrush="#500099FF" BorderThickness="1.5" CornerRadius="40" Width="72" MinHeight="72" HorizontalAlignment="Center" Margin="0,0,0,18">
+                                    <Border Background="#1F0070D1" BorderBrush="#500099FF" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerXL}" Width="72" MinHeight="72" HorizontalAlignment="Center" Margin="0,0,0,18">
                                         <TextBlock x:Name="BootSpinnerText" Text="💠" FontSize="{DynamicResource TypeDisplayM}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
 
                                     <!-- Step indicator badge -->
-                                    <Border Background="#1E0099FF" CornerRadius="10" Padding="12,3" HorizontalAlignment="Center" Margin="0,0,0,10">
+                                    <Border Background="#1E0099FF" CornerRadius="{DynamicResource ThemeCornerM}" Padding="12,3" HorizontalAlignment="Center" Margin="0,0,0,10">
                                         <TextBlock x:Name="BootStepBadge" Text="{loc:Tr Key=ui.step_1_of_6}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF"/>
                                     </Border>
 
@@ -1532,7 +1532,7 @@
 
                                     <!-- Progress bar and percentage -->
                                     <Grid Margin="0,0,0,16">
-                                        <Border CornerRadius="6" Background="#15FFFFFF" MinHeight="10" VerticalAlignment="Center">
+                                        <Border CornerRadius="{DynamicResource ThemeCornerS}" Background="#15FFFFFF" MinHeight="10" VerticalAlignment="Center">
                                             <ProgressBar x:Name="BootProgressBar" Minimum="0" Maximum="100" Value="15" Background="Transparent" BorderThickness="0" Height="10" Foreground="#0099FF"/>
                                         </Border>
                                     </Grid>
@@ -1540,7 +1540,7 @@
                                     <TextBlock x:Name="BootProgressPercentText" Text="15%" FontSize="{DynamicResource TypeML}" FontWeight="Bold" Foreground="#0099FF" HorizontalAlignment="Right" Margin="0,-10,0,16"/>
 
                                     <!-- Game title -->
-                                    <Border Background="#0DFFFFFF" CornerRadius="8" Padding="12,6" HorizontalAlignment="Center" Margin="0,0,0,20">
+                                    <Border Background="#0DFFFFFF" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12,6" HorizontalAlignment="Center" Margin="0,0,0,20">
                                         <TextBlock x:Name="BootGameTitle" Text="{loc:Tr Key=ui.dreaming_sarah_ppsa02929}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#B0FFFFFF"/>
                                     </Border>
 
@@ -1553,7 +1553,7 @@
                         <!-- IN-GAME PAUSE MENU OVERLAY -->
                         <Grid x:Name="PauseMenuOverlay" Grid.ColumnSpan="1" Grid.RowSpan="1" Visibility="Collapsed" Background="#BF000000">
                             <Border Background="#1C1F28" BorderBrush="#400099FF" BorderThickness="1.5"
- CornerRadius="16" Width="340" HorizontalAlignment="Center" VerticalAlignment="Center"
+ CornerRadius="{DynamicResource ThemeCornerL}" Width="340" HorizontalAlignment="Center" VerticalAlignment="Center"
  Padding="0,28,0,28">
                                 <Border.Effect>
                                     <DropShadowEffect Color="#0099FF" BlurRadius="40" Opacity="0.4" ShadowDepth="0"/>
@@ -1579,7 +1579,7 @@
                                                 <Setter Property="Template">
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="Button">
-                                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Padding="16,0">
+                                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource ThemeCornerM}" Padding="16,0">
                                                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                             </Border>
                                                         </ControlTemplate>
@@ -1624,7 +1624,7 @@
                                                 <Setter Property="Template">
                                                     <Setter.Value>
                                                         <ControlTemplate TargetType="Button">
-                                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" Padding="16,0">
+                                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource ThemeCornerM}" Padding="16,0">
                                                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                             </Border>
                                                         </ControlTemplate>
@@ -1677,7 +1677,7 @@
                         <!-- The pad legend sits in a chip (design pass 2026-09-06) so it
                              reads as one control-hint surface, as the SharpEmu launcher's
                              shoulder-button hints do. -->
-                        <Border CornerRadius="6" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Padding="10,3,10,3" VerticalAlignment="Center">
+                        <Border CornerRadius="{DynamicResource ThemeCornerS}" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Padding="10,3,10,3" VerticalAlignment="Center">
                             <TextBlock x:Name="FooterGamepadHints" Text="{loc:Tr Key=ui.l1_r1_tabs_d_pad_move_select_back_settings}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeText}"/>
                         </Border>
                     </StackPanel>
@@ -1700,7 +1700,7 @@
 
             <!-- WATCHDOG TOAST — non-blocking "Game may be hung" warning -->
             <Border x:Name="WatchdogToast" Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Bottom"
- Background="#CC1A0D00" BorderBrush="#60FF6600" BorderThickness="1" CornerRadius="10"
+ Background="#CC1A0D00" BorderBrush="#60FF6600" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}"
  Padding="20,12" Margin="0,0,0,80" Visibility="Collapsed" Opacity="0"
  IsHitTestVisible="True">
                 <Border.Effect>
@@ -1716,7 +1716,7 @@
  Focusable="True" Click="WatchdogForceStop_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
-                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6">
+                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                             </ControlTemplate>
@@ -1728,7 +1728,7 @@
 
             <!-- TOAST NOTIFICATION OVERLAY -->
             <Border x:Name="ToastNotification" Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Bottom"
- Background="#CC1A1D24" BorderBrush="#3300FF99" BorderThickness="1" CornerRadius="10"
+ Background="#CC1A1D24" BorderBrush="#3300FF99" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}"
  Padding="18,10" Margin="0,0,0,50" Visibility="Collapsed" Opacity="0"
  IsHitTestVisible="False">
                 <Border.Effect>
@@ -1743,7 +1743,7 @@
 
             <!-- CRASH DIAGNOSTICS OVERLAY DIALOG -->
             <Grid x:Name="CrashDialogOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
-                <Border Background="#1C1F26" BorderBrush="#CC2200" BorderThickness="1.5" CornerRadius="12" MinWidth="580" MaxWidth="680" MinHeight="420" MaxHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="25">
+                <Border Background="#1C1F26" BorderBrush="#CC2200" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" MinWidth="580" MaxWidth="680" MinHeight="420" MaxHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="25">
                     <Border.Effect>
                         <DropShadowEffect Color="#FF2200" BlurRadius="25" Opacity="0.4" ShadowDepth="0"/>
                     </Border.Effect>
@@ -1756,7 +1756,7 @@
 
                         <!-- Header -->
                         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,15">
-                            <Border Width="36" MinHeight="36" Background="#20FF2200" CornerRadius="18" Margin="0,0,12,0" VerticalAlignment="Center">
+                            <Border Width="36" MinHeight="36" Background="#20FF2200" CornerRadius="{DynamicResource ThemeCornerL}" Margin="0,0,12,0" VerticalAlignment="Center">
                                 <TextBlock Text="⚠" Foreground="#FF3300" FontSize="{DynamicResource Type4XL}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"/>
                             </Border>
                             <StackPanel VerticalAlignment="Center">
@@ -1769,7 +1769,7 @@
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,15">
                             <StackPanel>
                                 <!-- Summary Row -->
-                                <Border Background="#26000000" CornerRadius="6" Padding="12" Margin="0,0,0,15">
+                                <Border Background="#26000000" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12" Margin="0,0,0,15">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
@@ -1790,7 +1790,7 @@
 
                                 <!-- Analysis -->
                                 <TextBlock Text="{loc:Tr Key=ui.automated_analysis}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
-                                <Border Background="#100099FF" BorderBrush="#200099FF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,15">
+                                <Border Background="#100099FF" BorderBrush="#200099FF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12" Margin="0,0,0,15">
                                     <TextBlock x:Name="CrashAnalysisText" TextWrapping="Wrap" Foreground="#FFD0D0D5" FontSize="{DynamicResource TypeML}" LineHeight="18"
  Text="{loc:Tr Key=ui.the_guest_application_crashed_at_address_0x8}"/>
                                 </Border>
@@ -1814,7 +1814,7 @@
 
             <!-- FIRST-RUN SETUP OVERLAY DIALOG (games folder picker) -->
             <Grid x:Name="FirstRunOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
-                <Border Background="#1C1F26" BorderBrush="#0099FF" BorderThickness="1.5" CornerRadius="12" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30">
+                <Border Background="#1C1F26" BorderBrush="#0099FF" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30">
                     <Border.Effect>
                         <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>
                     </Border.Effect>
@@ -1829,7 +1829,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Background="#20FFFFFF" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10,6">
+                            <Border Grid.Column="0" Background="#20FFFFFF" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10,6">
                                 <TextBlock x:Name="FirstRunFolderText" Text="{loc:Tr Key=ui.no_folder_selected}" Foreground="White" FontSize="{DynamicResource TypeML}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                             </Border>
                             <Button Grid.Column="1" Content="{loc:Tr Key=ui.browse}" MinWidth="100" MinHeight="32" Margin="10,0,0,0" Style="{StaticResource ModernButtonStyle}" Click="FirstRunBrowse_Click"/>
@@ -1856,7 +1856,7 @@
                  which is why Content/Text are empty here. -->
             <Grid x:Name="FolderPickerOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
                 <Border Background="{DynamicResource PickerSurfaceBrush}"
- BorderBrush="{DynamicResource PickerAccentBrush}" BorderThickness="1.5" CornerRadius="12"
+ BorderBrush="{DynamicResource PickerAccentBrush}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}"
  Width="780" MinHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28">
                     <Border.Effect>
                         <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>

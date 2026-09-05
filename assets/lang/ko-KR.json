@@ -449,5 +449,13 @@
   "ui.sort_size_short": "크기",
   "ui.search_hint": "검색",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "모서리 스타일",
+  "settings.corners_desc": "둥글게, 직각 또는 모서리 자르기",
+  "settings.corners_rounded": "둥글게",
+  "settings.corners_rounded_desc": "카드, 버튼, 타일의 부드러운 모서리",
+  "settings.corners_sharp": "직각",
+  "settings.corners_sharp_desc": "모든 곳에 각진 모서리",
+  "settings.corners_cut": "모서리 자르기",
+  "settings.corners_cut_desc": "카드와 타일의 모서리를 깎음"
 }

@@ -449,5 +449,13 @@
   "ui.sort_size_short": "Größe",
   "ui.search_hint": "Suchen",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "Eckenstil",
+  "settings.corners_desc": "Abgerundet, harte Kante oder abgeschrägt",
+  "settings.corners_rounded": "Abgerundet",
+  "settings.corners_rounded_desc": "Weiche Ecken an Karten, Schaltflächen und Kacheln",
+  "settings.corners_sharp": "Harte Kante",
+  "settings.corners_sharp_desc": "Überall eckige Ecken",
+  "settings.corners_cut": "Abgeschrägt",
+  "settings.corners_cut_desc": "Abgeschrägte Ecken an Karten und Kacheln"
 }

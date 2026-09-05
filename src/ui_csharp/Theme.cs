@@ -2,6 +2,8 @@ using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using System.Collections.Generic;
+using System.Windows.Shapes;
 using Microsoft.Win32;
 
 namespace Pcsx5Ui
@@ -17,6 +19,15 @@ namespace Pcsx5Ui
         public const string ModeDark = "dark";
         public const string ModeLight = "light";
         public const string ModeSystem = "system";
+
+        // Corner style (asked 2026-09-06): rounded, hard edge, or corner cut.
+        public const string CornersRounded = "rounded";
+        public const string CornersSharp = "sharp";
+        public const string CornersCut = "cut";
+        public static string Corners { get; private set; } = CornersRounded;
+
+        /// <summary>Raised after Apply() so clipped elements can recompute.</summary>
+        public static event Action Changed;
 
         // Token names; every new screen references these with DynamicResource.
         public static readonly string[] Tokens =
@@ -63,9 +74,12 @@ namespace Pcsx5Ui
         /// and an optional ground override (#RRGGBB or empty). Invalid colours
         /// fall back to the palette's own; the caller is told through the
         /// return value so Settings can show the rejection.</summary>
-        public static bool Apply(string mode, string accentHex, string groundHex)
+        public static bool Apply(string mode, string accentHex, string groundHex) => Apply(mode, accentHex, groundHex, Corners);
+
+        public static bool Apply(string mode, string accentHex, string groundHex, string corners)
         {
             bool ok = true;
+            Corners = corners == CornersSharp || corners == CornersCut ? corners : CornersRounded;
             EffectiveMode = ResolveMode(mode);
             Palette p = EffectiveMode == ModeLight ? Light : Dark;
 
@@ -94,7 +108,74 @@ namespace Pcsx5Ui
             // screens not yet rebuilt still show the user's colour where it
             // matters most: the focus ring.
             Set(res, "PickerAccentBrush", accent);
+
+            // Corner radii. Sharp and cut both use 0 here; cut gets its shape
+            // from the ClipCorners attached property below.
+            bool round = Corners == CornersRounded;
+            res["ThemeCornerS"] = new CornerRadius(round ? 6 : 0);
+            res["ThemeCornerM"] = new CornerRadius(round ? 10 : 0);
+            res["ThemeCornerL"] = new CornerRadius(round ? 16 : 0);
+            res["ThemeCornerXL"] = new CornerRadius(round ? 24 : 0);
+            res["ThemeCornerPill"] = new CornerRadius(round ? 999 : 0);
+
+            Changed?.Invoke();
+            foreach (var wr in _clipped.ToArray())
+            {
+                if (wr.TryGetTarget(out var fe)) RefreshClip(fe); else _clipped.Remove(wr);
+            }
             return ok;
+        }
+
+        // ---- ClipCorners attached property ---------------------------------
+        // A Border's CornerRadius does not clip its children, so a cover image
+        // inside a rounded card pokes square corners out. Setting
+        // local:Theme.ClipCorners="12" on an element clips it to the current
+        // corner style: rounded (radius 12), sharp (no clip), or cut (a 12 px
+        // chamfer on each corner). The clip follows the element's size and the
+        // theme setting.
+        public static readonly DependencyProperty ClipCornersProperty = DependencyProperty.RegisterAttached(
+            "ClipCorners", typeof(double), typeof(Theme), new PropertyMetadata(0.0, OnClipCornersChanged));
+        public static void SetClipCorners(DependencyObject d, double v) => d.SetValue(ClipCornersProperty, v);
+        public static double GetClipCorners(DependencyObject d) => (double)d.GetValue(ClipCornersProperty);
+        private static readonly List<WeakReference<FrameworkElement>> _clipped = new();
+
+        private static void OnClipCornersChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is not FrameworkElement fe) return;
+            fe.SizeChanged -= ClippedSizeChanged;
+            fe.SizeChanged += ClippedSizeChanged;
+            _clipped.Add(new WeakReference<FrameworkElement>(fe));
+            RefreshClip(fe);
+        }
+
+        private static void ClippedSizeChanged(object sender, SizeChangedEventArgs e) => RefreshClip((FrameworkElement)sender);
+
+        private static void RefreshClip(FrameworkElement fe)
+        {
+            double size = GetClipCorners(fe);
+            double w = fe.ActualWidth, h = fe.ActualHeight;
+            if (size <= 0 || w <= 0 || h <= 0) { fe.Clip = null; return; }
+            if (Corners == CornersSharp) { fe.Clip = null; return; }
+            if (Corners == CornersRounded)
+            {
+                fe.Clip = new RectangleGeometry(new Rect(0, 0, w, h), size, size);
+                return;
+            }
+            double c = Math.Min(size, Math.Min(w, h) / 2);
+            var g = new StreamGeometry();
+            using (var ctx = g.Open())
+            {
+                ctx.BeginFigure(new Point(c, 0), true, true);
+                ctx.LineTo(new Point(w - c, 0), false, false);
+                ctx.LineTo(new Point(w, c), false, false);
+                ctx.LineTo(new Point(w, h - c), false, false);
+                ctx.LineTo(new Point(w - c, h), false, false);
+                ctx.LineTo(new Point(c, h), false, false);
+                ctx.LineTo(new Point(0, h - c), false, false);
+                ctx.LineTo(new Point(0, c), false, false);
+            }
+            g.Freeze();
+            fe.Clip = g;
         }
 
         /// <summary>"system" follows Windows' apps-theme setting; a missing key

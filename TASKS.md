@@ -350,6 +350,23 @@ Ordered by dependency, one subsystem per change (Rule 10):
     carries on with an empty pad state. Verified: Square and Triangle drove
     the All-games screen by keyboard with no pad attached
     (SHELL_20260906_041244, favourites.json written).
+  - [x] **Corner clipping fixed; corner style is a setting** - DONE. Asked
+    2026-09-06: "rounded corner issue almost everywhere ... corner setting
+    also should show in settings, like rounded, hard edge and corner cut".
+    The defect: a Border's CornerRadius never clips its children, so cover
+    images poked square corners out of rounded cards (hero cover, shelf and
+    grid tiles). Fix: `Theme.ClipCorners` attached property clips an element
+    to the current corner style and follows its size and theme changes; set
+    on the hero cover, the All-games tile and the shelf tiles. Style: five
+    CornerRadius tokens (ThemeCornerS/M/L/XL/Pill) replaced all 62 literal
+    CornerRadius values in MainWindow.xaml and 1 in App.xaml, rewritten by
+    Theme.Apply for rounded / sharp / cut; `ui.corners` persisted in
+    config.ini and offered in Settings > UI & Personalization (localized in
+    all eleven locales). Seen, All games in each style: rounded
+    artifacts/runtime/SHELL_20260906_041914/frames/frame_0006.png; cut
+    SHELL_20260906_041927/frames/frame_0006.png; sharp
+    SHELL_20260906_041939/frames/frame_0006.png. Pills become rectangles
+    under sharp and cut by design.
   - [ ] Step 4 - Settings. Step 5 - Input. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 

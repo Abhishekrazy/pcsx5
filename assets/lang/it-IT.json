@@ -449,5 +449,13 @@
   "ui.sort_size_short": "Dimensione",
   "ui.search_hint": "Cerca",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "Stile angoli",
+  "settings.corners_desc": "Arrotondati, bordo netto o smussati",
+  "settings.corners_rounded": "Arrotondati",
+  "settings.corners_rounded_desc": "Angoli morbidi su schede, pulsanti e riquadri",
+  "settings.corners_sharp": "Bordo netto",
+  "settings.corners_sharp_desc": "Angoli squadrati ovunque",
+  "settings.corners_cut": "Smussati",
+  "settings.corners_cut_desc": "Angoli smussati su schede e riquadri"
 }

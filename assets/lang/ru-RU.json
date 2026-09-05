@@ -449,5 +449,13 @@
   "ui.sort_size_short": "Размер",
   "ui.search_hint": "Поиск",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "Стиль углов",
+  "settings.corners_desc": "Скруглённые, прямые или срезанные",
+  "settings.corners_rounded": "Скруглённые",
+  "settings.corners_rounded_desc": "Мягкие углы у карточек, кнопок и плиток",
+  "settings.corners_sharp": "Прямые",
+  "settings.corners_sharp_desc": "Прямые углы везде",
+  "settings.corners_cut": "Срезанные",
+  "settings.corners_cut_desc": "Скошенные углы у карточек и плиток"
 }

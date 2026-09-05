@@ -500,6 +500,7 @@ namespace Pcsx5Ui
                     _config.ui.theme = ini.GetValue("Ui", "Theme", "dark");
                     _config.ui.accent = ini.GetValue("Ui", "Accent", "#5FE3FF");
                     _config.ui.ground = ini.GetValue("Ui", "Ground", "");
+                    _config.ui.corners = ini.GetValue("Ui", "Corners", "rounded");
                 }
                 else
                 {
@@ -585,6 +586,7 @@ namespace Pcsx5Ui
                 ini.SetValue("Ui", "Theme", _config.ui.theme ?? "dark");
                 ini.SetValue("Ui", "Accent", _config.ui.accent ?? "#5FE3FF");
                 ini.SetValue("Ui", "Ground", _config.ui.ground ?? "");
+                ini.SetValue("Ui", "Corners", _config.ui.corners ?? "rounded");
 
                 ini.Save(_iniPath);
                 LogConsole("Configuration saved to " + _iniPath);
@@ -893,7 +895,7 @@ namespace Pcsx5Ui
                 Width = TileSize,
                 Height = TileSize,
                 Margin = new Thickness(14, 0, 14, 0),
-                CornerRadius = new CornerRadius(12),
+                CornerRadius = (CornerRadius)FindResource("ThemeCornerM"),
                 Background = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255)),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(15, 255, 255, 255)),
                 BorderThickness = new Thickness(2),
@@ -943,6 +945,7 @@ namespace Pcsx5Ui
             };
             tileGrid.Children.Add(overlay);
             border.Child = tileGrid;
+            Theme.SetClipCorners(border, 10);   // clip the cover to the corner style
 
             // Hover effects
             border.MouseEnter += (s, e) =>
@@ -2659,6 +2662,7 @@ namespace Pcsx5Ui
                     list.Add(new SettingDefinition { Key = "ui_language", Title = "Interface Language", Description = "Dashboard text and user interface localization", GetValueBadge = () => _config.ui.language, Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_theme", Title = I18n.Tr("settings.theme"), Description = I18n.Tr("settings.theme_desc"), GetValueBadge = () => I18n.Tr("settings.theme_" + (_config.ui.theme ?? "dark")), Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_accent", Title = I18n.Tr("settings.accent"), Description = I18n.Tr("settings.accent_desc"), GetValueBadge = () => Theme.SwatchLabel(_config.ui.accent), Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "ui_corners", Title = I18n.Tr("settings.corners"), Description = I18n.Tr("settings.corners_desc"), GetValueBadge = () => I18n.Tr("settings.corners_" + (_config.ui.corners ?? "rounded")), Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_ground", Title = I18n.Tr("settings.ground"), Description = I18n.Tr("settings.ground_desc"), GetValueBadge = () => string.IsNullOrEmpty(_config.ui.ground) ? I18n.Tr("settings.ground_default") : _config.ui.ground.ToUpperInvariant(), Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_scale", Title = "UI Scale (Display Size)", Description = "Scale factor for high-DPI monitors and large TV screens", GetValueBadge = () => $"{_config.ui.scale * 100:0}%", Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_fullscreen", Title = I18n.Tr("settings.ui_fullscreen.title"), Description = I18n.Tr("settings.ui_fullscreen.desc"), GetValueBadge = () => _config.ui.start_fullscreen ? I18n.Tr("common.enabled") : I18n.Tr("common.disabled"), Type = "toggle" });
@@ -3117,6 +3121,18 @@ namespace Pcsx5Ui
                         if (isSel) firstOptionBtn = btn;
                     }
                 }
+                else if (settingKey == "ui_corners")
+                {
+                    foreach (var c in new[] { Theme.CornersRounded, Theme.CornersSharp, Theme.CornersCut })
+                    {
+                        bool isSel = string.Equals(_config.ui.corners, c, StringComparison.OrdinalIgnoreCase);
+                        var btn = CreateOptionChoiceButton(I18n.Tr("settings.corners_" + c), I18n.Tr("settings.corners_" + c + "_desc"), isSel, () => {
+                            _config.ui.corners = c; ApplyTheme(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
                 else if (settingKey == "ui_ground")
                 {
                     var grounds = new[] { (I18n.Tr("settings.ground_default"), ""), ("Black", "#000000"), ("Charcoal", "#15171C"), ("Navy", "#0A1020"), ("Plum", "#14101A"), ("Paper", "#F5F6F8"), ("Warm", "#F7F3EC") };
@@ -3154,7 +3170,7 @@ namespace Pcsx5Ui
         private void ApplyTheme()
         {
             if (_config?.ui == null) return;
-            if (!Theme.Apply(_config.ui.theme ?? Theme.ModeDark, _config.ui.accent, _config.ui.ground))
+            if (!Theme.Apply(_config.ui.theme ?? Theme.ModeDark, _config.ui.accent, _config.ui.ground, _config.ui.corners ?? Theme.CornersRounded))
                 LogConsole("Theme: a colour in config.ini was not a valid #RRGGBB and was ignored.");
         }
 
@@ -5423,6 +5439,7 @@ namespace Pcsx5Ui
             public string theme { get; set; } = "dark";
             public string accent { get; set; } = "#5FE3FF";
             public string ground { get; set; } = "";
+            public string corners { get; set; } = "rounded";   // rounded | sharp | cut
         }
     }
 

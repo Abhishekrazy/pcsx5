@@ -449,5 +449,13 @@
   "ui.sort_size_short": "サイズ",
   "ui.search_hint": "検索",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "角のスタイル",
+  "settings.corners_desc": "丸め、直角、または面取り",
+  "settings.corners_rounded": "丸め",
+  "settings.corners_rounded_desc": "カード、ボタン、タイルの角を丸くする",
+  "settings.corners_sharp": "直角",
+  "settings.corners_sharp_desc": "すべて四角い角にする",
+  "settings.corners_cut": "面取り",
+  "settings.corners_cut_desc": "カードとタイルの角を切り落とす"
 }

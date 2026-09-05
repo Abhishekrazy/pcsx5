@@ -449,5 +449,13 @@
   "ui.sort_size_short": "大小",
   "ui.search_hint": "搜索",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "边角样式",
+  "settings.corners_desc": "圆角、直角或切角",
+  "settings.corners_rounded": "圆角",
+  "settings.corners_rounded_desc": "卡片、按钮和磁贴使用柔和圆角",
+  "settings.corners_sharp": "直角",
+  "settings.corners_sharp_desc": "全部使用方角",
+  "settings.corners_cut": "切角",
+  "settings.corners_cut_desc": "卡片和磁贴使用倒角"
 }

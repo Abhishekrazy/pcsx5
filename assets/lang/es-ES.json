@@ -449,5 +449,13 @@
   "ui.sort_size_short": "Tamaño",
   "ui.search_hint": "Buscar",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "Estilo de esquinas",
+  "settings.corners_desc": "Redondeadas, borde duro o recortadas",
+  "settings.corners_rounded": "Redondeadas",
+  "settings.corners_rounded_desc": "Esquinas suaves en tarjetas, botones y mosaicos",
+  "settings.corners_sharp": "Borde duro",
+  "settings.corners_sharp_desc": "Esquinas cuadradas en todas partes",
+  "settings.corners_cut": "Recortadas",
+  "settings.corners_cut_desc": "Esquinas achaflanadas en tarjetas y mosaicos"
 }

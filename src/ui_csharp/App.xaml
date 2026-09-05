@@ -27,6 +27,14 @@
         <SolidColorBrush x:Key="ThemeDanger" Color="#FF6F7D"/>
         <SolidColorBrush x:Key="ThemeWarning" Color="#F0C96F"/>
         <SolidColorBrush x:Key="ThemeSuccess" Color="#6FF0C3"/>
+        <!-- Corner shape tokens. Theme.Apply() rewrites them for the user's
+             corner style (rounded / sharp / cut); pair a card that holds an
+             image with local:Theme.ClipCorners so its content is clipped. -->
+        <CornerRadius x:Key="ThemeCornerS">6</CornerRadius>
+        <CornerRadius x:Key="ThemeCornerM">10</CornerRadius>
+        <CornerRadius x:Key="ThemeCornerL">16</CornerRadius>
+        <CornerRadius x:Key="ThemeCornerXL">24</CornerRadius>
+        <CornerRadius x:Key="ThemeCornerPill">999</CornerRadius>
         
         <!-- Type ramp.  The shell is a fullscreen console dashboard read at
              distance, so the base of this ramp is deliberately larger than a
@@ -115,7 +123,7 @@
                     <Border x:Name="Bd" Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            CornerRadius="{DynamicResource ThemeCornerS}" Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>

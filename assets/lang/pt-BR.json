@@ -449,5 +449,13 @@
   "ui.sort_size_short": "Tamanho",
   "ui.search_hint": "Pesquisar",
   "glyph.opt.kb": "[Tab]",
-  "glyph.opt.pad": "[≡]"
+  "glyph.opt.pad": "[≡]",
+  "settings.corners": "Estilo dos cantos",
+  "settings.corners_desc": "Arredondados, borda reta ou cortados",
+  "settings.corners_rounded": "Arredondados",
+  "settings.corners_rounded_desc": "Cantos suaves em cartões, botões e blocos",
+  "settings.corners_sharp": "Borda reta",
+  "settings.corners_sharp_desc": "Cantos quadrados em toda parte",
+  "settings.corners_cut": "Cortados",
+  "settings.corners_cut_desc": "Cantos chanfrados em cartões e blocos"
 }
