@@ -99,7 +99,7 @@
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel",
   "hints.firstrun": "%DEV% %OK% Browse Folder  •  %BACK% Skip  •  %ALT% Continue",
-  "hints.full_library": "%DEV% %DIR% Select Game  •  %OK% Choose  •  %BACK% Back to Shelf",
+  "hints.full_library": "%DEV% %DIR% Escolher jogo  •  %OK% Selecionar  •  %ALT% Ordenar  •  %BACK% Voltar à estante",
   "hints.library": "%DEV% %TABS% Tabs  •  %DIR% Select Game  •  %OK% Play  •  %ALT2% Search  •  %ALT% Analyzer  •  %BACK% Stop",
   "hints.overlay": "%DEV% %OK% Dismiss  •  %BACK% Close Overlay",
   "hints.pause_menu": "%DEV% %DIR% Navigate  •  %OK% Select  •  %BACK% Stop Game  •  %ALT% Console",
@@ -422,5 +422,10 @@
   "ui.welcome_to_pcsx5": "Welcome to PCSX5",
   "ui.xbox_controller_xinput": "Xbox Controller (XInput)",
   "view.library": "Biblioteca",
-  "view.system": "Sistema"
+  "view.system": "Sistema",
+  "ui.sort_by": "Ordenar",
+  "ui.sort_recent": "Jogados recentemente",
+  "ui.sort_title": "Título A–Z",
+  "ui.sort_title_id": "ID do título",
+  "ui.sort_size": "Tamanho (maior primeiro)"
 }

@@ -147,6 +147,9 @@ namespace Pcsx5Ui
         // always lists _games in full.
         private List<GameEntry> _shelf = new List<GameEntry>();
         private RecentPlays _recent;
+        // View All sort order; index matches LibrarySortCombo's items.
+        private enum LibrarySort { Recent = 0, Title = 1, TitleId = 2, Size = 3 }
+        private LibrarySort _librarySort = LibrarySort.Recent;
         private GameEntry _selectedGame = null;
         private string _gamesDir = "Games";
         private string _coversDir = "Covers";
@@ -645,8 +648,7 @@ namespace Pcsx5Ui
             FooterGamesCount.Text = $"Games Loaded: {_games.Count}";
             LibraryGameCount.Text = $"{_games.Count} games";
             FullLibraryCount.Text = $"{_games.Count} games";
-            FullLibraryListView.ItemsSource = null;
-            FullLibraryListView.ItemsSource = _games;
+            ApplyLibrarySort();
 
             RebuildShelf();
             if (_shelf.Count > 0)
@@ -655,13 +657,13 @@ namespace Pcsx5Ui
             }
         }
 
-        /// <summary>Recompute the Library shelf from the recency order: titles
-        /// with a last-played time, most recent first; or all titles if nothing
-        /// has been played yet, so a fresh install is not an empty shelf.</summary>
+        /// <summary>Recompute the Library shelf: recently played titles first,
+        /// then every other title in discovery order. The shelf is never
+        /// sparse -- the user does not want the main menu to look blank
+        /// (2026-09-06) -- so nothing is filtered out; recency only orders.</summary>
         private void RebuildShelf()
         {
-            _shelf = _games.Where(g => _recent.LastPlayed(g.TitleId) != null).ToList();
-            if (_shelf.Count == 0) _shelf = new List<GameEntry>(_games);
+            _shelf = new List<GameEntry>(_games);
             GamesWrapPanel.Children.Clear();
             foreach (var g in _shelf) AddGameTile(g);
             if (_selectedGame != null && _shelf.Contains(_selectedGame)) SelectGame(_selectedGame);
@@ -1340,8 +1342,7 @@ namespace Pcsx5Ui
             {
                 if (!_recent.Record(game.TitleId)) LogConsole("Could not save recent_plays.json");
                 _games.Remove(game); _games.Insert(0, game);
-                FullLibraryListView.ItemsSource = null;
-                FullLibraryListView.ItemsSource = _games;
+                ApplyLibrarySort();
                 RebuildShelf();
             }
         }
@@ -3353,8 +3354,15 @@ namespace Pcsx5Ui
         /// previously had none -- opening it stranded a pad user with no way to
         /// choose a game or return. Circle backs out, matching the shell-wide
         /// convention that Circle is Back.</summary>
-        private void HandleFullLibraryNav(bool up, bool down, bool left, bool right, bool cross, bool circle)
+        private void HandleFullLibraryNav(bool up, bool down, bool left, bool right, bool cross, bool circle, bool triangle)
         {
+            if (triangle)
+            {
+                // Cycle the sort order from the pad; the combo box follows and
+                // its SelectionChanged applies the sort.
+                LibrarySortCombo.SelectedIndex = (LibrarySortCombo.SelectedIndex + 1) % LibrarySortCombo.Items.Count;
+                return;
+            }
             int count = FullLibraryListView.Items.Count;
             if (count > 0 && (up || down || left || right))
             {
@@ -3396,6 +3404,33 @@ namespace Pcsx5Ui
                 return Math.Max(1, cols);
             }
             return 1;
+        }
+
+        /// <summary>Re-source the View All grid in the chosen order. _games
+        /// itself stays in recency order, which is what the shelf shows.</summary>
+        private void ApplyLibrarySort()
+        {
+            // The combo's initial SelectedIndex raises SelectionChanged during
+            // InitializeComponent, before the list view below it exists.
+            if (FullLibraryListView == null || _games == null) return;
+            IEnumerable<GameEntry> ordered = _librarySort switch
+            {
+                LibrarySort.Title   => _games.OrderBy(g => g.Title ?? "", StringComparer.CurrentCultureIgnoreCase),
+                LibrarySort.TitleId => _games.OrderBy(g => g.TitleId ?? "", StringComparer.OrdinalIgnoreCase),
+                LibrarySort.Size    => _games.OrderByDescending(g => g.SizeBytes),
+                _                   => _games,
+            };
+            var selected = _selectedGame;
+            FullLibraryListView.ItemsSource = null;
+            FullLibraryListView.ItemsSource = ordered.ToList();
+            if (selected != null) FullLibraryListView.SelectedItem = selected;
+        }
+
+        private void LibrarySortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (LibrarySortCombo == null || _games == null) return;
+            _librarySort = (LibrarySort)Math.Max(0, LibrarySortCombo.SelectedIndex);
+            ApplyLibrarySort();
         }
 
         // Mouse on the grid: a click selects the game (the header follows), a
@@ -4309,6 +4344,22 @@ namespace Pcsx5Ui
                 ly = state.Gamepad.sThumbLY;
             }
 
+            // Like a console, the pad belongs to whichever window is in front.
+            // While the shell is not the active window -- alt-tabbed away, or
+            // something else in front -- its input is swallowed here, with the
+            // previous state kept current so a button held meanwhile does not
+            // fire as a fresh press when focus returns. (Compared against the
+            // SharpEmu launcher, 2026-09-06: this was the one navigation
+            // behaviour it had that the shell lacked.)
+            if (!IsActive)
+            {
+                _prevInputState = state;
+                _kbUp = _kbDown = _kbLeft = _kbRight = false;
+                _kbCross = _kbCircle = _kbTriangle = _kbSquare = false;
+                _kbTabPrev = _kbTabNext = false;
+                return;
+            }
+
             // Fold in anything the keyboard raised since the last tick, then
             // clear it, so a key press acts exactly like the equivalent button.
             bool kbUp = _kbUp, kbDown = _kbDown, kbLeft = _kbLeft, kbRight = _kbRight;
@@ -4602,7 +4653,7 @@ namespace Pcsx5Ui
                     if (FullLibraryGrid != null && FullLibraryGrid.Visibility == Visibility.Visible)
                     {
                         ShowHints("hints.full_library");
-                        HandleFullLibraryNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
+                        HandleFullLibraryNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed, yPressed);
                         _prevInputState = state;
                         return;
                     }

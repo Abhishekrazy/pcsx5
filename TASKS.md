@@ -346,6 +346,35 @@ Ordered by dependency, one subsystem per change (Rule 10):
     Play reported "The system cannot find the file specified"
     (SHELL_20260906_024642/frames/frame_0025.png). A six-level candidate is
     added beside the existing ones; the next run launched the core.
+  - [x] **Shelf is never sparse; View All has a sort picker** - DONE. Asked
+    2026-09-06: "if recently not played anything we can show other titles
+    there ... I don't want main menu to look blank; view all should also need
+    sorting". The shelf now shows every title with recently played first (the
+    earlier played-only filter left one lonely tile). View All gained a Sort
+    picker - Recently played / Title A-Z / Title ID / Size - with keys in all
+    eleven locales and an AutomationProperties.Name; Triangle cycles it from
+    the pad and the hint bar says so in every locale. A first cut crashed at
+    startup because the combo's initial SelectedIndex fires SelectionChanged
+    before the list exists (SHELL_20260906_025359, NullReference in
+    ApplyLibrarySort); guarded. Seen: Triangle switches to Title A-Z and the
+    grid reorders - artifacts/runtime/SHELL_20260906_025740/frames/frame_0009.png.
+    Not persisted across restarts; say if it should be.
+  - [x] **SharpEmu launcher navigation compared** - DONE (asked 2026-09-06:
+    "sharpemu UI is better ... controller support is better there, check").
+    Read sharpemu_clone/src/SharpEmu.GUI/MainWindow.axaml.cs PollGamepad and
+    SharpEmu.Libs/Pad/SdlLauncherGamepad.cs. Its model: SDL gamepad, timer
+    poll, edge-detected buttons, stick-as-D-pad at 64/192, hold-to-repeat
+    400 ms then 130 ms, row-step from measured layout, L1/R1 pages, Cross
+    launches; input ignored while the launcher is not the active window or a
+    session is running. Ours already has each of those except one: we did not
+    gate on window activation, so after alt-tabbing away the shell kept
+    reacting to the pad. Added: ControllerTimer_Tick now returns while
+    !IsActive, keeping _prevInputState current and clearing the keyboard
+    latches so nothing held meanwhile fires on return. Our repeat is faster
+    (90 ms) and our coverage is wider (every tab, rebind, overlays), so the
+    remaining gap is polish, not capability - tracked under 4.10.
+  - [x] **Harness keys T and F** - DONE. The shell's keyboard-as-pad map uses
+    T for Triangle and F for Square; the harness could not send them.
   - [ ] The mapping editor's side columns scroll inside 260 px strips with
     tiny viewports (thumbs visible in the after-frame). A page-level scroll
     for the Controller tab would read better than three nested ones.

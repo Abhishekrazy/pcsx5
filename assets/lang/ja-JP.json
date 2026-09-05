@@ -99,7 +99,7 @@
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel",
   "hints.firstrun": "%DEV% %OK% Browse Folder  •  %BACK% Skip  •  %ALT% Continue",
-  "hints.full_library": "%DEV% %DIR% Select Game  •  %OK% Choose  •  %BACK% Back to Shelf",
+  "hints.full_library": "%DEV% %DIR% ゲームを選択  •  %OK% 決定  •  %ALT% 並べ替え  •  %BACK% 棚に戻る",
   "hints.library": "%DEV% %TABS% Tabs  •  %DIR% Select Game  •  %OK% Play  •  %ALT2% Search  •  %ALT% Analyzer  •  %BACK% Stop",
   "hints.overlay": "%DEV% %OK% Dismiss  •  %BACK% Close Overlay",
   "hints.pause_menu": "%DEV% %DIR% Navigate  •  %OK% Select  •  %BACK% Stop Game  •  %ALT% Console",
@@ -422,5 +422,10 @@
   "ui.welcome_to_pcsx5": "Welcome to PCSX5",
   "ui.xbox_controller_xinput": "Xbox Controller (XInput)",
   "view.library": "ライブラリ",
-  "view.system": "システム"
+  "view.system": "システム",
+  "ui.sort_by": "並べ替え",
+  "ui.sort_recent": "最近プレイした順",
+  "ui.sort_title": "タイトル順",
+  "ui.sort_title_id": "タイトルID順",
+  "ui.sort_size": "サイズ順（大きい順）"
 }

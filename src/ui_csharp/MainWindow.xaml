@@ -596,6 +596,15 @@
                             <StackPanel Grid.Column="0" Orientation="Horizontal">
                                 <Button x:Name="FullLibraryBackBtn" Content="{loc:Tr Key=ui.back_to_carousel}" MinWidth="140" MinHeight="28" FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Click="ToggleFullLibrary_Click"/>
                                 <TextBox x:Name="LibrarySearchBox" Width="200" Height="28" Margin="12,0,0,0" FontSize="{DynamicResource TypeM}" Background="#2F000000" Foreground="White" BorderBrush="#3FFFFFFF" BorderThickness="1"/>
+                                <!-- Sort order for the grid (asked 2026-09-06). Triangle
+                                     cycles it from the pad; see HandleFullLibraryNav. -->
+                                <TextBlock Text="{loc:Tr Key=ui.sort_by}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ForegroundMutedBrush}" VerticalAlignment="Center" Margin="16,0,6,0"/>
+                                <ComboBox x:Name="LibrarySortCombo" FocusVisualStyle="{StaticResource AccentFocusVisual}" AutomationProperties.Name="{loc:Tr Key=ui.sort_by}" SelectedIndex="0" MinWidth="170" Height="28" Background="#2FFFFFFF" Foreground="Black" SelectionChanged="LibrarySortCombo_SelectionChanged">
+                                    <ComboBoxItem Content="{loc:Tr Key=ui.sort_recent}"/>
+                                    <ComboBoxItem Content="{loc:Tr Key=ui.sort_title}"/>
+                                    <ComboBoxItem Content="{loc:Tr Key=ui.sort_title_id}"/>
+                                    <ComboBoxItem Content="{loc:Tr Key=ui.sort_size}"/>
+                                </ComboBox>
                             </StackPanel>
                             <TextBlock Grid.Column="1" x:Name="FullLibraryCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeM}" Foreground="#6FA0A0A5" VerticalAlignment="Center"/>
                         </Grid>

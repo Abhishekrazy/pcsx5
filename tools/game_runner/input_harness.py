@@ -22,6 +22,11 @@ VK_CODE = {
     'l': 0x4C,
     'q': 0x51,
     'e': 0x45,
+    # The PCSX5 shell's own keyboard-as-pad map: T is Triangle and F is
+    # Square (its hint bar shows "[T] Sort" / "[F] Search"), so a script can
+    # drive those pad actions on the shell too.
+    't': 0x54,
+    'f': 0x46,
     # Function keys. The shell binds F11 to fullscreen, which a capture
     # schedule needs in order to fit a tall screen into frame.
     'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73, 'f5': 0x74, 'f6': 0x75,
