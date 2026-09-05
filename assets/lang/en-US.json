@@ -427,5 +427,19 @@
   "ui.sort_recent": "Recently played",
   "ui.sort_title": "Title A–Z",
   "ui.sort_title_id": "Title ID",
-  "ui.sort_size": "Size (largest first)"
+  "ui.sort_size": "Size (largest first)",
+  "settings.theme": "Theme",
+  "settings.theme_desc": "Dark, light, or follow Windows",
+  "settings.theme_dark": "Dark",
+  "settings.theme_dark_desc": "The console look: near-black ground",
+  "settings.theme_light": "Light",
+  "settings.theme_light_desc": "Pale ground, dark text",
+  "settings.theme_system": "Follow Windows",
+  "settings.theme_system_desc": "Match the Windows app theme",
+  "settings.accent": "Accent colour",
+  "settings.accent_desc": "Focus ring, primary button and highlights",
+  "settings.ground": "Background colour",
+  "settings.ground_desc": "The ground behind every screen",
+  "settings.ground_default": "Theme default",
+  "settings.ground_default_desc": "Use the palette's own ground"
 }

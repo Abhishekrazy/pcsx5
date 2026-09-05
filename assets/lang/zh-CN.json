@@ -427,5 +427,19 @@
   "ui.sort_recent": "最近游玩",
   "ui.sort_title": "标题",
   "ui.sort_title_id": "游戏 ID",
-  "ui.sort_size": "大小（从大到小）"
+  "ui.sort_size": "大小（从大到小）",
+  "settings.theme": "主题",
+  "settings.theme_desc": "深色、浅色或跟随 Windows",
+  "settings.theme_dark": "深色",
+  "settings.theme_dark_desc": "主机风格：近黑背景",
+  "settings.theme_light": "浅色",
+  "settings.theme_light_desc": "浅色背景，深色文字",
+  "settings.theme_system": "跟随 Windows",
+  "settings.theme_system_desc": "匹配 Windows 应用主题",
+  "settings.accent": "强调色",
+  "settings.accent_desc": "焦点环、主按钮和高亮",
+  "settings.ground": "背景色",
+  "settings.ground_desc": "每个界面背后的背景",
+  "settings.ground_default": "主题默认",
+  "settings.ground_default_desc": "使用调色板自带的背景"
 }

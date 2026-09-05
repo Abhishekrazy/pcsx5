@@ -427,5 +427,19 @@
   "ui.sort_recent": "Zuletzt gespielt",
   "ui.sort_title": "Titel A–Z",
   "ui.sort_title_id": "Titel-ID",
-  "ui.sort_size": "Größe (größte zuerst)"
+  "ui.sort_size": "Größe (größte zuerst)",
+  "settings.theme": "Design",
+  "settings.theme_desc": "Dunkel, hell oder wie Windows",
+  "settings.theme_dark": "Dunkel",
+  "settings.theme_dark_desc": "Der Konsolen-Look: fast schwarzer Hintergrund",
+  "settings.theme_light": "Hell",
+  "settings.theme_light_desc": "Heller Hintergrund, dunkler Text",
+  "settings.theme_system": "Wie Windows",
+  "settings.theme_system_desc": "Dem Windows-App-Design folgen",
+  "settings.accent": "Akzentfarbe",
+  "settings.accent_desc": "Fokusring, Hauptschaltfläche und Hervorhebungen",
+  "settings.ground": "Hintergrundfarbe",
+  "settings.ground_desc": "Der Hintergrund hinter jedem Bildschirm",
+  "settings.ground_default": "Design-Standard",
+  "settings.ground_default_desc": "Den eigenen Hintergrund der Palette verwenden"
 }

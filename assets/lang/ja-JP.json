@@ -427,5 +427,19 @@
   "ui.sort_recent": "最近プレイした順",
   "ui.sort_title": "タイトル順",
   "ui.sort_title_id": "タイトルID順",
-  "ui.sort_size": "サイズ順（大きい順）"
+  "ui.sort_size": "サイズ順（大きい順）",
+  "settings.theme": "テーマ",
+  "settings.theme_desc": "ダーク、ライト、または Windows に従う",
+  "settings.theme_dark": "ダーク",
+  "settings.theme_dark_desc": "コンソール風：ほぼ黒の背景",
+  "settings.theme_light": "ライト",
+  "settings.theme_light_desc": "明るい背景、暗い文字",
+  "settings.theme_system": "Windows に従う",
+  "settings.theme_system_desc": "Windows のアプリテーマに合わせる",
+  "settings.accent": "アクセントカラー",
+  "settings.accent_desc": "フォーカスリング、主ボタン、強調表示",
+  "settings.ground": "背景色",
+  "settings.ground_desc": "すべての画面の背景",
+  "settings.ground_default": "テーマの既定",
+  "settings.ground_default_desc": "パレット本来の背景を使う"
 }

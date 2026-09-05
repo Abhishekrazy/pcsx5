@@ -427,5 +427,19 @@
   "ui.sort_recent": "최근 플레이 순",
   "ui.sort_title": "제목순",
   "ui.sort_title_id": "타이틀 ID순",
-  "ui.sort_size": "크기순(큰 것부터)"
+  "ui.sort_size": "크기순(큰 것부터)",
+  "settings.theme": "테마",
+  "settings.theme_desc": "다크, 라이트 또는 Windows 따르기",
+  "settings.theme_dark": "다크",
+  "settings.theme_dark_desc": "콘솔 느낌: 거의 검은 배경",
+  "settings.theme_light": "라이트",
+  "settings.theme_light_desc": "밝은 배경, 어두운 글자",
+  "settings.theme_system": "Windows 따르기",
+  "settings.theme_system_desc": "Windows 앱 테마에 맞춤",
+  "settings.accent": "강조 색상",
+  "settings.accent_desc": "포커스 링, 기본 버튼, 강조 표시",
+  "settings.ground": "배경 색상",
+  "settings.ground_desc": "모든 화면 뒤의 배경",
+  "settings.ground_default": "테마 기본값",
+  "settings.ground_default_desc": "팔레트 고유의 배경 사용"
 }

@@ -427,5 +427,19 @@
   "ui.sort_recent": "最近遊玩",
   "ui.sort_title": "標題",
   "ui.sort_title_id": "遊戲 ID",
-  "ui.sort_size": "大小（從大到小）"
+  "ui.sort_size": "大小（從大到小）",
+  "settings.theme": "主題",
+  "settings.theme_desc": "深色、淺色或跟隨 Windows",
+  "settings.theme_dark": "深色",
+  "settings.theme_dark_desc": "主機風格：近黑背景",
+  "settings.theme_light": "淺色",
+  "settings.theme_light_desc": "淺色背景，深色文字",
+  "settings.theme_system": "跟隨 Windows",
+  "settings.theme_system_desc": "符合 Windows 應用程式主題",
+  "settings.accent": "強調色",
+  "settings.accent_desc": "焦點環、主按鈕與醒目提示",
+  "settings.ground": "背景色",
+  "settings.ground_desc": "每個畫面背後的背景",
+  "settings.ground_default": "主題預設",
+  "settings.ground_default_desc": "使用調色盤自身的背景"
 }

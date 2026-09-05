@@ -427,5 +427,19 @@
   "ui.sort_recent": "Недавно сыгранные",
   "ui.sort_title": "Название А–Я",
   "ui.sort_title_id": "ID игры",
-  "ui.sort_size": "Размер (сначала большие)"
+  "ui.sort_size": "Размер (сначала большие)",
+  "settings.theme": "Тема",
+  "settings.theme_desc": "Тёмная, светлая или как в Windows",
+  "settings.theme_dark": "Тёмная",
+  "settings.theme_dark_desc": "Консольный вид: почти чёрный фон",
+  "settings.theme_light": "Светлая",
+  "settings.theme_light_desc": "Светлый фон, тёмный текст",
+  "settings.theme_system": "Как в Windows",
+  "settings.theme_system_desc": "Следовать теме приложений Windows",
+  "settings.accent": "Цвет акцента",
+  "settings.accent_desc": "Рамка фокуса, главная кнопка и выделения",
+  "settings.ground": "Цвет фона",
+  "settings.ground_desc": "Фон позади каждого экрана",
+  "settings.ground_default": "По умолчанию темы",
+  "settings.ground_default_desc": "Использовать собственный фон палитры"
 }

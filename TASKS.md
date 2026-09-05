@@ -295,6 +295,32 @@ Ordered by dependency, one subsystem per change (Rule 10):
   the core (which makes this the same change as 4.9, not a separate one).
   Verify by driving every screen with the pad alone and screenshotting each.
 
+- [~] **4.13 Shell redesign: "Void console" with themes** - asked 2026-09-06
+  after approving the concept canvas (artifact 12445a87): implement it in
+  the shell, add a light/dark theme mode, and make the theme colours user
+  controllable in Settings. Spec: docs/tasks/TASK-2026-09-06-shell-redesign-void-console.md;
+  decision: architecture/decisions/ADR-003-shell-theming.md. One screen per
+  change, each seen in dark and light with a non-default accent.
+  - [x] **Step 1 - theme foundation** - DONE. Twelve token brushes in
+    App.xaml; `Theme.cs` (two palettes, "system" from Windows' apps-theme
+    key, user accent with on-accent text picked by luminance, optional
+    ground); config `ui.theme/accent/ground` persisted in config.ini;
+    Settings > UI & Personalization gains Theme / Accent colour /
+    Background colour as pad-navigable choices (9 accent swatches, 7
+    grounds) localized in all eleven locales. Seen: the three entries with a
+    coral accent read from config.ini -
+    artifacts/runtime/SHELL_20260906_034218/frames/frame_0010.png. What is
+    NOT yet visible: light mode and the accent on existing screens, because
+    every existing screen paints literals; only the AccentFocusVisual ring
+    follows the accent today. That is by design (ADR-003) and lifts screen by
+    screen below. Colour-name labels for the ground presets are hardcoded
+    English in C# (proper-noun-like); to localize if the ratchet ever
+    counts C#.
+  - [ ] Step 2 - Library (main): hero, five-title shelf, legend, on tokens.
+  - [ ] Step 3 - All games: grid, search, sort, favourites (per-title flag).
+  - [ ] Step 4 - Settings. Step 5 - Input. Steps 6-11 - Tools, Console,
+    Error, Pause overlay, Quick settings, Folder picker.
+
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the
   standing preference for a PS5-console look, and fix what is wrong: spacing,

@@ -340,6 +340,7 @@ namespace Pcsx5Ui
                 LoadConfig();
                 ApplyUiScale();
                 ApplyShellFullscreen(_config.ui.start_fullscreen);
+                ApplyTheme();
                 InitializeControllerPolling();
 
                 // Start Discord RPC and load translations
@@ -495,6 +496,9 @@ namespace Pcsx5Ui
                     _config.ui.title_music_enabled = bool.Parse(ini.GetValue("Ui", "TitleMusicEnabled", "true"));
                     _config.ui.scale = double.Parse(ini.GetValue("Ui", "UiScale", "1.0"), System.Globalization.CultureInfo.InvariantCulture);
                     _config.ui.start_fullscreen = bool.Parse(ini.GetValue("Ui", "StartFullscreen", "true"));
+                    _config.ui.theme = ini.GetValue("Ui", "Theme", "dark");
+                    _config.ui.accent = ini.GetValue("Ui", "Accent", "#5FE3FF");
+                    _config.ui.ground = ini.GetValue("Ui", "Ground", "");
                 }
                 else
                 {
@@ -577,6 +581,9 @@ namespace Pcsx5Ui
                 ini.SetValue("Ui", "TitleMusicEnabled", _config.ui.title_music_enabled.ToString().ToLower());
                 ini.SetValue("Ui", "UiScale", _config.ui.scale.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 ini.SetValue("Ui", "StartFullscreen", _config.ui.start_fullscreen.ToString().ToLower());
+                ini.SetValue("Ui", "Theme", _config.ui.theme ?? "dark");
+                ini.SetValue("Ui", "Accent", _config.ui.accent ?? "#5FE3FF");
+                ini.SetValue("Ui", "Ground", _config.ui.ground ?? "");
 
                 ini.Save(_iniPath);
                 LogConsole("Configuration saved to " + _iniPath);
@@ -2648,6 +2655,9 @@ namespace Pcsx5Ui
                     break;
                 case "UI":
                     list.Add(new SettingDefinition { Key = "ui_language", Title = "Interface Language", Description = "Dashboard text and user interface localization", GetValueBadge = () => _config.ui.language, Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "ui_theme", Title = I18n.Tr("settings.theme"), Description = I18n.Tr("settings.theme_desc"), GetValueBadge = () => I18n.Tr("settings.theme_" + (_config.ui.theme ?? "dark")), Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "ui_accent", Title = I18n.Tr("settings.accent"), Description = I18n.Tr("settings.accent_desc"), GetValueBadge = () => Theme.SwatchLabel(_config.ui.accent), Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "ui_ground", Title = I18n.Tr("settings.ground"), Description = I18n.Tr("settings.ground_desc"), GetValueBadge = () => string.IsNullOrEmpty(_config.ui.ground) ? I18n.Tr("settings.ground_default") : _config.ui.ground.ToUpperInvariant(), Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_scale", Title = "UI Scale (Display Size)", Description = "Scale factor for high-DPI monitors and large TV screens", GetValueBadge = () => $"{_config.ui.scale * 100:0}%", Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_fullscreen", Title = I18n.Tr("settings.ui_fullscreen.title"), Description = I18n.Tr("settings.ui_fullscreen.desc"), GetValueBadge = () => _config.ui.start_fullscreen ? I18n.Tr("common.enabled") : I18n.Tr("common.disabled"), Type = "toggle" });
                     break;
@@ -3081,6 +3091,43 @@ namespace Pcsx5Ui
                         if (isSel) firstOptionBtn = btn;
                     }
                 }
+                else if (settingKey == "ui_theme")
+                {
+                    foreach (var m in new[] { Theme.ModeDark, Theme.ModeLight, Theme.ModeSystem })
+                    {
+                        bool isSel = string.Equals(_config.ui.theme, m, StringComparison.OrdinalIgnoreCase);
+                        var btn = CreateOptionChoiceButton(I18n.Tr("settings.theme_" + m), I18n.Tr("settings.theme_" + m + "_desc"), isSel, () => {
+                            _config.ui.theme = m; ApplyTheme(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
+                else if (settingKey == "ui_accent")
+                {
+                    foreach (var sw in Theme.AccentSwatches)
+                    {
+                        bool isSel = string.Equals(_config.ui.accent, sw.Hex, StringComparison.OrdinalIgnoreCase);
+                        var btn = CreateOptionChoiceButton(sw.Name, sw.Hex, isSel, () => {
+                            _config.ui.accent = sw.Hex; ApplyTheme(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
+                else if (settingKey == "ui_ground")
+                {
+                    var grounds = new[] { (I18n.Tr("settings.ground_default"), ""), ("Black", "#000000"), ("Charcoal", "#15171C"), ("Navy", "#0A1020"), ("Plum", "#14101A"), ("Paper", "#F5F6F8"), ("Warm", "#F7F3EC") };
+                    foreach (var g in grounds)
+                    {
+                        bool isSel = string.Equals(_config.ui.ground ?? "", g.Item2, StringComparison.OrdinalIgnoreCase);
+                        var btn = CreateOptionChoiceButton(g.Item1, string.IsNullOrEmpty(g.Item2) ? I18n.Tr("settings.ground_default_desc") : g.Item2, isSel, () => {
+                            _config.ui.ground = g.Item2; ApplyTheme(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
                 else if (settingKey == "ui_language")
                 {
                     var langs = new[] { ("English (United States)", "en-US"), ("Deutsch (Deutschland)", "de-DE"), ("Español (España)", "es-ES"), ("Français (France)", "fr-FR"), ("Italiano (Italia)", "it-IT"), ("日本語 (日本)", "ja-JP"), ("한국어 (대한민국)", "ko-KR"), ("Português (Brasil)", "pt-BR"), ("Русский (Россия)", "ru-RU"), ("简体中文 (中国)", "zh-CN"), ("繁體中文 (台灣)", "zh-TW") };
@@ -3098,6 +3145,15 @@ namespace Pcsx5Ui
                 SettingsSubPageContentContainer.Children.Add(optionsPanel);
                 if (firstOptionBtn != null) firstOptionBtn.Focus();
             }
+        }
+
+        /// <summary>Push the configured theme into the token palette (ADR-003).
+        /// Rejected colour strings fall back and are reported in the console.</summary>
+        private void ApplyTheme()
+        {
+            if (_config?.ui == null) return;
+            if (!Theme.Apply(_config.ui.theme ?? Theme.ModeDark, _config.ui.accent, _config.ui.ground))
+                LogConsole("Theme: a colour in config.ini was not a valid #RRGGBB and was ignored.");
         }
 
         private Button CreateOptionChoiceButton(string title, string description, bool isSelected, Action onClick)
@@ -5310,6 +5366,11 @@ namespace Pcsx5Ui
             // presentation.  Distinct from graphics.fullscreen, which governs
             // the *game* window, not the dashboard.
             public bool start_fullscreen { get; set; } = true;
+            // Theme (ADR-003): "dark" | "light" | "system"; accent and ground as
+            // #RRGGBB, ground empty = the palette's own.
+            public string theme { get; set; } = "dark";
+            public string accent { get; set; } = "#5FE3FF";
+            public string ground { get; set; } = "";
         }
     }
 

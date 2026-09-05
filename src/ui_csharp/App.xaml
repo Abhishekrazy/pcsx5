@@ -10,6 +10,23 @@
         <SolidColorBrush x:Key="ForegroundWhiteBrush" Color="#FFFFFFFF"/>
         <SolidColorBrush x:Key="ForegroundMutedBrush" Color="#FFA0A0A5"/>
         <SolidColorBrush x:Key="BorderLightBrush" Color="#1EFFFFFF"/>
+
+        <!-- Theme tokens (ADR-003). These are the defaults for the dark
+             palette; Theme.Apply() rewrites them at startup and on every
+             settings change, and every screen built from 2026-09-06 on
+             references them with DynamicResource only. Never a literal. -->
+        <SolidColorBrush x:Key="ThemeGround" Color="#0B0D12"/>
+        <SolidColorBrush x:Key="ThemeSurface" Color="#0E1118"/>
+        <SolidColorBrush x:Key="ThemeRaised" Color="#11151D"/>
+        <SolidColorBrush x:Key="ThemeHairline" Color="#1A1F2A"/>
+        <SolidColorBrush x:Key="ThemeText" Color="#E6E9F0"/>
+        <SolidColorBrush x:Key="ThemeTextMuted" Color="#8B91A0"/>
+        <SolidColorBrush x:Key="ThemeAccent" Color="#5FE3FF"/>
+        <SolidColorBrush x:Key="ThemeAccentSoft" Color="#2E5FE3FF"/>
+        <SolidColorBrush x:Key="ThemeOnAccent" Color="#0B0D12"/>
+        <SolidColorBrush x:Key="ThemeDanger" Color="#FF6F7D"/>
+        <SolidColorBrush x:Key="ThemeWarning" Color="#F0C96F"/>
+        <SolidColorBrush x:Key="ThemeSuccess" Color="#6FF0C3"/>
         
         <!-- Type ramp.  The shell is a fullscreen console dashboard read at
              distance, so the base of this ramp is deliberately larger than a

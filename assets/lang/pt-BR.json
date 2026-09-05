@@ -427,5 +427,19 @@
   "ui.sort_recent": "Jogados recentemente",
   "ui.sort_title": "Título A–Z",
   "ui.sort_title_id": "ID do título",
-  "ui.sort_size": "Tamanho (maior primeiro)"
+  "ui.sort_size": "Tamanho (maior primeiro)",
+  "settings.theme": "Tema",
+  "settings.theme_desc": "Escuro, claro ou conforme o Windows",
+  "settings.theme_dark": "Escuro",
+  "settings.theme_dark_desc": "Visual de console: fundo quase preto",
+  "settings.theme_light": "Claro",
+  "settings.theme_light_desc": "Fundo claro, texto escuro",
+  "settings.theme_system": "Conforme o Windows",
+  "settings.theme_system_desc": "Seguir o tema de aplicativos do Windows",
+  "settings.accent": "Cor de destaque",
+  "settings.accent_desc": "Anel de foco, botão principal e realces",
+  "settings.ground": "Cor de fundo",
+  "settings.ground_desc": "O fundo atrás de cada tela",
+  "settings.ground_default": "Padrão do tema",
+  "settings.ground_default_desc": "Usar o fundo próprio da paleta"
 }
