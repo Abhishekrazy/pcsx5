@@ -598,9 +598,48 @@ surface, so where it differs from us the difference is usually load-bearing.
   Not started: the user approved retiring `WriteBuffer` specifically, and
   extending that to `ReadBuffer` is their call, not an assumption to make.
 
-- [ ] **ADR-001 steps 2–4 remain** — the pad-state ABI entry point, retiring
-  `WindowsDualSenseReader.cs`, and relaxing the single-pad `scePadOpen`
-  restriction. These need the user's hardware to verify.
+- [x] **FALSIFIED: "DualSense vibration, lightbar, mic-mute and analog sticks
+  are broken."** Tested against real hardware on 2026-09-05, connected over
+  **Bluetooth** (VID 054C / PID 0CE6 via `BTHENUM`), using a new manual probe,
+  `tools/dualsense_probe.cpp`. Every one of them works in the core:
+  ```
+  left  stick x:[3..255] y:[0..255]     right stick x:[0..255] y:[0..255]
+  triggers  L2 max=255  R2 max=255      buttons 0x0010FFF0   touch 1 finger
+  ```
+  and the user confirmed all four outputs physically occurred: lightbar colour
+  cycle, both rumble motors, mic-mute LED, player LEDs.
+  The earlier report was accurate when made; replacing the guess-the-offsets
+  in-header reader with the vendored DualSenseWindows library fixed it. The
+  entry is kept, marked falsified, so nobody re-investigates a solved problem.
+  The probe is deliberately **not** a CTest: it needs hardware and a person to
+  confirm what they saw, so as an automated test it could only pass vacuously.
+
+- [ ] **The shell has a second, competing DualSense reader — this is where the
+  breakage the user saw actually lives.** `src/ui_csharp/WindowsDualSenseReader.cs`
+  (767 lines) is a complete independent C# HID implementation, and the shell's
+  Controller Setup uses it — `CoreBridge.cs` exposes no pad state at all.
+  Both it and the native reader open the device with
+  `FILE_SHARE_READ | FILE_SHARE_WRITE`, so neither blocks the other; they
+  **interleave**. Two consumers of one HID input stream each receive a share of
+  the reports, and two writers overwrite each other's output state. That fits
+  "works standalone, broken in the app" precisely.
+  HYPOTHESIS, not yet confirmed: the next step is to open Controller Setup with
+  nothing else running. If it works alone, interference is the cause; if it is
+  still broken, the C# reader has a defect of its own.
+  Either way the duplicate should go (ADR-001), but this decides urgency.
+  **Blocked on approval:** exposing pad state through `CoreBridge` is a public
+  native ABI change, which CLAUDE.md makes a stopping condition.
+
+- [x] **Battery percentage above 100% — fixed in the vendored library**
+  `DS5_Input.cpp` computed `(nibble * 100) / 8` on a 4-bit field, so it could
+  report up to 187%. Real readings of 125% and 112% are what exposed it.
+  Clamped to 100 rather than rescaled: the true scale of that nibble is
+  `UNKNOWN` here, and guessing a divisor would swap a visibly wrong number for
+  an invisibly wrong one. Recorded as a local modification with a removal
+  condition in `third_party/DualSenseWindows/README.md`, as the vendoring
+  policy requires.
+
+- [ ] **ADR-001 steps 2–4 remain**
 
 - [ ] **A guest-filesystem test fixture** - blocks tests for `feof`/`fgets`/
   `fgetc` and for the guarded-transfer reporters.

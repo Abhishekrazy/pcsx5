@@ -82,5 +82,13 @@ void __DS5W::Input::evaluateHidInputBuffer(unsigned char* hidInBuffer, DS5W::DS5
 	// Battery
 	ptrInputState->battery.chargin = (hidInBuffer[0x35] & 0x08);
 	ptrInputState->battery.fullyCharged = (hidInBuffer[0x36] & 0x20);
-	ptrInputState->battery.level =  ((hidInBuffer[0x34] & 0x0F)*100)/8;
+	// PCSX5 local modification: upstream divided the 0..15 nibble by 8, so a
+	// healthy pad reported over 100% -- 125% and 112% were both observed on
+	// real hardware. Clamped rather than rescaled: the exact scale of this
+	// nibble is UNKNOWN to us, but a percentage above 100 is wrong under any
+	// reading of it. See third_party/DualSenseWindows/README.md.
+	{
+		unsigned int lvl = ((hidInBuffer[0x34] & 0x0F) * 100) / 8;
+		ptrInputState->battery.level = (unsigned char)(lvl > 100 ? 100 : lvl);
+	}
 }

@@ -808,6 +808,23 @@ if(BUILD_TESTING)
     )
 
     # ------------------------------------------------------------------------
+    # ------------------------------------------------------------------------
+    # DualSense hardware probe -- a MANUAL diagnostic, deliberately not
+    # registered with add_test().  It requires a physical controller and a
+    # person to confirm what they felt and saw; as an automated test it could
+    # only pass vacuously on a machine with no pad attached.
+    # ------------------------------------------------------------------------
+    # Compiles the DualSense implementation in directly: pcsx5_core is a DLL
+    # with an explicit export list, and these are internal symbols.
+    add_executable(dualsense_probe
+        tools/dualsense_probe.cpp
+        src/gpu/dualsense_ds5w.cpp
+        src/common/log.cpp
+    )
+    target_link_libraries(dualsense_probe PRIVATE dualsense_windows)
+    target_include_directories(dualsense_probe PRIVATE src third_party)
+    target_compile_options(dualsense_probe PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W3>)
+
     # Cover-art helper — generates synthetic placeholder PNGs in
     # ./Covers/ so the UI has something to display during development.
     # ------------------------------------------------------------------------

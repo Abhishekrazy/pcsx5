@@ -84,4 +84,17 @@ below so an update does not silently discard them.
 
 ## Local modifications
 
+- **`src/DualSenseWindows/DS5_Input.cpp` — battery percentage clamped (2026-09-05).**
+  Upstream computes `battery.level = ((hidInBuffer[0x34] & 0x0F) * 100) / 8`.
+  The field is a 4-bit nibble, so dividing by 8 yields up to 187%. Two readings
+  from a real DualSense over Bluetooth during PCSX5 hardware testing were 125%
+  and 112%, which is how this was noticed.
+  The value is clamped to 100 rather than rescaled: the true scale of that
+  nibble is `UNKNOWN` to this project, and guessing a divisor would replace a
+  visibly wrong number with an invisibly wrong one. A percentage above 100 is
+  wrong under any reading, so clamping is the change the evidence supports.
+  Removal condition: replace with a rescale once the nibble's range is
+  established from a cited reference or from observed charge/discharge data.
+
+
 None. The vendored source is upstream verbatim at the pinned commit.
