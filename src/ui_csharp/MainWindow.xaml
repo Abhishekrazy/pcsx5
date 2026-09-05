@@ -734,21 +734,21 @@
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.d_pad}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapUp" Tag="PadUp|pad_up" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapUp" Tag="PadUp|pad_up" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapLeft" Tag="PadLeft|pad_left" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapLeft" Tag="PadLeft|pad_left" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapRight" Tag="PadRight|pad_right" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapRight" Tag="PadRight|pad_right" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapDown" Tag="PadDown|pad_down" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapDown" Tag="PadDown|pad_down" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -757,13 +757,13 @@
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.l1_and_l2}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="L1" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapL1" Tag="L1|l1" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="L1" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapL1" Tag="L1|l1" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="L2" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapL2" Tag="L2|l2" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="L2" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapL2" Tag="L2|l2" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -797,21 +797,21 @@
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.left_stick}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapLeftStickUp" Tag="LeftStickUp|axis_left_y" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapLeftStickUp" Tag="LeftStickUp|axis_left_y" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapLeftStickLeft" Tag="LeftStickLeft|axis_left_x" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapLeftStickLeft" Tag="LeftStickLeft|axis_left_x" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapLeftStickRight" Tag="LeftStickRight|axis_left_x" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapLeftStickRight" Tag="LeftStickRight|axis_left_x" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapLeftStickDown" Tag="LeftStickDown|axis_left_y" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapLeftStickDown" Tag="LeftStickDown|axis_left_y" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -971,21 +971,21 @@
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.face_buttons}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.triangle}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapTriangle" Tag="Triangle|triangle" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.triangle}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapTriangle" Tag="Triangle|triangle" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.circle}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapCircle" Tag="Circle|circle" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.circle}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapCircle" Tag="Circle|circle" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.cross}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapCross" Tag="Cross|cross" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.cross}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapCross" Tag="Cross|cross" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.square}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapSquare" Tag="Square|square" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.square}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapSquare" Tag="Square|square" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -994,13 +994,13 @@
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.r1_and_r2}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="R1" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapR1" Tag="R1|r1" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="R1" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapR1" Tag="R1|r1" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="R2" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapR2" Tag="R2|r2" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="R2" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapR2" Tag="R2|r2" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -1034,21 +1034,21 @@
                                     <Border Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                         <StackPanel>
                                             <TextBlock Text="{loc:Tr Key=ui.right_stick}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapRightStickUp" Tag="RightStickUp|axis_right_y" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapRightStickUp" Tag="RightStickUp|axis_right_y" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapRightStickLeft" Tag="RightStickLeft|axis_right_x" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapRightStickLeft" Tag="RightStickLeft|axis_right_x" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapRightStickRight" Tag="RightStickRight|axis_right_x" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapRightStickRight" Tag="RightStickRight|axis_right_x" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
-                                            <Grid Margin="0,2,0,2">
-                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                                <Button x:Name="BtnMapRightStickDown" Tag="RightStickDown|axis_right_y" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
+                                            <Grid Margin="0,1,0,1">
+                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="White" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
+                                                <Button x:Name="BtnMapRightStickDown" Tag="RightStickDown|axis_right_y" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>

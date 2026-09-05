@@ -302,15 +302,22 @@ Ordered by dependency, one subsystem per change (Rule 10):
   its own small change with a before/after capture. Not started until 4.5 is
   seen running.
 
-  First concrete item, asked 2026-09-06 while the tab was being placed:
-  "button name and their values taking too much space - we can make them like
-  input field with label type of look, that way they take less space." The
-  mapping editor's binding rows are a label plus a wide button, stacked in two
-  260 px side columns; each row costs ~26 px for one short value. Done means:
-  each binding rendered as a compact labelled field (label left, value inline
-  right, one row, click-to-rebind unchanged), the side columns visibly
-  shorter, and the pad-navigation order (`GetControllerSetupControls`) still
-  correct. Before/after screenshots.
+  - [x] **Compact binding rows** - DONE. Asked 2026-09-06: "button name and
+    their values taking too much space - we can make them like input field
+    with label type of look." The twenty label-beside-value rows now use a
+    slim BindingValueButtonStyle and small-type labels; the six stacked
+    bottom-buttons cells were already compact and are unchanged. Every
+    x:Name, Tag and Click is preserved, so the rebind flow and the pad
+    navigation list needed no change. Before: artifacts/runtime/SHELL_20260906_015340/frames/frame_0025.png
+    After: artifacts/runtime/SHELL_20260906_021648/frames/frame_0025.png
+  - [x] **Canvas card capped at 560 px** - DONE. At 1920x1080 the uncapped
+    Viewbox scaled the pad taller than the window and pushed the tests and
+    the whole mapping editor off-screen. Same after-frame shows all three.
+  - [ ] The mapping editor's side columns scroll inside 260 px strips with
+    tiny viewports (thumbs visible in the after-frame). A page-level scroll
+    for the Controller tab would read better than three nested ones.
+  - [ ] The canvas card leaves wide empty margins either side of the pad at
+    1920 px; the right-hand panel or a MaxWidth could use that space.
 
 - [x] **Harness: `--clicks` clicked screen coordinates, not the window.** FIXED
   `click_at(x, y)` moves the cursor to an absolute screen point, and
@@ -325,6 +332,23 @@ Ordered by dependency, one subsystem per change (Rule 10):
   the click that had missed twice landing on the Input tab on the first try
   after the change. If no window rect is known the click is refused and says
   so, rather than landing somewhere else silently.
+
+- [ ] **4.12 Keyboard and mouse as a complete no-controller path** (asked
+  2026-09-06: "we also need keyboard and mouse support for our emulator
+  because not everyone might have a controller"). Two halves, and neither is
+  verified as complete today:
+  - *Guest input.* A GLFW keyboard backend exists (25 keys mapped); the
+    mapping editor can capture a key for a binding. There is no mouse input
+    at all - no mouse-as-right-stick, no mouse-as-touchpad, no mouse buttons
+    as pad buttons - and analog stick simulation from keys (the standing
+    preference) is unverified. Done means: every pad control reachable from
+    keyboard or mouse, sticks simulable, touchpad drivable by the mouse, and
+    a title played through to a menu with the controller unplugged.
+  - *Shell navigation.* Mouse works; keyboard reachability of every control
+    is the Rule 12 requirement and has not been audited. This is the same
+    focus model 4.10 needs for the pad, so 4.10 and 4.12's shell half are one
+    piece of work: one focus model, three input sources.
+  Verify each half with the controller physically disconnected.
 
 - [ ] **4.9 Retire `WindowsDualSenseReader.cs`** - once 4.5 reads through
   4.1 and nothing else references it. Its 767 lines and the interleaving
