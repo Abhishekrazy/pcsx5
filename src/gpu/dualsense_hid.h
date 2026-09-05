@@ -35,8 +35,14 @@ namespace DualSense {
         u8 l2 = 0, r2 = 0;            // 0..255
         u8 touch_count = 0;           // 0..2 fingers on the pad
         PadTouchPoint touch[2] = {};
-        float accel[3] = { 0.0f, 0.0f, 0.0f }; // x/y/z, in g (approx)
-        float gyro[3] = { 0.0f, 0.0f, 0.0f };  // pitch/yaw/roll, rad/s (approx)
+        // Raw sensor counts exactly as DualSenseWindows reports them -- NOT g or
+        // rad/s, whatever the previous comment said. The scale per count is
+        // UNKNOWN here and has not been measured; a consumer that needs physical
+        // units must establish it rather than assume one. (The Input tab found
+        // this out by graphing them as g: near-zero axes clamped into square
+        // waves.)
+        float accel[3] = { 0.0f, 0.0f, 0.0f }; // x/y/z, raw counts
+        float gyro[3] = { 0.0f, 0.0f, 0.0f };  // pitch/yaw/roll, raw counts
         u8 battery_level = 0;         // 0..100 percent
         bool battery_charging = false;
         bool battery_full = false;

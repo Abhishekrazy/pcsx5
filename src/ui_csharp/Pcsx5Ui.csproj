@@ -48,6 +48,15 @@
        renders raw translation keys.  Copying them makes the app self-contained
        instead of depending on where it happens to sit. -->
   <ItemGroup>
+    <!-- Controller art for the Input tab: body, sprites and the layout that
+         positions them.  InputTabView resolves assets/gamepad/dualsense next to
+         the app with the same walk-up I18n uses, so the repository copy works
+         in a developer build too.  Vendored under MIT with credit; see the
+         README in that folder. -->
+    <Content Include="$(MSBuildProjectDirectory)/../../assets/gamepad/dualsense/**/*.*"
+             Link="assets/gamepad/dualsense/%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="$(MSBuildProjectDirectory)/../../assets/lang/*.json"
              Link="assets/lang/%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

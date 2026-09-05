@@ -2075,245 +2075,9 @@ namespace Pcsx5Ui
             if (GameView != null) GameView.Visibility = tabName == "Game" ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private void ControllerTesterBtn_Click(object sender, RoutedEventArgs e)
-        {
-            // Panel removed in favor of live controller graphic overlay
-        }
-
         // --- INPUT TESTER OUTPUT ACTIONS ---
-        private int _playerLedIndex = 0;
-        private System.Windows.Threading.DispatcherTimer _rumbleStopTimer;
-
-        private void UpdateTesterStatusText()
-        {
-            if (TesterStatusText == null) return;
-            if (!WindowsDualSenseReader.TryGetState(out var state) || !state.Connected)
-            {
-                TesterStatusText.Text = "No DualSense connected. Output tests will have no effect.";
-            }
-            else if (WindowsDualSenseReader.IsBluetooth)
-            {
-                TesterStatusText.Text = "Connected via Bluetooth — rumble, lightbar and trigger effects are sent with the BT output report.";
-            }
-            else
-            {
-                TesterStatusText.Text = "Connected via USB.";
-            }
-        }
-
-        private void PulseRumble(byte largeMotor, byte smallMotor)
-        {
-            WindowsDualSenseReader.SetRumble(largeMotor, smallMotor);
-            if (_rumbleStopTimer == null)
-            {
-                _rumbleStopTimer = new System.Windows.Threading.DispatcherTimer();
-                _rumbleStopTimer.Interval = TimeSpan.FromMilliseconds(1200);
-                _rumbleStopTimer.Tick += (s, ev) =>
-                {
-                    _rumbleStopTimer.Stop();
-                    WindowsDualSenseReader.SetRumble(0, 0);
-                };
-            }
-            _rumbleStopTimer.Stop();
-            _rumbleStopTimer.Start();
-        }
-
-        private void TesterRumbleLow_Click(object sender, RoutedEventArgs e) => PulseRumble(255, 0);
-
-        private void TesterRumbleHigh_Click(object sender, RoutedEventArgs e) => PulseRumble(0, 255);
-
-        private void TesterRumbleStop_Click(object sender, RoutedEventArgs e)
-        {
-            _rumbleStopTimer?.Stop();
-            WindowsDualSenseReader.SetRumble(0, 0);
-        }
-
-        private void TesterLightbarApply_Click(object sender, RoutedEventArgs e)
-        {
-            WindowsDualSenseReader.SetLightbar(
-                (byte)CtrlColorRSlider.Value,
-                (byte)CtrlColorGSlider.Value,
-                (byte)CtrlColorBSlider.Value);
-        }
-
-        private void TesterLightbarReset_Click(object sender, RoutedEventArgs e)
-        {
-            WindowsDualSenseReader.ResetLightbar();
-        }
-
-        private void TesterPlayerLed_Click(object sender, RoutedEventArgs e)
-        {
-            byte[] patterns = { 0x04, 0x0A, 0x15, 0x1B, 0x1F }; // players 1-5
-            _playerLedIndex = (_playerLedIndex + 1) % patterns.Length;
-            WindowsDualSenseReader.SetPlayerLeds(patterns[_playerLedIndex]);
-            if (TesterStatusText != null)
-            {
-                TesterStatusText.Text = $"Player LED pattern {_playerLedIndex + 1} of {patterns.Length}";
-            }
-        }
-
-        private void TesterTriggerOff_Click(object sender, RoutedEventArgs e)
-        {
-            WindowsDualSenseReader.ResetTrigger(DualSenseTriggerSide.Both);
-            SetTesterStatus("Adaptive triggers released (Off).");
-        }
-
-        private void TesterTriggerFeedback_Click(object sender, RoutedEventArgs e)
-        {
-            // Continuous resistance from 25% travel with strong force
-            WindowsDualSenseReader.SetAdaptiveTrigger(
-                DualSenseTriggerSide.Both, DualSenseTriggerMode.Feedback, param1: 64, param2: 200);
-            SetTesterStatus("Trigger effect: Feedback (continuous resistance).");
-        }
-
-        private void TesterTriggerWeapon_Click(object sender, RoutedEventArgs e)
-        {
-            // Section resistance ("weapon trigger click") between 25% and 75% travel
-            WindowsDualSenseReader.SetAdaptiveTrigger(
-                DualSenseTriggerSide.Both, DualSenseTriggerMode.Weapon, param1: 64, param2: 192);
-            SetTesterStatus("Trigger effect: Weapon (section resistance).");
-        }
-
-        private void TesterTriggerVibration_Click(object sender, RoutedEventArgs e)
-        {
-            // Vibration effect starting at 20% travel, 40 Hz
-            WindowsDualSenseReader.SetAdaptiveTrigger(
-                DualSenseTriggerSide.Both, DualSenseTriggerMode.Vibration, param1: 51, param2: 40, force: 255);
-            SetTesterStatus("Trigger effect: Vibration.");
-        }
 
         // --- SPEAKER / MIC TESTERS (USB audio endpoints) ---
-        private bool _micTestActive;
-
-        private void TesterPlayTone_Click(object sender, RoutedEventArgs e)
-        {
-            var error = DualSenseAudio.PlayTestTone();
-            SetTesterStatus(error ?? "Playing 440 Hz test tone on the DualSense speaker...");
-        }
-
-        private void TesterMicTest_Click(object sender, RoutedEventArgs e)
-        {
-            if (!_micTestActive)
-            {
-                var error = DualSenseAudio.StartMicMeter();
-                if (error != null)
-                {
-                    SetTesterStatus(error);
-                    if (TesterMicLevelBar != null) TesterMicLevelBar.Value = 0;
-                    return;
-                }
-
-                _micTestActive = true;
-                TesterMicTestBtn.Content = "Stop Mic Test";
-                SetTesterStatus("Mic test running - speak into the controller microphone.");
-            }
-            else
-            {
-                StopMicTest();
-            }
-        }
-
-        private void StopMicTest()
-        {
-            if (!_micTestActive)
-            {
-                return;
-            }
-
-            _micTestActive = false;
-            DualSenseAudio.StopMicMeter();
-            if (TesterMicTestBtn != null) TesterMicTestBtn.Content = "Mic Test";
-            if (TesterMicLevelBar != null) TesterMicLevelBar.Value = 0;
-        }
-
-        private void SetTesterStatus(string message)
-        {
-            if (TesterStatusText != null)
-            {
-                TesterStatusText.Text = message + (WindowsDualSenseReader.IsBluetooth ? " (Bluetooth)" : "");
-            }
-            LogConsole("Tester: " + message);
-        }
-
-        // Restore neutral output state when the tester is closed or the tab is left.
-        private void TesterStopAllOutputs()
-        {
-            _rumbleStopTimer?.Stop();
-            WindowsDualSenseReader.SetRumble(0, 0);
-            WindowsDualSenseReader.ResetTrigger(DualSenseTriggerSide.Both);
-            WindowsDualSenseReader.ResetLightbar();
-        }
-
-        private void UpdateTesterReadouts(in HostGamepadState state)
-        {
-            if (TesterConnectionText == null) return; // panel not initialized yet
-
-            if (!state.Connected)
-            {
-                TesterConnectionText.Text = "No controller connected";
-                TesterButtonsText.Text = "Buttons: -";
-                TesterL2Bar.Value = 0;
-                TesterR2Bar.Value = 0;
-                TesterL2Text.Text = "0";
-                TesterR2Text.Text = "0";
-                TesterLeftStickText.Text = "Left Stick:  X=- Y=-";
-                TesterRightStickText.Text = "Right Stick: X=- Y=-";
-                TesterTouchText.Text = "Touchpad: -";
-                TesterGyroText.Text = "Gyro:  -";
-                TesterAccelText.Text = "Accel: -";
-                return;
-            }
-
-            TesterConnectionText.Text = WindowsDualSenseReader.IsBluetooth
-                ? "DualSense connected (Bluetooth)"
-                : "DualSense connected (USB)";
-
-            var pressed = new List<string>();
-            foreach (HostGamepadButtons flag in Enum.GetValues(typeof(HostGamepadButtons)))
-            {
-                if (flag != HostGamepadButtons.None && state.Buttons.HasFlag(flag))
-                {
-                    pressed.Add(flag.ToString());
-                }
-            }
-            TesterButtonsText.Text = "Buttons: " + (pressed.Count > 0 ? string.Join(", ", pressed) : "-");
-            WindowsDualSenseReader.GetRawButtonBytes(out var rb0, out var rb1, out var rb2);
-            TesterButtonsText.Text += $"  [raw {rb0:X2} {rb1:X2} {rb2:X2}]";
-
-            TesterL2Bar.Value = state.LeftTrigger;
-            TesterR2Bar.Value = state.RightTrigger;
-            TesterL2Text.Text = state.LeftTrigger.ToString();
-            TesterR2Text.Text = state.RightTrigger.ToString();
-            TesterLeftStickText.Text = $"Left Stick:  X={state.LeftX} Y={state.LeftY}";
-            TesterRightStickText.Text = $"Right Stick: X={state.RightX} Y={state.RightY}";
-            var touchParts = new List<string>();
-            if (state.Buttons.HasFlag(HostGamepadButtons.TouchPad))
-            {
-                touchParts.Add("clicked");
-            }
-            if (state.Touch0.Active)
-            {
-                touchParts.Add($"F1 ({state.Touch0.X},{state.Touch0.Y})");
-            }
-            if (state.Touch1.Active)
-            {
-                touchParts.Add($"F2 ({state.Touch1.X},{state.Touch1.Y})");
-            }
-            TesterTouchText.Text = "Touchpad: " + (touchParts.Count > 0 ? string.Join(", ", touchParts) : "released");
-
-            // Gyro in deg/s (raw * 2000/32768), accel in g (raw / 8192),
-            // matching the native dualsense_hid.h unit conversions.
-            const double DpsPerLsb = 2000.0 / 32768.0;
-            const double GPerLsb = 1.0 / 8192.0;
-            TesterGyroText.Text = string.Format(
-                System.Globalization.CultureInfo.InvariantCulture,
-                "Gyro:  {0,7:F1} {1,7:F1} {2,7:F1} dps",
-                state.Gyro.X * DpsPerLsb, state.Gyro.Y * DpsPerLsb, state.Gyro.Z * DpsPerLsb);
-            TesterAccelText.Text = string.Format(
-                System.Globalization.CultureInfo.InvariantCulture,
-                "Accel: {0,6:F2} {1,6:F2} {2,6:F2} g",
-                state.Accel.X * GPerLsb, state.Accel.Y * GPerLsb, state.Accel.Z * GPerLsb);
-        }
 
         /// <summary>
         /// Find a sibling build tool by walking up from the UI's own directory.
@@ -2594,6 +2358,7 @@ namespace Pcsx5Ui
         private void TabLibrary_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            if (InputTabView.IsTestRunning) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
             StopControllerVizPolling();
 
             LibraryView.Visibility = Visibility.Visible;
@@ -2655,6 +2420,7 @@ namespace Pcsx5Ui
         private void TabAnalyzer_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            if (InputTabView.IsTestRunning) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
             StopControllerVizPolling();
             MainLayoutRoot.Visibility = Visibility.Visible;
             TitleBarBorder.Visibility = Visibility.Visible;
@@ -2676,6 +2442,7 @@ namespace Pcsx5Ui
         private void TabController_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            if (InputTabView.IsTestRunning) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
             MainLayoutRoot.Visibility = Visibility.Visible;
             TitleBarBorder.Visibility = Visibility.Visible;
             LibraryView.Visibility = Visibility.Collapsed;
@@ -2692,6 +2459,7 @@ namespace Pcsx5Ui
         private void TabSettings_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
+            if (InputTabView.IsTestRunning) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
             StopControllerVizPolling();
             MainLayoutRoot.Visibility = Visibility.Visible;
             TitleBarBorder.Visibility = Visibility.Visible;
@@ -2836,6 +2604,9 @@ namespace Pcsx5Ui
                     list.Add(new SettingDefinition { Key = "about_vulkan", Title = "Graphics Engine", Description = "Vulkan 1.3 / Direct SPIR-V Translation", GetValueBadge = () => "Active", Type = "choice" });
                     list.Add(new SettingDefinition { Key = "about_audio", Title = "Audio Subsystem", Description = "WASAPI Zero-Copy Direct Audio Stream", GetValueBadge = () => "Active", Type = "choice" });
                     list.Add(new SettingDefinition { Key = "about_input", Title = "DualSense Driver", Description = "Direct Windows HID with Adaptive Trigger support", GetValueBadge = () => "Active", Type = "choice" });
+                    // Attribution the vendored controller art requires (MIT). Localised,
+                    // unlike the rows above, so it does not add to the string ratchet.
+                    list.Add(new SettingDefinition { Key = "about_credits", Title = I18n.Tr("about.credits_title"), Description = I18n.Tr("about.credits_desc"), GetValueBadge = () => "MIT", Type = "choice" });
                     break;
             }
             return list;
@@ -3713,10 +3484,6 @@ namespace Pcsx5Ui
 
         // Stick dot travel range (px in the 1017x1017 design space) around each well center
         private const double StickDotRange = 24.0;
-        private const double LeftStickCenterX = 402.0;
-        private const double LeftStickCenterY = 498.0;
-        private const double RightStickCenterX = 641.0;
-        private const double RightStickCenterY = 498.0;
         private const double StickDotSize = 36.0;
 
         private void StartControllerVizPolling()
@@ -3734,41 +3501,6 @@ namespace Pcsx5Ui
         private void StopControllerVizPolling()
         {
             _controllerVizTimer?.Stop();
-            ClearControllerVizOverlays();
-            TesterStopAllOutputs();
-            StopMicTest();
-        }
-
-        private void ClearControllerVizOverlays()
-        {
-            foreach (var overlay in GetPadOverlays())
-            {
-                overlay.Opacity = 0;
-            }
-            PadTouchLeftOverlay.Opacity = 0;
-            PadTouchCenterOverlay.Opacity = 0;
-            PadTouchRightOverlay.Opacity = 0;
-            MoveStickDot(LeftStickDot, LeftStickCenterX, LeftStickCenterY, 128, 128);
-            MoveStickDot(RightStickDot, RightStickCenterX, RightStickCenterY, 128, 128);
-        }
-
-        private System.Collections.Generic.IEnumerable<Shape> GetPadOverlays()
-        {
-            yield return PadL1Overlay;
-            yield return PadR1Overlay;
-            yield return PadL3Overlay;
-            yield return PadR3Overlay;
-            yield return PadUpOverlay;
-            yield return PadDownOverlay;
-            yield return PadLeftOverlay;
-            yield return PadRightOverlay;
-            yield return PadCrossOverlay;
-            yield return PadCircleOverlay;
-            yield return PadSquareOverlay;
-            yield return PadTriangleOverlay;
-            yield return PadOptionsOverlay;
-            yield return PadBackOverlay;
-            if (PadPsOverlay != null) yield return PadPsOverlay;
         }
 
         private Button _activeRebindBtn = null;
@@ -4000,82 +3732,27 @@ namespace Pcsx5Ui
 
         private void ControllerVizTimer_Tick(object sender, EventArgs e)
         {
-            if (!WindowsDualSenseReader.TryGetState(out var state) || !state.Connected)
+            // The live controller drawing moved to InputTabView, which reads the
+            // core's pad state. What remains here is the PS-button shortcut,
+            // which belongs to the whole shell rather than to one tab. It reads
+            // the same core state rather than the C# HID reader so that the
+            // reader has one fewer dependant on its way out.
+            var pad = CoreBridge.PadState.Create();
+            if (CoreBridge.pcsx5_pad_get_state(0, ref pad) != 0 || pad.Connected == 0)
             {
-                ClearControllerVizOverlays();
+                _psDown = false;
                 return;
             }
-
-            var b = state.Buttons;
 
             // Rebind capture deliberately does NOT happen here. This timer runs
             // at 60Hz alongside the 20Hz input tick, and having both act on the
             // same press made Cross re-arm and Circle cancel the binding being
             // set. HandleRebindCapture in the input tick is the single owner.
 
-            PadUpOverlay.Opacity = b.HasFlag(HostGamepadButtons.Up) ? 1 : 0;
-            PadDownOverlay.Opacity = b.HasFlag(HostGamepadButtons.Down) ? 1 : 0;
-            PadLeftOverlay.Opacity = b.HasFlag(HostGamepadButtons.Left) ? 1 : 0;
-            PadRightOverlay.Opacity = b.HasFlag(HostGamepadButtons.Right) ? 1 : 0;
-            PadCrossOverlay.Opacity = b.HasFlag(HostGamepadButtons.Cross) ? 1 : 0;
-            PadCircleOverlay.Opacity = b.HasFlag(HostGamepadButtons.Circle) ? 1 : 0;
-            PadSquareOverlay.Opacity = b.HasFlag(HostGamepadButtons.Square) ? 1 : 0;
-            PadTriangleOverlay.Opacity = b.HasFlag(HostGamepadButtons.Triangle) ? 1 : 0;
-            PadL1Overlay.Opacity = b.HasFlag(HostGamepadButtons.L1) ? 1 : 0;
-            PadR1Overlay.Opacity = b.HasFlag(HostGamepadButtons.R1) ? 1 : 0;
-            PadL3Overlay.Opacity = b.HasFlag(HostGamepadButtons.L3) ? 1 : 0;
-            PadR3Overlay.Opacity = b.HasFlag(HostGamepadButtons.R3) ? 1 : 0;
-            PadOptionsOverlay.Opacity = b.HasFlag(HostGamepadButtons.Options) ? 1 : 0;
-            PadBackOverlay.Opacity = b.HasFlag(HostGamepadButtons.Back) ? 1 : 0;
-            if (PadPsOverlay != null) PadPsOverlay.Opacity = b.HasFlag(HostGamepadButtons.PlayStation) ? 1 : 0;
-            if (PadMuteOverlay != null) PadMuteOverlay.Opacity = (b.HasFlag(HostGamepadButtons.Mic) || _micLedToggledOn) ? 1 : 0;
-
-            // Triggers light up proportionally to their analog value
-            PadL2Overlay.Opacity = Math.Max(state.LeftTrigger / 255.0, b.HasFlag(HostGamepadButtons.L2) ? 1 : 0);
-            PadR2Overlay.Opacity = Math.Max(state.RightTrigger / 255.0, b.HasFlag(HostGamepadButtons.R2) ? 1 : 0);
-
-            // Touchpad click lights the whole pad; finger contacts light the
-            // zone (left/center/right third of the 0..1919 X range) they touch.
-            bool clicked = b.HasFlag(HostGamepadButtons.TouchPad);
-            PadTouchLeftOverlay.Opacity = clicked || TouchInZone(state, 0, 640) ? 1 : 0;
-            PadTouchCenterOverlay.Opacity = clicked || TouchInZone(state, 640, 1280) ? 1 : 0;
-            PadTouchRightOverlay.Opacity = clicked || TouchInZone(state, 1280, 1920) ? 1 : 0;
-
-            // Touch finger dots
-            if (TouchDot0 != null)
-            {
-                if (state.Touch0.Active)
-                {
-                    TouchDot0.Visibility = Visibility.Visible;
-                    Canvas.SetLeft(TouchDot0, 402 + (state.Touch0.X * 240.0 / 1919.0));
-                    Canvas.SetTop(TouchDot0, 268 + (state.Touch0.Y * 150.0 / 1079.0));
-                }
-                else
-                {
-                    TouchDot0.Visibility = Visibility.Hidden;
-                }
-            }
-            if (TouchDot1 != null)
-            {
-                if (state.Touch1.Active)
-                {
-                    TouchDot1.Visibility = Visibility.Visible;
-                    Canvas.SetLeft(TouchDot1, 402 + (state.Touch1.X * 240.0 / 1919.0));
-                    Canvas.SetTop(TouchDot1, 268 + (state.Touch1.Y * 150.0 / 1079.0));
-                }
-                else
-                {
-                    TouchDot1.Visibility = Visibility.Hidden;
-                }
-            }
-
-            MoveStickDot(LeftStickDot, LeftStickCenterX, LeftStickCenterY, state.LeftX, state.LeftY);
-            MoveStickDot(RightStickDot, RightStickCenterX, RightStickCenterY, state.RightX, state.RightY);
-
             // PS Button Shortcut Handling:
             // Press & hold 1.0s -> close game and navigate to Home/Library
             // Tap PS button -> show/dismiss pause menu overlay
-            bool psPressed = b.HasFlag(HostGamepadButtons.PlayStation);
+            bool psPressed = (pad.Buttons & 0x10000u) != 0;
             if (psPressed)
             {
                 if (!_psDown)
@@ -4117,12 +3794,6 @@ namespace Pcsx5Ui
             }
         }
 
-        private static bool TouchInZone(in HostGamepadState state, int minX, int maxX)
-        {
-            return (state.Touch0.Active && state.Touch0.X >= minX && state.Touch0.X < maxX) ||
-                   (state.Touch1.Active && state.Touch1.X >= minX && state.Touch1.X < maxX);
-        }
-
         // --- MIC BUTTON -> MIC LED ---
         // Short press toggles the mic (mute) LED on/off; holding the button for
         // >= 500 ms switches it to pulse mode until release, then restores the
@@ -4157,22 +3828,6 @@ namespace Pcsx5Ui
                 _micBtnPulsing = false;
                 WindowsDualSenseReader.SetMicLed(_micLedToggledOn ? (byte)1 : (byte)0);
             }
-        }
-
-        private void TestRumbleBtn_Click(object sender, RoutedEventArgs e)
-        {
-            WindowsDualSenseReader.SetRumble(200, 160);
-            Task.Delay(500).ContinueWith(_ => WindowsDualSenseReader.SetRumble(0, 0));
-            LogConsole("Vibration Test: Haptic rumble pulse triggered.");
-            FooterStatus.Text = "Vibration Test Pulse Triggered";
-        }
-
-        private void ToggleMicBtn_Click(object sender, RoutedEventArgs e)
-        {
-            _micLedToggledOn = !_micLedToggledOn;
-            WindowsDualSenseReader.SetMicLed(_micLedToggledOn ? (byte)1 : (byte)0);
-            LogConsole($"Microphone Mute LED: {(_micLedToggledOn ? "ON" : "OFF")}");
-            FooterStatus.Text = $"Microphone Mute LED: {(_micLedToggledOn ? "ON" : "OFF")}";
         }
 
         private void RestoreDefaultMappings_Click(object sender, RoutedEventArgs e)
@@ -4229,14 +3884,6 @@ namespace Pcsx5Ui
             LogConsole($"Active Gamepad Slot {idx + 1} selected (Player LED 0x{playerLed:X2}, Lightbar RGB #{r:X2}{g:X2}{b:X2}).");
         }
 
-        private void MoveStickDot(Ellipse dot, double centerX, double centerY, byte axisX, byte axisY)
-        {
-            double offsetX = ((axisX - 128) / 128.0) * StickDotRange;
-            double offsetY = ((axisY - 128) / 128.0) * StickDotRange;
-            Canvas.SetLeft(dot, centerX - StickDotSize / 2 + offsetX);
-            Canvas.SetTop(dot, centerY - StickDotSize / 2 + offsetY);
-        }
-
 
 
 
@@ -4278,8 +3925,6 @@ namespace Pcsx5Ui
                 BtnMapTouchpadLeft,
                 BtnMapTouchpadCenter,
                 BtnMapTouchpadRight,
-                TestRumbleBtn,
-                ToggleMicBtn,
                 RestoreDefaultMappingsBtn,
                 SaveSettingsBtn
             };

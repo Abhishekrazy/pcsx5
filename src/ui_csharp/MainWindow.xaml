@@ -704,13 +704,19 @@
                 <!-- 1.7. CONTROLLER SETUP VIEW (GRID) -->
                 <Grid x:Name="ControllerView" Visibility="Collapsed" Margin="40,10,40,10">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>                 <!-- title -->
+                        <RowDefinition Height="Auto" MinHeight="500"/> <!-- live controller view -->
+                        <RowDefinition Height="*"/>                    <!-- mapping editor -->
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.controller_setup_2}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="0,0,0,5"/>
 
-                    <Border Grid.Row="1" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="15">
+                    <!-- Live controller view: device info, real-time input, motion, tests.
+                         Reads the pad through CoreBridge (the core's reader) and draws it from
+                         assets/gamepad/dualsense. All logic lives in InputTabView (Rule 11). -->
+                    <local:InputTabView x:Name="InputTab" Grid.Row="1" Margin="0,0,0,12"/>
+
+                    <Border Grid.Row="2" Background="{StaticResource CardBackgroundBrush}" BorderBrush="#15FFFFFF" BorderThickness="1" CornerRadius="8" Padding="15">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <!-- Left side mapping (D-Pad, L1/L2, Left Stick, Deadzone) -->
@@ -816,11 +822,9 @@
                             <Grid Grid.Column="1" Margin="10,0,10,0">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/> <!-- Config selection -->
-                                    <RowDefinition Height="*"/>    <!-- PS5 image -->
                                     <RowDefinition Height="Auto"/> <!-- Bottom buttons (L3, Options, R3, etc.) -->
                                     <RowDefinition Height="Auto"/> <!-- Color adjustment -->
                                     <RowDefinition Height="Auto"/> <!-- Action Buttons -->
-                                    <RowDefinition Height="Auto"/> <!-- Live Input Tester panel -->
                                 </Grid.RowDefinitions>
 
                                 <!-- Config Selection Card -->
@@ -856,60 +860,8 @@
                                 </Border>
 
                                 <!-- Controller Image with live input overlays (1017x1017 design space, scaled by the Viewbox) -->
-                                <Grid Grid.Row="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" MinHeight="260">
-                                    <Viewbox Stretch="Uniform">
-                                        <Grid Width="1017" Height="1017">
-                                            <Image Source="ps5_controller.png" Stretch="Uniform" Opacity="0.85"/>
-                                            <Canvas x:Name="ControllerOverlayCanvas" Width="1017" Height="1017" IsHitTestVisible="False">
-                                                <!-- Triggers / bumpers -->
-                                                <Rectangle x:Name="PadL2Overlay" Canvas.Left="168" Canvas.Top="200" Width="110" Height="30" RadiusX="14" RadiusY="14" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Rectangle x:Name="PadR2Overlay" Canvas.Left="739" Canvas.Top="200" Width="110" Height="30" RadiusX="14" RadiusY="14" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Rectangle x:Name="PadL1Overlay" Canvas.Left="173" Canvas.Top="238" Width="100" Height="26" RadiusX="12" RadiusY="12" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Rectangle x:Name="PadR1Overlay" Canvas.Left="744" Canvas.Top="238" Width="100" Height="26" RadiusX="12" RadiusY="12" Style="{StaticResource PadOverlayStyle}"/>
-
-                                                <!-- Touchpad zones -->
-                                                <Rectangle x:Name="PadTouchLeftOverlay" Canvas.Left="402" Canvas.Top="268" Width="76" Height="150" RadiusX="10" RadiusY="10" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Rectangle x:Name="PadTouchCenterOverlay" Canvas.Left="482" Canvas.Top="268" Width="80" Height="150" RadiusX="10" RadiusY="10" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Rectangle x:Name="PadTouchRightOverlay" Canvas.Left="566" Canvas.Top="268" Width="76" Height="150" RadiusX="10" RadiusY="10" Style="{StaticResource PadOverlayStyle}"/>
-
-                                                <!-- Create (Back) / Options -->
-                                                <Ellipse x:Name="PadBackOverlay" Canvas.Left="362" Canvas.Top="329" Width="26" Height="26" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Ellipse x:Name="PadOptionsOverlay" Canvas.Left="653" Canvas.Top="329" Width="26" Height="26" Style="{StaticResource PadOverlayStyle}"/>
-
-                                                <!-- D-Pad -->
-                                                <Ellipse x:Name="PadUpOverlay" Canvas.Left="204" Canvas.Top="292" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Ellipse x:Name="PadLeftOverlay" Canvas.Left="160" Canvas.Top="348" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Ellipse x:Name="PadRightOverlay" Canvas.Left="246" Canvas.Top="348" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Ellipse x:Name="PadDownOverlay" Canvas.Left="204" Canvas.Top="404" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
-
-                                                <!-- Face buttons -->
-                                                <Ellipse x:Name="PadTriangleOverlay" Canvas.Left="785" Canvas.Top="292" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Ellipse x:Name="PadSquareOverlay" Canvas.Left="729" Canvas.Top="348" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Ellipse x:Name="PadCircleOverlay" Canvas.Left="841" Canvas.Top="348" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Ellipse x:Name="PadCrossOverlay" Canvas.Left="785" Canvas.Top="404" Width="36" Height="36" Style="{StaticResource PadOverlayStyle}"/>
-
-                                                <!-- PS Logo / Mute LED -->
-                                                <Ellipse x:Name="PadPsOverlay" Canvas.Left="495" Canvas.Top="500" Width="28" Height="28" Style="{StaticResource PadOverlayStyle}"/>
-                                                <Rectangle x:Name="PadMuteOverlay" Canvas.Left="499" Canvas.Top="538" Width="20" Height="8" RadiusX="3" RadiusY="3" Fill="#FF6600" Opacity="0"/>
-
-                                                <!-- Stick wells + moving stick dots + L3/R3 rings -->
-                                                <Ellipse Canvas.Left="360" Canvas.Top="456" Width="84" Height="84" Fill="#100099FF" Stroke="#300099FF" StrokeThickness="1"/>
-                                                <Ellipse Canvas.Left="599" Canvas.Top="456" Width="84" Height="84" Fill="#100099FF" Stroke="#300099FF" StrokeThickness="1"/>
-                                                <Ellipse x:Name="PadL3Overlay" Canvas.Left="360" Canvas.Top="456" Width="84" Height="84" Style="{StaticResource PadOverlayRingStyle}"/>
-                                                <Ellipse x:Name="PadR3Overlay" Canvas.Left="599" Canvas.Top="456" Width="84" Height="84" Style="{StaticResource PadOverlayRingStyle}"/>
-                                                <Ellipse x:Name="LeftStickDot" Canvas.Left="384" Canvas.Top="480" Width="36" Height="36" Fill="#990099FF" Stroke="#CCFFFFFF" StrokeThickness="1.5"/>
-                                                <Ellipse x:Name="RightStickDot" Canvas.Left="623" Canvas.Top="480" Width="36" Height="36" Fill="#990099FF" Stroke="#CCFFFFFF" StrokeThickness="1.5"/>
-
-                                                <!-- Touch finger dots -->
-                                                <Ellipse x:Name="TouchDot0" Canvas.Left="0" Canvas.Top="0" Width="14" Height="14" Fill="#FFFFCC00" Stroke="#FFFFFFFF" StrokeThickness="1.5" Visibility="Hidden"/>
-                                                <Ellipse x:Name="TouchDot1" Canvas.Left="0" Canvas.Top="0" Width="14" Height="14" Fill="#FFFFCC00" Stroke="#FFFFFFFF" StrokeThickness="1.5" Visibility="Hidden"/>
-                                            </Canvas>
-                                        </Grid>
-                                    </Viewbox>
-                                </Grid>
-
                                 <!-- Bottom buttons (L3, Options, R3, Touchpad) -->
-                                <Border Grid.Row="2" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,10,0,10">
+                                <Border Grid.Row="1" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,10,0,10">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -950,7 +902,7 @@
                                 </Border>
 
                                 <!-- Color Adjustment & Rumble Card -->
-                                <Border Grid.Row="3" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                <Border Grid.Row="2" Background="#15FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="2*"/>
@@ -999,11 +951,9 @@
                                 </Border>
 
                                 <!-- Bottom actions -->
-                                <Grid Grid.Row="4" Margin="0,5,0,0">
+                                <Grid Grid.Row="3" Margin="0,5,0,0">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                                         <Button x:Name="RestoreDefaultMappingsBtn" Content="{loc:Tr Key=ui.restore_defaults}" Style="{StaticResource ModernButtonStyle}" MinWidth="110" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Click="RestoreDefaultMappings_Click"/>
-                                        <Button x:Name="TestRumbleBtn" Content="{loc:Tr Key=ui.vibration_test}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Margin="6,0,0,0" Click="TestRumbleBtn_Click" ToolTip="{loc:Tr Key=ui.sends_a_haptic_pulse_to_connected_dualsense_}"/>
-                                        <Button x:Name="ToggleMicBtn" Content="{loc:Tr Key=ui.toggle_mic_led}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Margin="6,0,0,0" Click="ToggleMicBtn_Click" ToolTip="{loc:Tr Key=ui.toggles_controller_microphone_mute_led}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Content="{loc:Tr Key=ui.save}" Style="{StaticResource ModernButtonStyle}" MinWidth="65" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Click="SaveSettingsBtn_Click"/>
@@ -1012,83 +962,6 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <!-- LIVE INPUT TESTER PANEL (in-app replacement for dualsense_visual.exe) -->
-                                <Border x:Name="ControllerTesterPanel" Grid.Row="5" Visibility="Collapsed" Background="#15FFFFFF" BorderBrush="#200099FF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,10,0,0">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <!-- LEFT: digital + analog input readouts -->
-                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                                            <TextBlock Text="{loc:Tr Key=ui.live_input}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
-                                            <TextBlock x:Name="TesterConnectionText" Text="{loc:Tr Key=ui.no_controller_connected}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,6" TextWrapping="Wrap"/>
-                                            <TextBlock x:Name="TesterButtonsText" Text="{loc:Tr Key=ui.buttons}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,8" TextWrapping="Wrap" FontFamily="Consolas"/>
-
-                                            <Grid Margin="0,0,0,4">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="28"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="34"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="L2" FontSize="{DynamicResource TypeS}" Foreground="White" VerticalAlignment="Center"/>
-                                                <ProgressBar x:Name="TesterL2Bar" Grid.Column="1" Minimum="0" Maximum="255" Height="10" Background="#20FFFFFF" Foreground="#0099FF"/>
-                                                <TextBlock x:Name="TesterL2Text" Grid.Column="2" Text="0" FontSize="{DynamicResource TypeS}" Foreground="White" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
-                                            </Grid>
-                                            <Grid Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="28"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="34"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="R2" FontSize="{DynamicResource TypeS}" Foreground="White" VerticalAlignment="Center"/>
-                                                <ProgressBar x:Name="TesterR2Bar" Grid.Column="1" Minimum="0" Maximum="255" Height="10" Background="#20FFFFFF" Foreground="#0099FF"/>
-                                                <TextBlock x:Name="TesterR2Text" Grid.Column="2" Text="0" FontSize="{DynamicResource TypeS}" Foreground="White" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Consolas"/>
-                                            </Grid>
-
-                                            <TextBlock x:Name="TesterLeftStickText" Text="{loc:Tr Key=ui.left_stick_x_128_y_128}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterRightStickText" Text="{loc:Tr Key=ui.right_stick_x_128_y_128}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterTouchText" Text="{loc:Tr Key=ui.touchpad_released}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterGyroText" Text="{loc:Tr Key=ui.gyro}" FontSize="{DynamicResource TypeS}" Foreground="White" Margin="0,0,0,2" FontFamily="Consolas"/>
-                                            <TextBlock x:Name="TesterAccelText" Text="{loc:Tr Key=ui.accel}" FontSize="{DynamicResource TypeS}" Foreground="White" FontFamily="Consolas"/>
-                                        </StackPanel>
-
-                                        <!-- RIGHT: output tests (rumble, LEDs, lightbar, adaptive triggers) -->
-                                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                                            <TextBlock Text="{loc:Tr Key=ui.output_tests}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
-
-                                            <TextBlock Text="{loc:Tr Key=ui.rumble}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                                <Button Content="{loc:Tr Key=ui.low_freq}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Click="TesterRumbleLow_Click"/>
-                                                <Button Content="{loc:Tr Key=ui.high_freq}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterRumbleHigh_Click"/>
-                                                <Button Content="{loc:Tr Key=ui.stop}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterRumbleStop_Click"/>
-                                            </StackPanel>
-
-                                            <TextBlock Text="{loc:Tr Key=ui.lightbar_amp_player_leds}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                                <Button Content="{loc:Tr Key=ui.set_lightbar_color}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Click="TesterLightbarApply_Click" ToolTip="{loc:Tr Key=ui.applies_the_red_green_blue_slider_values_to_}"/>
-                                                <Button Content="{loc:Tr Key=ui.reset}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterLightbarReset_Click"/>
-                                                <Button Content="{loc:Tr Key=ui.cycle_player_led}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterPlayerLed_Click"/>
-                                            </StackPanel>
-
-                                            <TextBlock Text="{loc:Tr Key=ui.adaptive_triggers_both_l2_r2}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                <Button Content="{loc:Tr Key=ui.off}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Click="TesterTriggerOff_Click"/>
-                                                <Button Content="{loc:Tr Key=ui.feedback}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerFeedback_Click"/>
-                                                <Button Content="{loc:Tr Key=ui.weapon}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerWeapon_Click"/>
-                                                <Button Content="{loc:Tr Key=ui.vibration}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterTriggerVibration_Click"/>
-                                            </StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.speaker_amp_microphone_usb_only}" FontSize="{DynamicResource TypeS}" Foreground="#FFA0A0A5" Margin="0,0,0,3"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                <Button Content="{loc:Tr Key=ui.play_test_tone}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Click="TesterPlayTone_Click" ToolTip="{loc:Tr Key=ui.plays_a_440_hz_tone_through_the_dualsense_sp}"/>
-                                                <Button x:Name="TesterMicTestBtn" Content="{loc:Tr Key=ui.mic_test}" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="6,0,6,0" Margin="4,0,0,0" Click="TesterMicTest_Click" ToolTip="{loc:Tr Key=ui.live_level_meter_from_the_dualsense_micropho}"/>
-                                                <ProgressBar x:Name="TesterMicLevelBar" Minimum="0" Maximum="100" Width="80" Height="10" Background="#20FFFFFF" Foreground="#0099FF" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                            </StackPanel>
-                                            <TextBlock x:Name="TesterStatusText" Text="" FontSize="{DynamicResource TypeXS}" Foreground="#FFCC66" TextWrapping="Wrap"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
                             </Grid>
 
                             <!-- COLUMN 2: RIGHT SIDE MAPPINGS -->
