@@ -556,41 +556,41 @@ surface, so where it differs from us the difference is usually load-bearing.
   by analogy with the null-pointer case — what retail firmware returns for an
   unwritable buffer is UNKNOWN.
 
-- [ ] **`Memory::WriteBuffer` returns `void` — audited, and the count I first
-  wrote was wrong.** I recorded "45 call sites, `syscalls.cpp` (15)". The audit
-  says otherwise and the correction changes where the work should go.
-  `src/kernel/syscalls.cpp:94` defines its own `SafeWriteBuffer`, which calls
-  `Memory::GuardedWrite` and returns `bool`, and 10 of its 14 call sites check
-  it. So the kernel is largely *not* exposed — someone there hit this problem
-  and solved it locally. That is precisely why it survived everywhere else, and
-  the helper is itself a Rule 05 violation (a competing per-subsystem primitive
-  instead of a fix to the shared one).
-  The genuinely unchecked `Memory::WriteBuffer` sites number **20**:
-  `libatrac9.cpp` (9), `libsavedata.cpp` (3), `libaudioout.cpp` (2),
-  `elf.cpp` (2), `kernel.cpp` (2), `libuser_service.cpp` (1), `libnp.cpp` (1),
-  plus 4 unchecked `SafeWriteBuffer` calls in `syscalls.cpp`
-  (lines 641, 955, 1054, 1055 — `nanosleep` remainder, and the `accept`/
-  `recvfrom` address-length out-parameters).
-  Subtasks, ordered by blast radius rather than count:
-  - [x] **`src/loader/elf.cpp` — DONE, and it FALSIFIED the hypothesis behind it.**
-    Segment writes, `.bss` zero-fill and the `file.read` byte count are now all
-    checked, and a failure refuses the load instead of leaving a module with a
-    hole in it. The reason for doing it first was a hypothesis: a segment that
-    silently failed to land would produce a call through an unpopulated pointer,
-    which is what the crashing titles looked like.
-    **FALSIFIED.** All four crashing titles were re-run against the checked
-    loader and produced **zero** loader errors — no failed segment write, no
-    failed zero-fill, no truncated read. The loader is not the cause of any of
-    them. Recorded rather than deleted so it is not re-tried.
-    The work still stands on its own: the loader is now trustworthy, which is a
-    precondition for interpreting anything downstream of it.
-  - [ ] `src/kernel/kernel.cpp:2626,2648` — TLS writes on the fault path.
-  - [ ] `libatrac9.cpp` (9 sites) — audio decode output.
-  - [ ] The 4 unchecked `SafeWriteBuffer` calls in `syscalls.cpp`.
-  - [ ] Then decide the API: `WriteBuffer` returning `bool` with `[[nodiscard]]`,
-    or retiring it in favour of `GuardedWrite` and folding `SafeWriteBuffer`'s
-    address check into the memory subsystem where Rule 05 says it belongs.
-    **This one needs the user's sign-off** — it touches every caller.
+- [x] **`Memory::WriteBuffer` retired in favour of `GuardedWrite`** — DONE
+  The user chose removal over `[[nodiscard]]`, and removal proved the better
+  call for a reason worth recording: the compiler then enumerated every call
+  site, so none could be missed. It found 26 in `src/` **and two in `tests/`**
+  that a `src`-only search had not — including `memory_validation.cpp`, which
+  was round-tripping through the very wrapper being removed.
+  Conversions were not uniform. Two were more than mechanical:
+  - `kernel.cpp` emulates guest TLS stores inside the VEH: it wrote, advanced
+    RIP, and resumed. A failed store meant the guest resumed as though it had
+    happened, and its next read of that slot returned a stale value with nothing
+    recorded. It now refuses to resume on a store that did not land.
+  - `hle.cpp` wrote a thunk's machine code and returned the address regardless,
+    handing the guest a pointer to whatever happened to be there. Now returns 0.
+  The rest are out-parameter writes returning their module's existing
+  invalid-argument error instead of a plausible success. No error codes were
+  invented.
+  The tests were strengthened, not weakened: `memory_validation` now asserts
+  `GuardedWrite`'s return value and byte count, including across a page
+  boundary — an assertion the `void` wrapper made impossible.
+  `memory.h` carries a note saying what was removed and why, so the wrapper is
+  not reintroduced as a convenience.
+  Verified: 51/52 ctest (only the unrelated `doc_links`), 0 warnings,
+  PPSA02929 unchanged against baseline.
+
+- [ ] **`Memory::ReadBuffer` has the identical flaw, at 38 sites**
+  It wraps `GuardedRead` and discards the result: `kernel.cpp` (13),
+  `vk_draw.cpp` (6), `elf.cpp` (5), `libkernel.cpp` (3), `libatrac9.cpp` (3),
+  `guest_printf.cpp` (2), and one each in `libkeystone`, `libaudioout`,
+  `libagc`, `xa2_device`, `wasapi_device`, `audio_device`.
+  Arguably worse than the write case: a failed write leaves the guest with stale
+  data, while a failed read hands *our own code* plausible-looking garbage and
+  it proceeds on it. `elf.cpp` reading headers and `vk_draw.cpp` reading vertex
+  data are the ones to look at first.
+  Not started: the user approved retiring `WriteBuffer` specifically, and
+  extending that to `ReadBuffer` is their call, not an assumption to make.
 
 - [ ] **ADR-001 steps 2–4 remain** — the pad-state ABI entry point, retiring
   `WindowsDualSenseReader.cs`, and relaxing the single-pad `scePadOpen`

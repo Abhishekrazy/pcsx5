@@ -264,8 +264,22 @@ namespace HLE {
                 return;
             }
             u8 zero[kMountPointOutSize] = {};
-            Memory::WriteBuffer(out_ptr, zero, sizeof(zero));
-            Memory::WriteBuffer(out_ptr, name, std::strlen(name) + 1);
+            u64 wrote = 0;
+            if (!Memory::GuardedWrite(out_ptr, zero, sizeof(zero), &wrote) ||
+                wrote != sizeof(zero)) {
+                LOG_WARN(HLE, "SaveData: mountPoint clear at 0x%llx wrote %llu "
+                              "of %zu bytes", (unsigned long long)out_ptr,
+                         (unsigned long long)wrote, sizeof(zero));
+                return;
+            }
+            const u64 name_len = std::strlen(name) + 1;
+            if (!Memory::GuardedWrite(out_ptr, name, name_len, &wrote) ||
+                wrote != name_len) {
+                LOG_WARN(HLE, "SaveData: mountPoint name at 0x%llx wrote %llu "
+                              "of %llu bytes", (unsigned long long)out_ptr,
+                         (unsigned long long)wrote,
+                         (unsigned long long)name_len);
+            }
         }
 
         // Register under the canonical module by plain name AND under
@@ -416,7 +430,15 @@ namespace HLE {
                 u8 buf[kDirNameSize] = {};
                 const size_t copy = std::min(names[i].size(), static_cast<size_t>(kDirNameSize - 1));
                 std::memcpy(buf, names[i].data(), copy);
-                Memory::WriteBuffer(slot, buf, sizeof(buf));
+                u64 wrote = 0;
+                if (!Memory::GuardedWrite(slot, buf, sizeof(buf), &wrote) ||
+                    wrote != sizeof(buf)) {
+                    LOG_WARN(HLE, "sceSaveDataDirNameSearch: slot 0x%llx "
+                                  "unwritable (%llu of %zu bytes)",
+                             (unsigned long long)slot,
+                             (unsigned long long)wrote, sizeof(buf));
+                    return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
+                }
             }
             LOG_INFO(HLE, "sceSaveDataDirNameSearch -> %u hit(s)", (unsigned)names.size());
             return 0;

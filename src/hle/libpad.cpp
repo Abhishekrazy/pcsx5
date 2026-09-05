@@ -204,9 +204,10 @@ namespace HLE {
             ScePadData pad_data;
             FillPadData(&pad_data);
 
-            // Report the write, do not assume it.  Memory::WriteBuffer is
-            // guarded, but its result is void, so a buffer the guest cannot be
-            // written to used to leave this returning 0 while the guest kept
+            // Report the write, do not assume it.  This used to go through
+            // Memory::WriteBuffer, which was guarded but returned void, so a
+            // buffer the guest could not be written to left this returning 0
+            // while the guest kept
             // whatever bytes were already there -- a controller frozen in
             // whatever state it happened to hold, with nothing logged at the
             // point of failure and no error for the guest to test.
@@ -319,7 +320,13 @@ namespace HLE {
             info[0x0A] = 0;  // port type: standard
             info[0x0B] = 1;  // connected count
             info[0x0C] = 1;  // connected
-            Memory::WriteBuffer(out, info, sizeof(info));
+            u64 wrote = 0;
+            if (!Memory::GuardedWrite(out, info, sizeof(info), &wrote) || wrote != sizeof(info)) {
+                LOG_WARN(HLE, "scePadGetControllerInformation: output buffer 0x%llx unwritable (%llu of %llu bytes)",
+                         (unsigned long long)out, (unsigned long long)wrote,
+                         (unsigned long long)(sizeof(info)));
+                return ORBIS_GEN2_ERROR_INVALID_ARGUMENT;
+            }
             return 0;
         };
         RegisterSymbol("libkernel", "gjP9-KQzoUk#L#M", PadGetControllerInformation);

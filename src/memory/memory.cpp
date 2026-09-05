@@ -1062,13 +1062,6 @@ void ReadBuffer(guest_addr_t addr, void* dest, u64 size) {
     GuardedRead(dest, addr, size);
 }
 
-void WriteBuffer(guest_addr_t addr, const void* src, u64 size) {
-    if (addr >= 0x200000000ULL && addr < 0x202000000ULL) {
-        LOG_DEBUG(Memory, "Framebuffer write at guest 0x%llx (size=%llu)", addr, size);
-    }
-    GuardedWrite(addr, src, size);
-}
-
 bool GuardedRead(void* dest_host, guest_addr_t src_guest, u64 size, u64* out_bytes_read) {
     if (out_bytes_read) *out_bytes_read = 0;
     if (size == 0) return true;

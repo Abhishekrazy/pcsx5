@@ -668,7 +668,19 @@ namespace HLE {
         u64 dispatcher_ptr = reinterpret_cast<u64>(HleCommonDispatcher);
         std::memcpy(&machine_code[12], &dispatcher_ptr, sizeof(u64));
 
-        Memory::WriteBuffer(thunk_addr, machine_code, sizeof(machine_code));
+        u64 thunk_written = 0;
+        if (!Memory::GuardedWrite(thunk_addr, machine_code, sizeof(machine_code),
+                                  &thunk_written) ||
+            thunk_written != sizeof(machine_code)) {
+            // Returning the address anyway would hand the guest a pointer to
+            // whatever happens to be at thunk_addr, and the resulting call goes
+            // wrong far from here with nothing tying it back.
+            LOG_ERROR(HLE, "Thunk write failed at 0x%llx (%llu of %zu bytes); "
+                           "refusing to hand out the address.",
+                      (unsigned long long)thunk_addr,
+                      (unsigned long long)thunk_written, sizeof(machine_code));
+            return 0;
+        }
         return thunk_addr;
     }
 

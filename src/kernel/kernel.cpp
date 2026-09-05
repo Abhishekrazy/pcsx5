@@ -2623,7 +2623,22 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                         return EXCEPTION_CONTINUE_SEARCH;
                                     }
                                     guest_addr_t tls_address = tp + displacement;
-                                    Memory::WriteBuffer(tls_address, &tls_value, access_size);
+                                    // If the emulated store did not land, the guest must not be
+                                    // resumed as though it had: its next read of this slot would
+                                    // return a stale value with nothing recorded. Fall through to
+                                    // the normal handling of an unhandled access instead.
+                                    u64 tls_written = 0;
+                                    if (!Memory::GuardedWrite(tls_address, &tls_value, access_size,
+                                                              &tls_written) ||
+                                        tls_written != access_size) {
+                                        LOG_ERROR(Kernel,
+                                                  "Emulated TLS write failed at 0x%llx (%llu of %llu bytes); "
+                                                  "not resuming the guest on a store that did not happen.",
+                                                  (unsigned long long)tls_address,
+                                                  (unsigned long long)tls_written,
+                                                  (unsigned long long)access_size);
+                                        return EXCEPTION_CONTINUE_SEARCH;
+                                    }
                                     
                                     u64 old_rip = context->Rip;
                                     context->Rip += instr_len;
@@ -2645,7 +2660,18 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                     }
                                     guest_addr_t tls_address = tp + displacement;
                                     u64 tls_val = imm_value;
-                                    Memory::WriteBuffer(tls_address, &tls_val, access_size);
+                                    u64 tls_written = 0;
+                                    if (!Memory::GuardedWrite(tls_address, &tls_val, access_size,
+                                                              &tls_written) ||
+                                        tls_written != access_size) {
+                                        LOG_ERROR(Kernel,
+                                                  "Emulated TLS immediate write failed at 0x%llx (%llu of %llu "
+                                                  "bytes); not resuming the guest on a store that did not happen.",
+                                                  (unsigned long long)tls_address,
+                                                  (unsigned long long)tls_written,
+                                                  (unsigned long long)access_size);
+                                        return EXCEPTION_CONTINUE_SEARCH;
+                                    }
                                     
                                     u64 old_rip = context->Rip;
                                     context->Rip += instr_len;

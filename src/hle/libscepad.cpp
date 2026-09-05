@@ -217,11 +217,29 @@ namespace HLE {
         // scePadGetMotionSensorData: gyro at rest (all zeros) and 1g along
         // -Y (pad held level, DualSense right-handed convention).  Real
         // motion data needs the DualSense HID path — out of scope.
-        auto WriteNeutralMotion = [](guest_addr_t data_ptr) {
+        // Returns false if either half did not land, so callers stop rather
+        // than report success for motion data the guest never received.
+        auto WriteNeutralMotion = [](guest_addr_t data_ptr) -> bool {
             const float gyro[3]  = { 0.0f, 0.0f, 0.0f };
             const float accel[3] = { 0.0f, -1.0f, 0.0f };
-            Memory::WriteBuffer(data_ptr, gyro, sizeof(gyro));
-            Memory::WriteBuffer(data_ptr + sizeof(gyro), accel, sizeof(accel));
+            u64 wrote = 0;
+            if (!Memory::GuardedWrite(data_ptr, gyro, sizeof(gyro), &wrote) ||
+                wrote != sizeof(gyro)) {
+                LOG_WARN(HLE, "pad motion: gyro at 0x%llx unwritable (%llu of "
+                              "%zu bytes)", (unsigned long long)data_ptr,
+                         (unsigned long long)wrote, sizeof(gyro));
+                return false;
+            }
+            if (!Memory::GuardedWrite(data_ptr + sizeof(gyro), accel,
+                                      sizeof(accel), &wrote) ||
+                wrote != sizeof(accel)) {
+                LOG_WARN(HLE, "pad motion: accel at 0x%llx unwritable (%llu of "
+                              "%zu bytes)",
+                         (unsigned long long)(data_ptr + sizeof(gyro)),
+                         (unsigned long long)wrote, sizeof(accel));
+                return false;
+            }
+            return true;
         };
 
         // scePadGetMotionSensorData(handle, ScePadMotionSensorData* data)
@@ -235,9 +253,15 @@ namespace HLE {
             if (!data_ptr) {
                 return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
             }
-            WriteNeutralMotion(data_ptr);
+            if (!WriteNeutralMotion(data_ptr)) {
+                return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
+            }
             const u64 ts = 0; // unknown sample time; neutral
-            Memory::WriteBuffer(data_ptr + 0x18, &ts, sizeof(ts));
+            u64 wrote = 0;
+            if (!Memory::GuardedWrite(data_ptr + 0x18, &ts, sizeof(ts), &wrote) ||
+                wrote != sizeof(ts)) {
+                return 0x80020003; // ORBIS_GEN2_ERROR_INVALID_ARGUMENT
+            }
             return 0; // SCE_OK
         });
 

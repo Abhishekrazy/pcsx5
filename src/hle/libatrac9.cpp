@@ -43,6 +43,25 @@ constexpr u64 SCE_ATRAC9_ERROR_INVALID_HANDLE = 0x80A60002;
 constexpr u64 SCE_ATRAC9_ERROR_INVALID_CONFIG = 0x80A60003;
 constexpr u64 SCE_ATRAC9_ERROR_DECODE_FAILED  = 0x80A60004;
 
+// Write a guest out-parameter, or report that it did not happen.
+//
+// GuardedWrite already detects and logs a refused or partial transfer; the
+// defect this replaces was callers throwing that answer away and returning
+// success, leaving the guest reading whatever was in its buffer beforehand.
+// [[nodiscard]] so the result cannot be dropped the way WriteBuffer's was.
+[[nodiscard]] static bool WriteOut(guest_addr_t addr, const void* src, u64 size,
+                                   const char* what) {
+    u64 written = 0;
+    if (Memory::GuardedWrite(addr, src, size, &written) && written == size) {
+        return true;
+    }
+    LOG_WARN(HLE, "%s: output buffer 0x%llx unwritable (%llu of %llu bytes)",
+             what, static_cast<unsigned long long>(addr),
+             static_cast<unsigned long long>(written),
+             static_cast<unsigned long long>(size));
+    return false;
+}
+
 // Format type reported through sceAtrac9InitHandle's out param.  We only
 // support plain ATRAC9 (AT9); there is no public constant, so 0 = AT9.
 constexpr u32 SCE_ATRAC9_FORMAT_AT9 = 0;
@@ -178,10 +197,14 @@ u64 Atrac9InitHandleImpl(const GuestArgs& args) {
         g_atrac9_handles.emplace(handle, entry);
     }
 
-    Memory::WriteBuffer(handle_out, &handle, sizeof(handle));
+    if (!WriteOut(handle_out, &handle, sizeof(handle), "sceAtrac9InitHandle")) {
+        return SCE_ATRAC9_ERROR_INVALID_ARG;
+    }
     if (type_out) {
         const u32 fmt_type = SCE_ATRAC9_FORMAT_AT9;
-        Memory::WriteBuffer(type_out, &fmt_type, sizeof(fmt_type));
+        if (!WriteOut(type_out, &fmt_type, sizeof(fmt_type), "sceAtrac9InitHandle")) {
+            return SCE_ATRAC9_ERROR_INVALID_ARG;
+        }
     }
     LOG_INFO(HLE, "sceAtrac9InitHandle: handle=%d %s rate=%d ch=%d frameSamples=%d superframe=%dB",
              handle, from_riff ? "riff" : "raw",
@@ -266,9 +289,12 @@ u64 Atrac9DecodeImpl(const GuestArgs& args) {
         return SCE_ATRAC9_ERROR_DECODE_FAILED;
     }
 
-    Memory::WriteBuffer(pcm_addr, pcm.data(), pcm_bytes);
-    if (used_out) {
-        Memory::WriteBuffer(used_out, &n_bytes_used, sizeof(n_bytes_used));
+    if (!WriteOut(pcm_addr, pcm.data(), pcm_bytes, "sceAtrac9Decode")) {
+        return SCE_ATRAC9_ERROR_INVALID_ARG;
+    }
+    if (used_out &&
+        !WriteOut(used_out, &n_bytes_used, sizeof(n_bytes_used), "sceAtrac9Decode")) {
+        return SCE_ATRAC9_ERROR_INVALID_ARG;
     }
     return SCE_ATRAC9_OK;
 }
@@ -310,21 +336,21 @@ u64 Atrac9GetInfoTypeImpl(const GuestArgs& args) {
         ci.superframe_size      = static_cast<u32>(info.superframeSize);
         ci.bitrate              = bitrate;
         std::memcpy(ci.config_data, info.configData, ATRAC9_CONFIG_DATA_SIZE);
-        Memory::WriteBuffer(out, &ci, sizeof(ci));
-        return SCE_ATRAC9_OK;
+        return WriteOut(out, &ci, sizeof(ci), "sceAtrac9GetInfoType")
+                   ? SCE_ATRAC9_OK : SCE_ATRAC9_ERROR_INVALID_ARG;
     }
     case kInfoBitrate:
-        Memory::WriteBuffer(out, &bitrate, sizeof(bitrate));
-        return SCE_ATRAC9_OK;
+        return WriteOut(out, &bitrate, sizeof(bitrate), "sceAtrac9GetInfoType")
+                   ? SCE_ATRAC9_OK : SCE_ATRAC9_ERROR_INVALID_ARG;
     case kInfoSuperframeSize: {
         const u32 v = static_cast<u32>(info.superframeSize);
-        Memory::WriteBuffer(out, &v, sizeof(v));
-        return SCE_ATRAC9_OK;
+        return WriteOut(out, &v, sizeof(v), "sceAtrac9GetInfoType")
+                   ? SCE_ATRAC9_OK : SCE_ATRAC9_ERROR_INVALID_ARG;
     }
     case kInfoFrameSamples: {
         const u32 v = static_cast<u32>(info.frameSamples);
-        Memory::WriteBuffer(out, &v, sizeof(v));
-        return SCE_ATRAC9_OK;
+        return WriteOut(out, &v, sizeof(v), "sceAtrac9GetInfoType")
+                   ? SCE_ATRAC9_OK : SCE_ATRAC9_ERROR_INVALID_ARG;
     }
     default:
         LOG_WARN(HLE, "sceAtrac9GetInfoType: unknown infoType %u (handle=%d)",
@@ -351,8 +377,8 @@ u64 Atrac9GetInternalErrorInfoImpl(const GuestArgs& args) {
         }
         last = it->second.last_status;
     }
-    Memory::WriteBuffer(out, &last, sizeof(last));
-    return SCE_ATRAC9_OK;
+    return WriteOut(out, &last, sizeof(last), "sceAtrac9GetLastStatus")
+               ? SCE_ATRAC9_OK : SCE_ATRAC9_ERROR_INVALID_ARG;
 }
 
 } // namespace

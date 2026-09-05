@@ -373,7 +373,15 @@ guest_addr_t BuildRegisterDefaultsBlob(const std::vector<AgcRegDefaultGroup>& gr
         }
     }
 
-    Memory::WriteBuffer(base, blob.data(), blob.size());
+    u64 blob_written = 0;
+    if (!Memory::GuardedWrite(base, blob.data(), blob.size(), &blob_written) ||
+        blob_written != blob.size()) {
+        LOG_ERROR(HLE, "AGC defaults blob write failed at 0x%llx (%llu of %zu "
+                       "bytes); returning 0 rather than a partial blob.",
+                  (unsigned long long)base,
+                  (unsigned long long)blob_written, blob.size());
+        return 0;
+    }
     return base;
 }
 

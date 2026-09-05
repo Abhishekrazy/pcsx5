@@ -179,7 +179,19 @@ inline void Write(guest_addr_t addr, T value) {
 }
 
 void ReadBuffer (guest_addr_t addr, void* dest, u64 size);
-void WriteBuffer(guest_addr_t addr, const void* src, u64 size);
+
+// WriteBuffer was removed deliberately.  It wrapped GuardedWrite and threw the
+// result away, so every caller silently reported success for writes the guest
+// never received.  That produced the same defect independently in the pad read
+// path, in scePadGetData, and in the ELF loader, and it would have kept
+// producing it: a convenience wrapper that discards the one fact its caller
+// needs is a defect generator, not a convenience.
+//
+// Use GuardedWrite and check the result.  There is no checked wrapper to
+// replace it, on purpose -- the point is that the check is not optional.
+//
+// ReadBuffer has the same flaw and the same 38 exposed call sites.  It is left
+// for a separate change rather than fixed silently here.
 
 // ---------------------------------------------------------------------------
 // Page-aware, fault-resilient guest memory primitives (Task 25).

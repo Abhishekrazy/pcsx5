@@ -238,7 +238,15 @@ void RegisterLibNp() {
         u8 online_id[20] = {};
         std::memcpy(online_id, online.data(),
                     std::min(online.size(), static_cast<size_t>(16)));
-        Memory::WriteBuffer(out_ptr, online_id, sizeof(online_id));
+        u64 wrote = 0;
+        if (!Memory::GuardedWrite(out_ptr, online_id, sizeof(online_id), &wrote) ||
+            wrote != sizeof(online_id)) {
+            LOG_WARN(HLE, "sceNpGetOnlineId: buffer 0x%llx unwritable "
+                          "(%llu of %zu bytes)",
+                     (unsigned long long)out_ptr,
+                     (unsigned long long)wrote, sizeof(online_id));
+            return 0x8002000D; // SCE_KERNEL_ERROR_EINVAL
+        }
         LOG_DEBUG(HLE, "sceNpGetOnlineId(userId: %d) -> \"%s\"",
                   static_cast<s32>(args.arg1), online.c_str());
         return 0;

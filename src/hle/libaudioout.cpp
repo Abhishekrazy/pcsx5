@@ -920,7 +920,15 @@ void RegisterLibAudioOut() {
         state[0] = 1;                       // output = connected (u16 LE)
         state[2] = static_cast<u8>(port->channels); // channel count (u16 LE)
         state[7] = 127;                     // volume
-        Memory::WriteBuffer(state_addr, state, sizeof(state));
+        u64 wrote = 0;
+        if (!Memory::GuardedWrite(state_addr, state, sizeof(state), &wrote) ||
+            wrote != sizeof(state)) {
+            LOG_WARN(HLE, "sceAudioOutGetPortState: buffer 0x%llx unwritable "
+                          "(%llu of %zu bytes)",
+                     (unsigned long long)state_addr,
+                     (unsigned long long)wrote, sizeof(state));
+            return kErrorInvalidArgument;
+        }
         return 0;
     };
     RegisterSymbol("libSceAudioOut", "sceAudioOutGetPortState", AudioOutGetPortState);
@@ -935,7 +943,15 @@ void RegisterLibAudioOut() {
         AudioOutPort* port = FindPort(handle);
         if (!info_addr || !port) return kErrorInvalidArgument;
         u8 info[64] = {};
-        Memory::WriteBuffer(info_addr, info, sizeof(info));
+        u64 wrote = 0;
+        if (!Memory::GuardedWrite(info_addr, info, sizeof(info), &wrote) ||
+            wrote != sizeof(info)) {
+            LOG_WARN(HLE, "sceAudioOutGetInfo: buffer 0x%llx unwritable "
+                          "(%llu of %zu bytes)",
+                     (unsigned long long)info_addr,
+                     (unsigned long long)wrote, sizeof(info));
+            return kErrorInvalidArgument;
+        }
         return 0;
     };
     RegisterSymbol("libSceAudioOut", "sceAudioOutGetInfo", AudioOutGetInfo);

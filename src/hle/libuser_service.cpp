@@ -113,8 +113,21 @@ namespace HLE {
             const std::string display = profile ? profile->name : "Player";
             if (name && size > 0) {
                 const u64 copy = std::min(static_cast<u64>(display.size() + 1), size);
-                Memory::WriteBuffer(name, display.c_str(), copy);
-                Memory::Write<u8>(name + copy - 1, 0); // guarantee NUL
+                u64 wrote = 0;
+                if (!Memory::GuardedWrite(name, display.c_str(), copy, &wrote) ||
+                    wrote != copy) {
+                    LOG_WARN(HLE, "sceUserServiceGetUserName: buffer 0x%llx "
+                                  "unwritable (%llu of %llu bytes)",
+                             (unsigned long long)name,
+                             (unsigned long long)wrote,
+                             (unsigned long long)copy);
+                    return 0x8002000D; // SCE_KERNEL_ERROR_EINVAL
+                }
+                const u8 nul = 0; // guarantee NUL termination
+                if (!Memory::GuardedWrite(name + copy - 1, &nul, 1, &wrote) ||
+                    wrote != 1) {
+                    return 0x8002000D; // SCE_KERNEL_ERROR_EINVAL
+                }
             }
             return 0;
         };

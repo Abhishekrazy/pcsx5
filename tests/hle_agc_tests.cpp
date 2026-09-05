@@ -392,7 +392,13 @@ void TestSubmitWalker() {
     cs_stream.push_back(0x100); // indirect_addr lo
     cs_stream.push_back(0);     // indirect_addr hi
     const guest_addr_t cs_pkt = cb + 0x1000;
-    Memory::WriteBuffer(cs_pkt, cs_stream.data(), cs_stream.size() * 4);
+    {
+        const u64 cs_bytes = cs_stream.size() * 4;
+        u64 cs_wrote = 0;
+        EXPECT(Memory::GuardedWrite(cs_pkt, cs_stream.data(), cs_bytes, &cs_wrote) &&
+               cs_wrote == cs_bytes,
+               "command stream written to guest memory");
+    }
     Memory::Write<u64>(pkt + 0, cs_pkt);
     Memory::Write<u32>(pkt + 8, static_cast<u32>(cs_stream.size()));
     EXPECT_EQ(HleDispatch(submit_id, pkt, 0, 0, 0, 0, 0, 0x7305, 0), (u64)0, "SubmitDcb compute -> 0");

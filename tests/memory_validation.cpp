@@ -221,7 +221,12 @@ void TestBufferReadWrite() {
     std::vector<u8> src(N);
     for (u64 i = 0; i < N; ++i) src[i] = static_cast<u8>(i * 31u + 7u);
 
-    Memory::WriteBuffer(a, src.data(), N);
+    // WriteBuffer was removed for discarding its result; the round-trip is
+    // unchanged, and the return value is now asserted rather than unavailable.
+    u64 wrote = 0;
+    EXPECT(Memory::GuardedWrite(a, src.data(), N, &wrote),
+           "GuardedWrite reports success");
+    EXPECT_EQ(wrote, N, "GuardedWrite wrote every byte");
     std::vector<u8> dst(N, 0);
     Memory::ReadBuffer(a, dst.data(), N);
     for (u64 i = 0; i < N; ++i) {
@@ -231,7 +236,9 @@ void TestBufferReadWrite() {
     // Cross-page write
     constexpr u64 CROSS = PAGE_SIZE + 16;
     std::vector<u8> src2(CROSS, 0xA5);
-    Memory::WriteBuffer(a, src2.data(), CROSS);
+    EXPECT(Memory::GuardedWrite(a, src2.data(), CROSS, &wrote),
+           "GuardedWrite reports success across a page boundary");
+    EXPECT_EQ(wrote, CROSS, "GuardedWrite wrote every byte across a page boundary");
     std::vector<u8> dst2(CROSS, 0);
     Memory::ReadBuffer(a, dst2.data(), CROSS);
     for (u64 i = 0; i < CROSS; ++i) {

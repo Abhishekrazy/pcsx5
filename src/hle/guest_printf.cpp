@@ -2,6 +2,7 @@
 // See guest_printf.h for the design notes.
 #include "guest_printf.h"
 #include "../memory/memory.h"
+#include "../common/log.h"
 #include <cstdio>
 #include <cstring>
 #include <locale.h>
@@ -332,7 +333,19 @@ u64 WriteFormatted(guest_addr_t dest, u64 size, const std::string& formatted) {
             ? formatted.size()
             : (formatted.size() < size - 1 ? formatted.size() : size - 1);
         if (copy_len > 0) {
-            Memory::WriteBuffer(dest, formatted.data(), copy_len);
+            u64 out_written = 0;
+            if (!Memory::GuardedWrite(dest, formatted.data(), copy_len,
+                                      &out_written) ||
+                out_written != copy_len) {
+                LOG_WARN(HLE, "guest printf: destination 0x%llx unwritable "
+                              "(%llu of %llu bytes); reporting a write error",
+                         (unsigned long long)dest,
+                         (unsigned long long)out_written,
+                         (unsigned long long)copy_len);
+                // The printf family reports an output error as a negative
+                // return; the guest reads it as a 32-bit int, so this is -1.
+                return static_cast<u64>(-1);
+            }
         }
         if (size != 0 || formatted.size() == copy_len) {
             Memory::Write<u8>(dest + copy_len, 0);

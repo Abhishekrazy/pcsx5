@@ -557,7 +557,13 @@ namespace HLE {
             st.st_atime   = hs.st_atime;
             st.st_mtime   = hs.st_mtime;
             st.st_ctime   = hs.st_ctime;
-            Memory::WriteBuffer(statbuf, &st, sizeof(st));
+            u64 wrote = 0;
+            if (!Memory::GuardedWrite(statbuf, &st, sizeof(st), &wrote) ||
+                wrote != sizeof(st)) {
+                LOG_WARN(HLE, "stat: buffer 0x%llx unwritable (%llu of %zu bytes)",
+                         (unsigned long long)statbuf,
+                         (unsigned long long)wrote, sizeof(st));
+            }
         }
 
         s64 KernelOpenCore(guest_addr_t path_ptr, int flags, int mode) {
