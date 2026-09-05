@@ -22,6 +22,11 @@ VK_CODE = {
     'l': 0x4C,
     'q': 0x51,
     'e': 0x45,
+    # Function keys. The shell binds F11 to fullscreen, which a capture
+    # schedule needs in order to fit a tall screen into frame.
+    'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73, 'f5': 0x74, 'f6': 0x75,
+    'f7': 0x76, 'f8': 0x77, 'f9': 0x78, 'f10': 0x79, 'f11': 0x7A, 'f12': 0x7B,
+    'tab': 0x09,
 }
 
 PUL = ctypes.POINTER(ctypes.c_ulong)
@@ -100,6 +105,14 @@ def release_key(hexKeyCode):
 def send_key_press(key_name, duration=0.1):
     key_name = key_name.lower()
     vk = VK_CODE.get(key_name)
+    if vk is None:
+        # Refuse rather than silently send nothing. A schedule that names a
+        # key this table lacks used to be logged as pressed and then ignored,
+        # so a capture that depended on it looked like a run where the key had
+        # simply done nothing -- an unknown key is a script error, not a quiet
+        # no-op.
+        raise SystemExit("unknown key '%s'; known keys: %s"
+                         % (key_name, ", ".join(sorted(VK_CODE))))
     if not vk:
         if len(key_name) == 1:
             vk = ord(key_name.upper())

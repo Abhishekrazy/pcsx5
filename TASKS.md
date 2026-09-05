@@ -275,6 +275,13 @@ Ordered by dependency, one subsystem per change (Rule 10):
   - a pad held still on each axis, and a known rotation - not a value copied
   from a reference.
 
+- [x] **Harness: --keys accepted unknown key names and sent nothing.** FIXED.
+  VK_CODE had no function keys, and send_key_press treated an unknown name as
+  a silent no-op, logging it as pressed. Found when f11 was scheduled to put
+  the shell fullscreen for a capture and the window stayed 1200x780 with no
+  error. F1-F12 and Tab added; an unknown name is now a SystemExit listing the
+  known keys. Verified by the same schedule then producing a full-width frame.
+
 - [ ] **4.10 Full controller support for shell navigation** (asked 2026-09-06:
   "I want full support of the Controller for UI navigation"). Today the shell
   has partial pad navigation - L1/R1 switch tabs, D-pad and Cross/Circle work
