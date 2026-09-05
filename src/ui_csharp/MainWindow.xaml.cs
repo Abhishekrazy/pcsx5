@@ -5197,6 +5197,30 @@ namespace Pcsx5Ui
         public string MusicPath { get; set; }
         public long SizeBytes { get; set; }
         public string CompatStatus { get; set; }
+
+        /// <summary>A muted colour derived from the title ID, shown behind the
+        /// cover so a dump without artwork gets a tile of its own colour rather
+        /// than a grey square. Stable across runs because it hashes the ID.</summary>
+        public System.Windows.Media.Brush PlaceholderBrush
+        {
+            get
+            {
+                uint h = 2166136261u;
+                foreach (char c in TitleId ?? "") { h ^= c; h *= 16777619u; }
+                double hue = (h % 360);
+                // HSV -> RGB at low saturation and value: readable under white text.
+                double s = 0.38, v = 0.42;
+                double cc = v * s, x = cc * (1 - Math.Abs((hue / 60) % 2 - 1)), m = v - cc;
+                double r, g, b;
+                if (hue < 60) { r = cc; g = x; b = 0; } else if (hue < 120) { r = x; g = cc; b = 0; }
+                else if (hue < 180) { r = 0; g = cc; b = x; } else if (hue < 240) { r = 0; g = x; b = cc; }
+                else if (hue < 300) { r = x; g = 0; b = cc; } else { r = cc; g = 0; b = x; }
+                var brush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(
+                    (byte)((r + m) * 255), (byte)((g + m) * 255), (byte)((b + m) * 255)));
+                brush.Freeze();
+                return brush;
+            }
+        }
         public string SizeStr
         {
             get

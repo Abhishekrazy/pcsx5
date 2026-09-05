@@ -400,10 +400,13 @@ Ordered by dependency, one subsystem per change (Rule 10):
     pills) and SHELL_20260906_030155/frames/frame_0008.png (View All).
     At the harness's 1200 px width the fifth shelf tile is clipped; at the
     fullscreen width the shell starts in, five fit.
-    Still to take from SharpEmu, each its own change under 4.11: a
-    placeholder-initials tile colour per title, motion (their 110-160 ms
-    eases on lift and opacity; ours are instant), and pill-styled pad hints
-    in the footer.
+    Follow-up DONE ("go ahead", 2026-09-06): a per-title placeholder brush
+    hashed from the title ID sits behind each cover (GameEntry.PlaceholderBrush;
+    every local dump has artwork, so it is verified as built and bound, not
+    seen); the tile lift, scale and brightening now ease over 110-160 ms
+    through storyboards on named transforms; the footer pad legend sits in a
+    chip. Seen: artifacts/runtime/SHELL_20260906_031400/frames/frame_0009.png
+    (clicked tile lifted and ringed, chip in footer) and frame_0002.png.
 
 - [x] **Harness: `--clicks` clicked screen coordinates, not the window.** FIXED
   `click_at(x, y)` moves the cursor to an absolute screen point, and

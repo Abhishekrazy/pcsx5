@@ -636,11 +636,17 @@
                                          focus are dimmed and the focused one lifts and
                                          gains a light ring. -->
                                     <StackPanel x:Name="TileRoot" Width="164" Opacity="0.72" RenderTransformOrigin="0.5,0.5">
+                                        <StackPanel.RenderTransform>
+                                            <TransformGroup>
+                                                <ScaleTransform x:Name="TileScale" ScaleX="1" ScaleY="1"/>
+                                                <TranslateTransform x:Name="TileLift" Y="0"/>
+                                            </TransformGroup>
+                                        </StackPanel.RenderTransform>
                                         <Border x:Name="Tile" Width="160" Height="160" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="#33000000" Margin="2,6,2,0">
                                             <Border.Effect>
                                                 <DropShadowEffect BlurRadius="22" ShadowDepth="8" Direction="270" Opacity="0.45"/>
                                             </Border.Effect>
-                                            <Border CornerRadius="7" ClipToBounds="True" Background="#22FFFFFF">
+                                            <Border CornerRadius="7" ClipToBounds="True" Background="{Binding PlaceholderBrush}">
                                                 <Grid>
                                                     <!-- Initials stand in when a dump has no cover, so a tile is never a blank square. -->
                                                     <TextBlock Text="{Binding Title}" Foreground="#C4E8ECF4" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="10"/>
@@ -650,29 +656,33 @@
                                         </Border>
                                         <TextBlock Text="{Binding Title}" Foreground="White" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="40" Margin="2,8,2,0"/>
                                     </StackPanel>
+                                    <DataTemplate.Resources>
+                                        <!-- Motion (design pass 2026-09-06): the lift, scale and
+                                             brightening ease over ~150 ms instead of snapping,
+                                             the way the SharpEmu launcher's tiles move. -->
+                                        <CubicEase x:Key="TileEase" EasingMode="EaseOut"/>
+                                        <Storyboard x:Key="TileFocusIn">
+                                            <DoubleAnimation Storyboard.TargetName="TileRoot" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.11" EasingFunction="{StaticResource TileEase}"/>
+                                            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleX" To="1.035" Duration="0:0:0.16" EasingFunction="{StaticResource TileEase}"/>
+                                            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleY" To="1.035" Duration="0:0:0.16" EasingFunction="{StaticResource TileEase}"/>
+                                            <DoubleAnimation Storyboard.TargetName="TileLift" Storyboard.TargetProperty="Y" To="-5" Duration="0:0:0.16" EasingFunction="{StaticResource TileEase}"/>
+                                        </Storyboard>
+                                        <Storyboard x:Key="TileFocusOut">
+                                            <DoubleAnimation Storyboard.TargetName="TileRoot" Storyboard.TargetProperty="Opacity" To="0.72" Duration="0:0:0.11" EasingFunction="{StaticResource TileEase}"/>
+                                            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.16" EasingFunction="{StaticResource TileEase}"/>
+                                            <DoubleAnimation Storyboard.TargetName="TileScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.16" EasingFunction="{StaticResource TileEase}"/>
+                                            <DoubleAnimation Storyboard.TargetName="TileLift" Storyboard.TargetProperty="Y" To="0" Duration="0:0:0.16" EasingFunction="{StaticResource TileEase}"/>
+                                        </Storyboard>
+                                    </DataTemplate.Resources>
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
                                             <Setter TargetName="Tile" Property="BorderBrush" Value="#E6FFFFFF"/>
-                                            <Setter TargetName="TileRoot" Property="Opacity" Value="1"/>
-                                            <Setter TargetName="TileRoot" Property="RenderTransform">
-                                                <Setter.Value>
-                                                    <TransformGroup>
-                                                        <ScaleTransform ScaleX="1.035" ScaleY="1.035"/>
-                                                        <TranslateTransform Y="-5"/>
-                                                    </TransformGroup>
-                                                </Setter.Value>
-                                            </Setter>
+                                            <DataTrigger.EnterActions><BeginStoryboard Storyboard="{StaticResource TileFocusIn}"/></DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions><BeginStoryboard Storyboard="{StaticResource TileFocusOut}"/></DataTrigger.ExitActions>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
-                                            <Setter TargetName="TileRoot" Property="Opacity" Value="1"/>
-                                            <Setter TargetName="TileRoot" Property="RenderTransform">
-                                                <Setter.Value>
-                                                    <TransformGroup>
-                                                        <ScaleTransform ScaleX="1.035" ScaleY="1.035"/>
-                                                        <TranslateTransform Y="-5"/>
-                                                    </TransformGroup>
-                                                </Setter.Value>
-                                            </Setter>
+                                            <DataTrigger.EnterActions><BeginStoryboard Storyboard="{StaticResource TileFocusIn}"/></DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions><BeginStoryboard Storyboard="{StaticResource TileFocusOut}"/></DataTrigger.ExitActions>
                                         </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
@@ -1624,7 +1634,12 @@
                         <TextBlock Text="|" Foreground="#25FFFFFF" Margin="12,0,12,0"/>
                         <TextBlock x:Name="FooterStatus" Text="{loc:Tr Key=ui.ready}" FontSize="{DynamicResource TypeM}" Foreground="#0099FF"/>
                         <TextBlock Text="|" Foreground="#25FFFFFF" Margin="12,0,12,0"/>
-                        <TextBlock x:Name="FooterGamepadHints" Text="{loc:Tr Key=ui.l1_r1_tabs_d_pad_move_select_back_settings}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#0099FF"/>
+                        <!-- The pad legend sits in a chip (design pass 2026-09-06) so it
+                             reads as one control-hint surface, as the SharpEmu launcher's
+                             shoulder-button hints do. -->
+                        <Border CornerRadius="6" Background="#1AFFFFFF" Padding="10,3,10,3" VerticalAlignment="Center">
+                            <TextBlock x:Name="FooterGamepadHints" Text="{loc:Tr Key=ui.l1_r1_tabs_d_pad_move_select_back_settings}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#0099FF"/>
+                        </Border>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
