@@ -332,10 +332,6 @@ namespace Pcsx5Ui
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
-        {
-            // Theme brushes that must be assigned after the elements exist (ApplyTheme
-            // runs during config load, before InitializeComponent has finished).
-            if (AnalyzerOutputTextBox != null) AnalyzerOutputTextBox.Foreground = (Brush)FindResource("ThemeTextMuted");
             try
             {
                 MicaHelper.ApplyMica(this);
@@ -3178,10 +3174,6 @@ namespace Pcsx5Ui
             if (_config?.ui == null) return;
             if (!Theme.Apply(_config.ui.theme ?? Theme.ModeDark, _config.ui.accent, _config.ui.ground, _config.ui.corners ?? Theme.CornersRounded))
                 LogConsole("Theme: a colour in config.ini was not a valid #RRGGBB and was ignored.");
-            // The analyzer log box ignores a DynamicResource foreground (a literal
-            // paints, a token does not; cause UNKNOWN, 2026-09-06), so it is fed
-            // from code on every theme change.
-            if (AnalyzerOutputTextBox != null) AnalyzerOutputTextBox.Foreground = (Brush)FindResource("ThemeTextMuted");
         }
 
         private Button CreateOptionChoiceButton(string title, string description, bool isSelected, Action onClick)
@@ -5265,24 +5257,7 @@ namespace Pcsx5Ui
             var selected = AnalyzerListView.SelectedItem as BootAnalysisResult;
             if (selected != null)
             {
-                AnalyzerOutputTextBox.Foreground = (Brush)FindResource("ThemeTextMuted");   // see ApplyTheme: this box needs the brush assigned after load
                 AnalyzerOutputTextBox.Text = selected.RawOutput;
-                try { // DIAG-TEMP
-                    var sb = new System.Text.StringBuilder();
-                    sb.AppendLine("box.Foreground=" + AnalyzerOutputTextBox.Foreground);
-                    sb.AppendLine("res ThemeTextMuted=" + FindResource("ThemeTextMuted"));
-                    sb.AppendLine("app ThemeTextMuted=" + Application.Current.Resources["ThemeTextMuted"]);
-                    int count = 0;
-                    void Walk(DependencyObject d, int depth) {
-                        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(d); i++) {
-                            var ch = System.Windows.Media.VisualTreeHelper.GetChild(d, i);
-                            if (count++ < 40) sb.AppendLine(new string(' ', depth) + ch.GetType().Name + " fg=" + (ch is FrameworkElement fe ? System.Windows.Documents.TextElement.GetForeground(fe)?.ToString() : "-") + " style=" + (ch is FrameworkElement fe2 && fe2.Style != null ? "yes" : "no"));
-                            Walk(ch, depth + 1);
-                        }
-                    }
-                    Walk(AnalyzerOutputTextBox, 1);
-                    System.IO.File.WriteAllText(System.IO.Path.Combine(@"I:\Personal\Windows\pcsx5\.work", "analyzer_fg.txt"), sb.ToString());
-                } catch (Exception ex) { System.IO.File.WriteAllText(@"I:\Personal\Windows\pcsx5\.worknalyzer_fg.txt", ex.ToString()); }
             }
             else
             {
