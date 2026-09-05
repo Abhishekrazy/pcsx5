@@ -468,13 +468,18 @@
                             <TextBlock x:Name="DetailTitle" Text="{loc:Tr Key=ui.select_a_game}" FontSize="{DynamicResource TypeDisplayL}" FontWeight="ExtraBold" Foreground="White" TextWrapping="Wrap" LineHeight="48"/>
                             
                             <!-- Metadata badges & ID -->
+                            <!-- Metadata as pills (design pass 2026-09-06): each fact in
+                                 its own rounded chip instead of bullet-separated text, so
+                                 the row scans at console distance. The status badge keeps
+                                 its name; code-behind colours it by compatibility. -->
                             <StackPanel Orientation="Horizontal" Margin="0,12,0,20">
-                                <TextBlock x:Name="DetailTitleId" Text="{loc:Tr Key=ui.no_game_selected}" FontSize="{DynamicResource TypeL}" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
-                                <TextBlock Text="•" Foreground="#FFA0A0A5" Margin="10,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="DetailSize" Text="-" FontSize="{DynamicResource TypeL}" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
-                                <TextBlock Text="•" Foreground="#FFA0A0A5" Margin="10,0,10,0" VerticalAlignment="Center"/>
-                                
-                                <Border x:Name="DetailCompatBadge" Padding="8,3,8,3" CornerRadius="4" Background="#3F555555" VerticalAlignment="Center">
+                                <Border Padding="12,4,12,4" CornerRadius="999" Background="#22FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock x:Name="DetailTitleId" Text="{loc:Tr Key=ui.no_game_selected}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#FFC8C8CD" VerticalAlignment="Center"/>
+                                </Border>
+                                <Border Padding="12,4,12,4" CornerRadius="999" Background="#22FFFFFF" VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock x:Name="DetailSize" Text="-" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#FFC8C8CD" VerticalAlignment="Center"/>
+                                </Border>
+                                <Border x:Name="DetailCompatBadge" Padding="12,4,12,4" CornerRadius="999" Background="#3F555555" VerticalAlignment="Center">
                                     <TextBlock x:Name="DetailCompatText" Text="{loc:Tr Key=ui.unknown}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="White"/>
                                 </Border>
                             </StackPanel>
@@ -620,30 +625,54 @@
                                   AutomationProperties.Name="{loc:Tr Key=ui.view_all}">
                             <ListView.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel Orientation="Horizontal"/>
+                                    <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
                                 </ItemsPanelTemplate>
                             </ListView.ItemsPanel>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Border x:Name="Tile" Width="180" Height="180" CornerRadius="8" BorderThickness="2" BorderBrush="Transparent" Background="#33000000" ClipToBounds="True">
-                                        <Grid>
-                                            <Border CornerRadius="6" ClipToBounds="True">
-                                                <Image Source="{Binding CoverPath}" Stretch="UniformToFill"/>
+                                    <!-- Design pass 2026-09-06, SharpEmu's launcher as the
+                                         reference: the name sits under the cover instead of
+                                         over it, the card carries a shadow, tiles not in
+                                         focus are dimmed and the focused one lifts and
+                                         gains a light ring. -->
+                                    <StackPanel x:Name="TileRoot" Width="164" Opacity="0.72" RenderTransformOrigin="0.5,0.5">
+                                        <Border x:Name="Tile" Width="160" Height="160" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="#33000000" Margin="2,6,2,0">
+                                            <Border.Effect>
+                                                <DropShadowEffect BlurRadius="22" ShadowDepth="8" Direction="270" Opacity="0.45"/>
+                                            </Border.Effect>
+                                            <Border CornerRadius="7" ClipToBounds="True" Background="#22FFFFFF">
+                                                <Grid>
+                                                    <!-- Initials stand in when a dump has no cover, so a tile is never a blank square. -->
+                                                    <TextBlock Text="{Binding Title}" Foreground="#C4E8ECF4" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="10"/>
+                                                    <Image Source="{Binding CoverPath}" Stretch="UniformToFill"/>
+                                                </Grid>
                                             </Border>
-                                            <Border VerticalAlignment="Bottom" Height="52" CornerRadius="0,0,6,6">
-                                                <Border.Background>
-                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                                        <GradientStop Color="#00000000" Offset="0"/>
-                                                        <GradientStop Color="#CC000000" Offset="1"/>
-                                                    </LinearGradientBrush>
-                                                </Border.Background>
-                                                <TextBlock Text="{Binding Title}" Foreground="White" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="36" VerticalAlignment="Bottom" Margin="8,0,8,6"/>
-                                            </Border>
-                                        </Grid>
-                                    </Border>
+                                        </Border>
+                                        <TextBlock Text="{Binding Title}" Foreground="White" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="40" Margin="2,8,2,0"/>
+                                    </StackPanel>
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
-                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="#E6FFFFFF"/>
+                                            <Setter TargetName="TileRoot" Property="Opacity" Value="1"/>
+                                            <Setter TargetName="TileRoot" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <TransformGroup>
+                                                        <ScaleTransform ScaleX="1.035" ScaleY="1.035"/>
+                                                        <TranslateTransform Y="-5"/>
+                                                    </TransformGroup>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
+                                            <Setter TargetName="TileRoot" Property="Opacity" Value="1"/>
+                                            <Setter TargetName="TileRoot" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <TransformGroup>
+                                                        <ScaleTransform ScaleX="1.035" ScaleY="1.035"/>
+                                                        <TranslateTransform Y="-5"/>
+                                                    </TransformGroup>
+                                                </Setter.Value>
+                                            </Setter>
                                         </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
@@ -652,8 +681,9 @@
                                 <Style TargetType="ListViewItem">
                                     <Setter Property="Background" Value="Transparent"/>
                                     <Setter Property="BorderThickness" Value="0"/>
-                                    <Setter Property="Margin" Value="0,0,14,14"/>
+                                    <Setter Property="Margin" Value="0,4,14,14"/>
                                     <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="VerticalContentAlignment" Value="Top"/>
                                     <Setter Property="Template">
                                         <Setter.Value>
                                             <ControlTemplate TargetType="ListViewItem">

@@ -661,9 +661,12 @@ namespace Pcsx5Ui
         /// then every other title in discovery order. The shelf is never
         /// sparse -- the user does not want the main menu to look blank
         /// (2026-09-06) -- so nothing is filtered out; recency only orders.</summary>
+        private const int ShelfSize = 5;   // asked 2026-09-06: always five on the main menu
         private void RebuildShelf()
         {
-            _shelf = new List<GameEntry>(_games);
+            // _games is already recency-ordered, so the first five are the
+            // recently played titles followed by whatever fills the shelf.
+            _shelf = _games.Take(ShelfSize).ToList();
             GamesWrapPanel.Children.Clear();
             foreach (var g in _shelf) AddGameTile(g);
             if (_selectedGame != null && _shelf.Contains(_selectedGame)) SelectGame(_selectedGame);
@@ -2419,7 +2422,13 @@ namespace Pcsx5Ui
             FullLibraryGrid.Visibility = showFull ? Visibility.Visible : Visibility.Collapsed;
             LibraryCarousel.Visibility = showFull ? Visibility.Collapsed : Visibility.Visible;
             FullLibraryToggleBtn.Content = showFull ? "◀ Carousel" : "View All ▸";
-            if (showFull) FocusFirst(FullLibraryListView);
+            if (showFull)
+            {
+                // Open on the game the shelf had selected, so the grid shows a
+                // lit tile and pad navigation starts from it, not from nothing.
+                if (_selectedGame != null) FullLibraryListView.SelectedItem = _selectedGame;
+                FocusFirst(FullLibraryListView);
+            }
             else FocusFirst(LaunchButton);
         }
 

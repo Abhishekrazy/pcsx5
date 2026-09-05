@@ -380,6 +380,30 @@ Ordered by dependency, one subsystem per change (Rule 10):
     for the Controller tab would read better than three nested ones.
   - [ ] The canvas card leaves wide empty margins either side of the pad at
     1920 px; the right-hand panel or a MaxWidth could use that space.
+  - [x] **Shelf is exactly five, recent first; View All centred; design pass
+    with SharpEmu as reference** - DONE. Asked 2026-09-06: "5 titles should
+    always be there in main menu, preference always to recent played ...
+    SharpEmu menu navigation and design also superior ... I like our menu
+    design but there is far better ... view all titles should be centre
+    aligned". No `/design` skill exists in this environment, so the pass was
+    done directly from SharpEmu's launcher XAML and styles (sharpemu_clone/
+    src/SharpEmu.GUI/MainWindow.axaml, Themes/Styles/Library.axaml,
+    Surfaces.axaml), rewritten in PCSX5's idiom. Done: the shelf takes the
+    first five of the recency-ordered list; the View All grid is centred; its
+    tiles now put the name under the cover (ending the overlap with cover
+    art), carry a drop shadow, dim to 0.72 when not focused and lift, scale
+    and gain a light ring when selected or hovered, with the title as a
+    stand-in when a dump has no cover; the hero's title ID, size and status
+    are pills; opening View All selects the current game so a tile is lit
+    and pad navigation starts from it. Seen:
+    artifacts/runtime/SHELL_20260906_030110/frames/frame_0002.png (shelf,
+    pills) and SHELL_20260906_030155/frames/frame_0008.png (View All).
+    At the harness's 1200 px width the fifth shelf tile is clipped; at the
+    fullscreen width the shell starts in, five fit.
+    Still to take from SharpEmu, each its own change under 4.11: a
+    placeholder-initials tile colour per title, motion (their 110-160 ms
+    eases on lift and opacity; ours are instant), and pill-styled pad hints
+    in the footer.
 
 - [x] **Harness: `--clicks` clicked screen coordinates, not the window.** FIXED
   `click_at(x, y)` moves the cursor to an absolute screen point, and
