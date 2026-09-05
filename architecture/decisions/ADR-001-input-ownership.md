@@ -11,7 +11,7 @@ DualSense support was implemented twice, independently:
 
 - the emulator core read the controller over raw HID for the guest
   (`src/hle/libscepad.cpp`, `src/gpu/input/`);
-- the WPF shell read it again in C# (`src/ui_csharp/WindowsDualSenseReader.cs`)
+- the WPF shell read it again in C# (its own `WindowsDualSenseReader.cs`, since deleted)
   purely to drive the Controller Setup screen.
 
 Neither implementation could serve the other, and the shell had no way to tell
@@ -67,8 +67,10 @@ blind to the sticks.
 - A public ABI addition (for example `pcsx5_get_pad_state(user_index, state)`).
   Shell and core ship separately, so a signature mismatch fails at runtime rather
   than at compile time; the entry point must be versioned and documented.
-- `src/ui_csharp/WindowsDualSenseReader.cs` is retired once the shell reads
-  through the ABI.
+- The shell's `WindowsDualSenseReader.cs` is retired once the shell reads
+  through the ABI. Done 2026-09-06 (TASKS.md 4.9): the file and its
+  `WindowsHidNative.cs` P/Invoke layer are deleted; the shell keeps only the
+  `HostGamepadButtons` enum, whose member names are binding-config identifiers.
 - The single-pad restriction in `libpad.cpp` must be relaxed, with handle
   lifetime and per-user state tracked correctly, before two controllers work.
 
@@ -91,7 +93,7 @@ needs a test that opens a second user and exercises teardown.
 1. Reimplement the DualSense reader in the core on DualSenseWindows — **done**;
    see `src/gpu/dualsense_ds5w.cpp`.
 2. Add the pad-state ABI entry point.
-3. Point the shell at it and delete `WindowsDualSenseReader.cs`.
+3. Point the shell at it and delete `WindowsDualSenseReader.cs`. Done 2026-09-06.
 4. Relax the `scePadOpen` restriction and track per-user state.
 
 ## Rollback / Containment

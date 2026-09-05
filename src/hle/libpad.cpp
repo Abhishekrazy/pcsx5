@@ -77,7 +77,12 @@ namespace HLE {
     static void FillPadData(ScePadData* out) {
         std::memset(out, 0, sizeof(*out));
         GPU::PadButtonState state = GPU::GetCurrentPadState();
-        out->buttons = state.buttons;
+        // Bits above the SCE_PAD range are PCSX5-internal (0x00200000 = the
+        // mute button, which the shell's mute-LED behaviour needs and SCE_PAD
+        // never defined). A guest must see exactly the SCE mask and nothing
+        // else, so they are stripped here, at the one point pad state crosses
+        // into guest memory.
+        out->buttons = state.buttons & 0x001FFFFFu;
         out->lx = state.left_analog_x;
         out->ly = state.left_analog_y;
         out->rx = state.right_analog_x;

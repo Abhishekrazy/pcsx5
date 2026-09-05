@@ -1418,8 +1418,8 @@ namespace Pcsx5Ui
             {
                 try
                 {
-                    WindowsDualSenseReader.SetRumble(255, 255);
-                    Task.Delay(400).ContinueWith(_ => WindowsDualSenseReader.SetRumble(0, 0));
+                    CoreBridge.pcsx5_pad_set_rumble(0, 255, 255);
+                    Task.Delay(400).ContinueWith(_ => CoreBridge.pcsx5_pad_set_rumble(0, 0, 0));
                 }
                 catch { }
             }
@@ -3466,7 +3466,7 @@ namespace Pcsx5Ui
 
         private void InitializeControllerPolling()
         {
-            WindowsDualSenseReader.EnsureStarted();
+            CoreBridge.pcsx5_pad_count(); // starts the core's controller reader
             // Input priority: the default (Background) sits below rendering and
             // layout, so ticks get starved whenever the UI is busy and the pad
             // feels laggy regardless of the interval.
@@ -3488,7 +3488,7 @@ namespace Pcsx5Ui
 
         private void StartControllerVizPolling()
         {
-            WindowsDualSenseReader.EnsureStarted();
+            CoreBridge.pcsx5_pad_count(); // starts the core's controller reader
             if (_controllerVizTimer == null)
             {
                 _controllerVizTimer = new System.Windows.Threading.DispatcherTimer();
@@ -3816,7 +3816,7 @@ namespace Pcsx5Ui
                      (DateTime.UtcNow - _micBtnDownAt).TotalMilliseconds >= MicHoldPulseMs)
             {
                 _micBtnPulsing = true;
-                WindowsDualSenseReader.SetMicLed(2); // pulse while held
+                CoreBridge.pcsx5_pad_set_mic_led(0, 2); // pulse while held
             }
             else if (!down && _micBtnDown)
             {
@@ -3826,7 +3826,7 @@ namespace Pcsx5Ui
                     _micLedToggledOn = !_micLedToggledOn; // short press toggles
                 }
                 _micBtnPulsing = false;
-                WindowsDualSenseReader.SetMicLed(_micLedToggledOn ? (byte)1 : (byte)0);
+                CoreBridge.pcsx5_pad_set_mic_led(0, _micLedToggledOn ? (byte)1 : (byte)0);
             }
         }
 
@@ -3879,8 +3879,8 @@ namespace Pcsx5Ui
                     break;
             }
 
-            WindowsDualSenseReader.SetLightbar(r, g, b);
-            WindowsDualSenseReader.SetPlayerLeds(playerLed);
+            CoreBridge.pcsx5_pad_set_lightbar(0, r, g, b);
+            CoreBridge.pcsx5_pad_set_player_leds(0, playerLed, 0);
             LogConsole($"Active Gamepad Slot {idx + 1} selected (Player LED 0x{playerLed:X2}, Lightbar RGB #{r:X2}{g:X2}{b:X2}).");
         }
 
@@ -4171,35 +4171,45 @@ namespace Pcsx5Ui
             short lx = 0;
             short ly = 0;
 
-            bool hasDualSense = WindowsDualSenseReader.TryGetState(out var dsState);
+            // The pad comes from the core's reader now, through the pad-state ABI,
+            // rather than from the shell's own C# HID reader that used to
+            // interleave with it on the same device. The shape below -- the
+            // shell's navigation bitmask, an XInput-style state, and the mute
+            // button feeding the LED -- is unchanged; only the source moved.
+            var pad = CoreBridge.PadState.Create();
+            bool hasDualSense = CoreBridge.pcsx5_pad_get_state(0, ref pad) == 0 && pad.Connected != 0;
             if (hasDualSense)
             {
-                if ((dsState.Buttons & HostGamepadButtons.Up) != 0) buttons |= 0x0001;
-                if ((dsState.Buttons & HostGamepadButtons.Down) != 0) buttons |= 0x0002;
-                if ((dsState.Buttons & HostGamepadButtons.Left) != 0) buttons |= 0x0004;
-                if ((dsState.Buttons & HostGamepadButtons.Right) != 0) buttons |= 0x0008;
-                if ((dsState.Buttons & HostGamepadButtons.Options) != 0) buttons |= 0x0010;
-                if ((dsState.Buttons & HostGamepadButtons.Back) != 0 || (dsState.Buttons & HostGamepadButtons.TouchPad) != 0) buttons |= 0x0020;
-                if ((dsState.Buttons & HostGamepadButtons.L3) != 0) buttons |= 0x0040;
-                if ((dsState.Buttons & HostGamepadButtons.R3) != 0) buttons |= 0x0080;
-                if ((dsState.Buttons & HostGamepadButtons.L1) != 0) buttons |= 0x0100;
-                if ((dsState.Buttons & HostGamepadButtons.R1) != 0) buttons |= 0x0200;
-                if ((dsState.Buttons & HostGamepadButtons.PlayStation) != 0) buttons |= 0x0400;
-                if ((dsState.Buttons & HostGamepadButtons.Cross) != 0) buttons |= 0x1000;
-                if ((dsState.Buttons & HostGamepadButtons.Circle) != 0) buttons |= 0x2000;
-                if ((dsState.Buttons & HostGamepadButtons.Square) != 0) buttons |= 0x4000;
-                if ((dsState.Buttons & HostGamepadButtons.Triangle) != 0) buttons |= 0x8000;
+                var dsButtons = HostGamepad.FromCoreMask(pad.Buttons);
+                if ((dsButtons & HostGamepadButtons.Up) != 0) buttons |= 0x0001;
+                if ((dsButtons & HostGamepadButtons.Down) != 0) buttons |= 0x0002;
+                if ((dsButtons & HostGamepadButtons.Left) != 0) buttons |= 0x0004;
+                if ((dsButtons & HostGamepadButtons.Right) != 0) buttons |= 0x0008;
+                if ((dsButtons & HostGamepadButtons.Options) != 0) buttons |= 0x0010;
+                if ((dsButtons & HostGamepadButtons.Back) != 0 || (dsButtons & HostGamepadButtons.TouchPad) != 0) buttons |= 0x0020;
+                if ((dsButtons & HostGamepadButtons.L3) != 0) buttons |= 0x0040;
+                if ((dsButtons & HostGamepadButtons.R3) != 0) buttons |= 0x0080;
+                if ((dsButtons & HostGamepadButtons.L1) != 0) buttons |= 0x0100;
+                if ((dsButtons & HostGamepadButtons.R1) != 0) buttons |= 0x0200;
+                if ((dsButtons & HostGamepadButtons.PlayStation) != 0) buttons |= 0x0400;
+                if ((dsButtons & HostGamepadButtons.Cross) != 0) buttons |= 0x1000;
+                if ((dsButtons & HostGamepadButtons.Circle) != 0) buttons |= 0x2000;
+                if ((dsButtons & HostGamepadButtons.Square) != 0) buttons |= 0x4000;
+                if ((dsButtons & HostGamepadButtons.Triangle) != 0) buttons |= 0x8000;
 
-                state.Gamepad.bLeftTrigger = (byte)((dsState.Buttons & HostGamepadButtons.L2) != 0 ? 255 : 0);
-                state.Gamepad.bRightTrigger = (byte)((dsState.Buttons & HostGamepadButtons.R2) != 0 ? 255 : 0);
+                // Kept as the button-threshold form the old reader produced, so
+                // navigation behaviour is identical. The core also carries the
+                // analog L2/R2 values (pad.L2, pad.R2) if a consumer wants them.
+                state.Gamepad.bLeftTrigger = (byte)((dsButtons & HostGamepadButtons.L2) != 0 ? 255 : 0);
+                state.Gamepad.bRightTrigger = (byte)((dsButtons & HostGamepadButtons.R2) != 0 ? 255 : 0);
 
-                lx = (short)((dsState.LeftX - 128) * 256);
-                ly = (short)(-(dsState.LeftY - 128) * 256);
+                lx = (short)((pad.Lx - 128) * 256);
+                ly = (short)(-(pad.Ly - 128) * 256);
                 state.Gamepad.wButtons = buttons;
                 state.Gamepad.sThumbLX = lx;
                 state.Gamepad.sThumbLY = ly;
 
-                HandleMicButtonLed((dsState.Buttons & HostGamepadButtons.Mic) != 0);
+                HandleMicButtonLed((dsButtons & HostGamepadButtons.Mic) != 0);
             }
             else
             {

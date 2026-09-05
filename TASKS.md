@@ -350,23 +350,32 @@ Ordered by dependency, one subsystem per change (Rule 10):
     piece of work: one focus model, three input sources.
   Verify each half with the controller physically disconnected.
 
-- [ ] **4.9 Retire `WindowsDualSenseReader.cs`** - once 4.5 reads through
-  4.1 and nothing else references it. Its 767 lines and the interleaving
-  defect go with it. ADR-001 step 3, finally done.
-  After the tab rebuild exactly nine call sites in six methods remain:
-  OnGameCrashed (2), HandleMicButtonLed (2),
-  CtrlActiveGamepadCombo_SelectionChanged (2), InitializeControllerPolling,
-  StartControllerVizPolling, ControllerTimer_Tick (1 each). Two of them set
-  outputs the ABI does not yet export - the mute LED and rumble - so two
-  additive exports (pcsx5_pad_set_mic_led, pcsx5_pad_set_rumble) come first,
-  then the six methods move over, then the file and its 767 lines go.
-
-Each step is verified on hardware and by screenshot before the next starts.
-
-## Phase 1 - Instruments that cannot lie (NOW)
-
-Sweeping silent failure while measuring it with silently-failing instruments
-produces unfalsifiable results.
+- [x] **4.9 Retire `WindowsDualSenseReader.cs`** - DONE 2026-09-06. The
+  shell's 767-line C# HID reader and its `WindowsHidNative.cs` P/Invoke layer
+  are deleted; every former call site reads or drives the pad through the core.
+  What it took: four additive exports (`pcsx5_pad_set_rumble`, `_set_lightbar`,
+  `_set_player_leds`, `_set_mic_led`) plus the existing state/count exports;
+  the eight output/enumeration sites and the `ControllerTimer_Tick` reader
+  moved over with their behaviour preserved (the shell nav bitmask, the
+  XInput-style state and the 255/0 trigger threshold are unchanged - only the
+  source moved). The `HostGamepadButtons` enum survives in its own file,
+  `HostGamepadButtons.cs`, because `CheckRebindInput` derives stored binding
+  names from its member names, so those names are configuration identifiers;
+  the reader's state structs went with the reader. `CheckRebindInput` itself
+  has no callers (grep: definition only) - dead code, noted, not touched.
+  The mute button is carried to the shell as core bit 0x00200000, a PCSX5
+  extension SCE_PAD never defined; that bit MUST NOT reach a guest, and before
+  this change `libpad.cpp` copied the mask unmasked. It now strips everything
+  above the SCE range at the one point pad state enters guest memory.
+  Test `TestPadGuestNeverSeesInternalBits` (tests/hle_audio_pad_tests.cpp)
+  injects the bit through the input replay bot: FAILS without the mask
+  (`guest never sees the PCSX5-internal mute bit (lhs=2097152 rhs=0)`), passes
+  with it. Both observed 2026-09-06. Native and shell builds 0 warnings, 0
+  errors; full CTest green after the two stale doc citations were rewritten.
+  Shell seen running from the core: artifacts/runtime/SHELL_20260906_023154
+  (Input tab reached by harness click; live graphs, 17 of 19 frames unique). Not yet verified on hardware: driving the
+  tabs with L1/R1 through the new path - the user has to press the buttons;
+  4.10 covers that.
 
 - [x] **Two CTest cases passed while the process aborted** — FIXED
   `CMakeLists.txt` set `PASS_REGULAR_EXPRESSION` on `guest_syscall_smoke` and
@@ -829,8 +838,10 @@ surface, so where it differs from us the difference is usually load-bearing.
   The probe is deliberately **not** a CTest: it needs hardware and a person to
   confirm what they saw, so as an automated test it could only pass vacuously.
 
-- [ ] **The shell has a second, competing DualSense reader — this is where the
-  breakage the user saw actually lives.** `src/ui_csharp/WindowsDualSenseReader.cs`
+- [x] **The shell has a second, competing DualSense reader — this is where the
+  breakage the user saw actually lives.** DONE 2026-09-06 under 4.9: the reader
+  is deleted and the shell reads the core. The finding as recorded:
+  `WindowsDualSenseReader.cs`
   (767 lines) is a complete independent C# HID implementation, and the shell's
   Controller Setup uses it — `CoreBridge.cs` exposes no pad state at all.
   Both it and the native reader open the device with

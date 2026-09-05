@@ -13,6 +13,8 @@
 #include "hle/hle.h"
 #include "memory/memory.h"
 #include "common/log.h"
+#include "gpu/gpu.h"
+#include <filesystem>
 
 #include <cstdio>
 #include <cstring>
@@ -366,6 +368,61 @@ void TestPadRejectsUnwritableBuffer() {
     Memory::Unmap(ro, 0x1000);
 }
 
+// ---------------------------------------------------------------------------
+// The core's pad bitmask carries one bit SCE_PAD never defined: 0x00200000,
+// the mute button, which the shell's mute-LED behaviour needs. A guest must
+// see exactly the SCE mask, so libpad strips anything above it at the point
+// pad state crosses into guest memory. This drives a state carrying that bit
+// through the input replay bot -- the only device-free way to set the
+// published pad state -- and checks the guest side is clean while the core
+// side still carries the bit (otherwise the test is not testing the mask).
+// ---------------------------------------------------------------------------
+void TestPadGuestNeverSeesInternalBits() {
+    const u64 init_id      = SymbolId("libScePad", "scePadInit");
+    const u64 readstate_id = SymbolId("libScePad", "scePadReadState");
+    EXPECT(init_id && readstate_id, "pad mask symbols resolve");
+    HleDispatch(init_id, 0, 0, 0, 0, 0, 0, 0x2200, 0);
+
+    // Cross (0x4000) plus the PCSX5-internal mute bit (0x00200000).
+    const u32 kInjected = 0x00204000u;
+    auto path = std::filesystem::temp_directory_path() / "pcsx5_pad_mask_replay.json";
+    {
+        std::FILE* f = nullptr;
+        fopen_s(&f, path.string().c_str(), "wb");
+        EXPECT(f != nullptr, "replay file created");
+        if (!f) return;
+        std::fprintf(f,
+            "{\"version\":1,\"title_id\":\"TEST\",\"events\":["
+            "{\"frame\":0,\"buttons\":%u,\"lx\":128,\"ly\":128,\"rx\":128,\"ry\":128,\"l2\":0,\"r2\":0}]}",
+            kInjected);
+        std::fclose(f);
+    }
+    GPU::StartInputReplay(path.string().c_str());
+    GPU::PollEvents();
+    const u32 core_buttons = GPU::GetCurrentPadState().buttons;
+    EXPECT_EQ(core_buttons & 0x00200000u, 0x00200000u,
+              "core-side state carries the internal bit (injection worked)");
+
+    guest_addr_t data = 0;
+    EXPECT_EQ(Memory::Map(0, 0x1000, Memory::PROT_READ | Memory::PROT_WRITE, &data),
+              Memory::Status::Ok, "pad data page mapped");
+    if (data) {
+        EXPECT_EQ(HleDispatch(readstate_id, 1, data, 0, 0, 0, 0, 0x2201, 0), (u64)0,
+                  "ReadState -> 0");
+        u32 guest_buttons = 0;
+        std::memcpy(&guest_buttons, reinterpret_cast<const void*>(data), sizeof(guest_buttons));
+        EXPECT_EQ(guest_buttons & 0x00200000u, 0u,
+                  "guest never sees the PCSX5-internal mute bit");
+        EXPECT_EQ(guest_buttons & 0x00004000u, 0x00004000u,
+                  "the SCE bits injected alongside it survive");
+        Memory::Unmap(data, 0x1000);
+    }
+
+    GPU::StopInputReplay();
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+}
+
 } // namespace
 
 int main() {
@@ -386,6 +443,7 @@ int main() {
     TestAudioOut();
     TestPad();
     TestPadRejectsUnwritableBuffer();
+    TestPadGuestNeverSeesInternalBits();
 
     HLE::Shutdown();
     Memory::Shutdown();

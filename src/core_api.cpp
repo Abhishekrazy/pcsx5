@@ -783,6 +783,26 @@ PCSX5_API int pcsx5_pad_play_haptics_test(void) {
     return GPU::DualSense::PlayHapticsTestBlocking() ? 1 : 0;
 }
 
+PCSX5_API void pcsx5_pad_set_rumble(int index, unsigned char large_motor, unsigned char small_motor) {
+    GPU::DualSense::EnsureStarted();
+    GPU::DualSense::SetRumble(index, large_motor, small_motor);
+}
+
+PCSX5_API void pcsx5_pad_set_lightbar(int index, unsigned char r, unsigned char g, unsigned char b) {
+    GPU::DualSense::EnsureStarted();
+    GPU::DualSense::SetLightBar(index, r, g, b);
+}
+
+PCSX5_API void pcsx5_pad_set_player_leds(int index, unsigned char bitmask, int fade) {
+    GPU::DualSense::EnsureStarted();
+    GPU::DualSense::SetPlayerLeds(index, bitmask, fade != 0);
+}
+
+PCSX5_API void pcsx5_pad_set_mic_led(int index, unsigned char mode) {
+    GPU::DualSense::EnsureStarted();
+    GPU::DualSense::SetMicLed(index, mode);
+}
+
 PCSX5_API int pcsx5_get_last_error(char* buf, int buf_size) {
     u32 code = 0;
     guest_addr_t rip = 0;

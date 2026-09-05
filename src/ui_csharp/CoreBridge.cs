@@ -148,6 +148,22 @@ namespace Pcsx5Ui
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int pcsx5_pad_play_haptics_test();
 
+        // Per-pad outputs (additive, 2026-09-06). These replace the shell's own
+        // C# HID reader for its last three duties: a crash thud, the mute-button
+        // LED, and colouring a picked pad. An index the core is not streaming
+        // is a no-op.
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_pad_set_rumble(int index, byte largeMotor, byte smallMotor);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_pad_set_lightbar(int index, byte r, byte g, byte b);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_pad_set_player_leds(int index, byte bitmask, int fade);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_pad_set_mic_led(int index, byte mode);
+
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern void pcsx5_pause();
 

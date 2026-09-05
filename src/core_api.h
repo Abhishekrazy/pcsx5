@@ -114,7 +114,9 @@ typedef struct pcsx5_pad_state {
     unsigned char  connected;
     unsigned char  bluetooth;           // 1 Bluetooth, 0 USB
     unsigned char  reserved0[2];
-    unsigned int   buttons;             // SCE_PAD bitmask
+    unsigned int   buttons;             // SCE_PAD bitmask, plus 0x00200000 = mute
+                                        // button pressed (PCSX5 extension; SCE_PAD
+                                        // has no such bit and a guest never sees it)
     unsigned char  lx, ly, rx, ry;      // 0..255, 128 centred
     unsigned char  l2, r2;              // 0..255
     unsigned char  touch_count;         // 0..2
@@ -175,5 +177,15 @@ PCSX5_API void pcsx5_pad_set_audio_levels(unsigned char volume, unsigned char pr
 // unavailable (e.g. not on Bluetooth) or a write failed -- the log says which.
 PCSX5_API int  pcsx5_pad_play_speaker_test(void);
 PCSX5_API int  pcsx5_pad_play_haptics_test(void);
+
+// Outputs, per controller.  ADDITIVE, 2026-09-06: these exist so the shell's
+// last uses of its own C# HID reader -- a crash thud, the mute-button LED, and
+// colouring a picked pad -- can go through the core instead, after which that
+// reader is deleted.  An index the core is not streaming is silently a no-op,
+// matching the core's own per-pad functions.
+PCSX5_API void pcsx5_pad_set_rumble(int index, unsigned char large_motor, unsigned char small_motor);
+PCSX5_API void pcsx5_pad_set_lightbar(int index, unsigned char r, unsigned char g, unsigned char b);
+PCSX5_API void pcsx5_pad_set_player_leds(int index, unsigned char bitmask, int fade);
+PCSX5_API void pcsx5_pad_set_mic_led(int index, unsigned char mode);   // 0 off, 1 on, 2 pulse
 
 }

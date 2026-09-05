@@ -167,6 +167,12 @@ u32 MapButtons(const DS5W::DS5InputState& in) {
 
     if (in.buttonsB & DS5W_ISTATE_BTN_B_PLAYSTATION_LOGO) b |= 0x00010000;
     if (in.buttonsB & DS5W_ISTATE_BTN_B_PAD_BUTTON)       b |= 0x00100000;
+    // The mute button. SCE_PAD has no bit for it -- a guest never sees it --
+    // but the shell's mute-LED behaviour keys off the physical press, and
+    // that used to come from the shell's own HID reader. 0x00200000 is a
+    // PCSX5-internal bit above the SCE range; libpad masks it out before the
+    // guest.
+    if (in.buttonsB & DS5W_ISTATE_BTN_B_MIC_BUTTON)       b |= 0x00200000;
 
     return b;
 }
