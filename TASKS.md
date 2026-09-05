@@ -74,6 +74,30 @@ success and dropped GPU work loud, then ratchet each swept class shut.
 
 ## Discovered — the WPF shell (2026-09-03, from a user screenshot)
 
+- [x] **Shell settings had no effect on the emulator at all** — FIXED
+  The core defaults `config_dir` to the *relative* path `"pcsx5_config"`,
+  resolved against the child process's working directory. `IpcSession` pins that
+  to the folder holding `pcsx5_cli.exe` — it has to, because the Windows loader
+  must find `pcsx5_core.dll` before `main()` runs. The shell writes its config
+  next to its own executable. So the shell saved to
+  `src/ui_csharp/bin/Release/.../pcsx5_config/global.json` while the core read
+  `build/bin/Release/pcsx5_config/global.json`.
+  Measured: the shell's copy had `audio.backend: 1`, the core's had `0`. The
+  user had turned sound on; the file saying so was never opened.
+  Fixed by passing `--config-dir=<absolute>` to the child, a flag the core
+  already supported. Verified end to end: with the shell's config dir the core
+  logs `sceAudioOut: WASAPI mix is 44100 Hz` and opens a port; with the old
+  default it never attempted audio.
+
+- [ ] **WASAPI init fails on a 44.1 kHz output device and silently drops to
+  waveOut.** Surfaced by the verification above:
+  `WASAPI mix is 44100 Hz/2 ch (port wants 48000 Hz stereo)` →
+  `WASAPI init failed; falling back to waveOut`. Sound works, but the shared-mode
+  path a user selected is not what they get, and the reason is a resample the
+  backend declines to do. Done means: resample to the device mix rate, or report
+  the downgrade where a user can see it rather than only in the log.
+
+
 - [ ] **The boot overlay is stuck at "Step 1 of 6 / 15%" while the console shows
   module linking.** Root cause found, two parts, both in `GameSession.cs`:
   1. There are **two parallel launch implementations**. `GameThreadProc` runs the

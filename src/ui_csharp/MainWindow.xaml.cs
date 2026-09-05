@@ -1261,6 +1261,11 @@ namespace Pcsx5Ui
 
             // Launch via IPC (out-of-process core).
             _session.Reset();
+            // Point the core at the same config the Settings screen writes.
+            // Without this the shell saved settings the emulator never read.
+            if (!string.IsNullOrEmpty(_configPath))
+                _session.ConfigDir = Path.GetDirectoryName(_configPath);
+
             _session.LaunchIpc(game);
 
             // Subscribe to IPC frame events for display.

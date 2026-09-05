@@ -93,6 +93,26 @@ namespace Pcsx5Ui
         }
 
         // ── Launch ─────────────────────────────────────────────────────────
+        /// <summary>
+        /// Directory holding global.json and per-title overrides, passed to the
+        /// child core as --config-dir.
+        /// </summary>
+        /// <remarks>
+        /// Without this the shell's settings had no effect on the emulator at
+        /// all. The core defaults config_dir to the *relative* path
+        /// "pcsx5_config", resolved against the child's working directory, and
+        /// WorkingDirectory below is pinned to the folder holding pcsx5_cli.exe
+        /// (it has to be -- the Windows loader must find pcsx5_core.dll before
+        /// main() runs). The shell meanwhile writes its config next to its own
+        /// executable. So the shell saved to
+        /// src/ui_csharp/bin/Release/.../pcsx5_config/global.json while the core
+        /// read build/bin/Release/pcsx5_config/global.json: two files, and every
+        /// setting silently discarded. Measured on 2026-09-05 -- the shell's copy
+        /// had audio.backend 1, the core's had 0, which is exactly why there was
+        /// no sound.
+        /// </remarks>
+        public string ConfigDir { get; set; }
+
         public bool Launch(string ebootPath, string titleId)
         {
             _cts = new CancellationTokenSource();
@@ -130,6 +150,15 @@ namespace Pcsx5Ui
             };
             if (!string.IsNullOrEmpty(titleId))
                 psi.Arguments = $"--title-id={titleId} " + psi.Arguments;
+
+            // Absolute: the child's working directory is not the shell's, so a
+            // relative path here would land in the wrong tree -- which is the
+            // whole defect this argument exists to close.
+            if (!string.IsNullOrEmpty(ConfigDir))
+            {
+                string abs = Path.GetFullPath(ConfigDir);
+                psi.Arguments = $"--config-dir=\"{abs}\" " + psi.Arguments;
+            }
 
             try
             {

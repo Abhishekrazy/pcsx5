@@ -51,6 +51,10 @@ namespace Pcsx5Ui
         /// <summary>Boot phase changed (Initializing → Running).</summary>
         public event Action<BootPhase, string> BootPhaseChanged;
 
+        /// <summary>Config directory handed to the core, so the shell's
+        /// settings are the ones the emulator actually reads.</summary>
+        internal string ConfigDir { get; set; }
+
         // The last stage actually reached, so streaming a detail line does not
         // silently rewind the step counter, and a throttle so a boot that emits
         // thousands of log lines does not flood the dispatcher.
@@ -154,7 +158,7 @@ namespace Pcsx5Ui
             State = GameSessionState.Booting;
             _dispatcher.BeginInvoke(() => Started?.Invoke(game));
 
-            _ipc = new IpcSession(_dispatcher);
+            _ipc = new IpcSession(_dispatcher) { ConfigDir = ConfigDir };
             _ipc.LogLine += line => Log(line);
             _ipc.Crashed += (code, msg) =>
                 _dispatcher.BeginInvoke(() => Crashed?.Invoke(code, msg));
