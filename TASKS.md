@@ -313,6 +313,11 @@ Ordered by dependency, one subsystem per change (Rule 10):
   - [x] **Canvas card capped at 560 px** - DONE. At 1920x1080 the uncapped
     Viewbox scaled the pad taller than the window and pushed the tests and
     the whole mapping editor off-screen. Same after-frame shows all three.
+  - [x] **Footer no longer repeats the selected title** - DONE. Asked
+    2026-09-06: "from footer remove the selected title name". Selecting a
+    tile wrote "Selected: <id>" into the footer status, duplicating the
+    header. The write is gone; the footer keeps its real status. Seen:
+    artifacts/runtime/SHELL_20260906_024019/frames/frame_0010.png
   - [ ] The mapping editor's side columns scroll inside 260 px strips with
     tiny viewports (thumbs visible in the after-frame). A page-level scroll
     for the Controller tab would read better than three nested ones.

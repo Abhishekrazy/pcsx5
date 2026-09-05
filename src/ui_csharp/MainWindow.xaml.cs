@@ -1021,7 +1021,10 @@ namespace Pcsx5Ui
                 }
             }
 
-            FooterStatus.Text = $"Selected: {game.TitleId}";
+            // Selecting a tile no longer writes "Selected: <title>" into the footer
+            // (asked 2026-09-06). The header already shows the selected title, so
+            // the footer keeps its last real status -- Ready, Running, a rebind
+            // prompt -- instead of repeating it.
 
             // Trigger music playback with debounce
             TriggerTitleMusic(game);
