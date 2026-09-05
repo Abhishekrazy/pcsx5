@@ -545,7 +545,7 @@
                         </StackPanel>
 
                         <!-- Right Column: Visual Art Preview of Selected Game -->
-                        <Border x:Name="GameCoverDisplayBorder" local:Theme.ClipCorners="16" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,10,0" Width="300" MinHeight="300" CornerRadius="{DynamicResource ThemeCornerL}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}"><Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="16" Direction="270" Opacity="0.5"/></Border.Effect></Border>
+                        <Border x:Name="GameCoverDisplayBorder" local:Theme.ClipCorners="16" Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="0,0,10,0" Width="300" Height="300" CornerRadius="{DynamicResource ThemeCornerL}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}"><Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="16" Direction="270" Opacity="0.5"/></Border.Effect><Border x:Name="GameCoverInner" Background="{DynamicResource ThemeRaised}"/></Border>
                     </Grid>
 
                     <!-- Lower Carousel shelf: horizontal scrolling game icons -->

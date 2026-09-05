@@ -1012,15 +1012,18 @@ namespace Pcsx5Ui
             var coverImage = LoadImageHelper(game.CoverPath);
             if (coverImage != null)
             {
-                GameCoverDisplayBorder.Background = new ImageBrush
+                // Uniform, not UniformToFill: a wide or tall cover is shown whole
+                // inside the card on the surface colour instead of being cropped
+                // (asked 2026-09-06: "big image of title not showing fully").
+                GameCoverInner.Background = new ImageBrush
                 {
                     ImageSource = coverImage,
-                    Stretch = Stretch.UniformToFill
+                    Stretch = Stretch.Uniform
                 };
             }
             else
             {
-                GameCoverDisplayBorder.Background = new SolidColorBrush(Color.FromArgb(30, 255, 255, 255));
+                GameCoverInner.Background = (Brush)FindResource("ThemeRaised");
             }
 
             var bgImage = LoadImageHelper(game.BackgroundPath);

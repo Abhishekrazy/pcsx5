@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using System.Collections.Generic;
+using System.Windows.Controls;
 using System.Windows.Shapes;
 using Microsoft.Win32;
 
@@ -144,21 +145,51 @@ namespace Pcsx5Ui
             if (d is not FrameworkElement fe) return;
             fe.SizeChanged -= ClippedSizeChanged;
             fe.SizeChanged += ClippedSizeChanged;
+            // A Border's own stroke must not be clipped (it would lose its
+            // outer half at every corner), so a Border clips its CHILD; the
+            // child may be laid out later than the border, so listen to both.
+            if (fe is Border b && b.Child is FrameworkElement ch)
+            {
+                ch.SizeChanged -= ClippedChildSizeChanged;
+                ch.SizeChanged += ClippedChildSizeChanged;
+            }
             _clipped.Add(new WeakReference<FrameworkElement>(fe));
             RefreshClip(fe);
         }
 
         private static void ClippedSizeChanged(object sender, SizeChangedEventArgs e) => RefreshClip((FrameworkElement)sender);
+        private static void ClippedChildSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (sender is FrameworkElement ch && ch.Parent is FrameworkElement parent) RefreshClip(parent);
+        }
 
         private static void RefreshClip(FrameworkElement fe)
         {
             double size = GetClipCorners(fe);
-            double w = fe.ActualWidth, h = fe.ActualHeight;
-            if (size <= 0 || w <= 0 || h <= 0) { fe.Clip = null; return; }
-            if (Corners == CornersSharp) { fe.Clip = null; return; }
+            FrameworkElement target = fe;
+            // Rounded: clip the child so the stroke keeps its full width along
+            // the curve. Cut: clip the element itself so the stroke follows the
+            // chamfer too (a square stroke around a chamfered image reads as a
+            // bug, and the cut-away corner is surface-on-ground, near invisible).
+            if (fe is Border b && b.Child is FrameworkElement ch)
+            {
+                if (Corners == CornersCut) { ch.Clip = null; }
+                else
+                {
+                    fe.Clip = null;
+                    target = ch;
+                // The child sits inside the stroke, so its corner is tighter by
+                // the stroke width (a rounded outer 16 with a 1 px stroke is an
+                // inner 15).
+                    size = Math.Max(0, size - Math.Max(b.BorderThickness.Left, b.BorderThickness.Top));
+                }
+            }
+            double w = target.ActualWidth, h = target.ActualHeight;
+            if (size <= 0 || w <= 0 || h <= 0) { target.Clip = null; return; }
+            if (Corners == CornersSharp) { target.Clip = null; return; }
             if (Corners == CornersRounded)
             {
-                fe.Clip = new RectangleGeometry(new Rect(0, 0, w, h), size, size);
+                target.Clip = new RectangleGeometry(new Rect(0, 0, w, h), size, size);
                 return;
             }
             double c = Math.Min(size, Math.Min(w, h) / 2);
@@ -175,7 +206,7 @@ namespace Pcsx5Ui
                 ctx.LineTo(new Point(0, c), false, false);
             }
             g.Freeze();
-            fe.Clip = g;
+            target.Clip = g;
         }
 
         /// <summary>"system" follows Windows' apps-theme setting; a missing key

@@ -380,6 +380,17 @@ Ordered by dependency, one subsystem per change (Rule 10):
     artifacts/runtime/SHELL_20260906_042407/frames/frame_0004.png and
     frame_0010.png; light with coral, list and Theme choice page
     SHELL_20260906_042601/frames/frame_0008.png and frame_0011.png.
+  - [x] **Hero cover shown whole; strokes survive the clip** - DONE. Asked
+    2026-09-06: "fix border issue and main menu big image of title not
+    showing fully". The hero cover was painted UniformToFill, so any
+    non-square cover was cropped; it now paints Uniform into an inner
+    element of a fixed 300x300 card, whole, on the surface colour. The
+    border issue: the corner clip was applied to the bordered element, so
+    its own stroke lost half its width at every corner. Rounded now clips
+    the Border's child (stroke intact, inner radius reduced by the stroke);
+    cut clips the element so the stroke follows the chamfer; sharp clips
+    nothing. Seen: cut artifacts/runtime/SHELL_20260906_043015/frames/frame_0005.png,
+    rounded SHELL_20260906_043026/frames/frame_0005.png.
   - [ ] Step 5 - Input. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 
