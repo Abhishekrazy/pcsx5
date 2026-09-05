@@ -106,7 +106,20 @@ namespace DualSense {
 
     // True when the open device is on Bluetooth, where the report above
     // applies.  Over USB the controller exposes real audio endpoints instead.
+    // Speaker volume (0-255) and preamp gain for the Bluetooth audio lane,
+    // applied by the next init-prime. Defaults are 0x50 and 0x02.
+    void SetBluetoothAudioLevels(u8 speaker_volume, u8 preamp_gain);
+
     bool IsBluetooth();
+
+    // Stream 16-bit signed PCM to the controller's speaker (or its headset jack)
+    // over Bluetooth, as Opus in report 0x35.
+    //
+    // `pcm` is interleaved stereo at 48000 Hz and `frames` counts stereo frames,
+    // not bytes. Blocks for the natural duration of the audio. Returns false if
+    // the controller is not on Bluetooth, if the encoder cannot be configured,
+    // or if a write fails.
+    bool PlaySpeakerPcmBlocking(const s16* pcm, size_t frames, bool headset);
 
 } // namespace DualSense
 } // namespace GPU

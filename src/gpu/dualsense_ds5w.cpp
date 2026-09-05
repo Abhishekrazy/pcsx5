@@ -38,6 +38,8 @@ extern "C" {
 #include <hidpi.h>
 }
 
+#include <opus.h>
+#include <algorithm>
 #include <DualSenseWindows/IO.h>
 #include "../../third_party/DualSenseWindows/src/DualSenseWindows/DS_CRC32.h"
 #include <DualSenseWindows/Device.h>
@@ -66,6 +68,19 @@ struct ReaderState {
     // needs the raw HID handle to write report 0x32, which DS5W does not model.
     // Published here under its own mutex rather than reaching into the context
     // from another thread.
+    // Speaker levels used by the Bluetooth audio init-prime. Held here rather
+    // than hardcoded because the right values are a matter for the ear: the
+    // first working playback was audible but far quieter than the same pad on a
+    // PS5, and volume (0-255) and preamp gain are the two levers that decide it.
+    std::mutex        audio_level_mutex;
+    // Chosen by ear against real hardware, not copied from the reference.
+    // A sweep of (0x50,0x02), (0xFF,0x02) and (0xFF,0x03) was played to the
+    // user: 0xFF was the one that matched PS5-like loudness, and raising the
+    // preamp past 0x02 made no audible difference. So volume is the control
+    // that matters here and the preamp is not worth pushing.
+    u8                speaker_volume = 0xFF;
+    u8                preamp_gain    = 0x02;
+
     std::mutex        dev_mutex;
     void*             dev_handle = nullptr;
     bool              dev_bluetooth = false;
@@ -348,6 +363,12 @@ void ReaderThread() {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+void SetBluetoothAudioLevels(u8 speaker_volume, u8 preamp_gain) {
+    std::lock_guard<std::mutex> lk(S().audio_level_mutex);
+    S().speaker_volume = speaker_volume;
+    S().preamp_gain    = preamp_gain;
+}
+
 bool IsBluetooth() {
     std::lock_guard<std::mutex> lk(S().dev_mutex);
     return S().dev_handle != nullptr && S().dev_bluetooth;
@@ -408,7 +429,7 @@ void FinishReport(u8* r) {
 
 // The init-prime that opens the audio stream. Its 47-byte state block is what
 // enables the audio path; haptics sent without it are accepted and ignored.
-void BuildInitPrime(u8* r, u8 volume) {
+void BuildInitPrime(u8* r, u8 volume, u8 preamp) {
     std::memset(r, 0, kHapticReportSize);
     r[0] = 0x32;
     r[1] = 0x10;
@@ -420,7 +441,7 @@ void BuildInitPrime(u8* r, u8 volume) {
     st[4]  = volume;                       // headphone volume
     st[5]  = volume;                       // speaker volume
     st[7]  = 0x30;                         // output path: speaker
-    st[37] = 0x02;                         // audio control 2
+    st[37] = preamp;                       // audio control 2 == preamp gain
     FinishReport(r);
 }
 
@@ -485,7 +506,13 @@ bool PlayHapticsPcmBlocking(const u8* pcm, size_t bytes) {
         return ok && written == out_len;
     };
 
-    BuildInitPrime(wire.data(), 0x40);
+    u8 vol, pre;
+    {
+        std::lock_guard<std::mutex> lk(S().audio_level_mutex);
+        vol = S().speaker_volume;
+        pre = S().preamp_gain;
+    }
+    BuildInitPrime(wire.data(), vol, pre);
     if (!write_wire()) {
         LOG_WARN(GPU, "DualSense haptics: init-prime write failed (error %lu).",
                  static_cast<unsigned long>(::GetLastError()));
@@ -532,6 +559,227 @@ bool PlayHapticsPcmBlocking(const u8* pcm, size_t bytes) {
 
     LOG_INFO(GPU, "DualSense haptics: primed, prerolled, sent %zu report(s) "
                   "(%zu bytes of s8 PCM).", sent, bytes);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Speaker audio over Bluetooth -- report 0x35.
+//
+// A different lane from haptics, and a different payload: where 0x32 carries
+// raw signed PCM for the voice coils, 0x35 carries a 200-byte Opus frame for
+// the speaker or the headset jack. The controller holds a real Opus decoder,
+// which is why libopus is vendored (ADR-002) instead of an encoder being
+// written here.
+//
+// Layout, 334 bytes -- the same envelope as the haptics report:
+//   [0]        0x35
+//   [1]        sequence in the high nibble
+//   [2..3]     0x91 0x07   sized packet 0x11, length 7
+//   [4..10]    0xFE, 0x40 x5, interval counter
+//   [11]       route: 0x93 speaker, 0x96 headset
+//   [12]       200
+//   [13..212]  one Opus frame, exactly 200 bytes
+//   [213..329] zero
+//   [330..333] CRC32, little-endian, over [0..329]
+//
+// The 200-byte payload is not a maximum, it is the size: 160 kbps x 10 ms is
+// 1600 bits is 200 bytes, so the encoder must be CBR at that rate or the frame
+// does not fill the slot. A short frame is rejected rather than padded, because
+// padding would hide a misconfigured encoder behind audible-but-wrong output.
+//
+// The device tick is 10.667 ms (512 frames at 48 kHz) while an Opus frame at
+// 48 kHz is 480 samples, so each 512-frame block is resampled to 480 before
+// encoding -- which is what the reference implementations do.
+// ---------------------------------------------------------------------------
+namespace {
+
+constexpr size_t kSpeakerReportSize = 334;
+constexpr size_t kOpusPayloadBytes  = 200;
+constexpr size_t kOpusPayloadOffset = 13;
+constexpr size_t kSpeakerCrcOffset  = kSpeakerReportSize - 4;
+constexpr int    kOpusSampleRate    = 48000;
+constexpr int    kOpusChannels      = 2;
+constexpr int    kOpusFrameSamples  = 480;   // 10 ms at 48 kHz
+constexpr int    kTickFrames        = 512;   // 10.667 ms, the device audio tick
+constexpr int    kOpusBitrate       = 160000;
+
+void FinishSpeakerReport(u8* r) {
+    const u32 crc = __DS5W::CRC32::compute(r, kSpeakerCrcOffset);
+    r[kSpeakerCrcOffset + 0] = static_cast<u8>(crc);
+    r[kSpeakerCrcOffset + 1] = static_cast<u8>(crc >> 8);
+    r[kSpeakerCrcOffset + 2] = static_cast<u8>(crc >> 16);
+    r[kSpeakerCrcOffset + 3] = static_cast<u8>(crc >> 24);
+}
+
+void BuildSpeakerReport(u8* r, const u8* opus, u8 seq, u8 counter, bool headset) {
+    std::memset(r, 0, kSpeakerReportSize);
+    r[0]  = 0x35;
+    r[1]  = static_cast<u8>((seq & 0x0F) << 4);
+    r[2]  = 0x91;
+    r[3]  = 0x07;
+    r[4]  = 0xFE;
+    r[5] = r[6] = r[7] = r[8] = r[9] = 0x40;
+    r[10] = counter;
+    r[11] = headset ? 0x96 : 0x93;
+    r[12] = static_cast<u8>(kOpusPayloadBytes);
+    std::memcpy(r + kOpusPayloadOffset, opus, kOpusPayloadBytes);
+    FinishSpeakerReport(r);
+}
+
+// Linear resample of one interleaved stereo block, 512 frames down to 480.
+void Resample512to480(const s16* in, s16* out) {
+    for (int i = 0; i < kOpusFrameSamples; ++i) {
+        const double pos = static_cast<double>(i) * kTickFrames / kOpusFrameSamples;
+        const int    i0  = static_cast<int>(pos);
+        const int    i1  = (i0 + 1 < kTickFrames) ? i0 + 1 : kTickFrames - 1;
+        const double f   = pos - i0;
+        for (int c = 0; c < kOpusChannels; ++c) {
+            const double a = in[i0 * kOpusChannels + c];
+            const double b = in[i1 * kOpusChannels + c];
+            out[i * kOpusChannels + c] = static_cast<s16>(a + (b - a) * f);
+        }
+    }
+}
+
+} // namespace
+
+bool PlaySpeakerPcmBlocking(const s16* pcm, size_t frames, bool headset) {
+    if (!pcm || frames == 0) return false;
+
+    void* handle = nullptr;
+    bool bt = false;
+    {
+        std::lock_guard<std::mutex> lk(S().dev_mutex);
+        handle = S().dev_handle;
+        bt = S().dev_bluetooth;
+    }
+    if (!handle) { LOG_WARN(GPU, "DualSense speaker: no open device."); return false; }
+    if (!bt) {
+        LOG_WARN(GPU, "DualSense speaker: device is on USB, where the audio "
+                      "endpoints apply instead of report 0x35.");
+        return false;
+    }
+
+    USHORT out_len = 0;
+    {
+        PHIDP_PREPARSED_DATA pp = nullptr;
+        if (::HidD_GetPreparsedData(reinterpret_cast<HANDLE>(handle), &pp) && pp) {
+            HIDP_CAPS caps{};
+            if (::HidP_GetCaps(pp, &caps) == HIDP_STATUS_SUCCESS) {
+                out_len = caps.OutputReportByteLength;
+            }
+            ::HidD_FreePreparsedData(pp);
+        }
+    }
+    if (out_len < kSpeakerReportSize) {
+        LOG_WARN(GPU, "DualSense speaker: device output report length %u is too "
+                      "small for the %zu-byte audio report.",
+                 static_cast<unsigned>(out_len), kSpeakerReportSize);
+        return false;
+    }
+
+    int err = OPUS_OK;
+    OpusEncoder* enc = ::opus_encoder_create(kOpusSampleRate, kOpusChannels,
+                                             OPUS_APPLICATION_AUDIO, &err);
+    if (!enc || err != OPUS_OK) {
+        LOG_WARN(GPU, "DualSense speaker: opus_encoder_create failed (%s).",
+                 ::opus_strerror(err));
+        return false;
+    }
+    ::opus_encoder_ctl(enc, OPUS_SET_BITRATE(kOpusBitrate));
+    ::opus_encoder_ctl(enc, OPUS_SET_VBR(0));            // CBR: the slot is fixed
+    ::opus_encoder_ctl(enc, OPUS_SET_VBR_CONSTRAINT(0));
+    ::opus_encoder_ctl(enc, OPUS_SET_FORCE_CHANNELS(kOpusChannels));
+    ::opus_encoder_ctl(enc, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
+
+    std::vector<u8> wire(out_len, 0);
+    auto write_wire = [&]() -> bool {
+        DWORD written = 0;
+        const BOOL ok = ::WriteFile(reinterpret_cast<HANDLE>(handle), wire.data(),
+                                    static_cast<DWORD>(out_len), &written, nullptr);
+        return ok && written == out_len;
+    };
+
+    // Open the stream with the same init-prime the haptics lane needs. Without
+    // it the controller accepts every report and plays nothing -- the failure
+    // that cost two rounds on the haptics path.
+    u8 vol, pre;
+    {
+        std::lock_guard<std::mutex> lk(S().audio_level_mutex);
+        vol = S().speaker_volume;
+        pre = S().preamp_gain;
+    }
+    LOG_INFO(GPU, "DualSense speaker: volume=0x%02X preamp=0x%02X", vol, pre);
+    BuildInitPrime(wire.data(), vol, pre);
+    if (!write_wire()) {
+        LOG_WARN(GPU, "DualSense speaker: init-prime write failed (error %lu).",
+                 static_cast<unsigned long>(::GetLastError()));
+        ::opus_encoder_destroy(enc);
+        return false;
+    }
+
+    const auto tick = std::chrono::microseconds(
+        1000000ll * kTickFrames / kOpusSampleRate);   // 10667 us
+
+    u8 seq = 0, counter = 0;
+    auto next = std::chrono::steady_clock::now();
+
+    std::vector<s16> block(static_cast<size_t>(kTickFrames) * kOpusChannels, 0);
+    std::vector<s16> resampled(static_cast<size_t>(kOpusFrameSamples) * kOpusChannels, 0);
+    u8 opus_frame[kOpusPayloadBytes];
+
+    auto encode_and_send = [&](bool& ok_out) -> bool {
+        Resample512to480(block.data(), resampled.data());
+        const int n = ::opus_encode(enc, resampled.data(), kOpusFrameSamples,
+                                    opus_frame,
+                                    static_cast<opus_int32>(kOpusPayloadBytes));
+        if (n != static_cast<int>(kOpusPayloadBytes)) {
+            LOG_WARN(GPU, "DualSense speaker: encoder produced %d bytes, not %zu. "
+                          "The 48 kHz / 10 ms / %d bps CBR configuration is wrong; "
+                          "a short frame would not fill the report slot.",
+                     n, kOpusPayloadBytes, kOpusBitrate);
+            ok_out = false;
+            return false;
+        }
+        BuildSpeakerReport(wire.data(), opus_frame, seq, counter++, headset);
+        seq = static_cast<u8>((seq + 1) & 0x0F);
+        if (!write_wire()) {
+            LOG_WARN(GPU, "DualSense speaker: write failed (error %lu).",
+                     static_cast<unsigned long>(::GetLastError()));
+            ok_out = false;
+            return false;
+        }
+        return true;
+    };
+
+    bool ok = true;
+
+    // Preroll silence so the decoder is running before real audio arrives.
+    for (int i = 0; i < 8; ++i) {
+        std::fill(block.begin(), block.end(), static_cast<s16>(0));
+        if (!encode_and_send(ok)) { ::opus_encoder_destroy(enc); return false; }
+        next += tick;
+        std::this_thread::sleep_until(next);
+    }
+
+    size_t frame_pos = 0, sent = 0;
+    while (frame_pos < frames) {
+        const size_t avail = frames - frame_pos;
+        const size_t take = avail < static_cast<size_t>(kTickFrames)
+                                ? avail : static_cast<size_t>(kTickFrames);
+        std::fill(block.begin(), block.end(), static_cast<s16>(0));
+        std::memcpy(block.data(), pcm + frame_pos * kOpusChannels,
+                    take * kOpusChannels * sizeof(s16));
+        if (!encode_and_send(ok)) { ::opus_encoder_destroy(enc); return false; }
+        ++sent;
+        frame_pos += take;
+        next += tick;
+        std::this_thread::sleep_until(next);
+    }
+
+    ::opus_encoder_destroy(enc);
+    LOG_INFO(GPU, "DualSense speaker: primed, prerolled, sent %zu Opus report(s) "
+                  "to the %s.", sent, headset ? "headset" : "speaker");
     return true;
 }
 

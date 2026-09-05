@@ -232,8 +232,16 @@ endif()
 # src/gpu/dualsense_ds5w.cpp is compiled into the core, the CLI and the test
 # executables alike. link_libraries() only affects targets created after this
 # point, which is why it sits here rather than beside the other link lines.
+#
+# opus and hid join it for the same reason: that file now also carries the
+# Bluetooth speaker lane, which encodes to Opus (ADR-002) and queries the HID
+# capabilities to size its output-report writes. Adding them to pcsx5_core alone
+# left twenty test targets unable to find opus.h.
 if(WIN32)
     link_libraries(dualsense_windows)
+    if(PCSX5_HAVE_OPUS)
+        link_libraries(opus hid)
+    endif()
 endif()
 
 # ------------------------------------------------------------------------
@@ -853,12 +861,13 @@ if(BUILD_TESTING)
     # ------------------------------------------------------------------------
     # Compiles the DualSense implementation in directly: pcsx5_core is a DLL
     # with an explicit export list, and these are internal symbols.
+    # Links opus for the Bluetooth speaker lane (report 0x35).
     add_executable(dualsense_probe
         tools/dualsense_probe.cpp
         src/gpu/dualsense_ds5w.cpp
         src/common/log.cpp
     )
-    target_link_libraries(dualsense_probe PRIVATE dualsense_windows hid)
+    target_link_libraries(dualsense_probe PRIVATE dualsense_windows hid opus)
     target_include_directories(dualsense_probe PRIVATE src third_party)
     target_compile_options(dualsense_probe PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W3>)
 
