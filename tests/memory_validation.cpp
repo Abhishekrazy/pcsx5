@@ -228,7 +228,9 @@ void TestBufferReadWrite() {
            "GuardedWrite reports success");
     EXPECT_EQ(wrote, N, "GuardedWrite wrote every byte");
     std::vector<u8> dst(N, 0);
-    Memory::ReadBuffer(a, dst.data(), N);
+    u64 got = 0;
+    EXPECT(Memory::GuardedRead(dst.data(), a, N, &got), "GuardedRead reports success");
+    EXPECT_EQ(got, N, "GuardedRead read every byte");
     for (u64 i = 0; i < N; ++i) {
         EXPECT_EQ(dst[i], src[i], "BufferReadWrite byte roundtrip");
     }
@@ -240,7 +242,9 @@ void TestBufferReadWrite() {
            "GuardedWrite reports success across a page boundary");
     EXPECT_EQ(wrote, CROSS, "GuardedWrite wrote every byte across a page boundary");
     std::vector<u8> dst2(CROSS, 0);
-    Memory::ReadBuffer(a, dst2.data(), CROSS);
+    EXPECT(Memory::GuardedRead(dst2.data(), a, CROSS, &got),
+           "GuardedRead reports success across a page boundary");
+    EXPECT_EQ(got, CROSS, "GuardedRead read every byte across a page boundary");
     for (u64 i = 0; i < CROSS; ++i) {
         EXPECT_EQ(dst2[i], src2[i], "BufferReadWrite cross-page byte roundtrip");
     }

@@ -99,7 +99,17 @@ uint32_t AudioDevice::OutputDirect(u64 guest_addr, uint32_t frame_count) {
     if (guest_addr == 0 || frame_count == 0) return 0;
     const size_t byte_count = static_cast<size_t>(frame_count) * 2 * sizeof(s16);
     auto buf = std::make_unique<u8[]>(byte_count);
-    Memory::ReadBuffer(guest_addr, buf.get(), byte_count);
+    u64 got = 0;
+    if (!Memory::GuardedRead(buf.get(), guest_addr, byte_count, &got) ||
+        got != byte_count) {
+        // Playing an unread buffer emits whatever the allocator last left
+        // there -- audible noise, and nothing to explain it.
+        LOG_WARN(HLE, "audio OutputDirect: read %llu of %zu bytes at 0x%llx; "
+                      "dropping the block rather than playing uninitialised memory",
+                 (unsigned long long)got, byte_count,
+                 (unsigned long long)guest_addr);
+        return 0;
+    }
     Output(buf.get(), frame_count);
     return frame_count;
 }

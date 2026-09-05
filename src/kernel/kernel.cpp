@@ -1263,7 +1263,15 @@ namespace Kernel {
                 guest_addr_t entry_va = out_module.entry_point;
                 constexpr u64 MAX_SCAN = 512;
                 u8 entry_bytes[MAX_SCAN] = {};
-                Memory::ReadBuffer(entry_va, entry_bytes, MAX_SCAN);
+                // A heuristic scan: a short read is normal near the end of a
+                // mapping. Keep the count so the scan below walks only bytes
+                // that actually came from the guest.
+                u64 entry_scanned = 0;
+                Memory::GuardedRead(entry_bytes, entry_va, MAX_SCAN, &entry_scanned);
+                if (entry_scanned == 0) {
+                    LOG_WARN(Kernel, "Entry-point scan read nothing at 0x%llx",
+                             (unsigned long long)entry_va);
+                }
 
                 guest_addr_t code_start = 0, code_end = 0;
                 for (const auto& seg : out_module.segments) {
@@ -1284,7 +1292,9 @@ namespace Kernel {
                     if (plt_va < code_start || plt_va >= code_end) continue;
 
                     u8 xk_bytes[MAX_SCAN] = {};
-                    Memory::ReadBuffer(plt_va, xk_bytes, MAX_SCAN);
+                    u64 xk_scanned = 0;
+                    Memory::GuardedRead(xk_bytes, plt_va, MAX_SCAN, &xk_scanned);
+                    if (xk_scanned == 0) continue;
 
                     for (u64 i = 0x10; i < MAX_SCAN - 5 && !main_va; ++i) {
                         if (xk_bytes[i] != 0xE8) continue;
@@ -1293,7 +1303,14 @@ namespace Kernel {
                         if (target < code_start || target >= code_end || target == plt_va) continue;
 
                         u8 prologue[4] = {};
-                        Memory::ReadBuffer(target, prologue, 4);
+                        // Unlike the scans above this decides something. Four
+                        // bytes of our own stack would classify an arbitrary
+                        // address as a function.
+                        u64 pro_read = 0;
+                        if (!Memory::GuardedRead(prologue, target, 4, &pro_read) ||
+                            pro_read != 4) {
+                            continue;
+                        }
                         bool looks_like_fn =
                             (prologue[0] == 0x55) ||
                             (prologue[0] == 0x48 && prologue[1] == 0x83 && prologue[2] == 0xEC) ||
@@ -1322,8 +1339,17 @@ namespace Kernel {
             guest_addr_t dt_init_va = 0;
             for (u64 i = 0; i < num_dyn; ++i) {
                 Loader::Elf64_Dyn dyn;
-                Memory::ReadBuffer(out_module.dynamic_table_addr + i * sizeof(Loader::Elf64_Dyn),
-                                   &dyn, sizeof(Loader::Elf64_Dyn));
+                const guest_addr_t dyn_at =
+                    out_module.dynamic_table_addr + i * sizeof(Loader::Elf64_Dyn);
+                u64 dyn_read = 0;
+                if (!Memory::GuardedRead(&dyn, dyn_at, sizeof(Loader::Elf64_Dyn),
+                                         &dyn_read) ||
+                    dyn_read != sizeof(Loader::Elf64_Dyn)) {
+                    LOG_WARN(Kernel, "DT_INIT scan stopped at 0x%llx (read %llu of "
+                                     "%zu bytes)", (unsigned long long)dyn_at,
+                             (unsigned long long)dyn_read, sizeof(Loader::Elf64_Dyn));
+                    break;
+                }
                 if (dyn.d_tag == 0) break;
                 if (dyn.d_tag == Loader::DT_INIT && dyn.d_un.d_ptr != 0)
                     dt_init_va = out_module.base_address + dyn.d_un.d_ptr;
@@ -1336,7 +1362,14 @@ namespace Kernel {
 
         // Print first 256 bytes of the guest memory starting from base address before applying final protection
         u8 base_code[256] = {};
-        Memory::ReadBuffer(out_module.base_address, base_code, 256);
+        u64 base_got = 0;
+        Memory::GuardedRead(base_code, out_module.base_address, 256, &base_got);
+        if (base_got != 256) {
+            LOG_WARN(Kernel, "Base dump read %llu of 256 bytes at 0x%llx; the rest "
+                             "of the hex below is padding, not guest memory",
+                     (unsigned long long)base_got,
+                     (unsigned long long)out_module.base_address);
+        }
         char base_hex[1024] = {0};
         int hex_offset = 0;
         for (int i = 0; i < 256; ++i) {
@@ -1457,7 +1490,15 @@ namespace Kernel {
         // Dump first 64 bytes at the entry point for boot diagnostics.
         {
             u8 entry_code[64] = {};
-            Memory::ReadBuffer(main_module.entry_point, entry_code, sizeof(entry_code));
+            u64 entry_got = 0;
+            Memory::GuardedRead(entry_code, main_module.entry_point,
+                                sizeof(entry_code), &entry_got);
+            if (entry_got != sizeof(entry_code)) {
+                LOG_WARN(Kernel, "Entry dump read %llu of %zu bytes at 0x%llx; the "
+                                 "rest of the hex below is padding",
+                         (unsigned long long)entry_got, sizeof(entry_code),
+                         (unsigned long long)main_module.entry_point);
+            }
             char hex[192] = {};
             for (int i = 0; i < 64; ++i)
                 sprintf_s(hex + i * 2, sizeof(hex) - i * 2, "%02X", entry_code[i]);
@@ -1482,7 +1523,14 @@ namespace Kernel {
 
         // Print first 256 bytes of the guest memory starting from base address
         u8 base_code[256] = {};
-        Memory::ReadBuffer(main_module.base_address, base_code, 256);
+        u64 main_base_got = 0;
+        Memory::GuardedRead(base_code, main_module.base_address, 256, &main_base_got);
+        if (main_base_got != 256) {
+            LOG_WARN(Kernel, "Base dump read %llu of 256 bytes at 0x%llx; the rest "
+                             "of the hex below is padding, not guest memory",
+                     (unsigned long long)main_base_got,
+                     (unsigned long long)main_module.base_address);
+        }
         char base_hex[1024] = {0};
         int hex_offset = 0;
         for (int i = 0; i < 256; ++i) {
@@ -2060,7 +2108,10 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             const u64 watch = WatchpointAddress();
             u64 value = 0;
             const bool readable = Memory::IsReadable(watch, sizeof(u64));
-            if (readable) Memory::ReadBuffer(watch, &value, sizeof(value));
+            u64 watch_read = 0;
+            if (readable) {
+                Memory::GuardedRead(&value, watch, sizeof(value), &watch_read);
+            }
             // A host RIP means the emulator itself performed the store, not
             // guest code.  The raw address moves with ASLR, so resolve it to
             // module+offset, which is stable across runs and identifiable.
@@ -2188,16 +2239,28 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             
             // Dump instruction bytes at host RIP
             if (Memory::IsReadable(context->Rip, 16)) {
-                u8 inst[16];
-                Memory::ReadBuffer(context->Rip, inst, 16);
+                u8 inst[16] = {};
+                u64 inst_got = 0;
+                Memory::GuardedRead(inst, context->Rip, 16, &inst_got);
+                if (inst_got != 16) {
+                    LOG_WARN(Kernel, "Instruction dump read %llu of 16 bytes; the "
+                                     "remainder below is padding",
+                             (unsigned long long)inst_got);
+                }
                 LOG_INFO(Kernel, "VEH Instruction Bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
                          inst[0], inst[1], inst[2], inst[3], inst[4], inst[5], inst[6], inst[7],
                          inst[8], inst[9], inst[10], inst[11], inst[12], inst[13], inst[14], inst[15]);
             }
             // Dump instruction bytes BEFORE host RIP
             if (Memory::IsReadable(context->Rip - 32, 32)) {
-                u8 inst[32];
-                Memory::ReadBuffer(context->Rip - 32, inst, 32);
+                u8 inst[32] = {};
+                u64 prev_got = 0;
+                Memory::GuardedRead(inst, context->Rip - 32, 32, &prev_got);
+                if (prev_got != 32) {
+                    LOG_WARN(Kernel, "Preceding-instruction dump read %llu of 32 "
+                                     "bytes; the remainder below is padding",
+                             (unsigned long long)prev_got);
+                }
                 LOG_INFO(Kernel, "VEH Prev Instr Bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
                          inst[0], inst[1], inst[2], inst[3], inst[4], inst[5], inst[6], inst[7],
                          inst[8], inst[9], inst[10], inst[11], inst[12], inst[13], inst[14], inst[15],
@@ -2219,12 +2282,20 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 FILE* fdump = nullptr;
                 if (fopen_s(&fdump, rip_dump_path.c_str(), "wb") == 0 && fdump) {
                     u64 dump_base = context->Rip - 32768;
-                    u8* dump_buf = new u8[65536];
-                    Memory::ReadBuffer(dump_base, dump_buf, 65536);
-                    fwrite(dump_buf, 1, 65536, fdump);
+                    // Zero-initialised, and only the bytes that were actually
+                    // read are written. The buffer used to be uninitialised heap
+                    // and the full 64KB was written whatever the read returned,
+                    // so a partial read produced a crash dump padded with this
+                    // process's own heap -- presented to the reader as guest
+                    // memory. A dump nobody can trust is worse than no dump.
+                    u8* dump_buf = new u8[65536]();
+                    u64 dumped = 0;
+                    Memory::GuardedRead(dump_buf, dump_base, 65536, &dumped);
+                    fwrite(dump_buf, 1, static_cast<size_t>(dumped), fdump);
                     fclose(fdump);
                     delete[] dump_buf;
-                    LOG_INFO(Kernel, "Dumped 64KB around RIP to %s", rip_dump_path.c_str());
+                    LOG_INFO(Kernel, "Dumped %llu of 65536 bytes around RIP to %s",
+                             (unsigned long long)dumped, rip_dump_path.c_str());
                 }
 
                 const std::string prx_dump_path = dump_dir + "/crash_prx_dump.bin";
@@ -2232,13 +2303,15 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                 if (fopen_s(&fdump2, prx_dump_path.c_str(), "wb") == 0 && fdump2) {
                     const u64 dump_base = CrashDumpBase();
                     const u64 dump_size = CrashDumpSize();
-                    u8* dump_buf = new u8[dump_size];
-                    Memory::ReadBuffer(dump_base, dump_buf, dump_size);
-                    fwrite(dump_buf, 1, dump_size, fdump2);
+                    u8* dump_buf = new u8[dump_size]();
+                    u64 dumped = 0;
+                    Memory::GuardedRead(dump_buf, dump_base, dump_size, &dumped);
+                    fwrite(dump_buf, 1, static_cast<size_t>(dumped), fdump2);
                     fclose(fdump2);
                     delete[] dump_buf;
-                    LOG_INFO(Kernel, "Dumped %llu bytes at 0x%llx to %s",
-                             dump_size, dump_base, prx_dump_path.c_str());
+                    LOG_INFO(Kernel, "Dumped %llu of %llu bytes at 0x%llx to %s",
+                             (unsigned long long)dumped, dump_size, dump_base,
+                             prx_dump_path.c_str());
                 }
             }
         }
@@ -2554,7 +2627,22 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                 }
                                 guest_addr_t tls_address = tp + displacement;
                                 u64 tls_value = 0;
-                                Memory::ReadBuffer(tls_address, &tls_value, access_size);
+                                // Mirrors the emulated TLS store: resuming the
+                                // guest with a value that was never read hands
+                                // it whatever this local happened to hold.
+                                u64 tls_read = 0;
+                                if (!Memory::GuardedRead(&tls_value, tls_address,
+                                                         access_size, &tls_read) ||
+                                    tls_read != access_size) {
+                                    LOG_ERROR(Kernel,
+                                              "Emulated TLS read failed at 0x%llx (%llu of "
+                                              "%llu bytes); not resuming the guest on a load "
+                                              "that did not happen.",
+                                              (unsigned long long)tls_address,
+                                              (unsigned long long)tls_read,
+                                              (unsigned long long)access_size);
+                                    return EXCEPTION_CONTINUE_SEARCH;
+                                }
                                 
                                 u64* reg_ptr = nullptr;
                                 // In 64-bit mode with REX prefix, reg can be 8-15

@@ -393,9 +393,13 @@ void StageIntoImage(VkImage image, u32 w, u32 h, VkImageLayout final_layout,
 
 // Reads a guest memory range; false when unreadable.
 bool ReadGuest(u64 addr, void* dst, size_t size) {
-    if (!Memory::IsReadable(addr, size)) return false;
-    Memory::ReadBuffer(addr, dst, size);
-    return true;
+    // GuardedRead performs the readability check and the copy together and
+    // reports what it actually transferred. The previous form asked
+    // IsReadable, then called a wrapper that discarded its own result -- so a
+    // range that became unreadable between the two calls, or a transfer that
+    // stopped part-way, still returned true.
+    u64 got = 0;
+    return Memory::GuardedRead(dst, addr, size, &got) && got == size;
 }
 
 // ---------------------------------------------------------------------------
@@ -722,8 +726,17 @@ RenderTargetEntry* EnsureRenderTarget(u64 base, u32 w, u32 h, VkFormat format) {
         std::vector<u8> pixels;
         if (Memory::IsReadable(base, need)) {
             pixels.resize(static_cast<size_t>(need));
-            Memory::ReadBuffer(base, pixels.data(), pixels.size());
-            src = pixels.data();
+            u64 got = 0;
+            if (Memory::GuardedRead(pixels.data(), base, pixels.size(), &got) &&
+                got == pixels.size()) {
+                src = pixels.data();
+            } else {
+                LOG_WARN(GPU, "Texture upload: read %llu of %zu bytes at 0x%llx; "
+                              "leaving the source unset rather than uploading "
+                              "an uninitialised buffer",
+                         (unsigned long long)got, pixels.size(),
+                         (unsigned long long)base);
+            }
         } else {
             zeros.assign(static_cast<size_t>(need), 0);
             src = zeros.data();
@@ -1397,7 +1410,16 @@ bool VkDrawExecute(const VkDrawCall& call) {
             if (mapped) ctx->fn.UnmapMemory(ctx->device, hb->mem);
             return false;
         }
-        Memory::ReadBuffer(b.guest_addr, mapped, static_cast<size_t>(size));
+        u64 got = 0;
+        if (!Memory::GuardedRead(mapped, b.guest_addr, static_cast<size_t>(size), &got) ||
+            got != static_cast<u64>(size)) {
+            LOG_WARN(GPU, "Uniform buffer read %llu of %llu bytes at 0x%llx; "
+                          "dropping the draw rather than binding stale memory",
+                     (unsigned long long)got, (unsigned long long)size,
+                     (unsigned long long)b.guest_addr);
+            ctx->fn.UnmapMemory(ctx->device, hb->mem);
+            return false;
+        }
         ctx->fn.UnmapMemory(ctx->device, hb->mem);
         buffer_infos[i].buffer = hb->buf;
         buffer_infos[i].offset = 0;
@@ -1440,7 +1462,16 @@ bool VkDrawExecute(const VkDrawCall& call) {
             if (mapped) ctx->fn.UnmapMemory(ctx->device, g_ds.index_ring.mem);
             return false;
         }
-        Memory::ReadBuffer(call.index_addr, mapped, static_cast<size_t>(bytes));
+        u64 got = 0;
+        if (!Memory::GuardedRead(mapped, call.index_addr, static_cast<size_t>(bytes), &got) ||
+            got != static_cast<u64>(bytes)) {
+            LOG_WARN(GPU, "Index buffer read %llu of %llu bytes at 0x%llx; "
+                          "dropping the draw rather than indexing with garbage",
+                     (unsigned long long)got, (unsigned long long)bytes,
+                     (unsigned long long)call.index_addr);
+            ctx->fn.UnmapMemory(ctx->device, g_ds.index_ring.mem);
+            return false;
+        }
         ctx->fn.UnmapMemory(ctx->device, g_ds.index_ring.mem);
     }
 
@@ -1578,9 +1609,19 @@ bool VkDispatchExecute(const VkDispatchCall& call) {
             return false;
         VkDeviceSize off = 0;
         for (const auto& b : call.buffers) {
-            if (b.size_bytes > 0)
-                Memory::ReadBuffer(b.guest_addr, mapped + off,
-                                   static_cast<size_t>(b.size_bytes));
+            if (b.size_bytes > 0) {
+                u64 got = 0;
+                if (!Memory::GuardedRead(mapped + off, b.guest_addr,
+                                         static_cast<size_t>(b.size_bytes), &got) ||
+                    got != b.size_bytes) {
+                    LOG_WARN(GPU, "Vertex buffer read %llu of %llu bytes at 0x%llx; "
+                                  "dropping the draw",
+                             (unsigned long long)got,
+                             (unsigned long long)b.size_bytes,
+                             (unsigned long long)b.guest_addr);
+                    return false;
+                }
+            }
             off += b.size_bytes;
         }
         std::memcpy(mapped + off, call.cs_scalars.data(),
@@ -1654,7 +1695,15 @@ bool VkDispatchExecute(const VkDispatchCall& call) {
                                   layout, 0, 1, &set, 0, nullptr);
     if (call.indirect && call.indirect_addr) {
         VkDispatchIndirectCommand cmd;
-        Memory::ReadBuffer(call.indirect_addr, &cmd, sizeof(cmd));
+        u64 got = 0;
+        if (!Memory::GuardedRead(&cmd, call.indirect_addr, sizeof(cmd), &got) ||
+            got != sizeof(cmd)) {
+            LOG_WARN(GPU, "Indirect dispatch read %llu of %zu bytes at 0x%llx; "
+                          "skipping rather than dispatching an unread group count",
+                     (unsigned long long)got, sizeof(cmd),
+                     (unsigned long long)call.indirect_addr);
+            return false;
+        }
         VkDeviceSize ioff = 0;
         if (StagingAlloc(sizeof(cmd), &ioff)) {
             u8* m = nullptr;

@@ -889,17 +889,18 @@ namespace HLE {
                 u64 plt_stub_debug = guest_rip - 5 + 0x115333 + 5; 
                 
                 LOG_ERROR(HLE, "Real crashing function around RIP 0x%llx:", guest_rip);
-                u8 buf[128];
-                if (Memory::IsReadable(guest_rip - 64, 128)) {
-                    Memory::ReadBuffer(guest_rip - 64, buf, 128);
+                u8 buf[128] = {};
+                u64 dbg_got = 0;
+                if (Memory::GuardedRead(buf, guest_rip - 64, 128, &dbg_got) &&
+                    dbg_got == 128) {
                     char hex[512] = {0};
                     for (int i = 0; i < 128; ++i) sprintf_s(hex + i * 3, sizeof(hex) - i * 3, "%02X ", buf[i]);
                     LOG_ERROR(HLE, "  Code: %s", hex);
                 }
                 
                 LOG_ERROR(HLE, "DebugRaiseException PLT stub at 0x%llx:", plt_stub_debug);
-                if (Memory::IsReadable(plt_stub_debug, 32)) {
-                    Memory::ReadBuffer(plt_stub_debug, buf, 32);
+                if (Memory::GuardedRead(buf, plt_stub_debug, 32, &dbg_got) &&
+                    dbg_got == 32) {
                     char hex[128] = {0};
                     for (int i = 0; i < 16; ++i) sprintf_s(hex + i * 3, sizeof(hex) - i * 3, "%02X ", buf[i]);
                     LOG_ERROR(HLE, "  Code: %s", hex);
@@ -2285,9 +2286,10 @@ namespace HLE {
             // Just read the guest string and print it to the emulator log if it's text.
             u64 total_bytes = size * count;
             if (total_bytes > 0 && total_bytes < 10000) {
-                if (Memory::IsReadable(buf, total_bytes)) {
-                    std::string s(total_bytes, '\0');
-                    Memory::ReadBuffer(buf, s.data(), total_bytes);
+                u64 fw_got = 0;
+                std::string s(total_bytes, '\0');
+                if (Memory::GuardedRead(s.data(), buf, total_bytes, &fw_got) &&
+                    fw_got == total_bytes) {
                     LOG_INFO(HLE, "[GUEST_FWRITE]: %s", s.c_str());
                 }
             }

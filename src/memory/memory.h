@@ -178,7 +178,15 @@ inline void Write(guest_addr_t addr, T value) {
     *reinterpret_cast<T*>(addr) = value;
 }
 
-void ReadBuffer (guest_addr_t addr, void* dest, u64 size);
+// ReadBuffer was removed for the same reason as WriteBuffer, below.  It wrapped
+// GuardedRead and discarded the result, so a refused or partial read left the
+// caller holding whatever was already in its destination buffer -- our own
+// stack, usually -- and proceeding on it as though it were guest data.  That is
+// worse than the write case: a failed write leaves the guest with stale data it
+// might notice, while a failed read hands the emulator plausible-looking
+// garbage that it then acts on.
+//
+// Use GuardedRead and check the result.
 
 // WriteBuffer was removed deliberately.  It wrapped GuardedWrite and threw the
 // result away, so every caller silently reported success for writes the guest

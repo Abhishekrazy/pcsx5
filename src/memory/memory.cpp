@@ -1055,13 +1055,6 @@ bool IsValidGuestPointer(guest_addr_t address) {
     return Query(address, &info) == Status::Ok;
 }
 
-void ReadBuffer(guest_addr_t addr, void* dest, u64 size) {
-    if (addr >= 0x200000000ULL && addr < 0x202000000ULL) {
-        LOG_DEBUG(Memory, "Framebuffer read at guest 0x%llx (size=%llu)", addr, size);
-    }
-    GuardedRead(dest, addr, size);
-}
-
 bool GuardedRead(void* dest_host, guest_addr_t src_guest, u64 size, u64* out_bytes_read) {
     if (out_bytes_read) *out_bytes_read = 0;
     if (size == 0) return true;

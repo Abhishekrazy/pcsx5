@@ -22,7 +22,7 @@
 #include <vector>
 
 // Minimal link stubs: libkeystone.cpp's HLE registration block references
-// HLE::RegisterSymbol and Memory::ReadBuffer, but the header parser under
+// HLE::RegisterSymbol and Memory::GuardedRead, but the header parser under
 // test never calls them, so no-op definitions keep this test self-contained
 // (no full hle.cpp / memory.cpp link required).
 namespace HLE {
@@ -31,7 +31,15 @@ void RegisterSymbol(const std::string& /*module_name*/,
 } // namespace HLE
 
 namespace Memory {
-void ReadBuffer(guest_addr_t /*addr*/, void* /*dest*/, u64 /*size*/) {}
+// Returns false -- "nothing was read" -- rather than silently succeeding.  This
+// stub cannot reach guest memory, and the parser under test does not use it; if
+// a future test does exercise that path, a false here makes the caller bail
+// loudly instead of parsing whatever its buffer happened to contain.
+bool GuardedRead(void* /*dest_host*/, guest_addr_t /*src_guest*/, u64 /*size*/,
+                 u64* out_bytes_read) {
+    if (out_bytes_read) *out_bytes_read = 0;
+    return false;
+}
 } // namespace Memory
 
 namespace {

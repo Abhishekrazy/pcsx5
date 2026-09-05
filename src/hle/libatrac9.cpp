@@ -148,8 +148,15 @@ u64 Atrac9InitHandleImpl(const GuestArgs& args) {
 
     // Peek enough for either the 4-byte config or a RIFF header.  64 bytes
     // covers RIFF(12) + a fmt chunk with the GUID + config at offset 44.
-    u8 probe[64];
-    Memory::ReadBuffer(config_addr, probe, sizeof(probe));
+    u8 probe[64] = {};
+    u64 probe_got = 0;
+    if (!Memory::GuardedRead(probe, config_addr, sizeof(probe), &probe_got) ||
+        probe_got != sizeof(probe)) {
+        LOG_WARN(HLE, "sceAtrac9InitHandle: config at 0x%llx unreadable (%llu of "
+                      "%zu bytes)", (unsigned long long)config_addr,
+                 (unsigned long long)probe_got, sizeof(probe));
+        return SCE_ATRAC9_ERROR_INVALID_ARG;
+    }
 
     u8 config[ATRAC9_CONFIG_DATA_SIZE];
     bool from_riff = false;
@@ -161,7 +168,15 @@ u64 Atrac9InitHandleImpl(const GuestArgs& args) {
                                      ? (riff_size + 8)
                                      : 4096;
         std::vector<u8> head(header_bytes);
-        Memory::ReadBuffer(config_addr, head.data(), header_bytes);
+        u64 head_got = 0;
+        if (!Memory::GuardedRead(head.data(), config_addr, header_bytes, &head_got) ||
+            head_got != header_bytes) {
+            LOG_WARN(HLE, "sceAtrac9InitHandle: RIFF header at 0x%llx unreadable "
+                          "(%llu of %llu bytes)", (unsigned long long)config_addr,
+                     (unsigned long long)head_got,
+                     (unsigned long long)header_bytes);
+            return SCE_ATRAC9_ERROR_INVALID_ARG;
+        }
         if (!ParseRiffConfig(head, config)) {
             LOG_WARN(HLE, "sceAtrac9InitHandle: RIFF image is not ATRAC9");
             return SCE_ATRAC9_ERROR_INVALID_CONFIG;
@@ -267,7 +282,15 @@ u64 Atrac9DecodeImpl(const GuestArgs& args) {
     // the frame (same workaround as snd_player.cpp).
     constexpr u64 kReadSlack = 0x10;
     std::vector<u8> frame(frame_bytes + kReadSlack, 0);
-    Memory::ReadBuffer(at9_addr, frame.data(), frame_bytes);
+    u64 frame_got = 0;
+    if (!Memory::GuardedRead(frame.data(), at9_addr, frame_bytes, &frame_got) ||
+        frame_got != frame_bytes) {
+        // Decoding an unread frame turns uninitialised bytes into audio.
+        LOG_WARN(HLE, "sceAtrac9Decode: frame at 0x%llx unreadable (%llu of %llu "
+                      "bytes)", (unsigned long long)at9_addr,
+                 (unsigned long long)frame_got, (unsigned long long)frame_bytes);
+        return SCE_ATRAC9_ERROR_INVALID_ARG;
+    }
 
     const u64 pcm_bytes = static_cast<u64>(info.frameSamples) *
                           static_cast<u64>(info.channels) * 2;

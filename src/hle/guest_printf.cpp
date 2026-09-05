@@ -382,7 +382,16 @@ u64 GuestVsprintf(const GuestArgs& args) {
     if (!fmt_ptr || !valist_ptr) return 0;
     const std::string fmt = ReadGuestCString(fmt_ptr, 2048);
     SysVAmd64VaList valist;
-    Memory::ReadBuffer(valist_ptr, &valist, sizeof(valist));
+    // The va_list drives every conversion below; an unread one would be walked
+    // as though it held real argument pointers.
+    u64 va_read = 0;
+    if (!Memory::GuardedRead(&valist, valist_ptr, sizeof(valist), &va_read) ||
+        va_read != sizeof(valist)) {
+        LOG_WARN(HLE, "guest printf: va_list at 0x%llx unreadable (%llu of %zu bytes)",
+                 (unsigned long long)valist_ptr,
+                 (unsigned long long)va_read, sizeof(valist));
+        return static_cast<u64>(-1);
+    }
     const std::string formatted = FormatGuestString(fmt, valist);
     return WriteFormatted(dest, 0, formatted);
 }
@@ -395,7 +404,16 @@ u64 GuestVsnprintf(const GuestArgs& args) {
     if (!fmt_ptr || !valist_ptr) return 0;
     const std::string fmt = ReadGuestCString(fmt_ptr, 2048);
     SysVAmd64VaList valist;
-    Memory::ReadBuffer(valist_ptr, &valist, sizeof(valist));
+    // The va_list drives every conversion below; an unread one would be walked
+    // as though it held real argument pointers.
+    u64 va_read = 0;
+    if (!Memory::GuardedRead(&valist, valist_ptr, sizeof(valist), &va_read) ||
+        va_read != sizeof(valist)) {
+        LOG_WARN(HLE, "guest printf: va_list at 0x%llx unreadable (%llu of %zu bytes)",
+                 (unsigned long long)valist_ptr,
+                 (unsigned long long)va_read, sizeof(valist));
+        return static_cast<u64>(-1);
+    }
     const std::string formatted = FormatGuestString(fmt, valist);
     return WriteFormatted(dest, size, formatted);
 }

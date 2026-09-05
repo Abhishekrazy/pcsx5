@@ -371,7 +371,9 @@ void TestDtNeeded() {
     {
         u8 raw[64] = {};
         const size_t want = (sizeof(strtab_bytes) < sizeof(raw)) ? sizeof(strtab_bytes) : sizeof(raw);
-        Memory::ReadBuffer(BASE + strtab_off, raw, want);
+        u64 got = 0;
+        EXPECT(Memory::GuardedRead(raw, BASE + strtab_off, want, &got) &&
+               got == want, "string table fully readable");
         std::fprintf(stderr, "[DBG] raw hex:");
         for (size_t i = 0; i < want; ++i) std::fprintf(stderr, " %02x", raw[i]);
         std::fprintf(stderr, "\n");

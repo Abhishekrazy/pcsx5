@@ -481,7 +481,18 @@ namespace Loader {
                 std::vector<Elf64_Dyn> dyn_entries(num_entries);
 
                 // Read from mapped guest memory instead of file stream to handle truncated files
-                Memory::ReadBuffer(base_address + phdr.p_vaddr, dyn_entries.data(), phdr.p_memsz);
+                u64 dyn_read = 0;
+                if (!Memory::GuardedRead(dyn_entries.data(), base_address + phdr.p_vaddr,
+                                         phdr.p_memsz, &dyn_read) ||
+                    dyn_read != phdr.p_memsz) {
+                    LOG_ERROR(Loader, "PT_DYNAMIC read failed at 0x%llx: %llu of %llu "
+                                      "bytes. Every import and relocation below comes "
+                                      "from this table; refusing to continue.",
+                              (unsigned long long)(base_address + phdr.p_vaddr),
+                              (unsigned long long)dyn_read,
+                              (unsigned long long)phdr.p_memsz);
+                    return false;
+                }
                 LOG_INFO(Loader, "PT_DYNAMIC loaded from guest memory at 0x%llx", base_address + phdr.p_vaddr);
 
                 int dyn_idx = 0;
@@ -593,7 +604,15 @@ namespace Loader {
         // Load String Table
         if (strtab_addr && strsz) {
             out_module.string_table.resize(strsz);
-            Memory::ReadBuffer(strtab_addr, &out_module.string_table[0], strsz);
+            u64 str_read = 0;
+            if (!Memory::GuardedRead(&out_module.string_table[0], strtab_addr, strsz,
+                                     &str_read) || str_read != strsz) {
+                LOG_ERROR(Loader, "String table read failed at 0x%llx: %llu of %llu "
+                                  "bytes. Library and symbol names resolve through it.",
+                          (unsigned long long)strtab_addr,
+                          (unsigned long long)str_read, (unsigned long long)strsz);
+                return false;
+            }
 
             // Extract needed libraries using string table offsets
             for (u64 offset : needed_offsets) {
@@ -621,7 +640,18 @@ namespace Loader {
             guest_addr_t curr_sym = symtab_addr;
             while (true) {
                 Elf64_Sym sym;
-                Memory::ReadBuffer(curr_sym, &sym, sizeof(Elf64_Sym));
+                // This is a heuristic scan with no length known up front, so a
+                // refused read means the end of mapped symbols rather than a
+                // fault. Stop, but say so -- silently treating it as a normal
+                // terminator would hide a genuinely truncated table.
+                u64 sym_read = 0;
+                if (!Memory::GuardedRead(&sym, curr_sym, sizeof(Elf64_Sym), &sym_read) ||
+                    sym_read != sizeof(Elf64_Sym)) {
+                    LOG_WARN(Loader, "Symbol scan stopped at 0x%llx: read %llu of %zu "
+                                     "bytes", (unsigned long long)curr_sym,
+                             (unsigned long long)sym_read, sizeof(Elf64_Sym));
+                    break;
+                }
                 
                 // End of symtab is usually marked by zero name if it's the first, 
                 // or if we exceed string limits.
@@ -647,7 +677,17 @@ namespace Loader {
         if (rela_addr && relasz) {
             u64 num_relas = relasz / sizeof(Elf64_Rela);
             out_module.relocations.resize(num_relas);
-            Memory::ReadBuffer(rela_addr, out_module.relocations.data(), relasz);
+            u64 rela_read = 0;
+            if (!Memory::GuardedRead(out_module.relocations.data(), rela_addr, relasz,
+                                     &rela_read) || rela_read != relasz) {
+                LOG_ERROR(Loader, "Relocation table read failed at 0x%llx: %llu of %llu "
+                                  "bytes. Applying relocations from a partly-filled "
+                                  "buffer would patch the module with uninitialised "
+                                  "addresses; refusing to continue.",
+                          (unsigned long long)rela_addr,
+                          (unsigned long long)rela_read, (unsigned long long)relasz);
+                return false;
+            }
             LOG_INFO(Loader, "Loaded %zu standard relocations.", num_relas);
         }
 
@@ -655,7 +695,15 @@ namespace Loader {
         if (jmprel_addr && pltrelsz) {
             u64 num_plts = pltrelsz / sizeof(Elf64_Rela);
             out_module.plt_relocations.resize(num_plts);
-            Memory::ReadBuffer(jmprel_addr, out_module.plt_relocations.data(), pltrelsz);
+            u64 plt_read = 0;
+            if (!Memory::GuardedRead(out_module.plt_relocations.data(), jmprel_addr,
+                                     pltrelsz, &plt_read) || plt_read != pltrelsz) {
+                LOG_ERROR(Loader, "PLT relocation read failed at 0x%llx: %llu of %llu "
+                                  "bytes; refusing to continue.",
+                          (unsigned long long)jmprel_addr,
+                          (unsigned long long)plt_read, (unsigned long long)pltrelsz);
+                return false;
+            }
             LOG_INFO(Loader, "Loaded %zu PLT/Jump relocations.", num_plts);
         }
 

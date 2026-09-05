@@ -250,7 +250,15 @@ uint32_t Xa2Device::OutputDirect(u64 guest_addr, uint32_t frame_count) {
     if (block->data.size() < samples) {
         block->data.resize(samples);
     }
-    Memory::ReadBuffer(guest_addr, block->data.data(), samples * sizeof(s16));
+    const size_t block_bytes = samples * sizeof(s16);
+    u64 got = 0;
+    if (!Memory::GuardedRead(block->data.data(), guest_addr, block_bytes, &got) ||
+        got != block_bytes) {
+        LOG_WARN(HLE, "XAudio2: read %llu of %zu bytes at 0x%llx; dropping the block",
+                 (unsigned long long)got, block_bytes,
+                 (unsigned long long)guest_addr);
+        return 0;
+    }
 
     if (m_volume != 1.0f) {
         for (size_t i = 0; i < samples; ++i) {

@@ -47,7 +47,13 @@ u64 KeystoneValidateImpl(const GuestArgs& args) {
         return ORBIS_GEN2_ERROR_INVALID_ARGUMENT;
     }
     std::vector<u8> buf(static_cast<size_t>(size));
-    Memory::ReadBuffer(blob, buf.data(), buf.size());
+    u64 got = 0;
+    if (!Memory::GuardedRead(buf.data(), blob, buf.size(), &got) ||
+        got != buf.size()) {
+        LOG_WARN(HLE, "KEYSTONE_INVALID reason=unreadable blob=0x%llx read=%llu of %zu",
+                 (unsigned long long)blob, (unsigned long long)got, buf.size());
+        return ORBIS_GEN2_ERROR_INVALID_ARGUMENT;
+    }
     KeystoneHeader header;
     const KeystoneError err = ParseKeystoneHeader(buf.data(), buf.size(), &header);
     if (err != KeystoneError::kOk) {

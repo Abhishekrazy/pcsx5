@@ -305,7 +305,9 @@ void TestMultiSegment() {
 
     // Data should be readable from guest memory.
     u8 readback[4] = {};
-    Memory::ReadBuffer(DATA_VADDR, readback, sizeof(readback));
+    u64 rb_got = 0;
+    EXPECT(Memory::GuardedRead(readback, DATA_VADDR, sizeof(readback), &rb_got) &&
+           rb_got == sizeof(readback), "data segment readable");
     EXPECT(std::memcmp(readback, data_init, sizeof(data_init)) == 0,
            "Data segment contents match file");
 }
@@ -336,7 +338,10 @@ void TestBSS() {
 
     // The BSS tail must read as zero.
     u8 zeros[BSS_PADDING];
-    Memory::ReadBuffer(TEXT_VADDR + sizeof(kExitCode), zeros, sizeof(zeros));
+    u64 z_got = 0;
+    EXPECT(Memory::GuardedRead(zeros, TEXT_VADDR + sizeof(kExitCode), sizeof(zeros),
+                               &z_got) && z_got == sizeof(zeros),
+           "bss tail readable");
     for (size_t i = 0; i < BSS_PADDING; ++i) {
         EXPECT_EQ(zeros[i], (u8)0, "BSS byte must be zero");
     }

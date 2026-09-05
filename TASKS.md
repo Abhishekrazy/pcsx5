@@ -80,7 +80,7 @@ success and dropped GPU work loud, then ratchet each swept class shut.
   to the folder holding `pcsx5_cli.exe` — it has to, because the Windows loader
   must find `pcsx5_core.dll` before `main()` runs. The shell writes its config
   next to its own executable. So the shell saved to
-  `src/ui_csharp/bin/Release/.../pcsx5_config/global.json` while the core read
+  its own `pcsx5_config/global.json`, beside the shell executable, while the core read
   `build/bin/Release/pcsx5_config/global.json`.
   Measured: the shell's copy had `audio.backend: 1`, the core's had `0`. The
   user had turned sound on; the file saying so was never opened.
@@ -134,13 +134,19 @@ success and dropped GPU work loud, then ratchet each swept class shut.
   IPC frame-sharing path, but a shell that renders frames asking for headless
   needs a reason recorded next to it.
 
-- [ ] **`.gemini/` and `GEMINI.md` are absent from this working tree, and were
-  never in git history** (`git log --all --diff-filter=A -- .gemini` is empty).
-  `CLAUDE.md` names the 33 `.gemini/rules/` files as binding and `GEMINI.md` as
-  the companion constitution. They are untracked by design, so nothing here can
-  restore them. This is recorded rather than worked around: the local `doc_links`
-  failure is that checker correctly reporting 25 unresolvable citations. It
-  passes on CI, where `.claude/` is absent too and neither set is scanned.
+- [x] **The Gemini rulebook was deleted deliberately; dangling citations removed**
+  `CLAUDE.md` and the `.claude/` rules, skills and agents cited 33 companion rule
+  files and `GEMINI.md` as binding. The repository owner confirmed on 2026-09-05
+  that they were deleted on purpose and are not wanted back, so the citations
+  were removed rather than left pointing at missing documents — a contract that
+  cites a document nobody has cannot be followed and cannot be checked.
+  Anything stated only in that rulebook is no longer in force; the thirteen rules
+  in `.claude/rules/` are now the whole of it.
+  This was a real `doc_links` failure doing its job: it had been red locally
+  since the deletion. `check_doc_links` now reports 202 referenced paths, all
+  resolving. It passed on CI throughout, because `.claude/` is absent there too
+  and neither set is scanned — worth remembering the next time CI green is
+  mistaken for a clean tree.
 
 ## Phase 1 - Instruments that cannot lie (NOW)
 

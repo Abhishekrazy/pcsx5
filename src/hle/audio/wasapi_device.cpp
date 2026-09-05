@@ -308,7 +308,15 @@ uint32_t WasapiDevice::OutputDirect(u64 guest_addr, uint32_t frame_count) {
 
     const size_t samples = static_cast<size_t>(frame_count) * 2;
     std::vector<s16> block(samples);
-    Memory::ReadBuffer(guest_addr, block.data(), samples * sizeof(s16));
+    const size_t block_bytes = samples * sizeof(s16);
+    u64 got = 0;
+    if (!Memory::GuardedRead(block.data(), guest_addr, block_bytes, &got) ||
+        got != block_bytes) {
+        LOG_WARN(HLE, "WASAPI: read %llu of %zu bytes at 0x%llx; dropping the block",
+                 (unsigned long long)got, block_bytes,
+                 (unsigned long long)guest_addr);
+        return 0;
+    }
 
     if (m_volume != 1.0f) {
         for (size_t i = 0; i < samples; ++i) {

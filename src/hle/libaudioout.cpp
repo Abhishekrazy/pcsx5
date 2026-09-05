@@ -892,7 +892,15 @@ void RegisterLibAudioOut() {
             for (int ch = 0; ch < 8; ++ch) {
                 if ((channel_flags & (1u << ch)) == 0) continue;
                 s32 value = 0;
-                Memory::ReadBuffer(volumes_addr + ch * sizeof(s32), &value, sizeof(value));
+                u64 got = 0;
+                if (!Memory::GuardedRead(&value, volumes_addr + ch * sizeof(s32),
+                                         sizeof(value), &got) ||
+                    got != sizeof(value)) {
+                    LOG_WARN(HLE, "sceAudioOutSetVolume: channel %d volume at 0x%llx "
+                                  "unreadable", ch,
+                             (unsigned long long)(volumes_addr + ch * sizeof(s32)));
+                    return kErrorInvalidArgument;
+                }
                 if (value > max_volume) max_volume = value;
                 found = true;
             }

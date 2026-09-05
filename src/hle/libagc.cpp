@@ -796,7 +796,18 @@ bool AgcDecodeDrawShader(u64 code_addr, GPU::Shader::GcnProgram& program_out) {
         }
         const size_t base = words.size();
         words.resize(base + 0x1000 / 4);
-        Memory::ReadBuffer(code_addr + offset, words.data() + base, 0x1000);
+        u64 got = 0;
+        if (!Memory::GuardedRead(words.data() + base, code_addr + offset, 0x1000,
+                                 &got) || got != 0x1000) {
+            // Shader words that were never read would be translated as though
+            // they were instructions. Keep only what actually arrived.
+            LOG_WARN(HLE, "Shader fetch read %llu of 4096 bytes at 0x%llx; "
+                          "truncating the stream here",
+                     (unsigned long long)got,
+                     (unsigned long long)(code_addr + offset));
+            words.resize(base + static_cast<size_t>(got) / 4);
+            break;
+        }
     }
 
     AgcCachedProgram cached;
