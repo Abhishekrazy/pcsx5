@@ -167,10 +167,10 @@
 
         <!-- PS5 Console Theme Styles for Multi-Page Settings -->
         <Style x:Key="Ps5HubTileStyle" TargetType="Button">
-            <Setter Property="Background" Value="#121622"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeSurface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
             <Setter Property="BorderThickness" Value="1.5"/>
-            <Setter Property="BorderBrush" Value="#1FFFFFFF"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeHairline}"/>
             <Setter Property="Margin" Value="6"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -185,12 +185,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="TileBorder" Property="Background" Value="#1A2234"/>
-                                <Setter TargetName="TileBorder" Property="BorderBrush" Value="#400099FF"/>
+                                <Setter TargetName="TileBorder" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                <Setter TargetName="TileBorder" Property="BorderBrush" Value="{DynamicResource ThemeTextMuted}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="TileBorder" Property="Background" Value="#200070D1"/>
-                                <Setter TargetName="TileBorder" Property="BorderBrush" Value="#0099FF"/>
+                                <Setter TargetName="TileBorder" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                <Setter TargetName="TileBorder" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
                                 <Setter TargetName="TileBorder" Property="BorderThickness" Value="2"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -200,10 +200,10 @@
         </Style>
 
         <Style x:Key="Ps5SettingRowStyle" TargetType="Button">
-            <Setter Property="Background" Value="#10141E"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeSurface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
             <Setter Property="BorderThickness" Value="1.5"/>
-            <Setter Property="BorderBrush" Value="#15FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeHairline}"/>
             <Setter Property="Margin" Value="0,4,0,4"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -218,12 +218,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RowBorder" Property="Background" Value="#1A2030"/>
-                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="#300099FF"/>
+                                <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="{DynamicResource ThemeTextMuted}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="RowBorder" Property="Background" Value="#250070D1"/>
-                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="#0099FF"/>
+                                <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
                                 <Setter TargetName="RowBorder" Property="BorderThickness" Value="2"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -233,10 +233,10 @@
         </Style>
 
         <Style x:Key="Ps5OptionItemStyle" TargetType="Button">
-            <Setter Property="Background" Value="#121622"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeSurface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
             <Setter Property="BorderThickness" Value="1.5"/>
-            <Setter Property="BorderBrush" Value="#18FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeHairline}"/>
             <Setter Property="Margin" Value="0,5,0,5"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -251,12 +251,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="OptionBorder" Property="Background" Value="#1E2638"/>
-                                <Setter TargetName="OptionBorder" Property="BorderBrush" Value="#400099FF"/>
+                                <Setter TargetName="OptionBorder" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                <Setter TargetName="OptionBorder" Property="BorderBrush" Value="{DynamicResource ThemeTextMuted}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="OptionBorder" Property="Background" Value="#280070D1"/>
-                                <Setter TargetName="OptionBorder" Property="BorderBrush" Value="#0099FF"/>
+                                <Setter TargetName="OptionBorder" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                <Setter TargetName="OptionBorder" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
                                 <Setter TargetName="OptionBorder" Property="BorderThickness" Value="2"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -266,10 +266,10 @@
         </Style>
 
         <Style x:Key="Ps5PillToggleStyle" TargetType="Button">
-            <Setter Property="Background" Value="#161B28"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeSurface}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
             <Setter Property="BorderThickness" Value="1.5"/>
-            <Setter Property="BorderBrush" Value="#20FFFFFF"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeHairline}"/>
             <Setter Property="Margin" Value="8,0,8,0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Height" Value="52"/>
@@ -284,12 +284,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PillBorder" Property="Background" Value="#222A3E"/>
-                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="#400099FF"/>
+                                <Setter TargetName="PillBorder" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="{DynamicResource ThemeTextMuted}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="PillBorder" Property="Background" Value="#300070D1"/>
-                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="#0099FF"/>
+                                <Setter TargetName="PillBorder" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                <Setter TargetName="PillBorder" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
                                 <Setter TargetName="PillBorder" Property="BorderThickness" Value="2"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -1193,8 +1193,8 @@
 
                         <!-- Level 1 Header -->
                         <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                            <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeDisplayS}" FontWeight="ExtraBold" Foreground="White"/>
-                            <TextBlock Text="{loc:Tr Key=ui.customize_system_preferences_display_audio_c}" FontSize="{DynamicResource TypeL}" Foreground="#80A0A0A5" Margin="0,4,0,0"/>
+                            <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeDisplayS}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}"/>
+                            <TextBlock Text="{loc:Tr Key=ui.customize_system_preferences_display_audio_c}" FontSize="{DynamicResource TypeL}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,4,0,0"/>
                         </StackPanel>
 
                         <!-- Level 1 Category Grid -->
@@ -1208,14 +1208,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#200099FF" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="🖥️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.renderer_backend_resolution_scaling_fullscre}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.renderer_backend_resolution_scaling_fullscre}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1227,14 +1227,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#2000C853" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="🔊" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{loc:Tr Key=ui.audio_output}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.wasapi_driver_master_volume_buffer_latency_t}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.audio_output}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.wasapi_driver_master_volume_buffer_latency_t}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1246,14 +1246,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FF9100" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="🎮" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{loc:Tr Key=ui.accessories_amp_controllers}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.dualsense_native_hid_deadzones_vibration_hap}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.accessories_amp_controllers}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.dualsense_native_hid_deadzones_vibration_hap}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1265,14 +1265,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#209C27B0" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="💾" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{loc:Tr Key=ui.storage_amp_game_folders}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.game_scan_paths_saved_data_storage_crash_bun}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.storage_amp_game_folders}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.game_scan_paths_saved_data_storage_crash_bun}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1284,14 +1284,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20E91E63" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="⚙️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{loc:Tr Key=ui.system_amp_emulation_hle}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.strict_symbol_imports_function_call_tracing_}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.system_amp_emulation_hle}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.strict_symbol_imports_function_call_tracing_}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1303,14 +1303,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#2000E5FF" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="📜" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{loc:Tr Key=ui.diagnostics_amp_logging}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.log_severity_filters_json_output_continuous_}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.diagnostics_amp_logging}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.log_severity_filters_json_output_continuous_}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1322,14 +1322,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FFD600" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="🌐" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{loc:Tr Key=ui.ui_amp_personalization}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.interface_language_ui_scale_factor_controlle}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.ui_amp_personalization}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.interface_language_ui_scale_factor_controlle}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
 
@@ -1341,14 +1341,14 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="32"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Background="#20FFFFFF" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource ThemeRaised}" CornerRadius="{DynamicResource ThemeCornerM}" Width="40" MinHeight="40" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="ℹ️" FontSize="{DynamicResource Type4XL}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                                            <TextBlock Text="{loc:Tr Key=ui.system_information}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="White"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.pcsx5_core_release_vulkan_spir_v_engine_host}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.system_information}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{loc:Tr Key=ui.pcsx5_core_release_vulkan_spir_v_engine_host}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="#50FFFFFF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="›" FontSize="{DynamicResource Type4XL}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Button>
                             </UniformGrid>
@@ -1372,9 +1372,9 @@
                             </Grid.ColumnDefinitions>
                             <Button x:Name="BtnCatBack" Content="{loc:Tr Key=ui.back}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="34" FontSize="{DynamicResource TypeML}" Click="BtnSettingsBack_Click"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                                <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="#60FFFFFF" VerticalAlignment="Center"/>
-                                <TextBlock Text="  ›  " FontSize="{DynamicResource TypeL}" Foreground="#40FFFFFF" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="SettingsCategoryViewHeaderTitle" Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="White" VerticalAlignment="Center"/>
+                                <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
+                                <TextBlock Text="  ›  " FontSize="{DynamicResource TypeL}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SettingsCategoryViewHeaderTitle" Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Grid>
 
@@ -1404,13 +1404,13 @@
                             <Button x:Name="BtnSubPageBack" Content="{loc:Tr Key=ui.back}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="34" FontSize="{DynamicResource TypeML}" Click="BtnSettingsBack_Click"/>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#50FFFFFF"/>
-                                    <TextBlock Text=" › " FontSize="{DynamicResource TypeM}" Foreground="#30FFFFFF"/>
-                                    <TextBlock x:Name="SettingsSubPageParentTitle" Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#70FFFFFF"/>
-                                    <TextBlock Text=" › " FontSize="{DynamicResource TypeM}" Foreground="#30FFFFFF"/>
-                                    <TextBlock x:Name="SettingsSubPageTitle" Text="{loc:Tr Key=ui.renderer_backend}" FontSize="{DynamicResource Type2XL}" FontWeight="ExtraBold" Foreground="White"/>
+                                    <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                    <TextBlock Text=" › " FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                    <TextBlock x:Name="SettingsSubPageParentTitle" Text="{loc:Tr Key=ui.display_amp_video}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                    <TextBlock Text=" › " FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                    <TextBlock x:Name="SettingsSubPageTitle" Text="{loc:Tr Key=ui.renderer_backend}" FontSize="{DynamicResource Type2XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}"/>
                                 </StackPanel>
-                                <TextBlock x:Name="SettingsSubPageDescription" Text="{loc:Tr Key=ui.select_hardware_graphic_pipeline_driver}" FontSize="{DynamicResource TypeML}" Foreground="#80A0A0A5" Margin="0,2,0,0"/>
+                                <TextBlock x:Name="SettingsSubPageDescription" Text="{loc:Tr Key=ui.select_hardware_graphic_pipeline_driver}" FontSize="{DynamicResource TypeML}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,2,0,0"/>
                             </StackPanel>
                         </Grid>
 
@@ -1428,7 +1428,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="SettingsSaveNotice" Text="{loc:Tr Key=ui.settings_are_saved_automatically_and_synchro}" FontSize="{DynamicResource TypeM}" Foreground="#70A0A0A5" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SettingsSaveNotice" Text="{loc:Tr Key=ui.settings_are_saved_automatically_and_synchro}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                         <Button x:Name="SaveSettingsBtn" Content="{loc:Tr Key=ui.save_configuration}" MinWidth="180" MinHeight="32" Style="{StaticResource ModernButtonStyle}" Click="SaveSettingsBtn_Click" Grid.Column="1"/>
                     </Grid>
                 </Grid>

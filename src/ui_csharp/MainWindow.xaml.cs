@@ -2718,16 +2718,16 @@ namespace Pcsx5Ui
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
 
                 var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-                textStack.Children.Add(new TextBlock { Text = s.Title, FontSize = 14, FontWeight = FontWeights.Bold, Foreground = Brushes.White });
-                textStack.Children.Add(new TextBlock { Text = s.Description, FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(0xB0, 0xA0, 0xA0, 0xA5)), Margin = new Thickness(0, 3, 0, 0) });
+                textStack.Children.Add(new TextBlock { Text = s.Title, FontSize = 14, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("ThemeText") });
+                textStack.Children.Add(new TextBlock { Text = s.Description, FontSize = 11, Foreground = (Brush)FindResource("ThemeTextMuted"), Margin = new Thickness(0, 3, 0, 0) });
                 Grid.SetColumn(textStack, 0);
                 grid.Children.Add(textStack);
 
                 // Value Badge Pill
                 var badgeBorder = new Border
                 {
-                    Background = new SolidColorBrush(Color.FromArgb(0x28, 0x00, 0x99, 0xFF)),
-                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x99, 0xFF)),
+                    Background = (Brush)FindResource("ThemeAccentSoft"),
+                    BorderBrush = (Brush)FindResource("ThemeAccent"),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(8),
                     Padding = new Thickness(12, 4, 12, 4),
@@ -2739,7 +2739,7 @@ namespace Pcsx5Ui
                     Text = s.GetValueBadge(),
                     FontSize = 12,
                     FontWeight = FontWeights.Bold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x40, 0xC0, 0xFF))
+                    Foreground = (Brush)FindResource("ThemeText")   // readable on the soft accent fill in both palettes
                 };
                 badgeBorder.Child = badgeText;
                 Grid.SetColumn(badgeBorder, 1);
@@ -2749,7 +2749,7 @@ namespace Pcsx5Ui
                 {
                     Text = "›",
                     FontSize = 18,
-                    Foreground = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF)),
+                    Foreground = (Brush)FindResource("ThemeTextMuted"),
                     HorizontalAlignment = HorizontalAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Center
                 };
@@ -2882,8 +2882,8 @@ namespace Pcsx5Ui
 
                 var sliderCard = new Border
                 {
-                    Background = new SolidColorBrush(Color.FromRgb(0x10, 0x14, 0x1E)),
-                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
+                    Background = (Brush)FindResource("ThemeSurface"),
+                    BorderBrush = (Brush)FindResource("ThemeHairline"),
                     BorderThickness = new Thickness(1.5),
                     CornerRadius = new CornerRadius(14),
                     Padding = new Thickness(24, 20, 24, 20),
@@ -2896,7 +2896,7 @@ namespace Pcsx5Ui
                     Text = formatVal(currentVal),
                     FontSize = 24,
                     FontWeight = FontWeights.ExtraBold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x00, 0x99, 0xFF)),
+                    Foreground = (Brush)FindResource("ThemeAccent"),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Margin = new Thickness(0, 0, 0, 16)
                 };
@@ -2952,8 +2952,8 @@ namespace Pcsx5Ui
                 // GAME DIRECTORIES FOLDERS MANAGER
                 var dirCard = new Border
                 {
-                    Background = new SolidColorBrush(Color.FromRgb(0x10, 0x14, 0x1E)),
-                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
+                    Background = (Brush)FindResource("ThemeSurface"),
+                    BorderBrush = (Brush)FindResource("ThemeHairline"),
                     BorderThickness = new Thickness(1.5),
                     CornerRadius = new CornerRadius(14),
                     Padding = new Thickness(20, 16, 20, 16),
@@ -2963,8 +2963,8 @@ namespace Pcsx5Ui
 
                 var listBorder = new Border
                 {
-                    Background = new SolidColorBrush(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF)),
-                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
+                    Background = (Brush)FindResource("ThemeRaised"),
+                    BorderBrush = (Brush)FindResource("ThemeHairline"),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(8),
                     Margin = new Thickness(0, 0, 0, 14)
@@ -2974,7 +2974,7 @@ namespace Pcsx5Ui
                     MinHeight = 120,
                     MaxHeight = 200,
                     Background = Brushes.Transparent,
-                    Foreground = Brushes.White,
+                    Foreground = (Brush)FindResource("ThemeText"),
                     BorderThickness = new Thickness(0)
                 };
                 foreach (var f in _gameFolders) lb.Items.Add(f);
@@ -3188,8 +3188,8 @@ namespace Pcsx5Ui
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
 
             var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            stack.Children.Add(new TextBlock { Text = title, FontSize = 14, FontWeight = FontWeights.Bold, Foreground = Brushes.White });
-            stack.Children.Add(new TextBlock { Text = description, FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(0x90, 0xA0, 0xA0, 0xA5)), Margin = new Thickness(0, 2, 0, 0) });
+            stack.Children.Add(new TextBlock { Text = title, FontSize = 14, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("ThemeText") });
+            stack.Children.Add(new TextBlock { Text = description, FontSize = 11, Foreground = (Brush)FindResource("ThemeTextMuted"), Margin = new Thickness(0, 2, 0, 0) });
             Grid.SetColumn(stack, 0);
             grid.Children.Add(stack);
 
@@ -3200,7 +3200,7 @@ namespace Pcsx5Ui
                     Text = "✔",
                     FontSize = 18,
                     FontWeight = FontWeights.ExtraBold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x00, 0x99, 0xFF)),
+                    Foreground = (Brush)FindResource("ThemeAccent"),
                     HorizontalAlignment = HorizontalAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Center
                 };

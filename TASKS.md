@@ -367,7 +367,20 @@ Ordered by dependency, one subsystem per change (Rule 10):
     SHELL_20260906_041927/frames/frame_0006.png; sharp
     SHELL_20260906_041939/frames/frame_0006.png. Pills become rectangles
     under sharp and cut by design.
-  - [ ] Step 4 - Settings. Step 5 - Input. Steps 6-11 - Tools, Console,
+  - [x] **Step 4 - Settings on tokens** - DONE. All three layers (hub of
+    category cards, the per-category list, the option sub-page) reference
+    the tokens: the four Ps5* styles (tile, row, option, pill toggle) with
+    their hover and focus states, every literal in the SettingsView block and
+    the two sub-page views (25 XAML literals), and 17 literal brushes in the
+    code-behind row and option builders. The seven rainbow category-icon
+    tints became one soft accent tint, per the concept. Value badges use
+    the text token over the soft accent so they stay readable in light.
+    Navigation is unchanged (hub -> list -> choices); the concept's
+    side-section layout is a later step if wanted. Seen: dark hub and list
+    artifacts/runtime/SHELL_20260906_042407/frames/frame_0004.png and
+    frame_0010.png; light with coral, list and Theme choice page
+    SHELL_20260906_042601/frames/frame_0008.png and frame_0011.png.
+  - [ ] Step 5 - Input. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
