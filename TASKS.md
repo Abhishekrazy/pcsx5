@@ -234,8 +234,8 @@ Ordered by dependency, one subsystem per change (Rule 10):
   DualSenseWindows, LibAtrac9, libopus, NAudio, Squirrel) shown under the
   System Information hub, in all eleven locales.
 
-- [~] **D-pad decoded wrongly since the reader swap: Up asserted at rest,
-  every direction mis-mapped.** DualSenseWindows already converts the hat into
+- [x] **D-pad decoded wrongly since the reader swap: Up asserted at rest,
+  every direction mis-mapped.** FIXED and SEEN. DualSenseWindows already converts the hat into
   a bitmask (LEFT 0x01, DOWN 0x02, RIGHT 0x04, UP 0x08) in the low nibble of
   `buttonsAndDpad`; `MapButtons` still read that nibble as the raw 0..7/8 hat
   value the previous in-header reader exposed. So centred (0) became Up, a
@@ -246,6 +246,18 @@ Ordered by dependency, one subsystem per change (Rule 10):
   bit tests; awaiting the native rebuild, the probe showing `0x00000000` at
   rest, and 52/52. No unit test covers `MapButtons` (anonymous namespace) -
   recorded as a gap rather than papered over.
+  Verified: 52/52 ctest, 0 warnings, and the Input tab screenshot at
+  `artifacts/runtime/SHELL_20260906_015955/frames/frame_0025.png` shows the
+  Up sprite unlit on an idle pad where the previous capture showed it lit.
+
+- [ ] **Sensor scale is UNKNOWN: `Sample.accel/gyro` are raw counts, not g
+  or rad/s.** The header said "in g (approx)"; the reader stores
+  DualSenseWindows' raw integers unchanged. Found when the Input tab graphed
+  them as g and every near-zero axis clamped into a full-height square wave.
+  The comment is corrected and the graphs now autoscale rather than assume a
+  unit. Establishing the count-per-g and count-per-(deg/s) needs a measurement
+  - a pad held still on each axis, and a known rotation - not a value copied
+  from a reference.
 
 - [ ] **4.10 Full controller support for shell navigation** (asked 2026-09-06:
   "I want full support of the Controller for UI navigation"). Today the shell

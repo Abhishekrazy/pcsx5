@@ -140,18 +140,21 @@ u32 MapButtons(const DS5W::DS5InputState& in) {
     if (in.buttonsAndDpad & DS5W_ISTATE_BTX_CIRCLE)   b |= 0x2000;
     if (in.buttonsAndDpad & DS5W_ISTATE_BTX_TRIANGLE) b |= 0x1000;
 
-    // Low nibble is a hat value 0..7, 8 = centred.
-    switch (in.buttonsAndDpad & 0x0F) {
-        case 0: b |= 0x10; break;               // up
-        case 1: b |= 0x10 | 0x20; break;        // up-right
-        case 2: b |= 0x20; break;               // right
-        case 3: b |= 0x20 | 0x40; break;        // down-right
-        case 4: b |= 0x40; break;               // down
-        case 5: b |= 0x40 | 0x80; break;        // down-left
-        case 6: b |= 0x80; break;               // left
-        case 7: b |= 0x80 | 0x10; break;        // up-left
-        default: break;                         // 8 = centred
-    }
+    // DualSenseWindows has already decoded the hat: the low nibble of
+    // buttonsAndDpad is a BITMASK (LEFT 0x01, DOWN 0x02, RIGHT 0x04, UP 0x08),
+    // not the raw 0..7/8 hat value the previous in-header reader exposed.
+    //
+    // The switch this replaces was written against that older raw value and
+    // never updated when the reader was swapped, so it read the decoded mask
+    // as a hat index: centred (0) became "up", a real Up (0x08) became
+    // nothing, and Left (0x01) became up-right. Every direction was wrong and
+    // Up was asserted with the pad at rest -- observed twice independently,
+    // by the hardware probe (buttons 0x00000010 before anything was touched)
+    // and by the Input tab lighting the Up sprite on an idle controller.
+    if (in.buttonsAndDpad & DS5W_ISTATE_DPAD_UP)    b |= 0x10;
+    if (in.buttonsAndDpad & DS5W_ISTATE_DPAD_RIGHT) b |= 0x20;
+    if (in.buttonsAndDpad & DS5W_ISTATE_DPAD_DOWN)  b |= 0x40;
+    if (in.buttonsAndDpad & DS5W_ISTATE_DPAD_LEFT)  b |= 0x80;
 
     if (in.buttonsA & DS5W_ISTATE_BTN_A_LEFT_BUMPER)   b |= 0x0400;
     if (in.buttonsA & DS5W_ISTATE_BTN_A_RIGHT_BUMPER)  b |= 0x0800;
