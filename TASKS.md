@@ -89,7 +89,7 @@ success and dropped GPU work loud, then ratchet each swept class shut.
      retired — it matched `menutitle-sheet0.png` for "menu". Worse, it is gated
      on `State == GameSessionState.Booting`, and `Launch` sets
      `State = Running` as soon as the child process starts, so **the sniffing
-     never runs at all** and the overlay stays on its initial值.
+     never runs at all** and the overlay stays on its initial values.
   Done means: one launch path, and boot progress reported by the core over the
   IPC channel it already owns, rather than guessed from log substrings by the UI.
 
