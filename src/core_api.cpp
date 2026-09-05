@@ -12,6 +12,7 @@
 #include "hle/hle.h"
 #include "hle/keystone.h"
 #include "gpu/gpu.h"
+#include "gpu/dualsense_hid.h"
 #include "diagnostics/diagnostics.h"
 #include "diagnostics/frame_timing.h"
 #include "reports/reports.h"
@@ -20,6 +21,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -685,6 +687,101 @@ PCSX5_API void pcsx5_pause(void) {
 
 PCSX5_API void pcsx5_resume(void) {
     g_paused.store(false, std::memory_order_release);
+}
+
+// ---------------------------------------------------------------------------
+// Controller state (additive ABI, 2026-09-06).  See core_api.h.
+//
+// Every entry point starts the DualSense reader if it is not already running,
+// so a frontend can open its controller page before any game is loaded.  Only
+// index 0 exists until multi-controller support lands in the reader; an index
+// the core is not streaming is -1, not a silently-zeroed struct.
+// ---------------------------------------------------------------------------
+PCSX5_API int pcsx5_pad_count(void) {
+    GPU::DualSense::EnsureStarted();
+    GPU::DualSense::Sample s;
+    return (GPU::DualSense::GetSample(s) && s.connected) ? 1 : 0;
+}
+
+PCSX5_API int pcsx5_pad_get_state(int index, pcsx5_pad_state* out) {
+    if (!out || out->struct_size != sizeof(pcsx5_pad_state)) return -2;
+    if (index != 0) return -1;
+
+    GPU::DualSense::EnsureStarted();
+    GPU::DualSense::Sample s;
+    const bool have = GPU::DualSense::GetSample(s);
+
+    std::memset(out, 0, sizeof(*out));
+    out->struct_size = sizeof(pcsx5_pad_state);
+    if (!have) return 0;   // a valid, disconnected state
+
+    out->connected   = s.connected ? 1 : 0;
+    out->bluetooth   = GPU::DualSense::IsBluetooth() ? 1 : 0;
+    out->buttons     = s.buttons;
+    out->lx = s.lx; out->ly = s.ly; out->rx = s.rx; out->ry = s.ry;
+    out->l2 = s.l2; out->r2 = s.r2;
+    out->touch_count = s.touch_count;
+    for (int i = 0; i < 2; ++i) {
+        out->touch[i].x      = s.touch[i].x;
+        out->touch[i].y      = s.touch[i].y;
+        out->touch[i].id     = s.touch[i].id;
+        out->touch[i].active = s.touch[i].active;
+    }
+    for (int i = 0; i < 3; ++i) {
+        out->accel[i] = s.accel[i];
+        out->gyro[i]  = s.gyro[i];
+    }
+    out->battery_level    = s.battery_level;
+    out->battery_charging = s.battery_charging ? 1 : 0;
+    out->battery_full     = s.battery_full ? 1 : 0;
+    out->headphone        = s.headphone_connected ? 1 : 0;
+    out->mic_jack         = s.mic_jack ? 1 : 0;
+    out->mic_muted        = s.mic_muted ? 1 : 0;
+    out->usb_data         = s.usb_data ? 1 : 0;
+    out->usb_power        = s.usb_power ? 1 : 0;
+    out->trigger_feedback[0] = s.trigger_feedback[0];
+    out->trigger_feedback[1] = s.trigger_feedback[1];
+    return 0;
+}
+
+PCSX5_API int pcsx5_pad_get_firmware(int index, pcsx5_pad_firmware* out) {
+    if (!out || out->struct_size != sizeof(pcsx5_pad_firmware)) return -2;
+    if (index != 0) return -1;
+
+    GPU::DualSense::EnsureStarted();
+    GPU::DualSense::FirmwareInfo fw;
+    const bool ok = GPU::DualSense::ReadFirmwareInfo(fw);
+
+    std::memset(out, 0, sizeof(*out));
+    out->struct_size = sizeof(pcsx5_pad_firmware);
+    if (!ok) return 0;   // valid call, no firmware info available
+
+    out->valid = 1;
+    std::memcpy(out->build_date, fw.build_date, sizeof(out->build_date));
+    std::memcpy(out->build_time, fw.build_time, sizeof(out->build_time));
+    out->firmware_type   = fw.firmware_type;
+    out->software_series = fw.software_series;
+    out->hardware_info   = fw.hardware_info;
+    out->main_version    = fw.main_version;
+    out->update_version  = fw.update_version;
+    out->sbl_version     = fw.sbl_version;
+    out->dsp_version     = fw.dsp_version;
+    out->mcu_dsp_version = fw.mcu_dsp_version;
+    return 0;
+}
+
+PCSX5_API void pcsx5_pad_set_audio_levels(unsigned char volume, unsigned char preamp) {
+    GPU::DualSense::SetBluetoothAudioLevels(volume, preamp);
+}
+
+PCSX5_API int pcsx5_pad_play_speaker_test(void) {
+    GPU::DualSense::EnsureStarted();
+    return GPU::DualSense::PlaySpeakerTestBlocking() ? 1 : 0;
+}
+
+PCSX5_API int pcsx5_pad_play_haptics_test(void) {
+    GPU::DualSense::EnsureStarted();
+    return GPU::DualSense::PlayHapticsTestBlocking() ? 1 : 0;
 }
 
 PCSX5_API int pcsx5_get_last_error(char* buf, int buf_size) {

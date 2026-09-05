@@ -23,6 +23,7 @@
 #include "../common/log.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <mutex>
 #include <thread>
@@ -326,6 +327,18 @@ void ReaderThread() {
         s.battery_level       = in.battery.level;
         s.battery_charging    = in.battery.chargin;
         s.battery_full        = in.battery.fullyCharged;
+
+        // Status byte, read from the raw report DualSenseWindows just parsed.
+        // Its evaluator is handed the buffer at [2] on Bluetooth and [1] on
+        // USB, and reads the status byte at +0x35 from there.
+        {
+            const size_t base = (ctx._internal.connection == DS5W::DeviceConnection::BT) ? 2 : 1;
+            const u8 status = ctx._internal.hidBuffer[base + 0x35];
+            s.mic_jack  = (status & 0x02) != 0;
+            s.mic_muted = (status & 0x04) != 0;
+            s.usb_data  = (status & 0x08) != 0;
+            s.usb_power = (status & 0x10) != 0;
+        }
         s.headphone_connected = in.headPhoneConnected;
         s.trigger_feedback[0] = in.leftTriggerFeedback;
         s.trigger_feedback[1] = in.rightTriggerFeedback;
@@ -781,6 +794,85 @@ bool PlaySpeakerPcmBlocking(const s16* pcm, size_t frames, bool headset) {
     LOG_INFO(GPU, "DualSense speaker: primed, prerolled, sent %zu Opus report(s) "
                   "to the %s.", sent, headset ? "headset" : "speaker");
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Firmware info -- feature report 0x20.
+//
+// Offsets INFERRED from the DualSenseClient reference:
+//   [0]      0x20            [1..11]  build date     [12..19] build time
+//   [20..21] firmware type   [22..23] software series
+//   [24..27] hardware info   [28..31] main version   [44..45] update version
+//   [48..51] SBL version     [52..55] DSP version    [56..59] MCU DSP version
+// ---------------------------------------------------------------------------
+bool ReadFirmwareInfo(FirmwareInfo& out) {
+    out = FirmwareInfo{};
+    void* handle = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(S().dev_mutex);
+        handle = S().dev_handle;
+    }
+    if (!handle) return false;
+
+    u8 report[64] = {};
+    report[0] = 0x20;
+    if (!::HidD_GetFeature(reinterpret_cast<HANDLE>(handle), report, sizeof(report))) {
+        LOG_WARN(GPU, "DualSense: feature report 0x20 read failed (error %lu).",
+                 static_cast<unsigned long>(::GetLastError()));
+        return false;
+    }
+    if (report[0] != 0x20) {
+        LOG_WARN(GPU, "DualSense: feature report reply has id 0x%02X, not 0x20.", report[0]);
+        return false;
+    }
+
+    auto u16at = [&](int o) { return static_cast<u16>(report[o] | (report[o + 1] << 8)); };
+    auto u32at = [&](int o) {
+        return static_cast<u32>(report[o] | (report[o + 1] << 8) |
+                                (report[o + 2] << 16) | (static_cast<u32>(report[o + 3]) << 24));
+    };
+    std::memcpy(out.build_date, report + 1, 11);   out.build_date[11] = 0;
+    std::memcpy(out.build_time, report + 12, 8);   out.build_time[8]  = 0;
+    out.firmware_type   = u16at(20);
+    out.software_series = u16at(22);
+    out.hardware_info   = u32at(24);
+    out.main_version    = u32at(28);
+    out.update_version  = u16at(44);
+    out.sbl_version     = u32at(48);
+    out.dsp_version     = u32at(52);
+    out.mcu_dsp_version = u32at(56);
+    out.valid = true;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Built-in tests. Tones are generated here so a shell need not ship PCM
+// across the ABI to prove a lane works.
+// ---------------------------------------------------------------------------
+bool PlaySpeakerTestBlocking() {
+    constexpr int rate = 48000, seconds = 2;
+    std::vector<s16> pcm(static_cast<size_t>(rate) * 2 * seconds);
+    for (int i = 0; i < rate * seconds; ++i) {
+        // 880 Hz: the frequency this speaker reproduced most clearly on
+        // hardware, where 440 and 220 were inaudible.
+        const double v = std::sin(2.0 * 3.14159265358979 * 880.0 * i / rate);
+        const s16 b = static_cast<s16>(12000.0 * v);
+        pcm[static_cast<size_t>(i) * 2 + 0] = b;
+        pcm[static_cast<size_t>(i) * 2 + 1] = b;
+    }
+    return PlaySpeakerPcmBlocking(pcm.data(), pcm.size() / 2, false);
+}
+
+bool PlayHapticsTestBlocking() {
+    constexpr int rate = 3000, seconds = 2;
+    std::vector<u8> pcm(static_cast<size_t>(rate) * 2 * seconds);
+    for (int i = 0; i < rate * seconds; ++i) {
+        const double v = std::sin(2.0 * 3.14159265358979 * 60.0 * i / rate);
+        const u8 b = static_cast<u8>(static_cast<s8>(110.0 * v));
+        pcm[static_cast<size_t>(i) * 2 + 0] = b;
+        pcm[static_cast<size_t>(i) * 2 + 1] = b;
+    }
+    return PlayHapticsPcmBlocking(pcm.data(), pcm.size());
 }
 
 void EnsureStarted() {

@@ -3,6 +3,9 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
+    <!-- CoreBridge mirrors fixed-size C arrays (firmware build date/time)
+         with `fixed` buffers, which require unsafe blocks. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseWpf>true</UseWpf>
     <AssemblyName>pcsx5</AssemblyName>
     <ApplicationTitle>PCSX5 PlayStation 5 Emulator</ApplicationTitle>

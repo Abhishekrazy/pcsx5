@@ -49,7 +49,49 @@ namespace DualSense {
         bool mic_active = false;
         u8   mic_channels = 0;
         s16  mic_samples[4][8] = {};
+
+        // Connection status, from the input report's status byte (offset 0x35
+        // from the evaluator base). DualSenseWindows parses only the headphone
+        // bit of it; these are read from the raw buffer alongside.
+        //   0x01 headphones   0x02 mic jack   0x04 mic muted
+        //   0x08 USB data     0x10 USB power
+        // INFERRED from the DualSenseClient reference; the 0x08 bit is the one
+        // DualSenseWindows labels "charging", so the two readings agree in
+        // practice (USB data present implies charging) and disagree in name.
+        bool mic_jack   = false;
+        bool mic_muted  = false;
+        bool usb_data   = false;
+        bool usb_power  = false;
     };
+
+    // Firmware and hardware identity, from feature report 0x20 (64 bytes).
+    // Offsets INFERRED from the DualSenseClient reference and not yet confirmed
+    // against hardware; the probe prints the raw report for that purpose.
+    struct FirmwareInfo {
+        bool valid = false;
+        char build_date[12] = {};   // ASCII, e.g. "Jan 15 2024"
+        char build_time[9]  = {};   // ASCII, e.g. "10:23:45"
+        u16  firmware_type = 0;
+        u16  software_series = 0;
+        u32  hardware_info = 0;     // low 16 bits: model revision; bits 8..15: generation
+        u32  main_version = 0;      // render as (v>>24).(v>>16 & 0xFF).(v & 0xFFFF)
+        u16  update_version = 0;    // render as X.X in hex nibbles
+        u32  sbl_version = 0;       // same rendering as main
+        u32  dsp_version = 0;       // render as %04X_%04X
+        u32  mcu_dsp_version = 0;   // same rendering as main
+    };
+
+    // Read feature report 0x20. Returns false when no device is open or the
+    // report is not a valid 0x20 reply. Safe to call from any thread; it is a
+    // synchronous HID feature read and takes a few milliseconds.
+    bool ReadFirmwareInfo(FirmwareInfo& out);
+
+    // Built-in tests for a shell to trigger without shipping PCM across the
+    // ABI: a two-second tone to the speaker, a two-second buzz to the haptics.
+    // Both block for their duration and return false if the lane is not
+    // available (not on Bluetooth) or a write fails.
+    bool PlaySpeakerTestBlocking();
+    bool PlayHapticsTestBlocking();
 
     // ---- lifecycle -------------------------------------------------------
 

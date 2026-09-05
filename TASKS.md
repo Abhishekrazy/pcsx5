@@ -172,18 +172,27 @@ What the shell has: **no pad exports in `CoreBridge` at all**.
 
 Ordered by dependency, one subsystem per change (Rule 10):
 
-- [ ] **4.1 Pad-state ABI in `CoreBridge`** - the foundation everything else
-  reads through. New cdecl exports only, nothing existing changes: get the
-  latest `Sample` for a controller index, connection type, controller count,
-  set speaker levels, play a speaker test, play a haptics test. Additive ABI,
-  documented as such. Done means the shell can read live pad state from the
-  core with the C# reader untouched.
-- [ ] **4.2 Firmware info in the core** - feature report `0x20` (64 bytes):
-  main/SBL/DSP versions and model revision. New function, new test against
-  the probe. `UNKNOWN` until read on hardware: the exact field offsets.
-- [ ] **4.3 Mic-mute and USB data/power state in the core** - `UNKNOWN`
-  which input-report bits carry these; find them in the DS5W input parser or
-  the input report layout, then verify on hardware by toggling mute.
+- [x] **4.1 Pad-state ABI in `CoreBridge`** - DONE. Six additive cdecl exports
+  (`pcsx5_pad_count`, `_get_state`, `_get_firmware`, `_set_audio_levels`,
+  `_play_speaker_test`, `_play_haptics_test`), all confirmed present in the
+  built DLL. Two POD structs with a `struct_size` guard so a C#/C layout drift
+  fails loudly instead of reading garbage. Nothing existing changed. 52/52
+  ctest, 0 warnings, shell builds against the mirror.
+- [x] **4.2 Firmware info in the core** - DONE and **VERIFIED on hardware**.
+  Feature report `0x20` read on the user's pad:
+  `main 1.16.42  sbl 0.1.42  dsp 0002_000A  model rev 0x0414  gen 4  built Jul 4 2025 10:10:32`.
+  The build date is the proof: an ASCII date and time parsing cleanly at the
+  inferred offsets [1..11] and [12..19] cannot be coincidence, so the whole
+  offset table is promoted from INFERRED to VERIFIED.
+- [~] **4.3 Mic-mute and USB data/power state in the core** - IMPLEMENTED,
+  still INFERRED. Read from the input report's status byte at evaluator
+  offset 0x35 (`hidBuffer[2+0x35]` on Bluetooth, `[1+0x35]` on USB): 0x01
+  headphone, 0x02 mic jack, 0x04 mic muted, 0x08 USB data, 0x10 USB power.
+  On Bluetooth with nothing plugged in every bit read 0, which is *consistent*
+  with the assignments but does not prove them. Promotion to VERIFIED needs
+  the user to press mute and plug a cable while the probe runs and confirm the
+  right bits flip. Note the 0x08 bit is the one DualSenseWindows labels
+  "charging"; the two readings agree in practice and disagree in name.
 - [ ] **4.4 Multiple controllers in the core** - the reader streams
   `infos[0]` only. Enumerate all, keep a context per index, expose the count.
   The user has two pads to verify with.

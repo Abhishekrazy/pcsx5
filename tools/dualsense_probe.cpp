@@ -200,6 +200,31 @@ int main(int argc, char** argv) {
     Say("Controller connected. transport=%s  battery=%u%%\n",
         GPU::DualSense::IsBluetooth() ? "Bluetooth" : "USB", s.battery_level);
 
+    // Device information -- the new fields the Input tab will show. Printed on
+    // every run so the INFERRED bit and offset assignments can be checked
+    // against hardware: mute the mic, plug a cable, and see which bits move.
+    Say("status: headphone=%d mic_jack=%d mic_muted=%d usb_data=%d usb_power=%d "
+        "charging=%d full=%d\n",
+        (int)s.headphone_connected, (int)s.mic_jack, (int)s.mic_muted,
+        (int)s.usb_data, (int)s.usb_power,
+        (int)s.battery_charging, (int)s.battery_full);
+    {
+        GPU::DualSense::FirmwareInfo fw;
+        if (GPU::DualSense::ReadFirmwareInfo(fw)) {
+            Say("firmware: main %u.%u.%u  sbl %u.%u.%u  dsp %04X_%04X  "
+                "model rev 0x%04X  gen %u  built %s %s\n",
+                (fw.main_version >> 24) & 0xFF, (fw.main_version >> 16) & 0xFF,
+                fw.main_version & 0xFFFF,
+                (fw.sbl_version >> 24) & 0xFF, (fw.sbl_version >> 16) & 0xFF,
+                fw.sbl_version & 0xFFFF,
+                (fw.dsp_version >> 16) & 0xFFFF, fw.dsp_version & 0xFFFF,
+                fw.hardware_info & 0xFFFF, (fw.hardware_info >> 8) & 0xFF,
+                fw.build_date, fw.build_time);
+        } else {
+            Say("firmware: feature report 0x20 unavailable\n");
+        }
+    }
+
     if (!GPU::DualSense::IsBluetooth()) {
         Say("\nOn USB the controller exposes real audio endpoints, so neither\n"
             "Bluetooth lane applies. Nothing to test here.\n");
