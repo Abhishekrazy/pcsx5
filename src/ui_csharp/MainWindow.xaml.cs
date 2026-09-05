@@ -1272,6 +1272,20 @@ namespace Pcsx5Ui
                     var bmp = ipc.FrameBitmap;
                     if (bmp != null && frameImage.Source != bmp)
                         frameImage.Source = bmp;
+
+                    // A frame is the honest "it is running" signal on this path.
+                    //
+                    // HideBootOverlay was only ever called from OnGameWindowReady,
+                    // the native-window callback. The shell launches the core with
+                    // --headless and consumes frames over IPC instead, so there is
+                    // no native window and that callback never fires: the overlay
+                    // sat at "Step 1 of 6 / 15%" for the entire session while
+                    // frames were already arriving behind it.
+                    if (GameBootOverlay != null &&
+                        GameBootOverlay.Visibility == Visibility.Visible)
+                    {
+                        HideBootOverlay();
+                    }
                 };
             }
         }
@@ -2296,39 +2310,62 @@ namespace Pcsx5Ui
                 state.Accel.X * GPerLsb, state.Accel.Y * GPerLsb, state.Accel.Z * GPerLsb);
         }
 
-        private string LocateSndDecode()
+        /// <summary>
+        /// Find a sibling build tool by walking up from the UI's own directory.
+        /// </summary>
+        /// <remarks>
+        /// This replaced a hand-written list of 19 fixed relative paths that did
+        /// not include the one place the tool is actually built:
+        /// build/bin/Release/. The UI runs from
+        /// src/ui_csharp/bin/Release/net9.0-windows/win-x64/, six levels below
+        /// the repository root, and the list checked build/, build/Release/ and
+        /// build/Debug/ at that depth but never build/bin/Release/. So title
+        /// music was silently unavailable in every developer build: the decoder
+        /// existed, and nothing looked where it was.
+        ///
+        /// Walking ancestors is not just shorter -- it survives the layout
+        /// changing, which a fixed list demonstrably did not.
+        /// </remarks>
+        private string LocateBuildTool(string exeName)
         {
-            string uiDir = AppDomain.CurrentDomain.BaseDirectory;
-            string[] locations = {
-                Path.Combine(uiDir, "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "bin", "Release", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "bin", "Debug", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "bin", "Release", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "bin", "Debug", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "bin", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "Release", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "Debug", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "build", "bin", "Release", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "build", "bin", "Debug", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "build", "Release", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "build", "Debug", "pcsx5_snd_decode.exe"),
-                // Build directory at project root (5 levels up from uiDir: src/ui_csharp/bin/Release/net9.0-windows/)
-                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "Release", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "..", "..", "..", "..", "build", "Debug", "pcsx5_snd_decode.exe"),
-                // Also check from project root directly
-                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "Release", "pcsx5_snd_decode.exe"),
-                Path.Combine(uiDir, "..", "..", "..", "..", "..", "..", "build", "Debug", "pcsx5_snd_decode.exe")
+            // Relative to each ancestor directory, in rough order of likelihood.
+            string[] relative = {
+                "",
+                "tools",
+                Path.Combine("bin", "Release"),
+                Path.Combine("bin", "Debug"),
+                "build",
+                Path.Combine("build", "Release"),
+                Path.Combine("build", "Debug"),
+                Path.Combine("build", "bin", "Release"),
+                Path.Combine("build", "bin", "Debug"),
             };
 
-            foreach (var loc in locations)
+            var tried = new List<string>();
+            var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            for (int depth = 0; dir != null && depth < 8; depth++, dir = dir.Parent)
             {
-                if (File.Exists(loc)) return Path.GetFullPath(loc);
+                foreach (var rel in relative)
+                {
+                    string candidate = Path.Combine(dir.FullName, rel, exeName);
+                    tried.Add(candidate);
+                    if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+                }
             }
 
+            // Say where it looked. "Not found" without the search path is the
+            // kind of message that leaves a user with nothing to act on, which
+            // is how this defect survived: the console said the decoder was
+            // missing, and the decoder was sitting in the build tree.
+            LogConsole($"{exeName} not found. Searched {tried.Count} locations under " +
+                       $"'{AppDomain.CurrentDomain.BaseDirectory}' and up to 8 parent " +
+                       $"directories (including build/bin/Release).");
             return null;
+        }
+
+        private string LocateSndDecode()
+        {
+            return LocateBuildTool("pcsx5_snd_decode.exe");
         }
 
         private string LocateBootParser()

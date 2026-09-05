@@ -51,6 +51,12 @@ namespace Pcsx5Ui
         /// <summary>Boot phase changed (Initializing → Running).</summary>
         public event Action<BootPhase, string> BootPhaseChanged;
 
+        // The last stage actually reached, so streaming a detail line does not
+        // silently rewind the step counter, and a throttle so a boot that emits
+        // thousands of log lines does not flood the dispatcher.
+        private BootPhase _lastBootPhase = BootPhase.Initializing;
+        private DateTime _lastBootDetailAt = DateTime.MinValue;
+
         /// <summary>The emulator's render HWND is ready to be embedded.</summary>
         public event Action<IntPtr> WindowReady;
 
@@ -355,13 +361,29 @@ namespace Pcsx5Ui
             _lastHeartbeat = DateTime.UtcNow;
             _hangingRaised = false;
 
-            // Phase sniffing from log keywords
+            // Show what the engine is actually doing, rather than guessing a
+            // stage from log substrings.
+            //
+            // This replaced keyword sniffing -- text.Contains("link") ||
+            // text.Contains("module") -- which is the bare-substring marker
+            // pattern tools/game_runner/boot_markers.py documents as discredited
+            // and retired, after "menu" matched an asset filename. It was also
+            // dead code: it ran only while State == Booting, and Launch sets
+            // State = Running as soon as the child process starts, so it never
+            // fired once.
+            //
+            // The log line is the truth we already have. It says nothing about
+            // which of six stages the boot is in, so it no longer claims to --
+            // the phase is left alone and only the detail text advances.
             if (State == GameSessionState.Booting)
             {
-                if (text.Contains("link") || text.Contains("reloc") || text.Contains("module"))
-                    RaisePhase(BootPhase.LinkingModules, "Linking guest modules...");
-                else if (text.Contains("cpu") || text.Contains("thread") || text.Contains("entry"))
-                    RaisePhase(BootPhase.StartingCpu, "Starting guest CPU...");
+                var now = DateTime.UtcNow;
+                if ((now - _lastBootDetailAt).TotalMilliseconds >= 100)
+                {
+                    _lastBootDetailAt = now;
+                    string detail = text.Length > 110 ? text.Substring(0, 110) + "..." : text;
+                    RaisePhase(_lastBootPhase, detail);
+                }
             }
 
             Log(line);
@@ -409,6 +431,7 @@ namespace Pcsx5Ui
 
         private void RaisePhase(BootPhase phase, string message)
         {
+            _lastBootPhase = phase;
             Log($"[Boot] {message}");
             _dispatcher.BeginInvoke(() => BootPhaseChanged?.Invoke(phase, message));
         }
