@@ -148,6 +148,69 @@ success and dropped GPU work loud, then ratchet each swept class shut.
   and neither set is scanned — worth remembering the next time CI green is
   mistaken for a clean tree.
 
+## Phase 4 - Rebuild the shell's Input tab (approved 2026-09-06)
+
+The user asked for the Input tab rebuilt from scratch, with the controller
+read through the **native core** rather than the duplicate C# reader (decided
+2026-09-06, resolving ADR-001 steps 2-3). Requirements, verbatim in intent:
+
+**Device information:** battery level with power state; firmware versions
+(main, SBL, DSP) and model revision with manual refresh; connection status --
+headphones/mic jacked in, microphone muted, USB data and power.
+**Real-time monitoring:** every button, stick, trigger, motion sensor with
+gyro/accelerometer graphs, and touchpad; USB/Bluetooth detection; multiple
+controllers with an in-window picker.
+**Tests:** input test that **locks tab switching** while running; a speaker
+test; a haptics test.
+**Art:** the Gamepad-Asset-Pack (MIT, attribution required) with credit given.
+
+What the core already has: buttons, sticks, triggers, touch, accel, gyro,
+battery level/charging/full, headphone-connected, `IsBluetooth()`, verified
+speaker and haptics playback. What it does not: firmware info (feature report
+`0x20`), mic-mute state, USB data/power, and anything beyond controller 0.
+What the shell has: **no pad exports in `CoreBridge` at all**.
+
+Ordered by dependency, one subsystem per change (Rule 10):
+
+- [ ] **4.1 Pad-state ABI in `CoreBridge`** - the foundation everything else
+  reads through. New cdecl exports only, nothing existing changes: get the
+  latest `Sample` for a controller index, connection type, controller count,
+  set speaker levels, play a speaker test, play a haptics test. Additive ABI,
+  documented as such. Done means the shell can read live pad state from the
+  core with the C# reader untouched.
+- [ ] **4.2 Firmware info in the core** - feature report `0x20` (64 bytes):
+  main/SBL/DSP versions and model revision. New function, new test against
+  the probe. `UNKNOWN` until read on hardware: the exact field offsets.
+- [ ] **4.3 Mic-mute and USB data/power state in the core** - `UNKNOWN`
+  which input-report bits carry these; find them in the DS5W input parser or
+  the input report layout, then verify on hardware by toggling mute.
+- [ ] **4.4 Multiple controllers in the core** - the reader streams
+  `infos[0]` only. Enumerate all, keep a context per index, expose the count.
+  The user has two pads to verify with.
+- [ ] **4.5 The Input tab itself** - a new focused view class, **not** more
+  code in `MainWindow.xaml.cs` (Rule 11). Reads only through 4.1. Every
+  string via `I18n` in all ten locales, every control with
+  `AutomationProperties.Name`, brushes via `DynamicResource` (Rule 12).
+  Live monitoring, device panel, controller picker, graphs.
+- [ ] **4.6 Tab lock during tests** - while an input, speaker or haptics test
+  runs, tab switching is disabled and the reason is shown; not merely
+  ignored.
+- [ ] **4.7 Speaker and haptics test buttons** - through 4.1, using the
+  verified playback paths. The speaker test must say **connect by USB** or
+  **Bluetooth** as appropriate rather than silently doing nothing.
+- [ ] **4.8 Vendor the Gamepad-Asset-Pack** - a new gamepad folder under `assets/` with the MIT
+  licence preserved verbatim and a README recording upstream, commit,
+  licence and credit, shown in the shell's credits. **Flagged first:** the
+  author states some assets are "ripped straight from the official source"
+  and warns of platform-holder certification risk. An MIT wrapper does not
+  cure third-party IP in ripped assets. Prefer the assets marked as recreated
+  from scratch, and record which were used.
+- [ ] **4.9 Retire `WindowsDualSenseReader.cs`** - once 4.5 reads through
+  4.1 and nothing else references it. Its 767 lines and the interleaving
+  defect go with it. ADR-001 step 3, finally done.
+
+Each step is verified on hardware and by screenshot before the next starts.
+
 ## Phase 1 - Instruments that cannot lie (NOW)
 
 Sweeping silent failure while measuring it with silently-failing instruments
