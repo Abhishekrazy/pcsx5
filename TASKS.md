@@ -204,17 +204,25 @@ Ordered by dependency, one subsystem per change (Rule 10):
   status identical to before the rewrite. **Not yet verified:** two physical
   pads, and that removing one leaves the other's index intact. Needs the
   user's second DualSense paired.
-- [ ] **4.5 The Input tab itself** - a new focused view class, **not** more
-  code in `MainWindow.xaml.cs` (Rule 11). Reads only through 4.1. Every
-  string via `I18n` in all ten locales, every control with
-  `AutomationProperties.Name`, brushes via `DynamicResource` (Rule 12).
-  Live monitoring, device panel, controller picker, graphs.
-- [ ] **4.6 Tab lock during tests** - while an input, speaker or haptics test
-  runs, tab switching is disabled and the reason is shown; not merely
-  ignored.
-- [ ] **4.7 Speaker and haptics test buttons** - through 4.1, using the
-  verified playback paths. The speaker test must say **connect by USB** or
-  **Bluetooth** as appropriate rather than silently doing nothing.
+- [x] **4.5 The Input tab itself** - DONE and SEEN. InputTabView (XAML plus
+  code-behind, a focused class per Rule 11) reads only through CoreBridge.
+  Picker from every connected slot, transport, device information, firmware
+  with refresh, motion graphs, the DualSense drawn from the vendored art via
+  the VSCView layout evaluated as data. 57 I18n keys in all eleven locales,
+  every control named for automation, brushes via DynamicResource, ratchet
+  unchanged. Screenshot: artifacts/runtime/SHELL_20260906_020604/frames/frame_0024.png
+  (commit ca0609e; its message carries an unfilled {RUN} placeholder - this
+  is the path it meant). The old image-with-overlays block and live-tester
+  panel are gone with 25 methods, 6 fields and 2 buttons; the mapping editor
+  is untouched.
+- [x] **4.6 Tab lock during tests** - DONE. InputTabView.IsTestRunning is
+  checked by all four tab handlers, which the gamepad L1/R1 navigation also
+  routes through, so one guard covers pad, mouse and keyboard. The refusal is
+  logged and shown in the footer with input.tabs_locked.
+- [x] **4.7 Speaker and haptics test buttons** - DONE. Three tests through
+  the core built-in exports on a worker thread; over USB the audio tests say
+  the lane does not apply and stop, rather than driving a Bluetooth report at a
+  device that is not listening. Visible in the same screenshot as 4.5.
 - [x] **4.8 Controller art vendored** - DONE, ahead of 4.5 because the tab
   needs the files. `assets/gamepad/dualsense/`: 29 sprites and `layout.json`
   from VSCView (MIT), the white body templates from Gamepad-Asset-Pack (MIT),
@@ -249,6 +257,14 @@ Ordered by dependency, one subsystem per change (Rule 10):
   Verified: 52/52 ctest, 0 warnings, and the Input tab screenshot at
   `artifacts/runtime/SHELL_20260906_015955/frames/frame_0025.png` shows the
   Up sprite unlit on an idle pad where the previous capture showed it lit.
+
+- [ ] **NEEDS_EVIDENCE: the accelerometer shows no gravity axis at rest.**
+  With the pad lying still, the Input tab autoscaled accelerometer trace is
+  jitter around zero on all three axes and no constant line; a gravity-sensing
+  accelerometer must show roughly 1 g on one axis. Either the DualSenseWindows
+  accelerometer/gyroscope field mapping, or the report offsets it applies over
+  Bluetooth, deserves a check against a known orientation. Recorded from
+  artifacts/runtime/SHELL_20260906_020604/frames/frame_0024.png; not changed until measured.
 
 - [ ] **Sensor scale is UNKNOWN: `Sample.accel/gyro` are raw counts, not g
   or rad/s.** The header said "in g (approx)"; the reader stores
@@ -306,6 +322,13 @@ Ordered by dependency, one subsystem per change (Rule 10):
 - [ ] **4.9 Retire `WindowsDualSenseReader.cs`** - once 4.5 reads through
   4.1 and nothing else references it. Its 767 lines and the interleaving
   defect go with it. ADR-001 step 3, finally done.
+  After the tab rebuild exactly nine call sites in six methods remain:
+  OnGameCrashed (2), HandleMicButtonLed (2),
+  CtrlActiveGamepadCombo_SelectionChanged (2), InitializeControllerPolling,
+  StartControllerVizPolling, ControllerTimer_Tick (1 each). Two of them set
+  outputs the ABI does not yet export - the mute LED and rumble - so two
+  additive exports (pcsx5_pad_set_mic_led, pcsx5_pad_set_rumble) come first,
+  then the six methods move over, then the file and its 767 lines go.
 
 Each step is verified on hardware and by screenshot before the next starts.
 
