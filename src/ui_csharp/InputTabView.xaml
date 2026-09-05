@@ -41,8 +41,12 @@
             </DockPanel>
 
             <!-- Controller canvas.  1150x850 is the theme's design space. -->
+            <!-- Capped: without a ceiling the Viewbox scales the 1150x850 canvas
+                 to the full width, and at 1920x1080 that alone is taller than
+                 the window, pushing the tests and the whole mapping editor
+                 off-screen. 560 keeps the pad readable and leaves room below. -->
             <Border Grid.Row="1" Background="{DynamicResource GlassBackgroundBrush}"
-                    CornerRadius="12" Padding="8">
+                    CornerRadius="12" Padding="8" MaxHeight="560">
                 <Viewbox Stretch="Uniform">
                     <Canvas x:Name="PadCanvas" Width="1150" Height="850"/>
                 </Viewbox>
