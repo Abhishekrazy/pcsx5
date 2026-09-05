@@ -639,6 +639,30 @@ surface, so where it differs from us the difference is usually load-bearing.
   condition in `third_party/DualSenseWindows/README.md`, as the vendoring
   policy requires.
 
+- [ ] **DualSense speaker and microphone: HARD BOUNDARY over Bluetooth, open
+  over USB.** Full reasoning in
+  `docs/audits/AUDIT-2026-09-05-dualsense-audio-over-bluetooth.md`.
+  VERIFIED on this machine: with the pad connected and its HID input working
+  perfectly, Windows enumerates **no audio endpoint for it at all**. Other
+  Bluetooth devices on the same box list `A2DP SNK` and `Hands-Free HF Audio`
+  plainly; the controller appears only as HID. There is no device for WASAPI or
+  NAudio to open — this is not an API choice.
+  INFERRED: the PS5 is not doing standard Bluetooth audio. It speaks a
+  proprietary Sony layer carrying PCM over the same link, which Windows does not
+  implement and the controller does not advertise. The known wireless
+  workarounds are replacement radio hardware (a Pico 2 W running DS5Dongle, or
+  Sony's adapter), not host software.
+  Subtasks:
+  - [ ] **Confirm the USB path** — connect by cable and re-enumerate endpoints,
+    looking for a "Wireless Controller" audio device. `DualSenseAudio.cs`
+    already targets it via NAudio. NEEDS_EVIDENCE.
+  - [ ] **Speaker output over USB**, once confirmed.
+  - [ ] **Microphone capture over USB**, once confirmed.
+  - [ ] **Do not offer controls that silently do nothing.** Whatever the USB
+    result, the shell must say why speaker/mic are unavailable over Bluetooth
+    rather than presenting dead controls — the same defect class as the rest of
+    this project's history.
+
 - [ ] **ADR-001 steps 2–4 remain**
 
 - [ ] **A guest-filesystem test fixture** - blocks tests for `feof`/`fgets`/
