@@ -207,13 +207,15 @@ Ordered by dependency, one subsystem per change (Rule 10):
 - [ ] **4.7 Speaker and haptics test buttons** - through 4.1, using the
   verified playback paths. The speaker test must say **connect by USB** or
   **Bluetooth** as appropriate rather than silently doing nothing.
-- [ ] **4.8 Vendor the Gamepad-Asset-Pack** - a new gamepad folder under `assets/` with the MIT
-  licence preserved verbatim and a README recording upstream, commit,
-  licence and credit, shown in the shell's credits. **Flagged first:** the
-  author states some assets are "ripped straight from the official source"
-  and warns of platform-holder certification risk. An MIT wrapper does not
-  cure third-party IP in ripped assets. Prefer the assets marked as recreated
-  from scratch, and record which were used.
+- [x] **4.8 Controller art vendored** - DONE, ahead of 4.5 because the tab
+  needs the files. `assets/gamepad/dualsense/`: 29 sprites and `layout.json`
+  from VSCView (MIT), the white body templates from Gamepad-Asset-Pack (MIT),
+  both licences verbatim, and a README with credit text and the pinned commits.
+  The two projects ship the same art (26 of 29 sprites byte-identical), and
+  VSCView's theme is its canonical placement, so sprites and layout come from
+  one source and cannot drift. The layout JSON is consumed directly, not
+  transcribed. The ripped-vs-recreated caution is recorded in the README: the
+  pack does not say per file, so the honest position is that it is unknown.
 - [ ] **4.9 Retire `WindowsDualSenseReader.cs`** - once 4.5 reads through
   4.1 and nothing else references it. Its 767 lines and the interleaving
   defect go with it. ADR-001 step 3, finally done.
