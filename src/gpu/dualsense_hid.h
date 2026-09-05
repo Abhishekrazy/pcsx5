@@ -93,6 +93,33 @@ namespace DualSense {
     bool PlaySpeakerTestBlocking();
     bool PlayHapticsTestBlocking();
 
+    // ---- multiple controllers -------------------------------------------
+    //
+    // Up to kMaxPads controllers are streamed at once.  A pad keeps its index
+    // for as long as it stays connected: slots are keyed by the HID device
+    // path, so unplugging pad 1 does not renumber pad 2.  Every index-less
+    // function above is pad 0, kept so existing callers need not change.
+    constexpr int kMaxPads = 8;
+
+    // Number of slots currently holding a connected controller.
+    int  Count();
+
+    // Per-pad forms.  An index outside [0, kMaxPads) or with no connected pad
+    // returns false / does nothing; Sample.connected says which.
+    bool GetSample(int index, Sample& out);
+    bool IsBluetooth(int index);
+    void SetRumble(int index, u8 large_motor, u8 small_motor);
+    void SetTriggerEffect(int index, bool left, u8 mode, const u8 params[10]);
+    void SetLightBar(int index, u8 r, u8 g, u8 b);
+    void SetPlayerLeds(int index, u8 bitmask, bool fade);
+    void SetMicLed(int index, u8 mode);
+    void SetLedOptions(int index, u8 brightness, bool disabled);
+    bool ReadFirmwareInfo(int index, FirmwareInfo& out);
+    bool PlayHapticsPcmBlocking(int index, const u8* pcm, size_t bytes);
+    bool PlaySpeakerPcmBlocking(int index, const s16* pcm, size_t frames, bool headset);
+    bool PlaySpeakerTestBlocking(int index);
+    bool PlayHapticsTestBlocking(int index);
+
     // ---- lifecycle -------------------------------------------------------
 
     // Start the background reader once.  Safe to call repeatedly and from any

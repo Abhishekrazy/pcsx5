@@ -193,9 +193,17 @@ Ordered by dependency, one subsystem per change (Rule 10):
   the user to press mute and plug a cable while the probe runs and confirm the
   right bits flip. Note the 0x08 bit is the one DualSenseWindows labels
   "charging"; the two readings agree in practice and disagree in name.
-- [ ] **4.4 Multiple controllers in the core** - the reader streams
-  `infos[0]` only. Enumerate all, keep a context per index, expose the count.
-  The user has two pads to verify with.
+- [~] **4.4 Multiple controllers in the core** - IMPLEMENTED; two-pad test
+  pending. The reader now holds up to 8 `PadSlot`s keyed by HID device path,
+  so a pad keeps its index while connected and unplugging pad 1 does not
+  renumber pad 2. One thread round-robins the bound slots; enumeration runs
+  only while a slot is free and at most twice a second. Every index-less API
+  function forwards to pad 0, so the twelve external callers compile unchanged.
+  Verified: 0 errors, 0 warnings across the 20 targets that compile the
+  reader; 52/52 ctest; probe shows `1 of 8 slots`, pad 0 live, firmware and
+  status identical to before the rewrite. **Not yet verified:** two physical
+  pads, and that removing one leaves the other's index intact. Needs the
+  user's second DualSense paired.
 - [ ] **4.5 The Input tab itself** - a new focused view class, **not** more
   code in `MainWindow.xaml.cs` (Rule 11). Reads only through 4.1. Every
   string via `I18n` in all ten locales, every control with
@@ -216,6 +224,16 @@ Ordered by dependency, one subsystem per change (Rule 10):
   one source and cannot drift. The layout JSON is consumed directly, not
   transcribed. The ripped-vs-recreated caution is recorded in the README: the
   pack does not say per file, so the honest position is that it is unknown.
+- [ ] **The About text is stale and there is no credits surface.**
+  `about.line3` reads "UI: Dear ImGui + GLFW + OpenGL3" and `about.line4`
+  "Layout: top toolbar + grid + bottom console" - the ImGui shell that no
+  longer exists - and nothing in the WPF shell references `about.*` or shows
+  any third-party credit. Found while looking for somewhere to put the
+  attribution the vendored controller art requires. Done means: correct the
+  four lines, and add a credits line (VSCView, Gamepad-Asset-Pack,
+  DualSenseWindows, LibAtrac9, libopus, NAudio, Squirrel) shown under the
+  System Information hub, in all eleven locales.
+
 - [ ] **4.9 Retire `WindowsDualSenseReader.cs`** - once 4.5 reads through
   4.1 and nothing else references it. Its 767 lines and the interleaving
   defect go with it. ADR-001 step 3, finally done.

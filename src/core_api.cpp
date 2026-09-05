@@ -699,24 +699,23 @@ PCSX5_API void pcsx5_resume(void) {
 // ---------------------------------------------------------------------------
 PCSX5_API int pcsx5_pad_count(void) {
     GPU::DualSense::EnsureStarted();
-    GPU::DualSense::Sample s;
-    return (GPU::DualSense::GetSample(s) && s.connected) ? 1 : 0;
+    return GPU::DualSense::Count();
 }
 
 PCSX5_API int pcsx5_pad_get_state(int index, pcsx5_pad_state* out) {
     if (!out || out->struct_size != sizeof(pcsx5_pad_state)) return -2;
-    if (index != 0) return -1;
+    if (index < 0 || index >= GPU::DualSense::kMaxPads) return -1;
 
     GPU::DualSense::EnsureStarted();
     GPU::DualSense::Sample s;
-    const bool have = GPU::DualSense::GetSample(s);
+    const bool have = GPU::DualSense::GetSample(index, s);
 
     std::memset(out, 0, sizeof(*out));
     out->struct_size = sizeof(pcsx5_pad_state);
     if (!have) return 0;   // a valid, disconnected state
 
     out->connected   = s.connected ? 1 : 0;
-    out->bluetooth   = GPU::DualSense::IsBluetooth() ? 1 : 0;
+    out->bluetooth   = GPU::DualSense::IsBluetooth(index) ? 1 : 0;
     out->buttons     = s.buttons;
     out->lx = s.lx; out->ly = s.ly; out->rx = s.rx; out->ry = s.ry;
     out->l2 = s.l2; out->r2 = s.r2;
@@ -746,11 +745,11 @@ PCSX5_API int pcsx5_pad_get_state(int index, pcsx5_pad_state* out) {
 
 PCSX5_API int pcsx5_pad_get_firmware(int index, pcsx5_pad_firmware* out) {
     if (!out || out->struct_size != sizeof(pcsx5_pad_firmware)) return -2;
-    if (index != 0) return -1;
+    if (index < 0 || index >= GPU::DualSense::kMaxPads) return -1;
 
     GPU::DualSense::EnsureStarted();
     GPU::DualSense::FirmwareInfo fw;
-    const bool ok = GPU::DualSense::ReadFirmwareInfo(fw);
+    const bool ok = GPU::DualSense::ReadFirmwareInfo(index, fw);
 
     std::memset(out, 0, sizeof(*out));
     out->struct_size = sizeof(pcsx5_pad_firmware);

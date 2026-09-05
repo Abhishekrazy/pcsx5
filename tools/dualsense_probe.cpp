@@ -200,6 +200,19 @@ int main(int argc, char** argv) {
     Say("Controller connected. transport=%s  battery=%u%%\n",
         GPU::DualSense::IsBluetooth() ? "Bluetooth" : "USB", s.battery_level);
 
+    // Every slot, so a second pad shows up as pad 1 and a pad that is
+    // unplugged does not renumber the others. With two controllers attached
+    // this line is the multi-pad verification.
+    Say("pads connected: %d of %d slots\n", GPU::DualSense::Count(), GPU::DualSense::kMaxPads);
+    for (int i = 0; i < GPU::DualSense::kMaxPads; ++i) {
+        Sample si;
+        if (GPU::DualSense::GetSample(i, si) && si.connected) {
+            Say("  pad %d: %s, battery %u%%, L(%u,%u) R(%u,%u)\n", i,
+                GPU::DualSense::IsBluetooth(i) ? "Bluetooth" : "USB",
+                si.battery_level, si.lx, si.ly, si.rx, si.ry);
+        }
+    }
+
     // Device information -- the new fields the Input tab will show. Printed on
     // every run so the INFERRED bit and offset assignments can be checked
     // against hardware: mute the mic, plug a cable, and see which bits move.

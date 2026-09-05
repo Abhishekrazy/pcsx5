@@ -26,6 +26,7 @@
 #include <cmath>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <thread>
 
 #include <vector>
@@ -61,27 +62,18 @@ namespace {
 // Leaking also means the reader cannot touch a destroyed mutex while the
 // process is tearing down, which a bare detach() would not have prevented.
 // ---------------------------------------------------------------------------
-struct ReaderState {
+// One connected controller.  Everything that used to be a single global lives
+// here once per slot, so two pads never share a sample, a handle or an output
+// state.  `path` is the stable key: a pad keeps its slot for as long as it
+// stays connected, and re-enumeration matches by path, so unplugging pad 1
+// does not renumber pad 2.
+struct PadSlot {
     std::mutex        sample_mutex;
     Sample            sample;
 
-    // The reader thread owns the DS5W context, but the haptics-audio path
-    // needs the raw HID handle to write report 0x32, which DS5W does not model.
-    // Published here under its own mutex rather than reaching into the context
-    // from another thread.
-    // Speaker levels used by the Bluetooth audio init-prime. Held here rather
-    // than hardcoded because the right values are a matter for the ear: the
-    // first working playback was audible but far quieter than the same pad on a
-    // PS5, and volume (0-255) and preamp gain are the two levers that decide it.
-    std::mutex        audio_level_mutex;
-    // Chosen by ear against real hardware, not copied from the reference.
-    // A sweep of (0x50,0x02), (0xFF,0x02) and (0xFF,0x03) was played to the
-    // user: 0xFF was the one that matched PS5-like loudness, and raising the
-    // preamp past 0x02 made no audible difference. So volume is the control
-    // that matters here and the preamp is not worth pushing.
-    u8                speaker_volume = 0xFF;
-    u8                preamp_gain    = 0x02;
-
+    // The reader thread owns the DS5W context; the audio paths need the raw
+    // HID handle to write reports 0x32/0x35, which DS5W does not model, so it
+    // is published here under its own mutex rather than reached into.
     std::mutex        dev_mutex;
     void*             dev_handle = nullptr;
     bool              dev_bluetooth = false;
@@ -97,6 +89,25 @@ struct ReaderState {
     bool              leds_disabled = false;
     u8                trigger_mode[2] = { 0, 0 };
     u8                trigger_params[2][10] = {};
+
+    // Reader-thread-only: never touched from another thread.
+    DS5W::DeviceContext ctx{};
+    bool              bound = false;
+    std::wstring      path;
+};
+
+struct ReaderState {
+    // Speaker levels used by the Bluetooth audio init-prime, shared by every
+    // pad.  Held here rather than hardcoded because the right values are a
+    // matter for the ear: a sweep of (0x50,0x02), (0xFF,0x02) and (0xFF,0x03)
+    // was played to the user, 0xFF matched PS5-like loudness, and raising the
+    // preamp past 0x02 made no audible difference.  Volume is the control that
+    // matters; the preamp is not worth pushing.
+    std::mutex        audio_level_mutex;
+    u8                speaker_volume = 0xFF;
+    u8                preamp_gain    = 0x02;
+
+    PadSlot           slots[kMaxPads];
 
     std::atomic<bool> running{ false };
     std::atomic<int>  device_count{ 0 };
@@ -181,21 +192,21 @@ void CopyTouch(const DS5W::Touch& src, PadTouchPoint& dst, u8& count) {
     if (src.down) ++count;
 }
 
-// Build the DS5W output report from the pending output state.
-void BuildOutput(DS5W::DS5OutputState& out) {
-    std::lock_guard<std::mutex> lk(S().out_mutex);
+// Build the DS5W output report from a slot's pending output state.
+void BuildOutput(PadSlot& p, DS5W::DS5OutputState& out) {
+    std::lock_guard<std::mutex> lk(p.out_mutex);
 
-    out.leftRumble  = S().motor_large;
-    out.rightRumble = S().motor_small;
+    out.leftRumble  = p.motor_large;
+    out.rightRumble = p.motor_small;
 
-    out.lightbar = DS5W::Color{ S().lightbar[0], S().lightbar[1], S().lightbar[2] };
+    out.lightbar = DS5W::Color{ p.lightbar[0], p.lightbar[1], p.lightbar[2] };
 
-    out.playerLeds.bitmask       = S().player_leds;
-    out.playerLeds.playerLedFade = S().player_led_fade;
-    out.playerLeds.brightness    = static_cast<DS5W::LedBrightness>(S().led_brightness);
-    out.disableLeds              = S().leds_disabled;
+    out.playerLeds.bitmask       = p.player_leds;
+    out.playerLeds.playerLedFade = p.player_led_fade;
+    out.playerLeds.brightness    = static_cast<DS5W::LedBrightness>(p.led_brightness);
+    out.disableLeds              = p.leds_disabled;
 
-    switch (S().mic_led) {
+    switch (p.mic_led) {
         case 1:  out.microphoneLed = DS5W::MicLed::ON; break;
         case 2:  out.microphoneLed = DS5W::MicLed::PULSE; break;
         default: out.microphoneLed = DS5W::MicLed::OFF; break;
@@ -205,27 +216,27 @@ void BuildOutput(DS5W::DS5OutputState& out) {
     // Anything else is treated as "no effect" rather than guessed at.
     DS5W::TriggerEffect* effects[2] = { &out.leftTriggerEffect, &out.rightTriggerEffect };
     for (int i = 0; i < 2; ++i) {
-        const u8 mode = S().trigger_mode[i];
-        const u8* p = S().trigger_params[i];
+        const u8 mode = p.trigger_mode[i];
+        const u8* q = p.trigger_params[i];
         switch (mode) {
             case 1:  // feedback
                 effects[i]->effectType = DS5W::TriggerEffectType::ContinuousResitance;
-                effects[i]->Continuous.startPosition = p[0];
-                effects[i]->Continuous.force = p[1];
+                effects[i]->Continuous.startPosition = q[0];
+                effects[i]->Continuous.force = q[1];
                 break;
             case 2:  // weapon
                 effects[i]->effectType = DS5W::TriggerEffectType::SectionResitance;
-                effects[i]->Section.startPosition = p[0];
-                effects[i]->Section.endPosition = p[1];
+                effects[i]->Section.startPosition = q[0];
+                effects[i]->Section.endPosition = q[1];
                 break;
             case 3:  // vibration
                 effects[i]->effectType = DS5W::TriggerEffectType::EffectEx;
-                effects[i]->EffectEx.startPosition = p[0];
-                effects[i]->EffectEx.keepEffect = p[1] != 0;
-                effects[i]->EffectEx.beginForce = p[2];
-                effects[i]->EffectEx.middleForce = p[3];
-                effects[i]->EffectEx.endForce = p[4];
-                effects[i]->EffectEx.frequency = p[5];
+                effects[i]->EffectEx.startPosition = q[0];
+                effects[i]->EffectEx.keepEffect = q[1] != 0;
+                effects[i]->EffectEx.beginForce = q[2];
+                effects[i]->EffectEx.middleForce = q[3];
+                effects[i]->EffectEx.endForce = q[4];
+                effects[i]->EffectEx.frequency = q[5];
                 break;
             default:
                 effects[i]->effectType = DS5W::TriggerEffectType::NoResitance;
@@ -233,142 +244,188 @@ void BuildOutput(DS5W::DS5OutputState& out) {
         }
     }
 
-    S().out_dirty = false;
+    p.out_dirty = false;
 }
 
-void MarkOutputDirty() {
-    std::lock_guard<std::mutex> lk(S().out_mutex);
-    S().out_dirty = true;
+void MarkOutputDirty(PadSlot& p) {
+    std::lock_guard<std::mutex> lk(p.out_mutex);
+    p.out_dirty = true;
 }
 
-void PublishDisconnected() {
-    std::lock_guard<std::mutex> lk(S().sample_mutex);
-    S().sample = Sample{};
-    S().sample.connected = false;
+void PublishDisconnected(PadSlot& p) {
+    std::lock_guard<std::mutex> lk(p.sample_mutex);
+    p.sample = Sample{};
+    p.sample.connected = false;
+}
+
+// Resolve an index to its slot, or null for an index out of range.  Callers
+// that need a *connected* pad check the sample or handle themselves; an empty
+// slot is a valid thing to ask about (it answers "not connected").
+PadSlot* SlotAt(int index) {
+    if (index < 0 || index >= kMaxPads) return nullptr;
+    return &S().slots[index];
+}
+
+// Release a slot's device and mark it free.  Reader thread only.
+void UnbindSlot(PadSlot& p, const char* why) {
+    LOG_INFO(GPU, "DualSense: pad %d %s.", static_cast<int>(&p - S().slots), why);
+    {
+        std::lock_guard<std::mutex> lk(p.dev_mutex);
+        p.dev_handle = nullptr;
+    }
+    if (p.bound) DS5W::freeDeviceContext(&p.ctx);
+    p.bound = false;
+    p.path.clear();
+    PublishDisconnected(p);
 }
 
 // ---------------------------------------------------------------------------
 // Reader thread
 // ---------------------------------------------------------------------------
+// Enumerate and bind.  A pad that is already bound keeps its slot (matched by
+// path); a new pad takes the first free slot.  Returns how many are bound.
+int RefreshBindings() {
+    DS5W::DeviceEnumInfo infos[kMaxPads]{};
+    unsigned int found = 0;
+    DS5W::enumDevices(infos, kMaxPads, &found);
+    S().device_count.store(static_cast<int>(found), std::memory_order_relaxed);
+
+    for (unsigned int i = 0; i < found; ++i) {
+        const std::wstring path = infos[i]._internal.path;
+        bool already = false;
+        for (auto& p : S().slots) {
+            if (p.bound && p.path == path) { already = true; break; }
+        }
+        if (already) continue;
+
+        PadSlot* free_slot = nullptr;
+        for (auto& p : S().slots) {
+            if (!p.bound) { free_slot = &p; break; }
+        }
+        if (!free_slot) break;   // every slot taken
+
+        PadSlot& p = *free_slot;
+        if (DS5W_FAILED(DS5W::initDeviceContext(&infos[i], &p.ctx))) {
+            continue;   // try again on the next refresh
+        }
+        p.bound = true;
+        p.path  = path;
+        {
+            std::lock_guard<std::mutex> lk(p.dev_mutex);
+            p.dev_handle    = p.ctx._internal.deviceHandle;
+            p.dev_bluetooth = (p.ctx._internal.connection == DS5W::DeviceConnection::BT);
+        }
+        LOG_INFO(GPU, "DualSense: pad %d connected (%u enumerated), transport=%s.",
+                 static_cast<int>(&p - S().slots), found,
+                 p.dev_bluetooth ? "Bluetooth" : "USB");
+        MarkOutputDirty(p);   // push current LED/rumble state to the new device
+    }
+
+    int bound = 0;
+    for (auto& p : S().slots) bound += p.bound ? 1 : 0;
+    return bound;
+}
+
+// One input read, publish, and output write for a bound slot.  Returns false
+// if the device went away and the slot was released.
+bool ServiceSlot(PadSlot& p) {
+    DS5W::DS5InputState in{};
+    if (DS5W_FAILED(DS5W::getDeviceInputState(&p.ctx, &in))) {
+        // Try one reconnect before giving the device up.
+        if (DS5W_FAILED(DS5W::reconnectDevice(&p.ctx))) {
+            UnbindSlot(p, "removed");
+            return false;
+        }
+        return true;
+    }
+
+    Sample s;
+    s.connected = true;
+    s.buttons = MapButtons(in);
+    s.lx = StickToUnsigned(in.leftStick.x);
+    s.ly = StickToUnsignedInverted(in.leftStick.y);
+    s.rx = StickToUnsigned(in.rightStick.x);
+    s.ry = StickToUnsignedInverted(in.rightStick.y);
+    s.l2 = in.leftTrigger;
+    s.r2 = in.rightTrigger;
+
+    s.touch_count = 0;
+    CopyTouch(in.touchPoint1, s.touch[0], s.touch_count);
+    CopyTouch(in.touchPoint2, s.touch[1], s.touch_count);
+
+    s.accel[0] = static_cast<float>(in.accelerometer.x);
+    s.accel[1] = static_cast<float>(in.accelerometer.y);
+    s.accel[2] = static_cast<float>(in.accelerometer.z);
+    s.gyro[0]  = static_cast<float>(in.gyroscope.x);
+    s.gyro[1]  = static_cast<float>(in.gyroscope.y);
+    s.gyro[2]  = static_cast<float>(in.gyroscope.z);
+
+    s.battery_level       = in.battery.level;
+    s.battery_charging    = in.battery.chargin;
+    s.battery_full        = in.battery.fullyCharged;
+
+    // Status byte, read from the raw report DualSenseWindows just parsed.
+    // Its evaluator is handed the buffer at [2] on Bluetooth and [1] on USB,
+    // and reads the status byte at +0x35 from there.
+    {
+        const size_t base = (p.ctx._internal.connection == DS5W::DeviceConnection::BT) ? 2 : 1;
+        const u8 status = p.ctx._internal.hidBuffer[base + 0x35];
+        s.mic_jack  = (status & 0x02) != 0;
+        s.mic_muted = (status & 0x04) != 0;
+        s.usb_data  = (status & 0x08) != 0;
+        s.usb_power = (status & 0x10) != 0;
+    }
+    s.headphone_connected = in.headPhoneConnected;
+    s.trigger_feedback[0] = in.leftTriggerFeedback;
+    s.trigger_feedback[1] = in.rightTriggerFeedback;
+
+    {
+        std::lock_guard<std::mutex> lk(p.sample_mutex);
+        p.sample = s;
+    }
+
+    // Output is written from this thread only, so it can never race a read.
+    bool dirty;
+    {
+        std::lock_guard<std::mutex> lk(p.out_mutex);
+        dirty = p.out_dirty;
+    }
+    if (dirty) {
+        DS5W::DS5OutputState out{};
+        BuildOutput(p, out);
+        DS5W::setDeviceOutputState(&p.ctx, &out);
+    }
+    return true;
+}
+
 void ReaderThread() {
-    DS5W::DeviceContext ctx{};
-    bool have_ctx = false;
+    auto last_enum = std::chrono::steady_clock::now() - std::chrono::seconds(1);
 
     while (S().running.load(std::memory_order_relaxed)) {
-        if (!have_ctx) {
-            DS5W::DeviceEnumInfo infos[8]{};
-            unsigned int found = 0;
-            DS5W::enumDevices(infos, 8, &found);
-            S().device_count.store(static_cast<int>(found), std::memory_order_relaxed);
-
-            if (found == 0) {
-                PublishDisconnected();
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                continue;
-            }
-
-            // Only controller 0 is streamed today; multi-pad routing is a
-            // separate, specified task.
-            if (DS5W_FAILED(DS5W::initDeviceContext(&infos[0], &ctx))) {
-                PublishDisconnected();
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                continue;
-            }
-            have_ctx = true;
-            {
-                std::lock_guard<std::mutex> lk(S().dev_mutex);
-                S().dev_handle = ctx._internal.deviceHandle;
-                S().dev_bluetooth =
-                    (ctx._internal.connection == DS5W::DeviceConnection::BT);
-            }
-            LOG_INFO(GPU, "DualSense: device connected (%u enumerated), transport=%s.",
-                     found, S().dev_bluetooth ? "Bluetooth" : "USB");
-            MarkOutputDirty();   // push current LED/rumble state to the new device
+        // Re-enumerate when a slot is free, but not more than twice a second:
+        // enumeration walks every HID device on the system.
+        int bound = 0;
+        for (auto& p : S().slots) bound += p.bound ? 1 : 0;
+        const auto now = std::chrono::steady_clock::now();
+        if (bound < kMaxPads && now - last_enum >= std::chrono::milliseconds(500)) {
+            bound = RefreshBindings();
+            last_enum = now;
         }
 
-        DS5W::DS5InputState in{};
-        if (DS5W_FAILED(DS5W::getDeviceInputState(&ctx, &in))) {
-            // Try one reconnect before giving the device up.
-            if (DS5W_FAILED(DS5W::reconnectDevice(&ctx))) {
-                LOG_INFO(GPU, "DualSense: device removed.");
-                {
-                    std::lock_guard<std::mutex> lk(S().dev_mutex);
-                    S().dev_handle = nullptr;
-                }
-                DS5W::freeDeviceContext(&ctx);
-                have_ctx = false;
-                PublishDisconnected();
-            }
+        if (bound == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
 
-        Sample s;
-        s.connected = true;
-        s.buttons = MapButtons(in);
-        s.lx = StickToUnsigned(in.leftStick.x);
-        s.ly = StickToUnsignedInverted(in.leftStick.y);
-        s.rx = StickToUnsigned(in.rightStick.x);
-        s.ry = StickToUnsignedInverted(in.rightStick.y);
-        s.l2 = in.leftTrigger;
-        s.r2 = in.rightTrigger;
-
-        s.touch_count = 0;
-        CopyTouch(in.touchPoint1, s.touch[0], s.touch_count);
-        CopyTouch(in.touchPoint2, s.touch[1], s.touch_count);
-
-        s.accel[0] = static_cast<float>(in.accelerometer.x);
-        s.accel[1] = static_cast<float>(in.accelerometer.y);
-        s.accel[2] = static_cast<float>(in.accelerometer.z);
-        s.gyro[0]  = static_cast<float>(in.gyroscope.x);
-        s.gyro[1]  = static_cast<float>(in.gyroscope.y);
-        s.gyro[2]  = static_cast<float>(in.gyroscope.z);
-
-        s.battery_level       = in.battery.level;
-        s.battery_charging    = in.battery.chargin;
-        s.battery_full        = in.battery.fullyCharged;
-
-        // Status byte, read from the raw report DualSenseWindows just parsed.
-        // Its evaluator is handed the buffer at [2] on Bluetooth and [1] on
-        // USB, and reads the status byte at +0x35 from there.
-        {
-            const size_t base = (ctx._internal.connection == DS5W::DeviceConnection::BT) ? 2 : 1;
-            const u8 status = ctx._internal.hidBuffer[base + 0x35];
-            s.mic_jack  = (status & 0x02) != 0;
-            s.mic_muted = (status & 0x04) != 0;
-            s.usb_data  = (status & 0x08) != 0;
-            s.usb_power = (status & 0x10) != 0;
+        for (auto& p : S().slots) {
+            if (p.bound) ServiceSlot(p);
         }
-        s.headphone_connected = in.headPhoneConnected;
-        s.trigger_feedback[0] = in.leftTriggerFeedback;
-        s.trigger_feedback[1] = in.rightTriggerFeedback;
-
-        {
-            std::lock_guard<std::mutex> lk(S().sample_mutex);
-            S().sample = s;
-        }
-
-        // Output is written from this thread only, so it can never race a read.
-        bool dirty;
-        {
-            std::lock_guard<std::mutex> lk(S().out_mutex);
-            dirty = S().out_dirty;
-        }
-        if (dirty) {
-            DS5W::DS5OutputState out{};
-            BuildOutput(out);
-            DS5W::setDeviceOutputState(&ctx, &out);
-        }
-
         std::this_thread::sleep_for(std::chrono::milliseconds(kPollIntervalMs));
     }
 
-    {
-        std::lock_guard<std::mutex> lk(S().dev_mutex);
-        S().dev_handle = nullptr;
+    for (auto& p : S().slots) {
+        if (p.bound) UnbindSlot(p, "released at shutdown");
     }
-    if (have_ctx) DS5W::freeDeviceContext(&ctx);
-    PublishDisconnected();
 }
 
 } // namespace
@@ -382,10 +439,13 @@ void SetBluetoothAudioLevels(u8 speaker_volume, u8 preamp_gain) {
     S().preamp_gain    = preamp_gain;
 }
 
-bool IsBluetooth() {
-    std::lock_guard<std::mutex> lk(S().dev_mutex);
-    return S().dev_handle != nullptr && S().dev_bluetooth;
+bool IsBluetooth(int index) {
+    PadSlot* p = SlotAt(index);
+    if (!p) return false;
+    std::lock_guard<std::mutex> lk(p->dev_mutex);
+    return p->dev_handle != nullptr && p->dev_bluetooth;
 }
+bool IsBluetooth() { return IsBluetooth(0); }
 
 // ---------------------------------------------------------------------------
 // Haptics audio over Bluetooth -- report 0x32.
@@ -476,15 +536,17 @@ void BuildHapticsReport(u8* r, const s8* pcm, size_t len, u8 seq, u8 counter) {
 
 } // namespace
 
-bool PlayHapticsPcmBlocking(const u8* pcm, size_t bytes) {
+bool PlayHapticsPcmBlocking(int index, const u8* pcm, size_t bytes) {
     if (!pcm || bytes == 0) return false;
 
+    PadSlot* slot = SlotAt(index);
+    if (!slot) return false;
     void* handle = nullptr;
     bool bt = false;
     {
-        std::lock_guard<std::mutex> lk(S().dev_mutex);
-        handle = S().dev_handle;
-        bt = S().dev_bluetooth;
+        std::lock_guard<std::mutex> lk(slot->dev_mutex);
+        handle = slot->dev_handle;
+        bt = slot->dev_bluetooth;
     }
     if (!handle) { LOG_WARN(GPU, "DualSense haptics: no open device."); return false; }
     if (!bt) {
@@ -656,15 +718,17 @@ void Resample512to480(const s16* in, s16* out) {
 
 } // namespace
 
-bool PlaySpeakerPcmBlocking(const s16* pcm, size_t frames, bool headset) {
+bool PlaySpeakerPcmBlocking(int index, const s16* pcm, size_t frames, bool headset) {
     if (!pcm || frames == 0) return false;
 
+    PadSlot* slot = SlotAt(index);
+    if (!slot) return false;
     void* handle = nullptr;
     bool bt = false;
     {
-        std::lock_guard<std::mutex> lk(S().dev_mutex);
-        handle = S().dev_handle;
-        bt = S().dev_bluetooth;
+        std::lock_guard<std::mutex> lk(slot->dev_mutex);
+        handle = slot->dev_handle;
+        bt = slot->dev_bluetooth;
     }
     if (!handle) { LOG_WARN(GPU, "DualSense speaker: no open device."); return false; }
     if (!bt) {
@@ -805,12 +869,14 @@ bool PlaySpeakerPcmBlocking(const s16* pcm, size_t frames, bool headset) {
 //   [24..27] hardware info   [28..31] main version   [44..45] update version
 //   [48..51] SBL version     [52..55] DSP version    [56..59] MCU DSP version
 // ---------------------------------------------------------------------------
-bool ReadFirmwareInfo(FirmwareInfo& out) {
+bool ReadFirmwareInfo(int index, FirmwareInfo& out) {
     out = FirmwareInfo{};
+    PadSlot* slot = SlotAt(index);
+    if (!slot) return false;
     void* handle = nullptr;
     {
-        std::lock_guard<std::mutex> lk(S().dev_mutex);
-        handle = S().dev_handle;
+        std::lock_guard<std::mutex> lk(slot->dev_mutex);
+        handle = slot->dev_handle;
     }
     if (!handle) return false;
 
@@ -849,7 +915,7 @@ bool ReadFirmwareInfo(FirmwareInfo& out) {
 // Built-in tests. Tones are generated here so a shell need not ship PCM
 // across the ABI to prove a lane works.
 // ---------------------------------------------------------------------------
-bool PlaySpeakerTestBlocking() {
+bool PlaySpeakerTestBlocking(int index) {
     constexpr int rate = 48000, seconds = 2;
     std::vector<s16> pcm(static_cast<size_t>(rate) * 2 * seconds);
     for (int i = 0; i < rate * seconds; ++i) {
@@ -860,10 +926,10 @@ bool PlaySpeakerTestBlocking() {
         pcm[static_cast<size_t>(i) * 2 + 0] = b;
         pcm[static_cast<size_t>(i) * 2 + 1] = b;
     }
-    return PlaySpeakerPcmBlocking(pcm.data(), pcm.size() / 2, false);
+    return PlaySpeakerPcmBlocking(index, pcm.data(), pcm.size() / 2, false);
 }
 
-bool PlayHapticsTestBlocking() {
+bool PlayHapticsTestBlocking(int index) {
     constexpr int rate = 3000, seconds = 2;
     std::vector<u8> pcm(static_cast<size_t>(rate) * 2 * seconds);
     for (int i = 0; i < rate * seconds; ++i) {
@@ -872,14 +938,15 @@ bool PlayHapticsTestBlocking() {
         pcm[static_cast<size_t>(i) * 2 + 0] = b;
         pcm[static_cast<size_t>(i) * 2 + 1] = b;
     }
-    return PlayHapticsPcmBlocking(pcm.data(), pcm.size());
+    return PlayHapticsPcmBlocking(index, pcm.data(), pcm.size());
 }
 
 void EnsureStarted() {
     std::call_once(g_start_once, []() {
         S().running.store(true, std::memory_order_relaxed);
         S().thread = new std::thread(ReaderThread);
-        LOG_INFO(GPU, "DualSense: reader started (DualSenseWindows backend).");
+        LOG_INFO(GPU, "DualSense: reader started (DualSenseWindows backend, up to %d pads).",
+                 kMaxPads);
     });
 }
 
@@ -889,70 +956,111 @@ void Shutdown() {
     LOG_INFO(GPU, "DualSense: reader stopped.");
 }
 
-bool GetSample(Sample& out) {
-    if (!S().running.load(std::memory_order_relaxed)) return false;
-    std::lock_guard<std::mutex> lk(S().sample_mutex);
-    out = S().sample;
-    return true;
+int Count() {
+    if (!S().running.load(std::memory_order_relaxed)) return 0;
+    int n = 0;
+    for (auto& p : S().slots) {
+        std::lock_guard<std::mutex> lk(p.sample_mutex);
+        n += p.sample.connected ? 1 : 0;
+    }
+    return n;
 }
 
 int GetDeviceCount() {
     return S().device_count.load(std::memory_order_relaxed);
 }
 
-void SetRumble(u8 large_motor, u8 small_motor) {
-    {
-        std::lock_guard<std::mutex> lk(S().out_mutex);
-        S().motor_large = large_motor;
-        S().motor_small = small_motor;
-    }
-    MarkOutputDirty();
+bool GetSample(int index, Sample& out) {
+    if (!S().running.load(std::memory_order_relaxed)) return false;
+    PadSlot* p = SlotAt(index);
+    if (!p) return false;
+    std::lock_guard<std::mutex> lk(p->sample_mutex);
+    out = p->sample;
+    return true;
 }
 
-void SetTriggerEffect(bool left, u8 mode, const u8 params[10]) {
+void SetRumble(int index, u8 large_motor, u8 small_motor) {
+    PadSlot* p = SlotAt(index);
+    if (!p) return;
     {
-        std::lock_guard<std::mutex> lk(S().out_mutex);
+        std::lock_guard<std::mutex> lk(p->out_mutex);
+        p->motor_large = large_motor;
+        p->motor_small = small_motor;
+    }
+    MarkOutputDirty(*p);
+}
+
+void SetTriggerEffect(int index, bool left, u8 mode, const u8 params[10]) {
+    PadSlot* p = SlotAt(index);
+    if (!p) return;
+    {
+        std::lock_guard<std::mutex> lk(p->out_mutex);
         const int i = left ? 0 : 1;
-        S().trigger_mode[i] = mode;
-        if (params) std::memcpy(S().trigger_params[i], params, 10);
-        else        std::memset(S().trigger_params[i], 0, 10);
+        p->trigger_mode[i] = mode;
+        if (params) std::memcpy(p->trigger_params[i], params, 10);
+        else        std::memset(p->trigger_params[i], 0, 10);
     }
-    MarkOutputDirty();
+    MarkOutputDirty(*p);
 }
 
-void SetLightBar(u8 r, u8 g, u8 b) {
+void SetLightBar(int index, u8 r, u8 g, u8 b) {
+    PadSlot* p = SlotAt(index);
+    if (!p) return;
     {
-        std::lock_guard<std::mutex> lk(S().out_mutex);
-        S().lightbar[0] = r; S().lightbar[1] = g; S().lightbar[2] = b;
+        std::lock_guard<std::mutex> lk(p->out_mutex);
+        p->lightbar[0] = r; p->lightbar[1] = g; p->lightbar[2] = b;
     }
-    MarkOutputDirty();
+    MarkOutputDirty(*p);
 }
 
-void SetPlayerLeds(u8 bitmask, bool fade) {
+void SetPlayerLeds(int index, u8 bitmask, bool fade) {
+    PadSlot* p = SlotAt(index);
+    if (!p) return;
     {
-        std::lock_guard<std::mutex> lk(S().out_mutex);
-        S().player_leds = bitmask;
-        S().player_led_fade = fade;
+        std::lock_guard<std::mutex> lk(p->out_mutex);
+        p->player_leds = bitmask;
+        p->player_led_fade = fade;
     }
-    MarkOutputDirty();
+    MarkOutputDirty(*p);
 }
 
-void SetMicLed(u8 mode) {
+void SetMicLed(int index, u8 mode) {
+    PadSlot* p = SlotAt(index);
+    if (!p) return;
     {
-        std::lock_guard<std::mutex> lk(S().out_mutex);
-        S().mic_led = mode;
+        std::lock_guard<std::mutex> lk(p->out_mutex);
+        p->mic_led = mode;
     }
-    MarkOutputDirty();
+    MarkOutputDirty(*p);
 }
 
-void SetLedOptions(u8 brightness, bool disabled) {
+void SetLedOptions(int index, u8 brightness, bool disabled) {
+    PadSlot* p = SlotAt(index);
+    if (!p) return;
     {
-        std::lock_guard<std::mutex> lk(S().out_mutex);
-        S().led_brightness = brightness;
-        S().leds_disabled = disabled;
+        std::lock_guard<std::mutex> lk(p->out_mutex);
+        p->led_brightness = brightness;
+        p->leds_disabled = disabled;
     }
-    MarkOutputDirty();
+    MarkOutputDirty(*p);
 }
+
+// Index-less forms: pad 0.  Kept so the input backends, the AGC pad HLE and
+// the ABI layer above need no change to keep working with one controller.
+bool GetSample(Sample& out)                                   { return GetSample(0, out); }
+void SetRumble(u8 large_motor, u8 small_motor)                { SetRumble(0, large_motor, small_motor); }
+void SetTriggerEffect(bool left, u8 mode, const u8 params[10]) { SetTriggerEffect(0, left, mode, params); }
+void SetLightBar(u8 r, u8 g, u8 b)                            { SetLightBar(0, r, g, b); }
+void SetPlayerLeds(u8 bitmask, bool fade)                     { SetPlayerLeds(0, bitmask, fade); }
+void SetMicLed(u8 mode)                                       { SetMicLed(0, mode); }
+void SetLedOptions(u8 brightness, bool disabled)              { SetLedOptions(0, brightness, disabled); }
+bool ReadFirmwareInfo(FirmwareInfo& out)                      { return ReadFirmwareInfo(0, out); }
+bool PlayHapticsPcmBlocking(const u8* pcm, size_t bytes)      { return PlayHapticsPcmBlocking(0, pcm, bytes); }
+bool PlaySpeakerPcmBlocking(const s16* pcm, size_t frames, bool headset) {
+    return PlaySpeakerPcmBlocking(0, pcm, frames, headset);
+}
+bool PlaySpeakerTestBlocking()                                { return PlaySpeakerTestBlocking(0); }
+bool PlayHapticsTestBlocking()                                { return PlayHapticsTestBlocking(0); }
 
 } // namespace DualSense
 } // namespace GPU
