@@ -1552,7 +1552,7 @@
 
                         <!-- IN-GAME PAUSE MENU OVERLAY -->
                         <Grid x:Name="PauseMenuOverlay" Grid.ColumnSpan="1" Grid.RowSpan="1" Visibility="Collapsed" Background="#BF000000">
-                            <Border Background="#1C1F28" BorderBrush="#400099FF" BorderThickness="1.5"
+                            <Border Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeAccent}" BorderThickness="1.5"
  CornerRadius="{DynamicResource ThemeCornerL}" Width="340" HorizontalAlignment="Center" VerticalAlignment="Center"
  Padding="0,28,0,28">
                                 <Border.Effect>
@@ -1560,11 +1560,11 @@
                                 </Border.Effect>
                                 <StackPanel>
                                     <!-- Header -->
-                                    <TextBlock Text="P A U S E D" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#6FA0A0A5"
+                                    <TextBlock Text="P A U S E D" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}"
  HorizontalAlignment="Center" Margin="0,0,0,4"/>
 
                                     <TextBlock x:Name="PauseMenuGameTitle" Text="" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold"
- Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,24"
+ Foreground="{DynamicResource ThemeText}" HorizontalAlignment="Center" Margin="0,0,0,24"
  TextWrapping="Wrap" TextAlignment="Center" MaxWidth="280"/>
 
                                     <!-- Menu Items -->
@@ -1572,9 +1572,9 @@
  Click="PauseResume_Click">
                                         <Button.Style>
                                             <Style TargetType="Button">
-                                                <Setter Property="Background" Value="#200099FF"/>
-                                                <Setter Property="Foreground" Value="White"/>
-                                                <Setter Property="BorderBrush" Value="#400099FF"/>
+                                                <Setter Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+                                                <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccentSoft}"/>
                                                 <Setter Property="BorderThickness" Value="1"/>
                                                 <Setter Property="Template">
                                                     <Setter.Value>
@@ -1587,29 +1587,29 @@
                                                 </Setter>
                                                 <Style.Triggers>
                                                     <Trigger Property="IsKeyboardFocused" Value="True">
-                                                        <Setter Property="Background" Value="#3F0099FF"/>
-                                                        <Setter Property="BorderBrush" Value="#0099FF"/>
+                                                        <Setter Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
                                                         <Setter Property="BorderThickness" Value="2"/>
                                                     </Trigger>
                                                     <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#2A0099FF"/>
+                                                        <Setter Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
                                                     </Trigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Button.Style>
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="▶" FontSize="{DynamicResource TypeL}" Foreground="#0099FF" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                            <TextBlock Text="▶" FontSize="{DynamicResource TypeL}" Foreground="{DynamicResource ThemeAccent}" VerticalAlignment="Center" Margin="0,0,12,0"/>
                                             <TextBlock Text="{loc:Tr Key=ui.resume_game}" FontSize="{DynamicResource TypeXL}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                            <TextBlock Text="  [✕]" FontSize="{DynamicResource TypeM}" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
+                                            <TextBlock Text="  [✕]" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
 
                                     <Button x:Name="PauseConsoleBtn" Focusable="True" MinHeight="48" Margin="24,0,24,8"
  Click="PauseConsole_Click" Style="{StaticResource ModernButtonStyle}">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="⌨" FontSize="{DynamicResource TypeL}" Foreground="#FFA0A0A5" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                            <TextBlock Text="⌨" FontSize="{DynamicResource TypeL}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                             <TextBlock Text="{loc:Tr Key=ui.console_logs}" FontSize="{DynamicResource TypeL}" VerticalAlignment="Center"/>
-                                            <TextBlock Text="  [△]" FontSize="{DynamicResource TypeM}" Foreground="#4DFFFFFF" VerticalAlignment="Center"/>
+                                            <TextBlock Text="  [△]" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
 
@@ -1617,9 +1617,9 @@
  Click="PauseStop_Click">
                                         <Button.Style>
                                             <Style TargetType="Button">
-                                                <Setter Property="Background" Value="#15FF2200"/>
-                                                <Setter Property="Foreground" Value="White"/>
-                                                <Setter Property="BorderBrush" Value="#30FF2200"/>
+                                                <Setter Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+                                                <Setter Property="BorderBrush" Value="{DynamicResource ThemeRaised}"/>
                                                 <Setter Property="BorderThickness" Value="1"/>
                                                 <Setter Property="Template">
                                                     <Setter.Value>
@@ -1632,12 +1632,12 @@
                                                 </Setter>
                                                 <Style.Triggers>
                                                     <Trigger Property="IsKeyboardFocused" Value="True">
-                                                        <Setter Property="Background" Value="#30FF2200"/>
-                                                        <Setter Property="BorderBrush" Value="#FF2200"/>
+                                                        <Setter Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource ThemeDanger}"/>
                                                         <Setter Property="BorderThickness" Value="2"/>
                                                     </Trigger>
                                                     <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#25FF2200"/>
+                                                        <Setter Property="Background" Value="{DynamicResource ThemeRaised}"/>
                                                     </Trigger>
                                                 </Style.Triggers>
                                             </Style>

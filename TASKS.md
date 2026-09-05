@@ -435,8 +435,35 @@ Ordered by dependency, one subsystem per change (Rule 10):
     Seen by launching Super Monkey Ball, which crashes on boot: dark
     artifacts/runtime/SHELL_20260906_045056/frames/frame_0024.png; light with
     coral SHELL_20260906_045256/frames/frame_0024.png.
-  - [ ] Step 9 - Pause overlay. Steps 6-11 - Tools, Console,
+  - [x] **Step 9 - Pause overlay on tokens** - DONE by literal count, NOT
+    seen: 20 literals (card, text, muted, accent and its soft fills, danger
+    for Stop) are on tokens; the scrim stays a translucent black on purpose,
+    since it must dim a live game frame in either theme. It could not be
+    seen running because no game reaches gameplay under the shell right now
+    (next item). Verify visually once that is fixed.
+  - [ ] Step 12 - Booting screen per the added concept artboard: staged
+    (Load / Link / Init / First frame), thin progress line, no spinner.
+  - [ ] Step 13 - Stuck notice per the added artboard: shown ONLY when the
+    frame counter stops after the game has drawn at least once, dismissed by
+    the next frame; never during a normal load (asked 2026-09-06). Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
+
+- [ ] **4.14 Dreaming Sarah crashes when launched from the shell but not
+  from the CLI harness** - OBSERVED 2026-09-06, high blast radius (the user's
+  Play button). Launched from the shell (pcsx5_cli with
+  `--config-dir --title-id --ipc-map --ipc-pipe --headless <eboot>`),
+  PPSA02929 died ~15 s in with a call through a null pointer:
+  `Exception 0xC0000005 (Execute at 0x0), RIP 0x0, thread 11888, host stack
+  pcsx5_core.dll+0xDC8BD / +0xDBCFA` (build/bin/Release/logs/crash_log.txt,
+  05:00; shell frame artifacts/runtime/SHELL_20260906_045913/frames/frame_0034.png
+  shows the crash overlay with exit 0xFFFFFFFF). The same title through the
+  harness minutes later, PPSA02929_20260906_050230, is `unchanged` against
+  the baseline (rendering, no fatal). So the difference is the shell's
+  launch path - the IPC/headless presentation, the config dir it passes, or
+  the title-id overrides - not today's core changes. Not investigated yet;
+  it is a core/IPC boundary, not a UI change, so it gets its own iteration
+  (skill: analyze-crash, starting from the two host offsets). Until then the
+  pause overlay (4.13 step 9) cannot be verified visually.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the
