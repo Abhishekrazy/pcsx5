@@ -90,5 +90,23 @@ namespace DualSense {
     // `brightness`: 0 = high, 1 = medium, 2 = low.  `disabled` kills all LEDs.
     void SetLedOptions(u8 brightness, bool disabled);
 
+    // ---- haptics / speaker audio over Bluetooth --------------------------
+
+    // Stream 8-bit unsigned PCM to the controller's haptic actuators.
+    //
+    // Format is fixed by the protocol, not chosen by us: 3000 Hz, stereo,
+    // interleaved (left, right, left, ...).  Blocks for the natural duration of
+    // the audio, pacing one 64-byte report every ~10.7 ms, and returns false if
+    // the controller is not connected over Bluetooth or a write fails.
+    //
+    // EXPERIMENTAL.  The report layout is INFERRED from the SAxense research
+    // (MPL-2.0) and has not yet been confirmed against hardware; see
+    // docs/audits/AUDIT-2026-09-05-dualsense-audio-over-bluetooth.md.
+    bool PlayHapticsPcmBlocking(const u8* pcm, size_t bytes);
+
+    // True when the open device is on Bluetooth, where the report above
+    // applies.  Over USB the controller exposes real audio endpoints instead.
+    bool IsBluetooth();
+
 } // namespace DualSense
 } // namespace GPU

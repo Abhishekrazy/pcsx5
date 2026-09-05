@@ -19,6 +19,58 @@ Current classification:
 | Microphone **input** over Bluetooth | `UNKNOWN` | No source consulted confirms it |
 | Speaker / mic over USB | `SOFT BOUNDARY` | Windows exposes the endpoints natively |
 
+## RESOLVED - haptics over Bluetooth now work (VERIFIED)
+
+Implemented in `src/gpu/dualsense_ds5w.cpp` and confirmed on the user's hardware
+on 2026-09-05: a 3-second tone at 60 Hz, 150 Hz and 30 Hz each produced **felt
+vibration** on a Bluetooth-connected DualSense. Reproduce with
+`build/Release/dualsense_probe.exe`.
+
+Getting there took two rounds of being wrong, and the failures are the useful
+record.
+
+**Round one - ERROR_INVALID_PARAMETER (87), nothing sent.** Writes were 141
+bytes, the length SAxense uses. Windows requires HID writes of exactly
+`OutputReportByteLength`, which is **547** for this device; SAxense targets Linux
+`hidraw`, which accepts arbitrary lengths. The report now sits at the front of a
+full-size buffer.
+
+**Round two - 282 reports accepted, TRUE returned, nothing felt.** The more
+instructive failure: every write succeeded and the device did nothing. Five
+errors, found by reading the DualSenseClient implementation:
+
+| # | Was | Correct |
+|---|---|---|
+| 1 | 141-byte report | **142** |
+| 2 | Unsigned PCM, silence 128 | **Signed s8, silence 0** - a full-scale DC offset |
+| 3 | Session block `FE 00 00 00 00 FF 00` | **`FE`, five `0x40`, interval counter** |
+| 4 | **No init-prime** | A `0x32` report whose state block enables the audio path |
+| 5 | Constant counter byte | Free-running per-report counter |
+
+Number 4 mattered most, and is worth remembering as a shape: the device accepted
+every packet and discarded it, because the stream had never been opened. A
+success return for work that did not happen - the same class of defect this
+project has spent its effort removing, arriving this time from the hardware
+rather than from our own code.
+
+Number 3 carries its own lesson: those bytes came from a *summary* of SAxense,
+and of a Linux proof-of-concept rather than the form a Windows-connected
+controller accepts. A second-hand description of a byte layout is not evidence.
+
+### Licensing position
+
+DualSenseClient is **GPL-3.0**, which cannot be incorporated into this GPL-2.0
+project. It was cloned to `.work/refs/` (untracked) and read to understand the
+format; the implementation here was written independently. Report ids, byte
+offsets and encodings are facts about a device, not authorship.
+
+### Still open
+
+- **Speaker audio** is a different lane: report `0x35`, 334 bytes, carrying a
+  200-byte **Opus** frame at 48 kHz stereo, 160 kbps CBR. Needs an Opus encoder,
+  which is a dependency decision requiring an ADR.
+- **Microphone input over Bluetooth** remains `UNKNOWN`.
+
 ## Correction — the original analysis was wrong
 
 The user supplied <https://github.com/DualSenseClient/DualSenseClient>, which

@@ -821,7 +821,7 @@ if(BUILD_TESTING)
         src/gpu/dualsense_ds5w.cpp
         src/common/log.cpp
     )
-    target_link_libraries(dualsense_probe PRIVATE dualsense_windows)
+    target_link_libraries(dualsense_probe PRIVATE dualsense_windows hid)
     target_include_directories(dualsense_probe PRIVATE src third_party)
     target_compile_options(dualsense_probe PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W3>)
 

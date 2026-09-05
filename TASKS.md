@@ -639,42 +639,36 @@ surface, so where it differs from us the difference is usually load-bearing.
   condition in `third_party/DualSenseWindows/README.md`, as the vendoring
   policy requires.
 
-- [ ] **DualSense speaker, mic and haptics — my HARD BOUNDARY call was WRONG**
-  I classified Bluetooth audio as a hard boundary and argued it quantitatively.
-  The user supplied <https://github.com/DualSenseClient/DualSenseClient>, which
-  does it in user-space software on Windows: no dongle, no custom driver, native
-  Bluetooth radio via P/Invoke. Full correction in
-  `docs/audits/AUDIT-2026-09-05-dualsense-audio-over-bluetooth.md`.
-  Three errors, each failing differently, and worth keeping:
-  1. **The bandwidth argument assumed raw PCM.** SAxense documents the haptics
-     stream as 8-bit PCM at 3000 Hz stereo — about 6 KB/s, which fits the
-     ~20 KB/s HID report stream easily. DualSenseClient uses Opus, smaller
-     still. A confident *number* built on an unstated assumption is more
-     dangerous than a vague answer, because it persuades.
-  2. **"The protocol is UNKNOWN" described my search, not the world.** It is
-     published: SAxense (MPL-2.0), dualsense-bt-haptics (MIT), DS5Dongle,
-     LinuxAudio4Dualsense5.
-  3. **"The community built hardware, so software must be blocked"** is an
-     argument from absence, and the absence was in my search.
-  What was right and still is: Windows exposes no audio endpoint for the pad
-  over Bluetooth. The error was concluding audio could not be *delivered* — the
-  route is HID output reports, not an audio endpoint. No endpoint is needed.
-  Subtasks, easiest first:
-  - [ ] **Confirm the USB path** — connect by cable, re-enumerate endpoints
-    looking for a "Wireless Controller" audio device. `DualSenseAudio.cs`
-    already aims there. NEEDS_EVIDENCE.
-  - [ ] **Speaker + mic over USB**, once confirmed.
-  - [ ] **Haptics and speaker over Bluetooth** via HID output reports, using the
-    MIT-licensed `dualsense-bt-haptics` as the primary reference — protocol
-    facts only, implementation written in PCSX5's own idiom. Check
-    DualSenseClient's licence before reading its source with intent to copy.
-    Expect roughly 200 ms latency; the reference reports that and limited
-    compatibility, so this is demonstrated rather than polished.
-  - [ ] **Microphone input over Bluetooth stays `UNKNOWN`.** Every source found
-    covers the output direction only. Do not assume it works because output
-    does.
-  - [ ] **No controls that silently do nothing.** Whatever ships, the shell must
-    say what is unavailable and why.
+- [x] **DualSense haptics over Bluetooth - WORKING, verified on hardware**
+  A 3-second tone at 60 Hz, 150 Hz and 30 Hz each produced felt vibration on a
+  Bluetooth-connected DualSense. Reproduce: `build/Release/dualsense_probe.exe`.
+  Implemented as `PlayHapticsPcmBlocking` in `src/gpu/dualsense_ds5w.cpp`:
+  report `0x32`, 142 bytes, s8 stereo PCM at 3000 Hz, 64 bytes per report every
+  ~10.67 ms, preceded by an init-prime and 8 silence reports.
+  This closes a HARD BOUNDARY I declared and then falsified twice. Full account
+  in `docs/audits/AUDIT-2026-09-05-dualsense-audio-over-bluetooth.md`.
+  The failure worth carrying forward: the second attempt sent 282 reports, all
+  accepted, and did nothing, because the stream was never opened by an
+  init-prime. The device returned success for work it discarded - the same shape
+  as every other defect this project has hunted, arriving from the hardware
+  rather than from our own code.
+
+- [ ] **DualSense speaker audio over Bluetooth** - a different lane from
+  haptics: report `0x35`, 334 bytes, carrying a 200-byte **Opus** frame
+  (48 kHz stereo, 160 kbps CBR). A combined `0x36` report carries state, haptics
+  and audio together.
+  Blocked on a decision rather than on knowledge: this needs an **Opus encoder**,
+  a new third-party dependency, which needs an owner, version pin, licence check
+  and an ADR. Do not add one without that.
+
+- [ ] **DualSense microphone input over Bluetooth - still `UNKNOWN`**
+  Every source examined covers the output direction only. It is a different data
+  path and must not be assumed to work because output does.
+
+- [ ] **Wire haptics into the emulator, not just the probe.**
+  `PlayHapticsPcmBlocking` blocks for the duration of the audio, which suits a
+  test and not a running game. Production use needs a streaming interface fed by
+  the guest's haptics output on its own paced thread.
 
 - [ ] **ADR-001 steps 2–4 remain**
 
