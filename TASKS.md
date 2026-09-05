@@ -464,6 +464,40 @@ Ordered by dependency, one subsystem per change (Rule 10):
   it is a core/IPC boundary, not a UI change, so it gets its own iteration
   (skill: analyze-crash, starting from the two host offsets). Until then the
   pause overlay (4.13 step 9) cannot be verified visually.
+  Investigated 2026-09-06 (loop tick), established so far:
+  - FALSIFIED: "the shell's config causes it". The CLI launched by hand with
+    the shell's exact --config-dir/--title-id/--headless (no IPC) drew 17
+    draws and flips per frame for the full 50 s (.work/shellcfg_run.log);
+    the only config differences are audio backend 1 vs 0 and a missing
+    per-title override.
+  - The shell's config dir had no titles/PPSA02929.json, so the harness's
+    per-title override (cpu.affinity_mask 3, the two-core pin) was NOT
+    applied under the shell. The 05:00 null call happened unpinned; that is
+    consistent with a race the pin masks, but it is one observation
+    (OBSERVED, not reproduced). The override is now copied into the shell's
+    dev config dir.
+  - With the override, the shell launch did not crash: the core drew (it
+    compiled shaders into build/bin/Release/.work/draw_spv at 05:10-05:13),
+    but the shell showed the boot overlay stuck at "Step 1 of 6, 15%" for
+    40 s with the "Game may be unresponsive" banner
+    (artifacts/runtime/SHELL_20260906_051055/frames/frame_0020.png) - no
+    frame ever reached the shell. Pressing Esc on that banner is Force Stop,
+    and the shell then reported the kill as "CRASH DIAGNOSTICS ... exit
+    0xFFFFFFFF" (frame_0038.png): a UI defect - a user-forced stop is not a
+    crash and must not be shown as one.
+  - FALSIFIED: "frames are wider than the 1920 IPC cap and get skipped".
+    IPC::WriteFrame clamps to 1920x1080 and still bumps the counter, and
+    the shell only skips a frame it reads as wider than 1920, which a clamped
+    frame never is. Dreaming Sarah composites at 2160x1080, so under IPC it
+    would show cropped, not blank.
+  Checked: the headless present path does call the hook -
+  GPU::RenderFrame, with no window, writes g_dib_buffer over IPC when
+  connected AND the DIB buffer is non-empty (vulkan_backend.cpp ~777).
+  NEXT (first boundary): whether the Null device ever fills g_dib_buffer
+  for a headless IPC run - if it stays empty, every frame is silently
+  dropped and the shell never sees one. Then the boot-phase reporting over IPC (the overlay
+  keys on log lines the IPC path does not raise). Then the misreported
+  Force Stop.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the
