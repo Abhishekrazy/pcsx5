@@ -156,6 +156,43 @@ set(SHADER_TRANSLATE_SRC
 )
 
 # ------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# libopus - vendored Opus codec by Xiph.Org (BSD-3-Clause).
+#   https://github.com/xiph/opus  @ 8f39f9725c9546d64c6eb8fff4d8c1b19abba1e6
+#   Provenance and local modifications: third_party/opus/README.md
+#
+# Needed for one thing only: the DualSense Bluetooth speaker lane (report 0x35)
+# carries a 200-byte Opus frame, and the controller holds a real Opus decoder,
+# so the bitstream must be bit-exact. See
+# architecture/decisions/ADR-002-opus-for-dualsense-speaker.md for why writing
+# our own encoder was rejected.
+#
+# Built static, encoder+decoder, with the extras off: no shared library, no
+# tests, no programs, no DRED, no custom modes.
+# ---------------------------------------------------------------------------
+if(EXISTS ${CMAKE_SOURCE_DIR}/third_party/opus/CMakeLists.txt)
+    set(OPUS_BUILD_SHARED_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(OPUS_BUILD_TESTING        OFF CACHE BOOL "" FORCE)
+    set(OPUS_BUILD_PROGRAMS       OFF CACHE BOOL "" FORCE)
+    set(OPUS_CUSTOM_MODES         OFF CACHE BOOL "" FORCE)
+    set(OPUS_DRED                 OFF CACHE BOOL "" FORCE)
+    set(OPUS_INSTALL_PKG_CONFIG_MODULE   OFF CACHE BOOL "" FORCE)
+    set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+    # libopus turns its own tests on when BUILD_TESTING is set, and this
+    # project enables CTest, so it would try to build test targets whose
+    # sources were removed when the tree was trimmed. Shadow the flag for the
+    # subdirectory only, then restore it so our own tests still register.
+    set(_pcsx5_saved_build_testing ${BUILD_TESTING})
+    set(BUILD_TESTING OFF)
+    add_subdirectory(third_party/opus EXCLUDE_FROM_ALL)
+    set(BUILD_TESTING ${_pcsx5_saved_build_testing})
+    set(PCSX5_HAVE_OPUS TRUE)
+else()
+    message(STATUS "libopus not vendored; DualSense Bluetooth speaker audio "
+                   "will be unavailable.")
+    set(PCSX5_HAVE_OPUS FALSE)
+endif()
+
 # DualSenseWindows — vendored DualSense HID library by Ludwig Fuechsl (MIT).
 #   https://github.com/Ohjurot/DualSense-Windows  @ a78fbab1
 # Provenance, credit, licence compatibility and the update procedure are

@@ -1,6 +1,6 @@
 # ADR-002: Opus for the DualSense Bluetooth speaker
 
-- Status: Proposed
+- Status: Accepted (2026-09-05, by the repository owner)
 - Date: 2026-09-05
 - Supersedes: None
 - Superseded By: None
@@ -78,11 +78,10 @@ fragility to reach the same library indirectly.
 
 **Write our own.** Rejected above.
 
-**Do nothing; support the speaker over USB only.** Legitimate, and worth stating
-plainly: USB already gives speaker and microphone with no codec. If Bluetooth
-speaker audio is not wanted, this ADR is unnecessary and the dependency should
-not be added. That is the cheapest correct outcome and should be chosen if the
-feature is not actually wanted.
+**Do nothing; support the speaker over USB only.** Put to the repository owner
+explicitly, since USB gives speaker and microphone with no codec at all. They
+asked for audio over Bluetooth *and* USB, and for the microphone to work, so the
+dependency is wanted and this alternative is declined.
 
 ## Consequences
 
