@@ -4,7 +4,32 @@ import ctypes
 import threading
 import ctypes.wintypes
 import hashlib
-from PIL import ImageGrab, Image
+# Pillow is needed to capture and compare frames, and for nothing else in this
+# module.  Importing it at module scope made every importer of session.py --
+# including tools/check_run_classifier.py, which only wants four threshold
+# numbers -- depend on a screenshot library.  CI has no Pillow, so a pure-logic
+# test failed on an ImportError three imports deep from anything it tested.
+#
+# It is deliberately not silent: capture without Pillow raises, with a message
+# that says what to install.  A capture path that quietly degraded would be far
+# worse than one that stops, because the run record would then be missing frames
+# for a reason nothing recorded.
+try:
+    from PIL import ImageGrab, Image
+    PIL_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised only where Pillow is absent
+    ImageGrab = None
+    Image = None
+    PIL_AVAILABLE = False
+
+
+def _require_pil(what):
+    if not PIL_AVAILABLE:
+        raise RuntimeError(
+            "%s needs Pillow, which is not installed. Install it with "
+            "`pip install pillow`. (Frame capture and comparison are the only "
+            "parts of this package that require it.)" % what)
+
 import math
 
 user32 = ctypes.windll.user32
@@ -140,6 +165,7 @@ def capture_rect(rect, output_path):
     frame hashing and change ratios and reports a title as rendering and
     progressing when nothing was ever drawn.  A run with no capturable window
     must be classified as having no frames, not given fabricated ones."""
+    _require_pil("capture_rect")
     try:
         if not rect:
             return None
@@ -236,6 +262,7 @@ def _capture_window_surface_blocking(hwnd, width, height):
     Vulkan-presented window and return black; measured on this emulator it does
     not -- PrintWindow returns the drawn frame, non-client frame included, which
     is the same framing the previous screen-rect grab produced."""
+    _require_pil("window-surface capture")
     hdc = user32.GetDC(hwnd)
     if not hdc:
         return None
@@ -322,6 +349,7 @@ def frame_diff_ratio(img1, img2, size=(128, 128)):
     loop.  This variant is bounded by `size` and is what the runtime session
     driver uses for frame-change detection.  compare_images() is left untouched
     for its existing callers."""
+    _require_pil("frame_diff_ratio")
     a = img1.convert("L").resize(size, Image.Resampling.BILINEAR).tobytes()
     b = img2.convert("L").resize(size, Image.Resampling.BILINEAR).tobytes()
     changed = sum(1 for x, y in zip(a, b) if abs(x - y) > 10)
@@ -343,6 +371,7 @@ def capture_window(window_title, output_path):
 
 
 def image_hash(img):
+    _require_pil("image_hash")
     img_gray = img.convert("L").resize((32, 32), Image.Resampling.LANCZOS)
     return hashlib.md5(img_gray.tobytes()).hexdigest()
 

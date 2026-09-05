@@ -76,15 +76,23 @@ def _replay(rec, **overrides):
 def main():
     listing = "--list" in sys.argv
     corpus = list(_records())
-    if not corpus:
-        print("check_run_classifier: no stored records found; nothing to lock against.")
-        return 0
-
     failures = []
+
+    # The corpus lives in artifacts/runtime/, which is untracked (Rule 08), so a
+    # fresh clone -- CI, every time -- has none of it. This used to return 0
+    # right here, which meant the one guard standing between someone and a
+    # loosened threshold reported success on CI while checking nothing at all.
+    # The synthetic fixtures below need no corpus and now always run, so the
+    # test has teeth in the environment where it matters most.
+    corpus_available = bool(corpus)
+    if not corpus_available:
+        print("check_run_classifier: no stored runs found (artifacts/runtime is "
+              "untracked, so this is expected on a fresh clone). Corpus checks "
+              "skipped; synthetic threshold fixtures still enforced below.")
 
     # 1. Known-stuck runs must not be called progressing.
     seen = set()
-    for run_id, rec in corpus:
+    for run_id, rec in (corpus if corpus_available else []):
         verdict = _replay(rec)
         if listing:
             print("  %-38s progressing=%s (stored %s)"
@@ -94,13 +102,13 @@ def main():
             if verdict:
                 failures.append("%s classifies as progressing, but it is %s"
                                 % (run_id, MUST_NOT_PROGRESS[run_id]))
-    for run_id in MUST_NOT_PROGRESS:
+    for run_id in (MUST_NOT_PROGRESS if corpus_available else []):
         if run_id not in seen:
             print("  note: fixture %s is not present in artifacts/runtime; skipped"
                   % run_id)
 
     # 2. Each threshold must change a verdict when loosened.
-    base = [(_replay(rec), run_id) for run_id, rec in corpus]
+    base = [(_replay(rec), run_id) for run_id, rec in corpus] if corpus_available else []
     loosenings = {
         "FREEZE_FRACTION_MAX": 1.01,   # allow a freeze covering the whole run
         "DISTINCT_RATIO_MIN": 0.0,     # allow every frame to be identical
@@ -112,7 +120,7 @@ def main():
     # synthetic fixture below instead, which is the honest way to cover a guard
     # no stored run exercises.
     corpus = list(corpus)
-    for name, loosened in loosenings.items():
+    for name, loosened in (loosenings.items() if corpus_available else []):
         changed = sum(1 for (was, _), (run_id, rec) in zip(base, corpus)
                       if _replay(rec, **{name: loosened}) != was)
         if listing:
@@ -147,8 +155,13 @@ def main():
         for f in failures:
             print("  - %s" % f)
         return 1
-    print("check_run_classifier: %d stored runs replayed; known-stuck runs "
-          "rejected and all thresholds load-bearing." % len(corpus))
+    if corpus_available:
+        print("check_run_classifier: %d stored runs replayed; known-stuck runs "
+              "rejected and all thresholds load-bearing." % len(corpus))
+    else:
+        print("check_run_classifier: synthetic fixtures passed "
+              "(coverage guard live, lively run accepted, starved run rejected). "
+              "No stored corpus to replay.")
     return 0
 
 
