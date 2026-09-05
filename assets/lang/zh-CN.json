@@ -99,7 +99,7 @@
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel",
   "hints.firstrun": "%DEV% %OK% Browse Folder  •  %BACK% Skip  •  %ALT% Continue",
-  "hints.full_library": "%DEV% %DIR% 选择游戏  •  %OK% 确认  •  %ALT% 排序  •  %BACK% 返回书架",
+  "hints.full_library": "%DEV% %DIR% 选择游戏  •  %OK% 确认  •  %ALT2% 收藏  •  %ALT% 排序  •  %OPT% 搜索  •  %BACK% 返回书架",
   "hints.library": "%DEV% %TABS% Tabs  •  %DIR% Select Game  •  %OK% Play  •  %ALT2% Search  •  %ALT% Analyzer  •  %BACK% Stop",
   "hints.overlay": "%DEV% %OK% Dismiss  •  %BACK% Close Overlay",
   "hints.pause_menu": "%DEV% %DIR% Navigate  •  %OK% Select  •  %BACK% Stop Game  •  %ALT% Console",
@@ -443,5 +443,11 @@
   "settings.ground_default": "主题默认",
   "settings.ground_default_desc": "使用调色板自带的背景",
   "ui.continue_playing": "继续游戏",
-  "ui.recent": "最近"
+  "ui.recent": "最近",
+  "ui.all_games": "全部游戏",
+  "ui.sort_favourites": "收藏",
+  "ui.sort_size_short": "大小",
+  "ui.search_hint": "搜索",
+  "glyph.opt.kb": "[Tab]",
+  "glyph.opt.pad": "[≡]"
 }

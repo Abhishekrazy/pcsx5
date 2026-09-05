@@ -99,7 +99,7 @@
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel",
   "hints.firstrun": "%DEV% %OK% Browse Folder  •  %BACK% Skip  •  %ALT% Continue",
-  "hints.full_library": "%DEV% %DIR% Select Game  •  %OK% Choose  •  %ALT% Sort  •  %BACK% Back to Shelf",
+  "hints.full_library": "%DEV% %DIR% Select Game  •  %OK% Choose  •  %ALT2% Favourite  •  %ALT% Sort  •  %OPT% Search  •  %BACK% Back to Shelf",
   "hints.library": "%DEV% %TABS% Tabs  •  %DIR% Select Game  •  %OK% Play  •  %ALT2% Search  •  %ALT% Analyzer  •  %BACK% Stop",
   "hints.overlay": "%DEV% %OK% Dismiss  •  %BACK% Close Overlay",
   "hints.pause_menu": "%DEV% %DIR% Navigate  •  %OK% Select  •  %BACK% Stop Game  •  %ALT% Console",
@@ -443,5 +443,11 @@
   "settings.ground_default": "Theme default",
   "settings.ground_default_desc": "Use the palette's own ground",
   "ui.continue_playing": "CONTINUE",
-  "ui.recent": "RECENT"
+  "ui.recent": "RECENT",
+  "ui.all_games": "All games",
+  "ui.sort_favourites": "Favourites",
+  "ui.sort_size_short": "Size",
+  "ui.search_hint": "Search",
+  "glyph.opt.kb": "[Tab]",
+  "glyph.opt.pad": "[≡]"
 }

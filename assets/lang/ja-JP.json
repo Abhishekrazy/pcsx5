@@ -99,7 +99,7 @@
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel",
   "hints.firstrun": "%DEV% %OK% Browse Folder  •  %BACK% Skip  •  %ALT% Continue",
-  "hints.full_library": "%DEV% %DIR% ゲームを選択  •  %OK% 決定  •  %ALT% 並べ替え  •  %BACK% 棚に戻る",
+  "hints.full_library": "%DEV% %DIR% ゲームを選択  •  %OK% 決定  •  %ALT2% お気に入り  •  %ALT% 並べ替え  •  %OPT% 検索  •  %BACK% 棚に戻る",
   "hints.library": "%DEV% %TABS% Tabs  •  %DIR% Select Game  •  %OK% Play  •  %ALT2% Search  •  %ALT% Analyzer  •  %BACK% Stop",
   "hints.overlay": "%DEV% %OK% Dismiss  •  %BACK% Close Overlay",
   "hints.pause_menu": "%DEV% %DIR% Navigate  •  %OK% Select  •  %BACK% Stop Game  •  %ALT% Console",
@@ -443,5 +443,11 @@
   "settings.ground_default": "テーマの既定",
   "settings.ground_default_desc": "パレット本来の背景を使う",
   "ui.continue_playing": "つづきから",
-  "ui.recent": "最近"
+  "ui.recent": "最近",
+  "ui.all_games": "すべてのゲーム",
+  "ui.sort_favourites": "お気に入り",
+  "ui.sort_size_short": "サイズ",
+  "ui.search_hint": "検索",
+  "glyph.opt.kb": "[Tab]",
+  "glyph.opt.pad": "[≡]"
 }

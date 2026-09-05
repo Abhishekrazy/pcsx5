@@ -99,7 +99,7 @@
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel",
   "hints.firstrun": "%DEV% %OK% Browse Folder  •  %BACK% Skip  •  %ALT% Continue",
-  "hints.full_library": "%DEV% %DIR% Выбор игры  •  %OK% Выбрать  •  %ALT% Сортировка  •  %BACK% Назад к полке",
+  "hints.full_library": "%DEV% %DIR% Выбор игры  •  %OK% Выбрать  •  %ALT2% В избранное  •  %ALT% Сортировка  •  %OPT% Поиск  •  %BACK% Назад к полке",
   "hints.library": "%DEV% %TABS% Tabs  •  %DIR% Select Game  •  %OK% Play  •  %ALT2% Search  •  %ALT% Analyzer  •  %BACK% Stop",
   "hints.overlay": "%DEV% %OK% Dismiss  •  %BACK% Close Overlay",
   "hints.pause_menu": "%DEV% %DIR% Navigate  •  %OK% Select  •  %BACK% Stop Game  •  %ALT% Console",
@@ -443,5 +443,11 @@
   "settings.ground_default": "По умолчанию темы",
   "settings.ground_default_desc": "Использовать собственный фон палитры",
   "ui.continue_playing": "ПРОДОЛЖИТЬ",
-  "ui.recent": "НЕДАВНИЕ"
+  "ui.recent": "НЕДАВНИЕ",
+  "ui.all_games": "Все игры",
+  "ui.sort_favourites": "Избранное",
+  "ui.sort_size_short": "Размер",
+  "ui.search_hint": "Поиск",
+  "glyph.opt.kb": "[Tab]",
+  "glyph.opt.pad": "[≡]"
 }

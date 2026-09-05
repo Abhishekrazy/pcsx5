@@ -147,8 +147,9 @@ namespace Pcsx5Ui
         // always lists _games in full.
         private List<GameEntry> _shelf = new List<GameEntry>();
         private RecentPlays _recent;
-        // View All sort order; index matches LibrarySortCombo's items.
-        private enum LibrarySort { Recent = 0, Title = 1, TitleId = 2, Size = 3 }
+        private Favourites _favourites;
+        // All-games sort order; the value is the segment button's Tag.
+        private enum LibrarySort { Recent = 0, Title = 1, TitleId = 2, Size = 3, Favourites = 4 }
         private LibrarySort _librarySort = LibrarySort.Recent;
         private GameEntry _selectedGame = null;
         private string _gamesDir = "Games";
@@ -645,6 +646,7 @@ namespace Pcsx5Ui
             // Most recently played first everywhere; never-played titles keep
             // their discovery order after them.
             _recent ??= new RecentPlays(Path.Combine(Path.GetDirectoryName(_iniPath) ?? AppDomain.CurrentDomain.BaseDirectory, "recent_plays.json"));
+            _favourites ??= new Favourites(Path.Combine(Path.GetDirectoryName(_iniPath) ?? AppDomain.CurrentDomain.BaseDirectory, "favourites.json"));
             _games = _games
                 .Select((g, i) => (g, i))
                 .OrderByDescending(t => _recent.LastPlayed(t.g.TitleId) ?? DateTime.MinValue)
@@ -3421,13 +3423,29 @@ namespace Pcsx5Ui
         /// previously had none -- opening it stranded a pad user with no way to
         /// choose a game or return. Circle backs out, matching the shell-wide
         /// convention that Circle is Back.</summary>
-        private void HandleFullLibraryNav(bool up, bool down, bool left, bool right, bool cross, bool circle, bool triangle)
+        private void HandleFullLibraryNav(bool up, bool down, bool left, bool right, bool cross, bool circle, bool triangle, bool square, bool options)
         {
             if (triangle)
             {
-                // Cycle the sort order from the pad; the combo box follows and
-                // its SelectionChanged applies the sort.
-                LibrarySortCombo.SelectedIndex = (LibrarySortCombo.SelectedIndex + 1) % LibrarySortCombo.Items.Count;
+                // Cycle the sort order from the pad; the segments follow.
+                _librarySort = (LibrarySort)(((int)_librarySort + 1) % 5);
+                ApplyLibrarySort();
+                return;
+            }
+            if (square)
+            {
+                if (FullLibraryListView.SelectedItem is GameEntry fav && _favourites != null)
+                {
+                    _favourites.Toggle(fav.TitleId, out bool saved);
+                    if (!saved) LogConsole("Could not save favourites.json");
+                    ApplyLibrarySort();
+                }
+                return;
+            }
+            if (options)
+            {
+                LibrarySearchBox.Focus();
+                LibrarySearchBox.SelectAll();
                 return;
             }
             int count = FullLibraryListView.Items.Count;
@@ -3480,24 +3498,49 @@ namespace Pcsx5Ui
             // The combo's initial SelectedIndex raises SelectionChanged during
             // InitializeComponent, before the list view below it exists.
             if (FullLibraryListView == null || _games == null) return;
+            foreach (var g in _games) g.IsFavourite = _favourites?.Contains(g.TitleId) ?? false;
+            IEnumerable<GameEntry> source = _games;
+            string q = LibrarySearchBox?.Text?.Trim() ?? "";
+            if (q.Length > 0)
+                source = source.Where(g => (g.Title ?? "").IndexOf(q, StringComparison.CurrentCultureIgnoreCase) >= 0
+                                        || (g.TitleId ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0);
             IEnumerable<GameEntry> ordered = _librarySort switch
             {
-                LibrarySort.Title   => _games.OrderBy(g => g.Title ?? "", StringComparer.CurrentCultureIgnoreCase),
-                LibrarySort.TitleId => _games.OrderBy(g => g.TitleId ?? "", StringComparer.OrdinalIgnoreCase),
-                LibrarySort.Size    => _games.OrderByDescending(g => g.SizeBytes),
-                _                   => _games,
+                LibrarySort.Title      => source.OrderBy(g => g.Title ?? "", StringComparer.CurrentCultureIgnoreCase),
+                LibrarySort.TitleId    => source.OrderBy(g => g.TitleId ?? "", StringComparer.OrdinalIgnoreCase),
+                LibrarySort.Size       => source.OrderByDescending(g => g.SizeBytes),
+                LibrarySort.Favourites => source.OrderByDescending(g => g.IsFavourite).ThenBy(g => g.Title ?? "", StringComparer.CurrentCultureIgnoreCase),
+                _                      => source,
             };
             var selected = _selectedGame;
+            var list = ordered.ToList();
             FullLibraryListView.ItemsSource = null;
-            FullLibraryListView.ItemsSource = ordered.ToList();
-            if (selected != null) FullLibraryListView.SelectedItem = selected;
+            FullLibraryListView.ItemsSource = list;
+            if (selected != null && list.Contains(selected)) FullLibraryListView.SelectedItem = selected;
+            if (LibrarySearchHint != null) LibrarySearchHint.Visibility = q.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
+            UpdateSortSegments();
         }
 
-        private void LibrarySortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        /// <summary>Paint the active sort segment from _librarySort.</summary>
+        private void UpdateSortSegments()
         {
-            if (LibrarySortCombo == null || _games == null) return;
-            _librarySort = (LibrarySort)Math.Max(0, LibrarySortCombo.SelectedIndex);
-            ApplyLibrarySort();
+            foreach (var btn in new[] { SortRecentBtn, SortTitleBtn, SortTitleIdBtn, SortSizeBtn, SortFavBtn })
+            {
+                if (btn == null) continue;
+                bool active = btn.Tag is string t && int.TryParse(t, out int i) && i == (int)_librarySort;
+                btn.Background = active ? (Brush)FindResource("ThemeRaised") : Brushes.Transparent;
+                btn.Foreground = active ? (Brush)FindResource("ThemeText") : (Brush)FindResource("ThemeTextMuted");
+            }
+        }
+
+        private void LibrarySortSegment_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button b && b.Tag is string t && int.TryParse(t, out int i)) { _librarySort = (LibrarySort)i; ApplyLibrarySort(); }
+        }
+
+        private void LibrarySearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_games != null && FullLibraryListView != null) ApplyLibrarySort();
         }
 
         // Mouse on the grid: a click selects the game (the header follows), a
@@ -3525,7 +3568,7 @@ namespace Pcsx5Ui
         {
             if (string.IsNullOrEmpty(template)) return template;
             string sfx = _inputSource == ShellInputSource.Keyboard ? ".kb" : ".pad";
-            string[] tokens = { "DEV", "OK", "BACK", "ALT", "ALT2", "DIR", "TABS" };
+            string[] tokens = { "DEV", "OK", "BACK", "ALT", "ALT2", "DIR", "TABS", "OPT" };
             foreach (var t in tokens)
                 template = template.Replace("%" + t + "%", I18n.Tr("glyph." + t.ToLowerInvariant() + sfx));
             return template;
@@ -4402,8 +4445,12 @@ namespace Pcsx5Ui
 
                 if (activeIndex == -1)
                 {
-                    _prevInputState = new XInputState();
-                    return; // No controller connected
+                    // No controller: carry on with an empty pad state so the
+                    // keyboard contributions below still drive the shell. This
+                    // used to return here, which silently killed keyboard
+                    // navigation whenever the DualSense powered off (found
+                    // 2026-09-06 when a run's R1 key did nothing).
+                    state = new XInputState();
                 }
 
                 buttons = state.Gamepad.wButtons;
@@ -4720,7 +4767,7 @@ namespace Pcsx5Ui
                     if (FullLibraryGrid != null && FullLibraryGrid.Visibility == Visibility.Visible)
                     {
                         ShowHints("hints.full_library");
-                        HandleFullLibraryNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed, yPressed);
+                        HandleFullLibraryNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed, yPressed, xPressed, optionsPressed);
                         _prevInputState = state;
                         return;
                     }
@@ -5255,6 +5302,9 @@ namespace Pcsx5Ui
         public string MusicPath { get; set; }
         public long SizeBytes { get; set; }
         public string CompatStatus { get; set; }
+        /// <summary>Set by ApplyLibrarySort from the Favourites file before the
+        /// grid is sourced; the tile's star binds to it.</summary>
+        public bool IsFavourite { get; set; }
 
         /// <summary>A muted colour derived from the title ID, shown behind the
         /// cover so a dump without artwork gets a tile of its own colour rather

@@ -587,30 +587,67 @@
                     </Grid>
 
                     <!-- Full library grid view (hidden by default) -->
-                    <Grid x:Name="FullLibraryGrid" Grid.Row="1" Visibility="Collapsed" Background="#2F05060A" Margin="40,15,40,15">
+                    <!-- All games (TASKS 4.13 step 3): every colour a theme token. -->
+                    <Grid x:Name="FullLibraryGrid" Grid.Row="1" Visibility="Collapsed" Background="Transparent" Margin="40,15,40,15">
+                        <Grid.Resources>
+                            <!-- One segment of the sort control. The active one is set
+                                 from code (UpdateSortSegments) by Tag == _librarySort. -->
+                            <Style x:Key="SortSegmentStyle" TargetType="Button">
+                                <Setter Property="FocusVisualStyle" Value="{StaticResource AccentFocusVisual}"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeTextMuted}"/>
+                                <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource ThemeHairline}"/>
+                                <Setter Property="Padding" Value="16,0,16,0"/>
+                                <Setter Property="Height" Value="44"/>
+                                <Setter Property="FontSize" Value="{DynamicResource TypeML}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource ThemeText}"/></Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Resources>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
-                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid Grid.Row="0" Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                <Button x:Name="FullLibraryBackBtn" Content="{loc:Tr Key=ui.back_to_carousel}" MinWidth="140" MinHeight="28" FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Click="ToggleFullLibrary_Click"/>
-                                <TextBox x:Name="LibrarySearchBox" Width="200" Height="28" Margin="12,0,0,0" FontSize="{DynamicResource TypeM}" Background="#2F000000" Foreground="White" BorderBrush="#3FFFFFFF" BorderThickness="1"/>
-                                <!-- Sort order for the grid (asked 2026-09-06). Triangle
-                                     cycles it from the pad; see HandleFullLibraryNav. -->
-                                <TextBlock Text="{loc:Tr Key=ui.sort_by}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ForegroundMutedBrush}" VerticalAlignment="Center" Margin="16,0,6,0"/>
-                                <ComboBox x:Name="LibrarySortCombo" FocusVisualStyle="{StaticResource AccentFocusVisual}" AutomationProperties.Name="{loc:Tr Key=ui.sort_by}" SelectedIndex="0" MinWidth="170" Height="28" Background="#2FFFFFFF" Foreground="Black" SelectionChanged="LibrarySortCombo_SelectionChanged">
-                                    <ComboBoxItem Content="{loc:Tr Key=ui.sort_recent}"/>
-                                    <ComboBoxItem Content="{loc:Tr Key=ui.sort_title}"/>
-                                    <ComboBoxItem Content="{loc:Tr Key=ui.sort_title_id}"/>
-                                    <ComboBoxItem Content="{loc:Tr Key=ui.sort_size}"/>
-                                </ComboBox>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="FullLibraryBackBtn" Content="{loc:Tr Key=ui.back_to_carousel}" MinWidth="140" MinHeight="44" FontSize="{DynamicResource TypeS}" Style="{StaticResource ModernButtonStyle}" Click="ToggleFullLibrary_Click" Margin="0,0,20,0"/>
+                                <TextBlock Text="{loc:Tr Key=ui.all_games}" FontSize="{DynamicResource TypeDisplayS}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="FullLibraryCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" Margin="14,4,0,0"/>
                             </StackPanel>
-                            <TextBlock Grid.Column="1" x:Name="FullLibraryCount" Text="{loc:Tr Key=ui.0_games}" FontSize="{DynamicResource TypeM}" Foreground="#6FA0A0A5" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Height="44" Width="260" CornerRadius="10" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}" Margin="0,0,12,0">
+                                    <Grid>
+                                        <TextBlock x:Name="LibrarySearchHint" Text="{loc:Tr Key=ui.search_hint}" FontSize="{DynamicResource TypeML}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False"/>
+                                        <TextBox x:Name="LibrarySearchBox" AutomationProperties.Name="{loc:Tr Key=ui.search_hint}" FontSize="{DynamicResource TypeML}" Background="Transparent" Foreground="{DynamicResource ThemeText}" CaretBrush="{DynamicResource ThemeAccent}" BorderThickness="0" VerticalContentAlignment="Center" Padding="12,0,12,0" TextChanged="LibrarySearchBox_TextChanged"/>
+                                    </Grid>
+                                </Border>
+                                <Border Height="44" CornerRadius="10" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" ClipToBounds="True">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="SortRecentBtn" Tag="0" Content="{loc:Tr Key=ui.sort_recent}" AutomationProperties.Name="{loc:Tr Key=ui.sort_recent}" Click="LibrarySortSegment_Click" Style="{StaticResource SortSegmentStyle}"/>
+                                        <Button x:Name="SortTitleBtn" Tag="1" Content="{loc:Tr Key=ui.sort_title}" AutomationProperties.Name="{loc:Tr Key=ui.sort_title}" Click="LibrarySortSegment_Click" Style="{StaticResource SortSegmentStyle}"/>
+                                        <Button x:Name="SortTitleIdBtn" Tag="2" Content="{loc:Tr Key=ui.sort_title_id}" AutomationProperties.Name="{loc:Tr Key=ui.sort_title_id}" Click="LibrarySortSegment_Click" Style="{StaticResource SortSegmentStyle}"/>
+                                        <Button x:Name="SortSizeBtn" Tag="3" Content="{loc:Tr Key=ui.sort_size_short}" AutomationProperties.Name="{loc:Tr Key=ui.sort_size_short}" Click="LibrarySortSegment_Click" Style="{StaticResource SortSegmentStyle}"/>
+                                        <Button x:Name="SortFavBtn" Tag="4" Content="{loc:Tr Key=ui.sort_favourites}" AutomationProperties.Name="{loc:Tr Key=ui.sort_favourites}" Click="LibrarySortSegment_Click" Style="{StaticResource SortSegmentStyle}"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </Grid>
                         <!-- "View All" shows the library as a grid of cover tiles
                              (asked 2026-09-06), not a table. It stays a ListView
@@ -641,19 +678,20 @@
                                                 <TranslateTransform x:Name="TileLift" Y="0"/>
                                             </TransformGroup>
                                         </StackPanel.RenderTransform>
-                                        <Border x:Name="Tile" Width="160" Height="160" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="#33000000" Margin="2,6,2,0">
+                                        <Border x:Name="Tile" Width="160" Height="160" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="{DynamicResource ThemeSurface}" Margin="2,6,2,0">
                                             <Border.Effect>
                                                 <DropShadowEffect BlurRadius="22" ShadowDepth="8" Direction="270" Opacity="0.45"/>
                                             </Border.Effect>
                                             <Border CornerRadius="7" ClipToBounds="True" Background="{Binding PlaceholderBrush}">
                                                 <Grid>
                                                     <!-- Initials stand in when a dump has no cover, so a tile is never a blank square. -->
-                                                    <TextBlock Text="{Binding Title}" Foreground="#C4E8ECF4" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="10"/>
+                                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="10"/>
                                                     <Image Source="{Binding CoverPath}" Stretch="UniformToFill"/>
+                                                    <Path x:Name="FavStar" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,8,0" Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource ThemeAccent}" Data="M8 1.5l2 4.3 4.7.5-3.5 3.2 1 4.6L8 11.8 3.8 14.1l1-4.6L1.3 6.3 6 5.8z"/>
                                                 </Grid>
                                             </Border>
                                         </Border>
-                                        <TextBlock Text="{Binding Title}" Foreground="White" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="40" Margin="2,8,2,0"/>
+                                        <TextBlock Text="{Binding Title}" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="40" Margin="2,8,2,0"/>
                                     </StackPanel>
                                     <DataTemplate.Resources>
                                         <!-- Motion (design pass 2026-09-06): the lift, scale and
@@ -674,8 +712,11 @@
                                         </Storyboard>
                                     </DataTemplate.Resources>
                                     <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsFavourite}" Value="True">
+                                            <Setter TargetName="FavStar" Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListViewItem}}" Value="True">
-                                            <Setter TargetName="Tile" Property="BorderBrush" Value="#E6FFFFFF"/>
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource ThemeText}"/>
                                             <DataTrigger.EnterActions><BeginStoryboard Storyboard="{StaticResource TileFocusIn}"/></DataTrigger.EnterActions>
                                             <DataTrigger.ExitActions><BeginStoryboard Storyboard="{StaticResource TileFocusOut}"/></DataTrigger.ExitActions>
                                         </DataTrigger>

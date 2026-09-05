@@ -330,7 +330,26 @@ Ordered by dependency, one subsystem per change (Rule 10):
     layout, before the row fix). DynamicResource Theme* references in
     MainWindow.xaml: 34 (was 0). Still literal on this screen: the search box,
     the tile placeholder brush and the blurred backdrop overlay.
-  - [ ] Step 3 - All games: grid, search, sort, favourites (per-title flag).
+  - [x] **Step 3 - All games on tokens** - DONE. Header per the concept:
+    Back, "All games · N", a search field that filters by title or ID as you
+    type, and a five-way segmented sort (Recently played / Title A-Z /
+    Title ID / Size / Favourites) with the active segment painted from the
+    tokens. Favourites live in a focused `Favourites.cs` (favourites.json
+    beside config.ini); a starred tile shows an accent star. Pad: Square
+    toggles favourite, Triangle cycles the sort, Options focuses search; the
+    legend gained an Options glyph (glyph.opt.*) in all locales. The
+    ComboBox sort picker is gone. Seen: favourite toggled and sorted A-Z by
+    keyboard in light/coral -
+    artifacts/runtime/SHELL_20260906_041244/frames/frame_0011.png; dark with
+    the corrected legend - SHELL_20260906_041341/frames/frame_0008.png.
+  - [x] **Keyboard died with the controller** - found and fixed on the way
+    (belongs to 4.12): ControllerTimer_Tick returned at "no controller
+    connected" before folding the keyboard in, so once the DualSense
+    powered off, R1 and every other key did nothing (SHELL_20260906_041139:
+    R1 sent, no tab change, footer stuck on its XAML default). It now
+    carries on with an empty pad state. Verified: Square and Triangle drove
+    the All-games screen by keyboard with no pad attached
+    (SHELL_20260906_041244, favourites.json written).
   - [ ] Step 4 - Settings. Step 5 - Input. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 

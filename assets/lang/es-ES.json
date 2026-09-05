@@ -99,7 +99,7 @@
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel",
   "hints.firstrun": "%DEV% %OK% Browse Folder  •  %BACK% Skip  •  %ALT% Continue",
-  "hints.full_library": "%DEV% %DIR% Elegir juego  •  %OK% Seleccionar  •  %ALT% Ordenar  •  %BACK% Volver a la estantería",
+  "hints.full_library": "%DEV% %DIR% Elegir juego  •  %OK% Seleccionar  •  %ALT2% Favorito  •  %ALT% Ordenar  •  %OPT% Buscar  •  %BACK% Volver a la estantería",
   "hints.library": "%DEV% %TABS% Tabs  •  %DIR% Select Game  •  %OK% Play  •  %ALT2% Search  •  %ALT% Analyzer  •  %BACK% Stop",
   "hints.overlay": "%DEV% %OK% Dismiss  •  %BACK% Close Overlay",
   "hints.pause_menu": "%DEV% %DIR% Navigate  •  %OK% Select  •  %BACK% Stop Game  •  %ALT% Console",
@@ -443,5 +443,11 @@
   "settings.ground_default": "Predeterminado del tema",
   "settings.ground_default_desc": "Usar el fondo propio de la paleta",
   "ui.continue_playing": "CONTINUAR",
-  "ui.recent": "RECIENTES"
+  "ui.recent": "RECIENTES",
+  "ui.all_games": "Todos los juegos",
+  "ui.sort_favourites": "Favoritos",
+  "ui.sort_size_short": "Tamaño",
+  "ui.search_hint": "Buscar",
+  "glyph.opt.kb": "[Tab]",
+  "glyph.opt.pad": "[≡]"
 }

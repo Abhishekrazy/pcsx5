@@ -99,7 +99,7 @@
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel",
   "hints.firstrun": "%DEV% %OK% Browse Folder  •  %BACK% Skip  •  %ALT% Continue",
-  "hints.full_library": "%DEV% %DIR% 게임 선택  •  %OK% 확인  •  %ALT% 정렬  •  %BACK% 선반으로",
+  "hints.full_library": "%DEV% %DIR% 게임 선택  •  %OK% 확인  •  %ALT2% 즐겨찾기  •  %ALT% 정렬  •  %OPT% 검색  •  %BACK% 선반으로",
   "hints.library": "%DEV% %TABS% Tabs  •  %DIR% Select Game  •  %OK% Play  •  %ALT2% Search  •  %ALT% Analyzer  •  %BACK% Stop",
   "hints.overlay": "%DEV% %OK% Dismiss  •  %BACK% Close Overlay",
   "hints.pause_menu": "%DEV% %DIR% Navigate  •  %OK% Select  •  %BACK% Stop Game  •  %ALT% Console",
@@ -443,5 +443,11 @@
   "settings.ground_default": "테마 기본값",
   "settings.ground_default_desc": "팔레트 고유의 배경 사용",
   "ui.continue_playing": "이어하기",
-  "ui.recent": "최근"
+  "ui.recent": "최근",
+  "ui.all_games": "모든 게임",
+  "ui.sort_favourites": "즐겨찾기",
+  "ui.sort_size_short": "크기",
+  "ui.search_hint": "검색",
+  "glyph.opt.kb": "[Tab]",
+  "glyph.opt.pad": "[≡]"
 }
