@@ -108,9 +108,9 @@
         <!-- Secondary Button Style -->
         <Style x:Key="SecondaryButtonStyle" TargetType="Button">
             <Setter Property="FocusVisualStyle" Value="{StaticResource AccentFocusVisual}"/>
-            <Setter Property="Background" Value="#1F242F"/>
-            <Setter Property="Foreground" Value="#FFA0A0A5"/>
-            <Setter Property="BorderBrush" Value="#2A2F3D"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeRaised}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextMuted}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeHairline}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="15,5,15,5"/>
             <Setter Property="FontSize" Value="12"/>
@@ -127,13 +127,13 @@
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#2A2F3D"/>
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Background" Value="{DynamicResource ThemeHairline}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
                 </Trigger>
                 <Trigger Property="IsKeyboardFocused" Value="True">
-                    <Setter Property="Background" Value="#3F0099FF"/>
-                    <Setter Property="BorderBrush" Value="#0099FF"/>
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
                     <Setter Property="BorderThickness" Value="2"/>
                 </Trigger>
             </Style.Triggers>
@@ -1735,15 +1735,15 @@
                     <DropShadowEffect Color="#00FF99" BlurRadius="20" Opacity="0.35" ShadowDepth="0"/>
                 </Border.Effect>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="ToastIcon" Text="✓" Foreground="#00FF99" FontSize="{DynamicResource TypeL}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBlock x:Name="ToastMessage" Text="{loc:Tr Key=ui.configuration_saved_successfully}" Foreground="#E0FFFFFF" FontSize="{DynamicResource TypeML}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="ToastIcon" Text="✓" Foreground="{DynamicResource ThemeSuccess}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="ToastMessage" Text="{loc:Tr Key=ui.configuration_saved_successfully}" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeML}" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
 
             <!-- CRASH DIAGNOSTICS OVERLAY DIALOG -->
-            <Grid x:Name="CrashDialogOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
-                <Border Background="#1C1F26" BorderBrush="#CC2200" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" MinWidth="580" MaxWidth="680" MinHeight="420" MaxHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="25">
+            <Grid x:Name="CrashDialogOverlay" Visibility="Collapsed" Background="{DynamicResource ThemeGround}" Grid.RowSpan="3">
+                <Border Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeDanger}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" MinWidth="580" MaxWidth="680" MinHeight="420" MaxHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="25">
                     <Border.Effect>
                         <DropShadowEffect Color="#FF2200" BlurRadius="25" Opacity="0.4" ShadowDepth="0"/>
                     </Border.Effect>
@@ -1756,12 +1756,12 @@
 
                         <!-- Header -->
                         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,15">
-                            <Border Width="36" MinHeight="36" Background="#20FF2200" CornerRadius="{DynamicResource ThemeCornerL}" Margin="0,0,12,0" VerticalAlignment="Center">
-                                <TextBlock Text="⚠" Foreground="#FF3300" FontSize="{DynamicResource Type4XL}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"/>
+                            <Border Width="36" MinHeight="36" Background="{DynamicResource ThemeRaised}" CornerRadius="{DynamicResource ThemeCornerL}" Margin="0,0,12,0" VerticalAlignment="Center">
+                                <TextBlock Text="⚠" Foreground="{DynamicResource ThemeDanger}" FontSize="{DynamicResource Type4XL}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"/>
                             </Border>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="{loc:Tr Key=ui.crash_diagnostics}" FontSize="{DynamicResource Type2XL}" FontWeight="Bold" Foreground="White"/>
-                                <TextBlock Text="{loc:Tr Key=ui.guest_application_exception_detected}" FontSize="{DynamicResource TypeM}" Foreground="#FFA0A0A5"/>
+                                <TextBlock Text="{loc:Tr Key=ui.crash_diagnostics}" FontSize="{DynamicResource Type2XL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                <TextBlock Text="{loc:Tr Key=ui.guest_application_exception_detected}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}"/>
                             </StackPanel>
                         </StackPanel>
 
@@ -1769,7 +1769,7 @@
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,15">
                             <StackPanel>
                                 <!-- Summary Row -->
-                                <Border Background="#26000000" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12" Margin="0,0,0,15">
+                                <Border Background="{DynamicResource ThemeRaised}" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12" Margin="0,0,0,15">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
@@ -1780,24 +1780,24 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr Key=ui.exception_code}" Foreground="#FFA0A0A5" FontWeight="SemiBold" FontSize="{DynamicResource TypeML}" Margin="0,0,0,5"/>
-                                        <TextBlock x:Name="CrashExcCodeText" Grid.Row="0" Grid.Column="1" Text="{loc:Tr Key=ui.0xc0000005_access_violation}" Foreground="White" FontWeight="Bold" FontSize="{DynamicResource TypeML}" Margin="0,0,0,5"/>
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr Key=ui.exception_code}" Foreground="{DynamicResource ThemeTextMuted}" FontWeight="SemiBold" FontSize="{DynamicResource TypeML}" Margin="0,0,0,5"/>
+                                        <TextBlock x:Name="CrashExcCodeText" Grid.Row="0" Grid.Column="1" Text="{loc:Tr Key=ui.0xc0000005_access_violation}" Foreground="{DynamicResource ThemeText}" FontWeight="Bold" FontSize="{DynamicResource TypeML}" Margin="0,0,0,5"/>
 
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr Key=ui.address_rip}" Foreground="#FFA0A0A5" FontWeight="SemiBold" FontSize="{DynamicResource TypeML}"/>
-                                        <TextBlock x:Name="CrashRipText" Grid.Row="1" Grid.Column="1" Text="0x800000080" Foreground="#0099FF" FontWeight="Bold" FontSize="{DynamicResource TypeML}"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr Key=ui.address_rip}" Foreground="{DynamicResource ThemeTextMuted}" FontWeight="SemiBold" FontSize="{DynamicResource TypeML}"/>
+                                        <TextBlock x:Name="CrashRipText" Grid.Row="1" Grid.Column="1" Text="0x800000080" Foreground="{DynamicResource ThemeAccent}" FontWeight="Bold" FontSize="{DynamicResource TypeML}"/>
                                     </Grid>
                                 </Border>
 
                                 <!-- Analysis -->
-                                <TextBlock Text="{loc:Tr Key=ui.automated_analysis}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF" Margin="0,0,0,6"/>
-                                <Border Background="#100099FF" BorderBrush="#200099FF" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12" Margin="0,0,0,15">
-                                    <TextBlock x:Name="CrashAnalysisText" TextWrapping="Wrap" Foreground="#FFD0D0D5" FontSize="{DynamicResource TypeML}" LineHeight="18"
+                                <TextBlock Text="{loc:Tr Key=ui.automated_analysis}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,6"/>
+                                <Border Background="{DynamicResource ThemeAccentSoft}" BorderBrush="{DynamicResource ThemeAccent}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12" Margin="0,0,0,15">
+                                    <TextBlock x:Name="CrashAnalysisText" TextWrapping="Wrap" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeML}" LineHeight="18"
  Text="{loc:Tr Key=ui.the_guest_application_crashed_at_address_0x8}"/>
                                 </Border>
 
                                 <!-- Raw Logs -->
-                                <TextBlock Text="{loc:Tr Key=ui.crash_dump_extract}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#FFA0A0A5" Margin="0,0,0,6"/>
-                                <TextBox x:Name="CrashRawText" IsReadOnly="True" Background="#15000000" Foreground="#FFA0A0A5" BorderThickness="0" TextWrapping="Wrap" FontFamily="Consolas" FontSize="{DynamicResource TypeS}" Padding="8" MinHeight="80" MaxHeight="220" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"/>
+                                <TextBlock Text="{loc:Tr Key=ui.crash_dump_extract}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                <TextBox x:Name="CrashRawText" IsReadOnly="True" Background="{DynamicResource ThemeRaised}" Foreground="{DynamicResource ThemeTextMuted}" BorderThickness="0" TextWrapping="Wrap" FontFamily="Consolas" FontSize="{DynamicResource TypeS}" Padding="8" MinHeight="80" MaxHeight="220" VerticalScrollBarVisibility="Auto" AcceptsReturn="True"/>
                             </StackPanel>
                         </ScrollViewer>
 
@@ -1813,13 +1813,13 @@
             </Grid>
 
             <!-- FIRST-RUN SETUP OVERLAY DIALOG (games folder picker) -->
-            <Grid x:Name="FirstRunOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
-                <Border Background="#1C1F26" BorderBrush="#0099FF" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30">
+            <Grid x:Name="FirstRunOverlay" Visibility="Collapsed" Background="{DynamicResource ThemeGround}" Grid.RowSpan="3">
+                <Border Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeAccent}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30">
                     <Border.Effect>
                         <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>
                     </Border.Effect>
                     <StackPanel>
-                        <TextBlock Text="{loc:Tr Key=ui.welcome_to_pcsx5}" FontSize="{DynamicResource Type5XL}" FontWeight="ExtraBold" Foreground="White" Margin="0,0,0,6"/>
+                        <TextBlock Text="{loc:Tr Key=ui.welcome_to_pcsx5}" FontSize="{DynamicResource Type5XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}" Margin="0,0,0,6"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#FFA0A0A5" FontSize="{DynamicResource TypeL}" LineHeight="20" Margin="0,0,0,18"
  Text="{loc:Tr Key=ui.before_you_start_choose_the_folder_where_you}"/>
 

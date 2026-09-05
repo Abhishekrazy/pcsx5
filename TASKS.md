@@ -426,7 +426,16 @@ Ordered by dependency, one subsystem per change (Rule 10):
     keep their colour on a theme change; new ones follow. Seen: dark
     artifacts/runtime/SHELL_20260906_044710/frames/frame_0006.png; light with
     coral SHELL_20260906_044722/frames/frame_0006.png.
-  - [ ] Step 8 - Error. Steps 6-11 - Tools, Console,
+  - [x] **Step 8 - Error overlay on tokens** - DONE. The crash diagnostics
+    overlay's 25 literals (scrim, card, raised panels, text, muted, accent,
+    danger, success, borders) are on tokens; the shared SecondaryButtonStyle
+    (Copy / Raw Logs / Dismiss here, used elsewhere too) was still literal
+    and is on tokens now. The three DropShadowEffect glow colours stay
+    literal (an effect's Color cannot take a brush token; small, decorative).
+    Seen by launching Super Monkey Ball, which crashes on boot: dark
+    artifacts/runtime/SHELL_20260906_045056/frames/frame_0024.png; light with
+    coral SHELL_20260906_045256/frames/frame_0024.png.
+  - [ ] Step 9 - Pause overlay. Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
