@@ -72,6 +72,52 @@ success and dropped GPU work loud, then ratchet each swept class shut.
 
 ---
 
+## Discovered — the WPF shell (2026-09-03, from a user screenshot)
+
+- [ ] **The boot overlay is stuck at "Step 1 of 6 / 15%" while the console shows
+  module linking.** Root cause found, two parts, both in `GameSession.cs`:
+  1. There are **two parallel launch implementations**. `GameThreadProc` runs the
+     core in-process through `pcsx5_init`/`pcsx5_load`/`pcsx5_run` and raises
+     honest phases from the actual call it is inside. The shell does not use it:
+     `Launch` (line 162) calls `_ipc.Launch(...)`, which spawns `pcsx5_cli.exe`
+     as a **child process** over a shared-memory/pipe IPC. Two implementations of
+     the same responsibility, and the dead one is the one with real progress.
+  2. On the IPC path the phases come from "phase sniffing from log keywords"
+     (`OnCoreLog`, ~line 358): `text.Contains("link") || text.Contains("reloc")
+     || text.Contains("module")`. That is the bare-substring marker pattern
+     `tools/game_runner/boot_markers.py` already documents as discredited and
+     retired — it matched `menutitle-sheet0.png` for "menu". Worse, it is gated
+     on `State == GameSessionState.Booting`, and `Launch` sets
+     `State = Running` as soon as the child process starts, so **the sniffing
+     never runs at all** and the overlay stays on its initial值.
+  Done means: one launch path, and boot progress reported by the core over the
+  IPC channel it already owns, rather than guessed from log substrings by the UI.
+
+- [ ] **No menu music in the shell: audio defaults to Off and three config trees
+  disagree.** `src/config/config.h:72` — `int backend = 0; // 0=Off, 1=WASAPI`.
+  `pcsx5_config/global.json` (repo root) has `"backend": 0`;
+  `dist/pcsx5_config/global.json` has `"backend": 1`; `.work/dbg_config/` is a
+  third. `IpcSession` sets `WorkingDirectory` to the folder holding
+  `pcsx5_cli.exe`, so which config the shell gets — and therefore whether there
+  is any sound — depends on where the binary happens to live.
+  `CoreBridge.Pcsx5Options` has no audio field at all, so the shell cannot
+  override it even deliberately.
+  Done means: the shell can set audio explicitly, and the config trees stop
+  silently disagreeing about a user-visible default.
+
+- [ ] **The shell passes `--headless` to the core it wants frames from.**
+  `IpcSession.cs:122`. Flagged, not yet explained — it may be correct for the
+  IPC frame-sharing path, but a shell that renders frames asking for headless
+  needs a reason recorded next to it.
+
+- [ ] **`.gemini/` and `GEMINI.md` are absent from this working tree, and were
+  never in git history** (`git log --all --diff-filter=A -- .gemini` is empty).
+  `CLAUDE.md` names the 33 `.gemini/rules/` files as binding and `GEMINI.md` as
+  the companion constitution. They are untracked by design, so nothing here can
+  restore them. This is recorded rather than worked around: the local `doc_links`
+  failure is that checker correctly reporting 25 unresolvable citations. It
+  passes on CI, where `.claude/` is absent too and neither set is scanned.
+
 ## Phase 1 - Instruments that cannot lie (NOW)
 
 Sweeping silent failure while measuring it with silently-failing instruments
