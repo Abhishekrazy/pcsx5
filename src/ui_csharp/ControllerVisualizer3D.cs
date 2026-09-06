@@ -62,6 +62,7 @@ namespace Pcsx5Ui
         private static readonly Color GlowDim = Color.FromRgb(0x18, 0x3c, 0x48);   // for the black triggers: a tint, not a sticker
         private static readonly Color LedOn = Color.FromRgb(0x9c, 0xc8, 0xff);
         private static readonly Color MuteOn = Color.FromRgb(0xff, 0x8a, 0x1a);
+        private static readonly Material DarkInside = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(0x14, 0x16, 0x1b)));
         public bool IsLoaded3D { get; private set; }
 
         private sealed class Part
@@ -233,7 +234,9 @@ namespace Pcsx5Ui
                         }
                     }
                     // Thin inner pieces (glyphs, LEDs) can face either way: draw both sides.
-                    group.Children.Add(new GeometryModel3D(geom, mat) { BackMaterial = mat });
+                    // The body's inside face is dark plastic, so an opening shows the
+                    // shell's interior rather than its texture or the void.
+                    group.Children.Add(new GeometryModel3D(geom, mat) { BackMaterial = name == "body" ? DarkInside : mat });
                 }
                 foreach (var g in glassModels) group.Children.Add(g);
 
@@ -257,18 +260,6 @@ namespace Pcsx5Ui
             // The body has no interior under the sticks (the hole shows the white back
             // shell when a stick tilts): a dark disc at each stick's base plays the well.
             AddWell(root, -0.3176, -0.0013); AddWell(root, 0.3176, -0.0013);
-            if (_parts.TryGetValue("body", out var bodyPart))
-            {
-                // A game-ready shell is hollow: every opening (stick holes, trigger
-                // slots) showed the background through it. A dark copy of the body
-                // shrunk inward plays the interior.
-                var core = new Model3DGroup();
-                var dark = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(0x14, 0x16, 0x1b)));
-                foreach (var gm in ((Model3DGroup)bodyPart.Visual.Content).Children)
-                    if (gm is GeometryModel3D g) core.Children.Add(new GeometryModel3D(g.Geometry, dark) { BackMaterial = dark });
-                var c = new Point3D((bodyPart.Min.X + bodyPart.Max.X) / 2, (bodyPart.Min.Y + bodyPart.Max.Y) / 2, (bodyPart.Min.Z + bodyPart.Max.Z) / 2);
-                root.Children.Add(new ModelVisual3D { Content = core, Transform = new ScaleTransform3D(0.95, 0.90, 0.95, c.X, c.Y, c.Z) });
-            }
             if (_parts.TryGetValue("touchpad", out var tp)) _padRect = new Rect3D(tp.Min.X, tp.Min.Y - 0.006, tp.Min.Z, tp.Max.X - tp.Min.X, 0, tp.Max.Z - tp.Min.Z);
             for (int f = 0; f < 2; f++) for (int i = 0; i < TrailLen; i++) AddTrailDot(root, f, i);
             _view.Children.Add(root);
@@ -472,8 +463,8 @@ namespace Pcsx5Ui
             // Shoulders click, triggers hinge with the analog axis.
             Hinge("l1", Bit(s.Buttons, 0x400) ? 6 : 0);
             Hinge("r1", Bit(s.Buttons, 0x800) ? 6 : 0);
-            Hinge("l2", -s.L2 / 255.0 * 20);   // negative: the trigger's free end swings towards the pad's back
-            Hinge("r2", -s.R2 / 255.0 * 20);
+            Hinge("l2", s.L2 / 255.0 * 22);   // about the top-back hinge: the free end swings in and down
+            Hinge("r2", s.R2 / 255.0 * 22);
             // Share / Options: their own parts now (round 6 export).
             Press("btn_share",   Bit(s.Buttons, 0x1), press * 0.6);
             Press("btn_options", Bit(s.Buttons, 0x8), press * 0.6);
