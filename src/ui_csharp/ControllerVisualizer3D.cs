@@ -32,7 +32,12 @@ namespace Pcsx5Ui
         // Resting pose: the pad LYING on a table seen from its near edge, which is
         // how everyone's pad sits. Applied after the gravity tilt, so tilt stays in
         // the pad's own frame and the pose is only the viewpoint.
-        private readonly AxisAngleRotation3D _basePose = new AxisAngleRotation3D(new Vector3D(1, 0, 0), 52);
+        private readonly AxisAngleRotation3D _basePose = new AxisAngleRotation3D(new Vector3D(1, 0, 0), 0);   // top-down = the pad lying flat
+        // Level reference: the gravity vector captured when the first samples
+        // arrive (the pad is resting when the popup opens). Tilt is measured from
+        // it, so a sensor that is not mounted exactly parallel to the face still
+        // reads dead level at rest.
+        private double _refRoll, _refPitch; private int _refSamples;
         private readonly Dictionary<string, Part> _parts = new Dictionary<string, Part>(StringComparer.Ordinal);
         private readonly List<EmissiveMaterial> _lightbar = new List<EmissiveMaterial>();
         private Color _lightbarColor = Color.FromRgb(0, 90, 255);
@@ -74,8 +79,8 @@ namespace Pcsx5Ui
             Background = Brushes.Transparent;
             _view.Camera = new PerspectiveCamera
             {
-                Position = new Point3D(0, -3.4, 1.0),
-                LookDirection = new Vector3D(0, 3.4, -1.0),
+                Position = new Point3D(0, -3.6, 0.6),
+                LookDirection = new Vector3D(0, 3.6, -0.6),
                 UpDirection = new Vector3D(0, 0, 1),
                 FieldOfView = 40,
             };
@@ -375,7 +380,7 @@ namespace Pcsx5Ui
             if (!IsLoaded3D) return;
             if (!have)
             {
-                _tiltX.Angle = 0; _tiltZ.Angle = 0; _rollF = _pitchF = 0; _muteLocal = _mutePrev = false;
+                _tiltX.Angle = 0; _tiltZ.Angle = 0; _rollF = _pitchF = 0; _muteLocal = _mutePrev = false; _refSamples = 0;
                 foreach (var p in _parts.Values) if (p.Glow != null) p.Glow.Color = Colors.Black;
                 foreach (var p in _parts.Values) { p.Press.OffsetY = 0; p.Hinge.Angle = 0; p.TiltX.Angle = 0; p.TiltZ.Angle = 0; }
                 UpdateTouch(0, default); UpdateTouch(1, default);
@@ -396,6 +401,14 @@ namespace Pcsx5Ui
             {
                 double roll = Math.Atan2(ax, ay) * 180.0 / Math.PI;    // right side down = +
                 double pitch = Math.Atan2(-az, ay) * 180.0 / Math.PI;  // top edge down = +
+                if (_refSamples < 20)
+                {
+                    // Average the first ~0.3 s as "level"; the pad is on the table now.
+                    _refRoll += (roll - _refRoll) / (_refSamples + 1);
+                    _refPitch += (pitch - _refPitch) / (_refSamples + 1);
+                    _refSamples++;
+                }
+                roll -= _refRoll; pitch -= _refPitch;
                 const double k = 0.25;                                 // light low-pass against sensor noise
                 _rollF += (roll - _rollF) * k;
                 _pitchF += (pitch - _pitchF) * k;
