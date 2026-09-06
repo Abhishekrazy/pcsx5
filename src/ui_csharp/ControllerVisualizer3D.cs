@@ -241,6 +241,17 @@ namespace Pcsx5Ui
                     group.Children.Add(new GeometryModel3D(geom, mat) { BackMaterial = name == "body" ? DarkInside : mat });
                 }
                 foreach (var g in glassModels) group.Children.Add(g);
+                if (name == "stick_l" || name == "stick_r")
+                {
+                    // The real stick is a ball under the cap; the split mesh has only the
+                    // cap and a stub, so a tilted stick showed an empty socket. A dark
+                    // sphere at the base rides with the stick and always fills the hole.
+                    double cx = (mn.X + mx.X) / 2, cz = (mn.Z + mx.Z) / 2;
+                    var ball = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(0x1a, 0x1c, 0x22)));
+                    var ballMat = new MaterialGroup(); ballMat.Children.Add(ball);
+                    ballMat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x40, 0xff, 0xff, 0xff)), 30));
+                    group.Children.Add(new GeometryModel3D(Sphere(new Point3D(cx, mx.Y - 0.005, cz), 0.105, 28, 14), ballMat) { BackMaterial = ballMat });
+                }
 
                 var part = new Part { Glow = glowBrush };
                 part.Pivot = PivotFor(name, mn, mx);
@@ -341,6 +352,30 @@ namespace Pcsx5Ui
                 }
                 else { _trailPos[finger, i].OffsetY = 10; _trailBrush[finger, i].Color = Colors.Transparent; }
             }
+        }
+
+        private static MeshGeometry3D Sphere(Point3D c, double r, int slices, int stacks)
+        {
+            var m = new MeshGeometry3D();
+            for (int i = 0; i <= stacks; i++)
+            {
+                double phi = Math.PI * i / stacks;
+                for (int j = 0; j <= slices; j++)
+                {
+                    double th = 2 * Math.PI * j / slices;
+                    var n = new Vector3D(Math.Sin(phi) * Math.Cos(th), Math.Cos(phi), Math.Sin(phi) * Math.Sin(th));
+                    m.Positions.Add(c + n * r); m.Normals.Add(n);
+                }
+            }
+            for (int i = 0; i < stacks; i++)
+                for (int j = 0; j < slices; j++)
+                {
+                    int a = i * (slices + 1) + j, b = a + slices + 1;
+                    m.TriangleIndices.Add(a); m.TriangleIndices.Add(b); m.TriangleIndices.Add(a + 1);
+                    m.TriangleIndices.Add(a + 1); m.TriangleIndices.Add(b); m.TriangleIndices.Add(b + 1);
+                }
+            m.Freeze();
+            return m;
         }
 
         private void AddWell(ModelVisual3D root, double x, double z)
