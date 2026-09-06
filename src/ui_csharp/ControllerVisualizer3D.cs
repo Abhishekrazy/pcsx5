@@ -41,11 +41,13 @@ namespace Pcsx5Ui
         // arrive (the pad is resting when the popup opens). Tilt is measured from
         // it, so a sensor that is not mounted exactly parallel to the face still
         // reads dead level at rest.
-        private double _refRoll, _refPitch; private int _refSamples;
+        private Vector3D _gRef, _gNow; private int _refSamples;
+        // One rotation taking the resting gravity vector to the current one: identity
+        // at rest whatever the sensor's mounting or sign convention.
+        private readonly AxisAngleRotation3D _tiltFree = new AxisAngleRotation3D(new Vector3D(1, 0, 0), 0);
         private readonly Dictionary<string, Part> _parts = new Dictionary<string, Part>(StringComparer.Ordinal);
         private readonly List<EmissiveMaterial> _lightbar = new List<EmissiveMaterial>();
         private Color _lightbarColor = Color.FromRgb(0, 90, 255);
-        private double _rollF, _pitchF;               // low-passed gravity tilt, degrees
         private bool _muteLocal, _mutePrev;           // mute toggled by the pad's own button (the reader has no LED state)
         private int _player = 1;
         // Touch trails: per finger, a ring of small emissive dots on the touchpad
@@ -105,6 +107,7 @@ namespace Pcsx5Ui
             _view.Children.Add(lights);
             _rootXf.Children.Add(new RotateTransform3D(_tiltX));
             _rootXf.Children.Add(new RotateTransform3D(_tiltZ));
+            _rootXf.Children.Add(new RotateTransform3D(_tiltFree));
             _rootXf.Children.Add(new RotateTransform3D(_baseYaw));
             _rootXf.Children.Add(new RotateTransform3D(_basePose));
             Children.Add(_view);
@@ -385,7 +388,7 @@ namespace Pcsx5Ui
             if (!IsLoaded3D) return;
             if (!have)
             {
-                _tiltX.Angle = 0; _tiltZ.Angle = 0; _rollF = _pitchF = 0; _muteLocal = _mutePrev = false; _refSamples = 0;
+                _tiltX.Angle = 0; _tiltZ.Angle = 0; _tiltFree.Angle = 0; _muteLocal = _mutePrev = false; _refSamples = 0;
                 foreach (var p in _parts.Values) if (p.Glow != null) p.Glow.Color = Colors.Black;
                 foreach (var p in _parts.Values) { p.Press.OffsetY = 0; p.Hinge.Angle = 0; p.TiltX.Angle = 0; p.TiltZ.Angle = 0; }
                 UpdateTouch(0, default); UpdateTouch(1, default);
@@ -404,25 +407,33 @@ namespace Pcsx5Ui
             double mag = Math.Sqrt(ax * ax + ay * ay + az * az);
             if (mag > 1000)   // raw counts; 1 g is ~8192 (INFERRED), anything smaller is not a gravity reading
             {
-                double roll = Math.Atan2(ax, ay) * 180.0 / Math.PI;    // right side down = +
-                double pitch = Math.Atan2(-az, ay) * 180.0 / Math.PI;  // top edge down = +
+                // Sensor -> model axes (INFERRED; the user read both horizontal axes
+                // mirrored under the first mapping, i.e. 180 deg about the face normal).
+                var g = new Vector3D(-ax / mag, -ay / mag, az / mag);
                 if (_refSamples < 20)
                 {
                     // Average the first ~0.3 s as "level"; the pad is on the table now.
-                    _refRoll += (roll - _refRoll) / (_refSamples + 1);
-                    _refPitch += (pitch - _refPitch) / (_refSamples + 1);
+                    _gRef = _refSamples == 0 ? g : _gRef + (g - _gRef) / (_refSamples + 1);
+                    _gNow = g;
                     _refSamples++;
                 }
-                roll -= _refRoll; pitch -= _refPitch;
-                const double k = 0.25;                                 // light low-pass against sensor noise
-                _rollF += (roll - _rollF) * k;
-                _pitchF += (pitch - _pitchF) * k;
+                else
+                {
+                    const double k = 0.25;   // light low-pass against sensor noise
+                    _gNow = _gNow + (g - _gNow) * k;
+                }
+                var a = _gRef; var b = _gNow;
+                if (a.Length > 0.5 && b.Length > 0.5)
+                {
+                    a.Normalize(); b.Normalize();
+                    var axis = Vector3D.CrossProduct(a, b);
+                    double dot = Math.Max(-1, Math.Min(1, Vector3D.DotProduct(a, b)));
+                    double angle = Math.Acos(dot) * 180.0 / Math.PI;
+                    if (axis.Length > 1e-4) { axis.Normalize(); _tiltFree.Axis = axis; _tiltFree.Angle = angle; }
+                    else _tiltFree.Angle = dot < 0 ? 180 : 0;
+                }
             }
-            // Signs flipped 2026-09-06 after the user's hand test read both axes
-            // mirrored - consistent with the IMU frame being rotated 180 deg about
-            // Y relative to the assumed one (X and Z both negated). INFERRED.
-            _tiltX.Angle = _pitchF;    // no clamp: the pad may go fully over (atan2 covers +/-180)
-            _tiltZ.Angle = -_rollF;
+            _tiltX.Angle = 0; _tiltZ.Angle = 0;
 
             // Face buttons / D-pad / system buttons depress into the face (+Y).
             const double press = 0.014;
