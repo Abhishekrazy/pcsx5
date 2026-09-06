@@ -614,22 +614,6 @@
                             </Button>
                         </StackPanel>
 
-                        <!-- Search box below controls -->
-                        <Grid x:Name="SearchArea" Width="260" Height="40" Margin="0,0,25,10" HorizontalAlignment="Right" VerticalAlignment="Bottom" WindowChrome.IsHitTestVisibleInChrome="True">
-                            <!-- Background Pill -->
-                            <Border x:Name="SearchBoxBorder" CornerRadius="{DynamicResource ThemeCornerL}" Background="#2FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="30"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <!-- Search Icon -->
-                                    <TextBlock Grid.Column="0" Text="🔍" Foreground="#FFA0A0A5" FontSize="{DynamicResource TypeM}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    <!-- TextBox -->
-                                    <TextBox x:Name="SearchBox" FocusVisualStyle="{StaticResource AccentFocusVisual}" Grid.Column="1" Background="Transparent" Foreground="White" BorderThickness="0" VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="0,0,10,0" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" GotFocus="SearchBox_GotFocus" LostFocus="SearchBox_LostFocus" TextChanged="SearchBox_TextChanged"/>
-                                    <!-- Placeholder Text -->
-                                    <TextBlock x:Name="SearchPlaceholder" Grid.Column="1" Text="{loc:Tr Key=ui.search_games}" Foreground="#6FA0A0A5" FontSize="{DynamicResource TypeM}" VerticalAlignment="Center" Padding="0,0,10,0" IsHitTestVisible="False" Visibility="Visible"/>
-                                </Grid>
                             </Border>
                         </Grid>
                     </Grid>
