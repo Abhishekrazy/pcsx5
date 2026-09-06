@@ -35,8 +35,8 @@ namespace Pcsx5Ui
         // The classic lying-down product view: top edge (triggers, lightbar) nearest
         // and low, the face seen at a shallow angle. Yaw 180 turns the top edge to
         // the camera, then the near edge is dropped.
-        private readonly AxisAngleRotation3D _baseYaw = new AxisAngleRotation3D(new Vector3D(0, 1, 0), 180);
-        private readonly AxisAngleRotation3D _basePose = new AxisAngleRotation3D(new Vector3D(1, 0, 0), -48);
+        private readonly AxisAngleRotation3D _baseYaw = new AxisAngleRotation3D(new Vector3D(0, 1, 0), 0);      // bottom edge (grips) nearest, as in the user's reference photo
+        private readonly AxisAngleRotation3D _basePose = new AxisAngleRotation3D(new Vector3D(1, 0, 0), -62);   // camera just above the table: grips and bottom edge nearest, face at a shallow angle (the user's reference photo)
         // Level reference: the gravity vector captured when the first samples
         // arrive (the pad is resting when the popup opens). Tilt is measured from
         // it, so a sensor that is not mounted exactly parallel to the face still
