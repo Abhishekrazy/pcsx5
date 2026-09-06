@@ -1361,25 +1361,6 @@ namespace Pcsx5Ui
             }
         }
 
-
-        private void SearchBox_GotFocus(object sender, RoutedEventArgs e)
-        {
-            if (SearchBoxBorder != null)
-            {
-                SearchBoxBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 153, 255));
-                SearchBoxBorder.Background = new SolidColorBrush(Color.FromArgb(60, 0, 0, 0));
-            }
-        }
-
-        private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
-        {
-            if (SearchBoxBorder != null)
-            {
-                SearchBoxBorder.BorderBrush = new SolidColorBrush(Color.FromArgb(31, 255, 255, 255));
-                SearchBoxBorder.Background = new SolidColorBrush(Color.FromArgb(47, 255, 255, 255));
-            }
-        }
-
         private void LaunchButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedGame == null) return;
