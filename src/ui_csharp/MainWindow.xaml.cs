@@ -392,6 +392,15 @@ namespace Pcsx5Ui
         // moves the cursor on the plane, left stick the hue bar; Cross applies,
         // Circle cancels. Fed from the pad tick's stick values.
         private (double x, double y) _stickL, _stickR;
+
+        private (double x, double y) ApplyDeadzone(double x, double y)
+        {
+            double dz = Math.Max(0, Math.Min(0.9, _config?.input?.deadzone ?? 0.15));
+            double m = Math.Sqrt(x * x + y * y);
+            if (m <= dz) return (0, 0);
+            double k = Math.Min(1, (m - dz) / (1 - dz)) / m;   // rescale so full deflection stays 1.0
+            return (x * k, y * k);
+        }
         private Action<Color> _colorPickerOnApply;
 
         private void ShowColorPicker(Color initial, Action<Color> onApply)
@@ -5302,10 +5311,16 @@ namespace Pcsx5Ui
                 state.Gamepad.bLeftTrigger = (byte)((dsButtons & HostGamepadButtons.L2) != 0 ? 255 : 0);
                 state.Gamepad.bRightTrigger = (byte)((dsButtons & HostGamepadButtons.R2) != 0 ? 255 : 0);
 
-                lx = (short)((pad.Lx - 128) * 256);
-                ly = (short)(-(pad.Ly - 128) * 256);
-                _stickL = ((pad.Lx - 128) / 127.0, -(pad.Ly - 128) / 127.0);
-                _stickR = ((pad.Rx - 128) / 127.0, -(pad.Ry - 128) / 127.0);
+                // The configured stick deadzone (Settings > Accessories & Controllers)
+                // applies to the shell's own use of the sticks - navigation, the
+                // colour picker - as a radial deadzone with the range rescaled, so a
+                // drifting stick at rest never counts as input.
+                var sl = ApplyDeadzone((pad.Lx - 128) / 127.0, -(pad.Ly - 128) / 127.0);
+                var sr = ApplyDeadzone((pad.Rx - 128) / 127.0, -(pad.Ry - 128) / 127.0);
+                lx = (short)(Math.Max(-1, Math.Min(1, sl.x)) * 32767);
+                ly = (short)(Math.Max(-1, Math.Min(1, sl.y)) * 32767);
+                _stickL = sl;
+                _stickR = sr;
                 state.Gamepad.wButtons = buttons;
                 state.Gamepad.sThumbLX = lx;
                 state.Gamepad.sThumbLY = ly;

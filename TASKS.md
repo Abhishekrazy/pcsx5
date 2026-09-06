@@ -157,6 +157,14 @@ updater packages uploaded by hand (see the packaging item).
   *_metallicRoughness at 1024. Seen: artifacts/runtime/SHELL_20260907_023417
   frames/frame_0002.png (embossed PS logo, speaker holes, creases).
 
+- [ ] **The stick deadzone setting reaches the shell but not the guest.**
+  `input.deadzone` is now applied by the shell to its own stick use (radial,
+  rescaled: navigation and the colour picker; 2026-09-07, user's pad drifts).
+  The core does not read it: `libpad.cpp` reports a fixed deadzone of 30 in
+  the pad info and passes raw stick values to the guest. Done means: the core
+  applies the configured deadzone (or reports it so the guest does) with a
+  test, so the setting means the same thing in a game as in the shell.
+
 - [ ] **Compat refresh from the database erases the local evidence.**
   `RefreshCompatFromDatabase` rewrites `compat_seed/titles/<id>.json` with
   `source=database` and drops the `evidence` sentence the curated record
