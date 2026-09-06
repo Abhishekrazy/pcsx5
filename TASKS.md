@@ -17,6 +17,19 @@ Last release: **v0.1.1** (2026-09-06, zip only - see the first open item).
 
 ## Open - shell and launcher
 
+- [x] **Release zip was 345 MB; now 78 MB** (2026-09-06). Two causes: the
+  zip step packed `dist\*` wholesale, and running the app from dist had left
+  88 MB of decoded-audio cache, a 55 MB stray rar, crash dumps, logs, .work
+  and the user's own config/favourites/recent-plays in it (a privacy leak as
+  much as a size problem); and the self-contained single-file exe was
+  published uncompressed (186 MB). Now: `EnableCompressionInSingleFile`
+  (exe 78 MB) and the zip is built from an allowlist staged into
+  `.work/release_stage` (exe, CLI, core DLL, bink2, README, VERSION, plugins,
+  tools, assets, lang; *.log/*.pdb/*.dmp stripped). v0.1.1's asset replaced.
+  Remaining bulk is the .NET 9 + WPF runtime, and WinForms assemblies pulled
+  in by NAudio (~23 MB raw) - a framework-dependent build would be ~10 MB but
+  needs the runtime installed; not changed.
+
 - [ ] **Release packaging: v0.1.1 has no Squirrel package, so installed copies
   cannot auto-update to it.** v0.1.0 shipped `pcsx5-0.1.0-full.nupkg` and a
   Setup.exe that the in-app `Squirrel.UpdateManager` (MainWindow.xaml.cs:395)

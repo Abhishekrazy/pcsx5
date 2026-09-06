@@ -126,6 +126,7 @@ if (-not $SkipDotnet) {
     & dotnet publish $csprojPath -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true `
         -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:EnableCompressionInSingleFile=true `
         -o $publishDir
     if ($LASTEXITCODE -ne 0) { Fatal "dotnet publish failed (exit $LASTEXITCODE)" }
 }
@@ -186,6 +187,7 @@ New-Item $distPlugins -Force -Type Directory | Out-Null
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distPlugins "pcsx5_core.dll")
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distDir     "pcsx5_core.dll")
 Stage-File (Join-Path $repoRoot "README.md") (Join-Path $distDir "README.md")   # the Credits popup reads its Credits section
+Stage-File (Join-Path $repoRoot "VERSION")   (Join-Path $distDir "VERSION")     # System Information reads the release number
 
 # Bink2 video decoder (bink2w64.dll) — place next to the CLI so
 # CreateBink2Decoder can find it via LoadLibrary.  Optional; games
@@ -327,8 +329,28 @@ if ($Zip) {
     $zipName = "PCSX5${verSuffix}_Release.zip"
     $zipPath = Join-Path $repoRoot $zipName
     Log "=== Step 5: Creating $zipName ==="
-    Compress-Archive -Path (Join-Path $distDir "*") -DestinationPath $zipPath -Force
-    Log "Created $zipPath"
+    # Pack an allowlist, never dist\* wholesale: running the app from dist
+    # leaves decoded-audio caches, crash dumps, logs, .work and the user's own
+    # config/favourites/recent-plays there. v0.1.1's first zip shipped 345 MB
+    # of exactly that. Only what the build produced goes into the archive.
+    $ship = @("pcsx5.exe", "pcsx5_cli.exe", "pcsx5_core.dll", "bink2w64.dll",
+              "README.md", "VERSION",
+              "plugins", "tools", "assets", "lang")
+    $stage = Join-Path (Join-Path $repoRoot ".work") "release_stage"
+    if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+    New-Item -ItemType Directory $stage -Force | Out-Null
+    foreach ($rel in $ship) {
+        $src = Join-Path $distDir $rel
+        if (-not (Test-Path $src)) { Log "  (not present, skipped: $rel)"; continue }
+        Copy-Item -Recurse -Force $src (Join-Path $stage $rel)
+    }
+    # Nothing from a run may ride along even inside the staged folders.
+    Get-ChildItem -Path $stage -Recurse -Include "*.log","*.pdb","*.dmp" | Remove-Item -Force
+    if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+    Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zipPath -Force
+    Remove-Item -Recurse -Force $stage
+    $zipMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
+    Log "Created $zipPath ($zipMb MB)"
 }
 
 Log "=== BUILD COMPLETE ==="
