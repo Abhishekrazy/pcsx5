@@ -3139,7 +3139,11 @@ namespace Pcsx5Ui
 
                 dirCard.Child = dirStack;
                 SettingsSubPageContentContainer.Children.Add(dirCard);
-                btnAdd.Focus();
+                // Focus after layout: a synchronous Focus() on a just-added
+                // element is dropped by WPF, so this page opened with nothing
+                // focused and Enter did nothing (Rule 12: keyboard-reachable).
+                Dispatcher.BeginInvoke(new Action(() => btnAdd.Focus()),
+                    System.Windows.Threading.DispatcherPriority.Loaded);
             }
             else
             {

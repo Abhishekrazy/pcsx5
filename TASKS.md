@@ -639,13 +639,12 @@ Ordered by dependency, one subsystem per change (Rule 10):
      block itself is not read back by anything yet, so the write is inferred
      from the call, not observed.
 
-- [ ] **"Add Directory" on the Game Scan Directories page takes no keyboard
-  or pad focus** - found 2026-09-06 while opening the folder picker by
-  keyboard: the page builds its own button stack and sets no initial focus,
-  so Enter after arriving does nothing (artifacts/runtime/SHELL_20260906_060801/frames/frame_0011.png:
-  page shown, nothing focused). Rule 12: a control reachable only by mouse
-  is a defect. Fix: focus the Add button when the page opens and include
-  both buttons in the arrow order.
+- [x] **"Add Directory" on the Game Scan Directories page takes no keyboard
+  or pad focus** - FIXED 2026-09-06. The page called btnAdd.Focus()
+  synchronously on a just-added element, which WPF drops, so it opened with
+  nothing focused. Deferred the focus to DispatcherPriority.Loaded. Verified:
+  a keyboard-only sequence (no click) opened the folder picker via Enter -
+  artifacts/runtime/SHELL_20260906_064652/frames/frame_0011.png.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the
