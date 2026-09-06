@@ -556,9 +556,30 @@ Ordered by dependency, one subsystem per change (Rule 10):
      boot screen shows through inside the shell until the first guest frame;
      the concept's booting screen should own that interval and the embedded
      window be revealed on the first guest frame instead.
-  2. Esc while the embedded child has focus reaches the child, not the
-     shell (no pause menu opened by Esc in SHELL_20260906_054027); the pause
-     overlay needs a key path that works with the child focused.
+  2. Pause from the keyboard while embedded - PARTLY DONE, DECISION NEEDED.
+     Done: Esc is now the keyboard's PS tap whenever the shell has focus and a
+     game runs (opens/dismisses the pause menu directly, since the pad's tap
+     is detected on release and a key press has no held state); elsewhere Esc
+     stays Circle. VERIFIED it is not enough: with the game embedded, two
+     runs with Esc at 30 s ended on the library with "Ready"
+     (SHELL_20260906_055548, SHELL_20260906_055749) - the embedded child
+     holds keyboard focus, the core's GLFW handler treats Esc as exit, and
+     the shell never sees the key. The earlier "reaches the child" reading
+     was right.
+     The real question is input ownership while a game is embedded. Today
+     the shell's pad tick keeps reading the DualSense through its in-process
+     core while the out-of-process core reads the same device: two processes
+     on one HID device - the interleaving defect ADR-001 exists to end.
+     RECOMMENDED (ADR-001 consistent): while a game runs, the core owns all
+     input (pad and keyboard, as it does now); the shell pauses its own pad
+     reader; the core reports "menu requested" (PS tap / Esc) to the shell
+     through a new word in the IPC block's spare bytes (_pad_end[64]; no
+     size change, IPC_VERSION bumped, both sides in-repo); the shell shows
+     the pause overlay and sends Stop/Resume commands over the existing pipe.
+     Alternative: the shell owns the keyboard and forwards it as pad input
+     over the map (WriteInput exists; the core would have to merge IPC input
+     into its pad state) - keeps one keyboard owner but leaves the two-reader
+     pad problem. Waiting on the user before changing ownership.
   3. The IPC game_state never leaves boot (the core never calls
      SetGameState(Running)); harmless now that the shell keys on the window,
      but the field is a lie and should be set on the first guest frame.

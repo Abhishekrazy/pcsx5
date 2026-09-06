@@ -3666,6 +3666,11 @@ namespace Pcsx5Ui
                 case Key.Enter:
                 case Key.Space: _kbCross = true; break;
                 case Key.Escape:
+                    // While a game runs, Esc is the keyboard's PS tap and opens or
+                    // dismisses the pause menu (the concept: "hold PS or press Esc").
+                    // Everywhere else Esc stays Back/Circle.
+                    if (_coreRunning || _pauseMenuVisible) _kbPs = true; else _kbCircle = true;
+                    break;
                 case Key.Back: _kbCircle = true; break;
                 case Key.T: _kbTriangle = true; break;
                 case Key.F: _kbSquare = true; break;
@@ -3723,6 +3728,7 @@ namespace Pcsx5Ui
         private bool _kbUp, _kbDown, _kbLeft, _kbRight;
         private bool _kbCross, _kbCircle, _kbTriangle, _kbSquare;
         private bool _kbTabPrev, _kbTabNext;
+        private bool _kbPs;   // Esc while a game runs: the keyboard's PS tap (pause menu)
 
         private int _navHeldDir;            // 0 none, 1 up, 2 down, 3 left, 4 right
         private DateTime _navRepeatAt = DateTime.MinValue;
@@ -4516,6 +4522,7 @@ namespace Pcsx5Ui
                 _kbUp = _kbDown = _kbLeft = _kbRight = false;
                 _kbCross = _kbCircle = _kbTriangle = _kbSquare = false;
                 _kbTabPrev = _kbTabNext = false;
+                _kbPs = false;
                 return;
             }
 
@@ -4525,9 +4532,11 @@ namespace Pcsx5Ui
             bool kbCross = _kbCross, kbCircle = _kbCircle;
             bool kbTriangle = _kbTriangle, kbSquare = _kbSquare;
             bool kbTabPrev = _kbTabPrev, kbTabNext = _kbTabNext;
+            bool kbPs = _kbPs;
             _kbUp = _kbDown = _kbLeft = _kbRight = false;
             _kbCross = _kbCircle = _kbTriangle = _kbSquare = false;
             _kbTabPrev = _kbTabNext = false;
+            _kbPs = false;
 
             // Any real pad activity switches the prompts back to controller
             // labels. Thresholds keep idle stick drift from flapping the source.
@@ -4579,6 +4588,14 @@ namespace Pcsx5Ui
             if (kbCircle) bPressed = true;
             if (kbSquare) xPressed = true;
             if (kbTriangle) yPressed = true;
+            // The pad's PS tap is detected on release (held, then released within
+            // a second); a keyboard press has no held state, so Esc performs the
+            // tap directly.
+            if (kbPs)
+            {
+                if (_pauseMenuVisible) { ResumeFromPause(); LogConsole("Esc: pause menu dismissed, game resumed."); }
+                else if (_coreRunning) { ShowPauseMenu(); LogConsole("Esc: pause menu shown."); }
+            }
             if (kbTabPrev) l1Pressed = true;
             if (kbTabNext) r1Pressed = true;
 
