@@ -3066,6 +3066,10 @@ namespace Pcsx5Ui
             _inputSubConfig = config;
             InputConfigView.Visibility = Visibility.Visible;
             InputTestOverlay.Visibility = config ? Visibility.Collapsed : Visibility.Visible;
+            // A modal popup: everything else in the window is disabled while it is up,
+            // so keyboard Tab and pad focus cannot reach (and press) what is behind it.
+            foreach (UIElement child in MainLayoutRoot.Children)
+                if (!ReferenceEquals(child, InputTestOverlay)) child.IsEnabled = config;
             // The live pad only needs the reader while the popup is shown.
             if (config) { InputTab?.AbortTests(); StopControllerVizPolling(); }
             else { StartControllerVizPolling(); FocusFirst(InputTestCloseBtn); }
