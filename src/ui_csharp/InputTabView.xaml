@@ -79,7 +79,7 @@
                  so it never pushes the tests and mapping editor off-screen. -->
             <!-- The pad sits directly on the emulator ground (no card), fills the
                  available height and centres itself. -->
-            <Border Grid.Row="1" Background="{DynamicResource ThemeGround}" BorderThickness="0"
+            <Border Grid.Row="1" Background="{DynamicResource ThemeRaised}" BorderThickness="0"
                     Padding="12" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
                 <Grid>
                     <!-- 3D DualSense (assets/gamepad/dualsense3d), animated from the live pad state. -->

@@ -103,11 +103,12 @@ namespace Pcsx5Ui
             _view.FXAALevel = FXAALevel.High;
             _view.BackgroundColor = GroundColor();
             Loaded += (s, e) => SyncBackground();
-            _view.Items.Add(new AmbientLight3D { Color = MediaColor.FromRgb(0x46, 0x4a, 0x52) });
-            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0xe8, 0xea, 0xf0), Direction = new Vector3D(0.35, 1.0, -0.6) });
-            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0x50, 0x60, 0x70), Direction = new Vector3D(-0.6, 0.4, 0.3) });
-            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0x48, 0x4c, 0x56), Direction = new Vector3D(0.0, 0.6, 0.8) });
-            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0x90, 0x94, 0x9c), Direction = new Vector3D(0.2, 0.8, -1.0) });
+            // Three-point studio: one key from above-front, one soft fill from the left,
+            // a low ambient. Fewer, dimmer lights than before: the white shell was
+            // blowing out and the glyphs washed away on the caps.
+            _view.Items.Add(new AmbientLight3D { Color = MediaColor.FromRgb(0x3a, 0x3c, 0x42) });
+            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0xdc, 0xde, 0xe4), Direction = new Vector3D(0.3, 0.9, -0.7) });
+            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0x52, 0x58, 0x64), Direction = new Vector3D(-0.7, 0.5, 0.2) });
             _rootXf.Children.Add(new RotateTransform3D(_tiltFree));
             _rootXf.Children.Add(new RotateTransform3D(_basePose));
             _root.Transform = new MatrixTransform3D(_rootXf.Value);
@@ -177,10 +178,10 @@ namespace Pcsx5Ui
                 RenderNormalMap = true,
                 EnableAutoTangent = true,
                 DiffuseColor = Color4.White,
-                AmbientColor = new Color4(0.35f, 0.35f, 0.38f, 1),
-                SpecularColor = new Color4(0.22f, 0.22f, 0.24f, 1),
-                SpecularShininess = 40,
-                ReflectiveColor = new Color4(0.10f, 0.10f, 0.11f, 1),   // plastic: a faint mirror of the studio env
+                AmbientColor = new Color4(0.55f, 0.55f, 0.58f, 1),
+                SpecularColor = new Color4(0.12f, 0.12f, 0.13f, 1),   // matte plastic: a soft, narrow highlight, never a hot spot over a glyph
+                SpecularShininess = 60,
+                ReflectiveColor = new Color4(0.05f, 0.05f, 0.055f, 1),  // a faint mirror of the environment
                 RenderEnvironmentMap = true,
                 EmissiveColor = Off,
                 RenderShadowMap = false,
