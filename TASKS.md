@@ -11,7 +11,8 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked · `[-]` 
 Priority is `(silent-failure risk × blast radius)`, then whether the work makes
 later work cheaper. Broad fixes before single-title work.
 
-Last release: **v0.1.1** (2026-09-06, zip only - see the first open item).
+Last release: **v0.1.2** (2026-09-06): CI zip + Inno installer, Squirrel
+updater packages uploaded by hand (see the packaging item).
 
 ---
 
