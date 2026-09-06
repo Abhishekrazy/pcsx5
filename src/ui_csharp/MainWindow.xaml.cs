@@ -1075,8 +1075,32 @@ namespace Pcsx5Ui
             // the footer keeps its last real status -- Ready, Running, a rebind
             // prompt -- instead of repeating it.
 
+            // Last-played chip (concept hero): shown only when the title has
+            // been launched before.
+            if (DetailLastPlayed != null && DetailLastPlayedChip != null)
+            {
+                var lp = _recent?.LastPlayed(game.TitleId);
+                if (lp != null)
+                {
+                    DetailLastPlayed.Text = FormatLastPlayed(lp.Value);
+                    DetailLastPlayedChip.Visibility = Visibility.Visible;
+                }
+                else DetailLastPlayedChip.Visibility = Visibility.Collapsed;
+            }
+
             // Trigger music playback with debounce
             TriggerTitleMusic(game);
+        }
+
+        /// <summary>Human "last played" for the hero chip, from a UTC timestamp.</summary>
+        private static string FormatLastPlayed(DateTime utc)
+        {
+            var d = DateTime.UtcNow - utc;
+            if (d.TotalMinutes < 1) return "Last played · just now";
+            if (d.TotalMinutes < 60) return $"Last played · {(int)d.TotalMinutes} min ago";
+            if (d.TotalHours < 24) return $"Last played · {(int)d.TotalHours} h ago";
+            if (d.TotalDays < 30) return $"Last played · {(int)d.TotalDays} d ago";
+            return "Last played · " + utc.ToLocalTime().ToString("d MMM yyyy");
         }
 
         private void TriggerTitleMusic(GameEntry game)
@@ -3735,8 +3759,51 @@ namespace Pcsx5Ui
         private void ShowHints(string key)
         {
             _lastHintKey = key;
-            if (FooterGamepadHints != null)
-                FooterGamepadHints.Text = ApplyGlyphs(I18n.Tr(key));
+            BuildFooterHintChips(I18n.Tr(key));
+        }
+
+        /// <summary>Render the footer legend as the concept's icon-box chips: each
+        /// hint segment (split on the bullet) becomes a glyph box plus its label.
+        /// The glyph text follows the active device (pad or keyboard).</summary>
+        private void BuildFooterHintChips(string template)
+        {
+            if (FooterHintChips == null) return;
+            FooterHintChips.Children.Clear();
+            if (string.IsNullOrEmpty(template)) return;
+            var boxBrush = (Brush)FindResource("ThemeHairline");
+            var glyphBrush = (Brush)FindResource("ThemeText");
+            var labelBrush = (Brush)FindResource("ThemeTextMuted");
+            double typeS = (double)FindResource("TypeS");
+            double typeM = (double)FindResource("TypeM");
+            foreach (var raw in template.Split(new[] { '\u2022' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string seg = ApplyGlyphs(raw.Trim());
+                if (seg.Length == 0) continue;
+                // Split into the leading glyph label(s) (in brackets or device icons)
+                // and the trailing text.
+                var m = System.Text.RegularExpressions.Regex.Match(seg, @"^((?:\s*(?:\[[^\]]*\]|[\u2300-\u27BF\uD83C-\uDBFF\uDC00-\uDFFF]))+)\s*(.*)$");
+                string glyphs = m.Success ? m.Groups[1].Value.Trim() : "";
+                string label = m.Success ? m.Groups[2].Value.Trim() : seg;
+                var chip = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 26, 0) };
+                if (glyphs.Length > 0)
+                {
+                    var box = new Border
+                    {
+                        BorderBrush = boxBrush,
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(7),
+                        Padding = new Thickness(8, 3, 8, 3),
+                        MinWidth = 28,
+                        Margin = new Thickness(0, 0, 9, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Child = new TextBlock { Text = glyphs, FontSize = typeS, Foreground = glyphBrush, HorizontalAlignment = HorizontalAlignment.Center }
+                    };
+                    chip.Children.Add(box);
+                }
+                if (label.Length > 0)
+                    chip.Children.Add(new TextBlock { Text = label, FontSize = typeM, Foreground = labelBrush, VerticalAlignment = VerticalAlignment.Center });
+                FooterHintChips.Children.Add(chip);
+            }
         }
 
         /// <summary>Substitute the device-neutral glyph tokens in a hint template

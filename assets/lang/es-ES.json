@@ -466,5 +466,6 @@
   "ui.boot_stage_cpu": "CPU invitada",
   "ui.boot_stage_frame": "Primer fotograma",
   "ui.no_new_frames_for": "Sin fotogramas nuevos desde hace {0} s",
-  "ui.stuck_body": "El juego dejó de dibujar. Puede que siga trabajando o que esté atascado. La consola muestra lo último que dijo."
+  "ui.stuck_body": "El juego dejó de dibujar. Puede que siga trabajando o que esté atascado. La consola muestra lo último que dijo.",
+  "ui.game_settings": "Ajustes del juego"
 }

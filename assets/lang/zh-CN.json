@@ -466,5 +466,6 @@
   "ui.boot_stage_cpu": "客户机 CPU",
   "ui.boot_stage_frame": "首帧",
   "ui.no_new_frames_for": "已 {0} 秒没有新帧",
-  "ui.stuck_body": "游戏停止绘制。它可能仍在运行，也可能已卡住。控制台显示了它最后的输出。"
+  "ui.stuck_body": "游戏停止绘制。它可能仍在运行，也可能已卡住。控制台显示了它最后的输出。",
+  "ui.game_settings": "游戏设置"
 }

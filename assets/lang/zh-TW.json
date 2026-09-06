@@ -466,5 +466,6 @@
   "ui.boot_stage_cpu": "客體 CPU",
   "ui.boot_stage_frame": "首幀",
   "ui.no_new_frames_for": "已 {0} 秒沒有新畫格",
-  "ui.stuck_body": "遊戲停止繪製。它可能仍在運作，也可能已卡住。主控台顯示了它最後的輸出。"
+  "ui.stuck_body": "遊戲停止繪製。它可能仍在運作，也可能已卡住。主控台顯示了它最後的輸出。",
+  "ui.game_settings": "遊戲設定"
 }

@@ -466,5 +466,6 @@
   "ui.boot_stage_cpu": "Gast-CPU",
   "ui.boot_stage_frame": "Erstes Bild",
   "ui.no_new_frames_for": "Seit {0} s keine neuen Bilder",
-  "ui.stuck_body": "Das Spiel zeichnet nicht mehr. Es arbeitet vielleicht noch oder hängt. Die Konsole zeigt seine letzte Meldung."
+  "ui.stuck_body": "Das Spiel zeichnet nicht mehr. Es arbeitet vielleicht noch oder hängt. Die Konsole zeigt seine letzte Meldung.",
+  "ui.game_settings": "Spieleinstellungen"
 }

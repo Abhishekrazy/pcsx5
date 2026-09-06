@@ -53,6 +53,7 @@
         <sys:Double x:Key="TypeDisplayS">28</sys:Double>
         <sys:Double x:Key="TypeDisplayM">36</sys:Double>
         <sys:Double x:Key="TypeDisplayL">44</sys:Double>
+        <sys:Double x:Key="TypeDisplayXL">60</sys:Double>
 
         <!-- Focus ring. The default WPF focus adornment is a dotted rectangle
              that disappears against this palette; a controller user has to be

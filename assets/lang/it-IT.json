@@ -466,5 +466,6 @@
   "ui.boot_stage_cpu": "CPU guest",
   "ui.boot_stage_frame": "Primo fotogramma",
   "ui.no_new_frames_for": "Nessun nuovo fotogramma da {0} s",
-  "ui.stuck_body": "Il gioco ha smesso di disegnare. Potrebbe lavorare ancora o essere bloccato. La console mostra l'ultimo messaggio."
+  "ui.stuck_body": "Il gioco ha smesso di disegnare. Potrebbe lavorare ancora o essere bloccato. La console mostra l'ultimo messaggio.",
+  "ui.game_settings": "Impostazioni gioco"
 }
