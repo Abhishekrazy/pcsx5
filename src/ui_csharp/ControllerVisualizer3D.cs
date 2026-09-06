@@ -50,6 +50,7 @@ namespace Pcsx5Ui
         private MediaColor _lightbarColor = MediaColor.FromRgb(0, 90, 255);
         private int _player = 1;
         private string _assetDir;
+        private EnvironmentMap3D _env;
 
         private static readonly Color4 GlowOn = new Color4(0.12f, 0.35f, 0.41f, 1);   // press tint (emissive adds to the texture: keep it dim)
         private static readonly Color4 GlowDim = new Color4(0.09f, 0.24f, 0.28f, 1);  // for the black triggers
@@ -97,8 +98,10 @@ namespace Pcsx5Ui
             _view.ShowViewCube = false;
             _view.ShowCoordinateSystem = false;
             _view.IsHitTestVisible = false;      // the pose is the pad's, not the mouse's
-            _view.MSAA = MSAALevel.Four;
+            _view.MSAA = MSAALevel.Eight;
+            _view.FXAALevel = FXAALevel.High;
             _view.BackgroundColor = GroundColor();
+            Loaded += (s, e) => { _view.BackgroundColor = GroundColor(this); };   // the theme tokens live on the window, not the app
             _view.Items.Add(new AmbientLight3D { Color = MediaColor.FromRgb(0x46, 0x4a, 0x52) });
             _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0xe8, 0xea, 0xf0), Direction = new Vector3D(0.35, 1.0, -0.6) });
             _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0x50, 0x60, 0x70), Direction = new Vector3D(-0.6, 0.4, 0.3) });
@@ -111,8 +114,9 @@ namespace Pcsx5Ui
             Children.Add(_view);
         }
 
-        private static MediaColor GroundColor()
+        private static MediaColor GroundColor(FrameworkElement scope = null)
         {
+            try { if (scope?.TryFindResource("ThemeGround") is SolidColorBrush sb) return sb.Color; } catch { }
             try { if (Application.Current?.Resources["ThemeGround"] is SolidColorBrush b) return b.Color; } catch { }
             return MediaColor.FromRgb(0x0b, 0x0d, 0x12);
         }
@@ -156,8 +160,10 @@ namespace Pcsx5Ui
                 EnableAutoTangent = true,
                 DiffuseColor = Color4.White,
                 AmbientColor = new Color4(0.35f, 0.35f, 0.38f, 1),
-                SpecularColor = new Color4(0.28f, 0.28f, 0.3f, 1),
-                SpecularShininess = 36,
+                SpecularColor = new Color4(0.22f, 0.22f, 0.24f, 1),
+                SpecularShininess = 40,
+                ReflectiveColor = new Color4(0.10f, 0.10f, 0.11f, 1),   // plastic: a faint mirror of the studio env
+                RenderEnvironmentMap = true,
                 EmissiveColor = Off,
                 RenderShadowMap = false,
             };
@@ -181,6 +187,12 @@ namespace Pcsx5Ui
             string manifestPath = Path.Combine(assetDir, "manifest.json");
             if (!File.Exists(manifestPath)) return;
             _root.Children.Clear(); _parts.Clear(); _lightbar.Clear(); _textures.Clear();
+            if (_env != null) { _view.Items.Remove(_env); _env = null; }
+            // Image-based lighting for the gloss: a generated studio cubemap (soft
+            // gradient plus two softboxes) reflected by the materials; the skybox
+            // itself is not drawn, the background stays the shell's ground.
+            var envTex = Tex("studio_env.dds");
+            if (envTex != null) { _env = new EnvironmentMap3D { Texture = envTex, SkipRendering = true }; _view.Items.Add(_env); }
 
             using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
             foreach (var pj in doc.RootElement.GetProperty("parts").EnumerateArray())
