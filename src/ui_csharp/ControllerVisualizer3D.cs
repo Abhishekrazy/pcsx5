@@ -35,6 +35,14 @@ namespace Pcsx5Ui
         private double _rollF, _pitchF;               // low-passed gravity tilt, degrees
         private bool _muteLocal, _mutePrev;           // mute toggled by the pad's own button (the reader has no LED state)
         private int _player = 1;
+        // Touch trails: per finger, a ring of small emissive dots on the touchpad
+        // surface, the newest brightest. Touch space is 1920x1080 (INFERRED, the
+        // DualSense's reported resolution); the pad's bounds come from the manifest.
+        private const int TrailLen = 10;
+        private readonly TranslateTransform3D[,] _trailPos = new TranslateTransform3D[2, TrailLen];
+        private readonly SolidColorBrush[,] _trailBrush = new SolidColorBrush[2, TrailLen];
+        private readonly List<Point3D>[] _trailHist = { new List<Point3D>(), new List<Point3D>() };
+        private Rect3D _padRect = new Rect3D(-0.41744, -0.318, 0.18186, 0.83488, 0, 0.45824);
         private static readonly Color GlowOn = Color.FromRgb(0x1e, 0x5a, 0x68);   // press tint: emissive adds to the texture, so keep it dim (user: full accent was too bright)
         private static readonly Color GlowDim = Color.FromRgb(0x18, 0x3c, 0x48);   // for the black triggers: a tint, not a sticker
         private static readonly Color LedOn = Color.FromRgb(0x9c, 0xc8, 0xff);
@@ -49,6 +57,7 @@ namespace Pcsx5Ui
             public AxisAngleRotation3D TiltX = new AxisAngleRotation3D(new Vector3D(1, 0, 0), 0);
             public AxisAngleRotation3D TiltZ = new AxisAngleRotation3D(new Vector3D(0, 0, 1), 0);
             public Point3D Pivot;
+            public Point3D Min, Max;
             // Press highlight / LED light. The brush's colour is what is set:
             // EmissiveMaterial.Color only FILTERS the brush, so a black brush
             // stays black whatever the material's Color is (the first round's
@@ -205,6 +214,7 @@ namespace Pcsx5Ui
 
                 var part = new Part { Glow = glowBrush };
                 part.Pivot = PivotFor(name, mn, mx);
+                part.Min = mn; part.Max = mx;
                 var xf = new Transform3DGroup();
                 xf.Children.Add(new RotateTransform3D(part.Hinge, part.Pivot));
                 xf.Children.Add(new RotateTransform3D(part.TiltX, part.Pivot));
@@ -222,6 +232,8 @@ namespace Pcsx5Ui
             // The body has no interior under the sticks (the hole shows the white back
             // shell when a stick tilts): a dark disc at each stick's base plays the well.
             AddWell(root, -0.3176, -0.0013); AddWell(root, 0.3176, -0.0013);
+            if (_parts.TryGetValue("touchpad", out var tp)) _padRect = new Rect3D(tp.Min.X, tp.Min.Y - 0.006, tp.Min.Z, tp.Max.X - tp.Min.X, 0, tp.Max.Z - tp.Min.Z);
+            for (int f = 0; f < 2; f++) for (int i = 0; i < TrailLen; i++) AddTrailDot(root, f, i);
             _view.Children.Add(root);
             IsLoaded3D = _parts.Count > 0;
         }
@@ -255,6 +267,48 @@ namespace Pcsx5Ui
                 dst.TriangleIndices.Add(Remap(dst, map, c));
             }
             front.Freeze(); rest.Freeze();
+        }
+
+        private void AddTrailDot(ModelVisual3D root, int finger, int i)
+        {
+            double r = i == 0 ? 0.02 : 0.012;
+            var m = new MeshGeometry3D();
+            m.Positions.Add(new Point3D(-r, 0, -r)); m.Positions.Add(new Point3D(r, 0, -r));
+            m.Positions.Add(new Point3D(r, 0, r)); m.Positions.Add(new Point3D(-r, 0, r));
+            m.TriangleIndices.Add(0); m.TriangleIndices.Add(2); m.TriangleIndices.Add(1);
+            m.TriangleIndices.Add(0); m.TriangleIndices.Add(3); m.TriangleIndices.Add(2);
+            m.Freeze();
+            var brush = new SolidColorBrush(Colors.Transparent);
+            var mat = new MaterialGroup();
+            mat.Children.Add(new DiffuseMaterial(brush));
+            mat.Children.Add(new EmissiveMaterial(brush));
+            var xf = new TranslateTransform3D(0, 10, 0);   // parked far behind until a touch arrives
+            root.Children.Add(new ModelVisual3D { Content = new GeometryModel3D(m, mat) { BackMaterial = mat }, Transform = xf });
+            _trailPos[finger, i] = xf; _trailBrush[finger, i] = brush;
+        }
+
+        private void UpdateTouch(int finger, CoreBridge.PadTouch t)
+        {
+            var hist = _trailHist[finger];
+            if (t.Active != 0)
+            {
+                double u = Math.Max(0, Math.Min(1, t.X / 1920.0)), v = Math.Max(0, Math.Min(1, t.Y / 1080.0));
+                var pos = new Point3D(_padRect.X + u * _padRect.SizeX, _padRect.Y, _padRect.Z + _padRect.SizeZ - v * _padRect.SizeZ);
+                if (hist.Count == 0 || (hist[0] - pos).Length > 0.004) hist.Insert(0, pos);
+                if (hist.Count > TrailLen) hist.RemoveRange(TrailLen, hist.Count - TrailLen);
+            }
+            else hist.Clear();
+            for (int i = 0; i < TrailLen; i++)
+            {
+                if (i < hist.Count)
+                {
+                    var pp = hist[i];
+                    _trailPos[finger, i].OffsetX = pp.X; _trailPos[finger, i].OffsetY = pp.Y; _trailPos[finger, i].OffsetZ = pp.Z;
+                    byte a = (byte)(i == 0 ? 0xff : 0xc0 - i * 0x10);
+                    _trailBrush[finger, i].Color = Color.FromArgb(a, 0x5f, 0xe3, 0xff);
+                }
+                else { _trailPos[finger, i].OffsetY = 10; _trailBrush[finger, i].Color = Colors.Transparent; }
+            }
         }
 
         private void AddWell(ModelVisual3D root, double x, double z)
@@ -319,6 +373,7 @@ namespace Pcsx5Ui
                 _tiltX.Angle = 0; _tiltZ.Angle = 0; _rollF = _pitchF = 0; _muteLocal = _mutePrev = false;
                 foreach (var p in _parts.Values) if (p.Glow != null) p.Glow.Color = Colors.Black;
                 foreach (var p in _parts.Values) { p.Press.OffsetY = 0; p.Hinge.Angle = 0; p.TiltX.Angle = 0; p.TiltZ.Angle = 0; }
+                UpdateTouch(0, default); UpdateTouch(1, default);
                 return;
             }
 
@@ -391,6 +446,8 @@ namespace Pcsx5Ui
             // Sticks tilt about their base; 128 is centre.
             Stick("stick_l", s.Lx, s.Ly, Bit(s.Buttons, 0x2), press);
             Stick("stick_r", s.Rx, s.Ry, Bit(s.Buttons, 0x4), press);
+            UpdateTouch(0, s.Touch0);
+            UpdateTouch(1, s.Touch1);
         }
 
         private void Press(string name, bool on, double depth)
