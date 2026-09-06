@@ -5045,7 +5045,7 @@ namespace Pcsx5Ui
                 Button activeNav = navButtons.FirstOrDefault(n => (n.CommandParameter as string) == _activeSettingsCategory) ?? navButtons.FirstOrDefault();
                 if (rowButtons.Count == 0)
                 {
-                    activeNav?.Focus();
+                    if (up || down || left || right) activeNav?.Focus();
                     return;
                 }
 
@@ -5065,9 +5065,12 @@ namespace Pcsx5Ui
                     return;
                 }
 
-                if (left || focusedIdx == -1)
+                if (left)
                 {
-                    // Back to the section column (also where an unfocused row list starts).
+                    // Back to the section column. Only on a press: this handler runs
+                    // every tick, and focusing here unconditionally stole focus from
+                    // the tab bar and the close button 20 times a second, so no mouse
+                    // click outside the rows could complete on the Settings page.
                     activeNav?.Focus();
                     return;
                 }
