@@ -307,6 +307,14 @@ namespace Pcsx5Ui
                 triggers ? I18n.Tr("input.ok") : I18n.Tr("input.pending"));
         }
 
+        /// <summary>Called when the popup closes: a running input test must not
+        /// keep the tab lock armed behind a closed popup.</summary>
+        public void AbortTests()
+        {
+            if (_inputTest) EndInputTest();
+            SetTestRunning(false);
+        }
+
         private void EndInputTest()
         {
             _inputTest = false;

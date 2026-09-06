@@ -2911,7 +2911,7 @@ namespace Pcsx5Ui
         private void TabLibrary_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
-            if (InputTabView.IsTestRunning) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
+            if (InputTabView.IsTestRunning && InputTestOverlay != null && InputTestOverlay.Visibility == Visibility.Visible) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
             StopControllerVizPolling();
 
             LibraryView.Visibility = Visibility.Visible;
@@ -2985,7 +2985,7 @@ namespace Pcsx5Ui
         private void TabAnalyzer_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
-            if (InputTabView.IsTestRunning) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
+            if (InputTabView.IsTestRunning && InputTestOverlay != null && InputTestOverlay.Visibility == Visibility.Visible) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
             StopControllerVizPolling();
             MainLayoutRoot.Visibility = Visibility.Visible;
             TitleBarBorder.Visibility = Visibility.Visible;
@@ -3025,7 +3025,7 @@ namespace Pcsx5Ui
         private void TabController_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
-            if (InputTabView.IsTestRunning) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
+            if (InputTabView.IsTestRunning && InputTestOverlay != null && InputTestOverlay.Visibility == Visibility.Visible) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
             MainLayoutRoot.Visibility = Visibility.Visible;
             TitleBarBorder.Visibility = Visibility.Visible;
             LibraryView.Visibility = Visibility.Collapsed;
@@ -3058,7 +3058,7 @@ namespace Pcsx5Ui
             InputConfigView.Visibility = Visibility.Visible;
             InputTestOverlay.Visibility = config ? Visibility.Collapsed : Visibility.Visible;
             // The live pad only needs the reader while the popup is shown.
-            if (config) StopControllerVizPolling();
+            if (config) { InputTab?.AbortTests(); StopControllerVizPolling(); }
             else { StartControllerVizPolling(); FocusFirst(InputTestCloseBtn); }
         }
 
@@ -3075,7 +3075,7 @@ namespace Pcsx5Ui
         private void TabSettings_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
-            if (InputTabView.IsTestRunning) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
+            if (InputTabView.IsTestRunning && InputTestOverlay != null && InputTestOverlay.Visibility == Visibility.Visible) { LogConsole(I18n.Tr("input.tabs_locked")); FooterStatus.Text = I18n.Tr("input.tabs_locked"); return; } // a controller test owns the screen
             StopControllerVizPolling();
             MainLayoutRoot.Visibility = Visibility.Visible;
             TitleBarBorder.Visibility = Visibility.Visible;
