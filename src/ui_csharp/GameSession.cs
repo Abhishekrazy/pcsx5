@@ -159,7 +159,12 @@ namespace Pcsx5Ui
             _dispatcher.BeginInvoke(() => Started?.Invoke(game));
 
             _ipc = new IpcSession(_dispatcher) { ConfigDir = ConfigDir };
-            _ipc.LogLine += line => { _lastHeartbeat = DateTime.UtcNow; _hangingRaised = false; Log(line); };   // a core line is a heartbeat on this path too
+            _ipc.LogLine += line =>
+            {
+                _lastHeartbeat = DateTime.UtcNow; _hangingRaised = false;   // a core line is a heartbeat on this path too
+                PhaseFromCoreLine(line);
+                Log(line);
+            };
             _ipc.Crashed += (code, msg) =>
                 _dispatcher.BeginInvoke(() =>
                 {
@@ -440,6 +445,28 @@ namespace Pcsx5Ui
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
+
+        /// <summary>The out-of-process core reports no phases of its own; its log
+        /// carries unambiguous lifecycle markers, so the boot overlay follows
+        /// them (forward only). Found 2026-09-06: the overlay sat at step 1 for
+        /// every IPC launch because only the in-process path raised phases.</summary>
+        private void PhaseFromCoreLine(string line)
+        {
+            BootPhase? next = null;
+            if (line.Contains("Loading ELF binary")) next = BootPhase.LoadingElf;
+            else if (line.Contains("PRX_INIT_QUEUE_END")) next = BootPhase.LinkingModules;
+            else if (line.Contains("GUEST_ENTRY_BEGIN")) next = BootPhase.StartingCpu;
+            else if (line.Contains("First guest frame")) next = BootPhase.Running;
+            if (next == null || next.Value <= _lastBootPhase) return;
+            string msg = next.Value switch
+            {
+                BootPhase.LoadingElf => "Loading executable...",
+                BootPhase.LinkingModules => "Linking guest modules...",
+                BootPhase.StartingCpu => "Starting guest CPU...",
+                _ => "Guest CPU executing...",
+            };
+            RaisePhase(next.Value, msg);
+        }
 
         private void RaisePhase(BootPhase phase, string message)
         {
