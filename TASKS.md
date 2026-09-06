@@ -263,8 +263,17 @@ updater packages uploaded by hand (see the packaging item).
   in this order, each its own change: header hygiene; memory behind a platform
   layer; `sigaction`/`sigaltstack` fault path (subsystem boundary, ask first);
   threads/TLS (macOS fs-base is `UNKNOWN`, possibly a hard boundary);
-  periphery; CMake. Shell (Avalonia, 14-20 weeks `INFERRED`) comes last.
-  Not scheduled; the user said WinUI/portability work is for later.
+  periphery; CMake. Shell comes last, and the user has decided it will be
+  **Avalonia** (2026-09-07; the framework survey is in the audit). Not
+  scheduled yet - the user will say when.
+
+- [ ] **Settings changed while a game is running reach the core only at the
+  next launch.** The child core reads `global.json` once in `pcsx5_init`
+  (`src/core_api.cpp:216`) and there is no config message on the IPC
+  channel. Shell-side values (music, theme, deadzone, rumble) apply live as
+  of 2026-09-07; core-side ones (volume, resolution scale, fullscreen)
+  need a launch. Decide whether a live "config changed" IPC message is worth
+  it before wiring one.
 
 - [ ] **Two audio output backends coexist** (`src/hle/libaudioout.cpp` and
   `src/hle/audio/audio_device.cpp`). Found during the portability inventory.

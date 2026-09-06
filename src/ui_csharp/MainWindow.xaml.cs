@@ -614,6 +614,9 @@ namespace Pcsx5Ui
                     _config.input.backend = int.Parse(ini.GetValue("Input", "Backend", "0"));
                     _config.input.deadzone = double.Parse(ini.GetValue("Input", "Deadzone", "0.15"), System.Globalization.CultureInfo.InvariantCulture);
                     _config.input.rumble = bool.Parse(ini.GetValue("Input", "Rumble", "true"));
+                    _config.input.active_slot = int.Parse(ini.GetValue("Input", "ActiveSlot", "0"));
+                    _config.input.per_game_configs = bool.Parse(ini.GetValue("Input", "PerGameConfigs", "false"));
+                    _config.input.lightbar = ini.GetValue("Input", "Lightbar", "");
 
                     _config.logging.file_append = bool.Parse(ini.GetValue("Logging", "FileAppend", "false"));
                     _config.logging.file_path = ini.GetValue("Logging", "FilePath", "");
@@ -622,6 +625,8 @@ namespace Pcsx5Ui
 
                     _config.ui.language = ini.GetValue("Ui", "Language", "en-US");
                     _config.ui.title_music_enabled = bool.Parse(ini.GetValue("Ui", "TitleMusicEnabled", "true"));
+                    _config.ui.title_music_volume = double.Parse(ini.GetValue("Ui", "TitleMusicVolume", "0.6"), System.Globalization.CultureInfo.InvariantCulture);
+                    _config.ui.skipped_update_version = ini.GetValue("Ui", "SkippedUpdateVersion", "");
                     _config.ui.scale = double.Parse(ini.GetValue("Ui", "UiScale", "1.0"), System.Globalization.CultureInfo.InvariantCulture);
                     _config.ui.start_fullscreen = bool.Parse(ini.GetValue("Ui", "StartFullscreen", "true"));
                     _config.ui.theme = ini.GetValue("Ui", "Theme", "dark");
@@ -698,6 +703,9 @@ namespace Pcsx5Ui
                 ini.SetValue("Input", "Backend", _config.input.backend.ToString());
                 ini.SetValue("Input", "Deadzone", _config.input.deadzone.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 ini.SetValue("Input", "Rumble", _config.input.rumble.ToString().ToLower());
+                ini.SetValue("Input", "ActiveSlot", _config.input.active_slot.ToString());
+                ini.SetValue("Input", "PerGameConfigs", _config.input.per_game_configs.ToString().ToLower());
+                ini.SetValue("Input", "Lightbar", _config.input.lightbar ?? "");
 
                 // Logging
                 ini.SetValue("Logging", "FileAppend", _config.logging.file_append.ToString().ToLower());
@@ -708,6 +716,8 @@ namespace Pcsx5Ui
                 // Ui
                 ini.SetValue("Ui", "Language", _config.ui.language);
                 ini.SetValue("Ui", "TitleMusicEnabled", _config.ui.title_music_enabled.ToString().ToLower());
+                ini.SetValue("Ui", "TitleMusicVolume", _config.ui.title_music_volume.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                ini.SetValue("Ui", "SkippedUpdateVersion", _config.ui.skipped_update_version ?? "");
                 ini.SetValue("Ui", "UiScale", _config.ui.scale.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 ini.SetValue("Ui", "StartFullscreen", _config.ui.start_fullscreen.ToString().ToLower());
                 ini.SetValue("Ui", "Theme", _config.ui.theme ?? "dark");
@@ -3054,6 +3064,22 @@ namespace Pcsx5Ui
             _testDrag = false; ((UIElement)sender).ReleaseMouseCapture();
         }
 
+        // The Title Screen Music toggle takes effect the moment it is changed:
+        // off stops whatever is playing, on starts the selected game's track
+        // (it stays paused until the Library tab is visible again).
+        private void ApplyTitleMusicEnabled()
+        {
+            if (_config.ui.title_music_enabled)
+            {
+                if (_selectedGame != null) TriggerTitleMusic(_selectedGame);
+                if (LibraryView.Visibility != Visibility.Visible) SetTitleMusicAudible(false);
+            }
+            else
+            {
+                try { _musicCts?.Cancel(); _mediaPlayer?.Stop(); } catch { }
+            }
+        }
+
         // Title music belongs to the Library: pause it on every other tab and
         // resume where it left off when the Library comes back.
         private void SetTitleMusicAudible(bool on)
@@ -3396,7 +3422,7 @@ namespace Pcsx5Ui
 
                 if (settingKey == "gpu_fullscreen") { isEnabled = _config.graphics.fullscreen; setter = v => _config.graphics.fullscreen = v; }
                 else if (settingKey == "ui_fullscreen") { isEnabled = _config.ui.start_fullscreen; setter = v => { _config.ui.start_fullscreen = v; ApplyShellFullscreen(v); }; }
-                else if (settingKey == "snd_title_music") { isEnabled = _config.ui.title_music_enabled; setter = v => _config.ui.title_music_enabled = v; }
+                else if (settingKey == "snd_title_music") { isEnabled = _config.ui.title_music_enabled; setter = v => { _config.ui.title_music_enabled = v; ApplyTitleMusicEnabled(); }; }
                 else if (settingKey == "in_rumble") { isEnabled = _config.input.rumble; setter = v => _config.input.rumble = v; }
                 else if (settingKey == "in_per_game") { isEnabled = _config.input.per_game_configs; setter = v => _config.input.per_game_configs = v; }
                 else if (settingKey == "hle_strict") { isEnabled = _config.hle.strict_imports; setter = v => _config.hle.strict_imports = v; }
