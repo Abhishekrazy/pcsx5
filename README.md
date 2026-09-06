@@ -198,6 +198,8 @@ PCSX5 is released under the **GNU General Public License v2.0**. See
 - **stb** by Sean Barrett (public domain) — image and audio decoding.
 - **[Helix Toolkit](https://github.com/helix-toolkit/helix-toolkit)** (MIT) — the
   Direct3D 11 viewport that draws the 3D controller in the Input tab.
+- **[Poly Haven](https://polyhaven.com/a/debris_basement_corridor)** (CC0) — the
+  "Debris Basement Corridor" HDRI reflected by the 3D controller.
 - **["Playstation 5 Dualsense"](https://sketchfab.com/3d-models/playstation-5-dualsense-878c1f882808477ab81c2fe86d5a3936)**
   by [AHarmlessPotato](https://sketchfab.com/AHarmlessPotato) (CC-BY-4.0) — the
   3D controller in the Input tab's testing view, split into animatable parts.

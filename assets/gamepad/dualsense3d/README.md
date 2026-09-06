@@ -24,3 +24,7 @@ top disc, oriented through the disc's model-to-UV mapping, because the model
 prints the glyph on a floor 0.03 below a clear cap where WPF's blending cannot
 make it legible. The five player-indicator LEDs are not part of the model; the
 shell draws them as small quads under the touchpad edge.
+
+`textures/studio_env.dds` is a tone-mapped 256 px cubemap made from the Poly
+Haven HDRI "Debris Basement Corridor" (https://polyhaven.com/a/debris_basement_corridor,
+CC0), used only for the plastic's reflections; the skybox is never drawn.

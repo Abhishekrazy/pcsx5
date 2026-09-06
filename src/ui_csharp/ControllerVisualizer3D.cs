@@ -43,6 +43,7 @@ namespace Pcsx5Ui
         // just above the table (the user's reference photo).
         private readonly AxisAngleRotation3D _basePose = new AxisAngleRotation3D(new Vector3D(1, 0, 0), -78);
         private SharpDX.Vector3 _gRef, _gNow; private int _refSamples;
+        private SharpDX.Vector3 _stillG; private int _stillSamples;   // re-level after 2 s at rest
         private bool _muteLocal, _mutePrev;
         private readonly Dictionary<string, Part> _parts = new Dictionary<string, Part>(StringComparer.Ordinal);
         private readonly Dictionary<string, TextureModel> _textures = new Dictionary<string, TextureModel>(StringComparer.Ordinal);
@@ -101,7 +102,7 @@ namespace Pcsx5Ui
             _view.MSAA = MSAALevel.Eight;
             _view.FXAALevel = FXAALevel.High;
             _view.BackgroundColor = GroundColor();
-            Loaded += (s, e) => { _view.BackgroundColor = GroundColor(this); };   // the theme tokens live on the window, not the app
+            Loaded += (s, e) => SyncBackground();
             _view.Items.Add(new AmbientLight3D { Color = MediaColor.FromRgb(0x46, 0x4a, 0x52) });
             _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0xe8, 0xea, 0xf0), Direction = new Vector3D(0.35, 1.0, -0.6) });
             _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0x50, 0x60, 0x70), Direction = new Vector3D(-0.6, 0.4, 0.3) });
@@ -112,6 +113,23 @@ namespace Pcsx5Ui
             _root.Transform = new MatrixTransform3D(_rootXf.Value);
             _view.Items.Add(_root);
             Children.Add(_view);
+        }
+
+        /// <summary>The D3D surface cannot be transparent, so it paints the colour of
+        /// the nearest ancestor panel with a solid brush - which is a theme token,
+        /// so light/dark and the user's ground colour are followed. Cheap; called
+        /// on load and every poll.</summary>
+        private MediaColor _bg;
+        private void SyncBackground()
+        {
+            MediaColor c = GroundColor(this);
+            DependencyObject d = this;
+            while ((d = System.Windows.Media.VisualTreeHelper.GetParent(d)) != null)
+            {
+                if (d is System.Windows.Controls.Border b && b.Background is SolidColorBrush sb && sb.Color.A == 255) { c = sb.Color; break; }
+                if (d is Panel pn && pn.Background is SolidColorBrush pb && pb.Color.A == 255) { c = pb.Color; break; }
+            }
+            if (c != _bg) { _bg = c; _view.BackgroundColor = c; }
         }
 
         private static MediaColor GroundColor(FrameworkElement scope = null)
@@ -284,21 +302,30 @@ namespace Pcsx5Ui
                 if (hasN) { var n = m.Normals[i]; h.Normals.Add(new Vector3((float)n.X, (float)n.Y, (float)n.Z)); }
                 if (hasT) { var t = m.TextureCoordinates[i]; h.TextureCoordinates.Add(new Vector2((float)t.X, (float)t.Y)); }
             }
-            if (!hasN) h.Normals = null;
             if (!hasT) h.TextureCoordinates = null;
             foreach (var i in m.TriangleIndices) h.TriangleIndices.Add(i);
-            if (h.Normals == null)
+            // The decimated export carries flat per-face normals, which shade as facets.
+            // Weld vertices by position and average the face normals across them, so
+            // the shell shades smoothly (the normal map supplies the fine detail).
             {
-                // Face-averaged vertex normals (the OBJ always carries normals; this is the fallback).
-                var acc = new Vector3[h.Positions.Count];
+                var weld = new Dictionary<(int, int, int), int>();
+                var group = new int[h.Positions.Count];
+                var acc = new List<Vector3>();
+                for (int i = 0; i < h.Positions.Count; i++)
+                {
+                    var p = h.Positions[i];
+                    var key = ((int)Math.Round(p.X * 4000), (int)Math.Round(p.Y * 4000), (int)Math.Round(p.Z * 4000));
+                    if (!weld.TryGetValue(key, out int g)) { g = acc.Count; weld[key] = g; acc.Add(Vector3.Zero); }
+                    group[i] = g;
+                }
                 for (int t = 0; t + 2 < h.TriangleIndices.Count; t += 3)
                 {
                     int i0 = h.TriangleIndices[t], i1 = h.TriangleIndices[t + 1], i2 = h.TriangleIndices[t + 2];
-                    var n = Vector3.Cross(h.Positions[i1] - h.Positions[i0], h.Positions[i2] - h.Positions[i0]);
-                    acc[i0] += n; acc[i1] += n; acc[i2] += n;
+                    var n = Vector3.Cross(h.Positions[i1] - h.Positions[i0], h.Positions[i2] - h.Positions[i0]);   // area-weighted
+                    acc[group[i0]] += n; acc[group[i1]] += n; acc[group[i2]] += n;
                 }
-                h.Normals = new Vector3Collection(acc.Length);
-                foreach (var n in acc) { var v = n; if (v.LengthSquared() > 0) v.Normalize(); h.Normals.Add(v); }
+                h.Normals = new Vector3Collection(h.Positions.Count);
+                for (int i = 0; i < h.Positions.Count; i++) { var v = acc[group[i]]; if (v.LengthSquared() > 0) v.Normalize(); h.Normals.Add(v); }
             }
             return h;
         }
@@ -442,9 +469,10 @@ namespace Pcsx5Ui
         internal void Update(ref CoreBridge.PadState s, bool have)
         {
             if (!IsLoaded3D) return;
+            SyncBackground();
             if (!have)
             {
-                _tiltFree.Angle = 0; _muteLocal = _mutePrev = false; _refSamples = 0;
+                _tiltFree.Angle = 0; _muteLocal = _mutePrev = false; _refSamples = 0; _stillSamples = 0;
                 foreach (var p in _parts.Values) { SetGlow(p, Off); p.Press.OffsetY = 0; p.Hinge.Angle = 0; p.TiltX.Angle = 0; p.TiltZ.Angle = 0; }
                 UpdateTouch(0, default); UpdateTouch(1, default);
                 _root.Transform = new MatrixTransform3D(_rootXf.Value);
@@ -468,6 +496,12 @@ namespace Pcsx5Ui
                     _refSamples++;
                 }
                 else _gNow = _gNow + (g - _gNow) * 0.25f;   // light low-pass against sensor noise
+                // The popup is usually opened with the pad in hand, so the first reference
+                // is the in-hand pose. Whenever the pad has been still for ~2 s (gravity
+                // within 1.5 deg of its running value for 120 polls) that resting vector
+                // becomes the new level, so a pad set down reads flat again.
+                if ((g - _stillG).Length() < 0.026f) { if (++_stillSamples == 120) _gRef = _stillG; }
+                else { _stillG = g; _stillSamples = 0; }
                 var a = _gRef; var b = _gNow;
                 if (a.Length() > 0.5f && b.Length() > 0.5f)
                 {
