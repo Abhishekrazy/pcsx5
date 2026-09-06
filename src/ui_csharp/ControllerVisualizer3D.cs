@@ -29,6 +29,10 @@ namespace Pcsx5Ui
         private readonly Transform3DGroup _rootXf = new Transform3DGroup();
         private readonly AxisAngleRotation3D _tiltX = new AxisAngleRotation3D(new Vector3D(1, 0, 0), 0);
         private readonly AxisAngleRotation3D _tiltZ = new AxisAngleRotation3D(new Vector3D(0, 0, 1), 0);   // roll about the top-edge axis
+        // Resting pose: the pad LYING on a table seen from its near edge, which is
+        // how everyone's pad sits. Applied after the gravity tilt, so tilt stays in
+        // the pad's own frame and the pose is only the viewpoint.
+        private readonly AxisAngleRotation3D _basePose = new AxisAngleRotation3D(new Vector3D(1, 0, 0), 52);
         private readonly Dictionary<string, Part> _parts = new Dictionary<string, Part>(StringComparer.Ordinal);
         private readonly List<EmissiveMaterial> _lightbar = new List<EmissiveMaterial>();
         private Color _lightbarColor = Color.FromRgb(0, 90, 255);
@@ -70,8 +74,8 @@ namespace Pcsx5Ui
             Background = Brushes.Transparent;
             _view.Camera = new PerspectiveCamera
             {
-                Position = new Point3D(0, -3.6, 0.6),
-                LookDirection = new Vector3D(0, 3.6, -0.6),
+                Position = new Point3D(0, -3.4, 1.0),
+                LookDirection = new Vector3D(0, 3.4, -1.0),
                 UpDirection = new Vector3D(0, 0, 1),
                 FieldOfView = 40,
             };
@@ -92,6 +96,7 @@ namespace Pcsx5Ui
             _view.Children.Add(lights);
             _rootXf.Children.Add(new RotateTransform3D(_tiltX));
             _rootXf.Children.Add(new RotateTransform3D(_tiltZ));
+            _rootXf.Children.Add(new RotateTransform3D(_basePose));
             Children.Add(_view);
         }
 
