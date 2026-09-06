@@ -256,11 +256,11 @@ namespace Pcsx5Ui
                     var ballMat = new MaterialGroup();
                     ballMat.Children.Add(new DiffuseMaterial(rubber ?? (Brush)new SolidColorBrush(Color.FromRgb(0x2a, 0x2c, 0x36))));
                     ballMat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x55, 0xff, 0xff, 0xff)), 28));
-                    // Measured profile of the stick: cap r=0.115 down to y=-0.36, neck r=0.07 at
-                    // y=-0.32, skirt flaring to r=0.13 at the base y=-0.28. A ball centred on
-                    // the neck (y=-0.31, r=0.11) is hidden inside the cap above, bulges out
-                    // around the neck like the real rubber dome, and meets the skirt below.
-                    group.Children.Add(new GeometryModel3D(Sphere(new Point3D(cx, mx.Y - 0.03, cz), 0.11, 32, 16, new Point(0.648, 1 - 0.922)), ballMat) { BackMaterial = ballMat });
+                    // Extrude the stick's bottom rim (r=0.13 at its base plane) downward as a
+                    // partial sphere: the rim circle continues on a sphere centred 0.05 above
+                    // it, curving inward to a pole 0.09 below. Not a full ball - just the
+                    // rounded underside the split mesh lost.
+                    group.Children.Add(new GeometryModel3D(RimDome(new Point3D(cx, mx.Y, cz), 0.13, 0.05, 32, 10, new Point(0.648, 1 - 0.922)), ballMat) { BackMaterial = ballMat });
                 }
 
                 var part = new Part { Glow = glowBrush };
@@ -362,6 +362,36 @@ namespace Pcsx5Ui
                 }
                 else { _trailPos[finger, i].OffsetY = 10; _trailBrush[finger, i].Color = Colors.Transparent; }
             }
+        }
+
+        /// <summary>A spherical cap hanging below a rim circle of radius <paramref name="rimR"/>
+        /// at <paramref name="rim"/> (the rim is on the sphere; the sphere's centre sits
+        /// <paramref name="centreAbove"/> above it, towards the cap).</summary>
+        private static MeshGeometry3D RimDome(Point3D rim, double rimR, double centreAbove, int slices, int stacks, Point uv)
+        {
+            var m = new MeshGeometry3D();
+            double R = Math.Sqrt(rimR * rimR + centreAbove * centreAbove);
+            var c = new Point3D(rim.X, rim.Y - centreAbove, rim.Z);   // -Y is towards the cap
+            double phi0 = Math.Atan2(rimR, centreAbove);               // polar angle of the rim, measured from +Y (down into the shell)
+            for (int i = 0; i <= stacks; i++)
+            {
+                double phi = phi0 + (Math.PI - phi0) * i / stacks;     // rim -> pole (straight down, +Y)
+                for (int j = 0; j <= slices; j++)
+                {
+                    double th = 2 * Math.PI * j / slices;
+                    var n = new Vector3D(Math.Sin(phi) * Math.Cos(th), Math.Cos(phi), Math.Sin(phi) * Math.Sin(th));
+                    m.Positions.Add(c + n * R); m.Normals.Add(n); m.TextureCoordinates.Add(uv);
+                }
+            }
+            for (int i = 0; i < stacks; i++)
+                for (int j = 0; j < slices; j++)
+                {
+                    int a = i * (slices + 1) + j, b = a + slices + 1;
+                    m.TriangleIndices.Add(a); m.TriangleIndices.Add(b); m.TriangleIndices.Add(a + 1);
+                    m.TriangleIndices.Add(a + 1); m.TriangleIndices.Add(b); m.TriangleIndices.Add(b + 1);
+                }
+            m.Freeze();
+            return m;
         }
 
         private static MeshGeometry3D Sphere(Point3D c, double r, int slices, int stacks, Point uv)
