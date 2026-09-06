@@ -467,8 +467,8 @@ namespace Pcsx5Ui
             // Shoulders click, triggers hinge with the analog axis.
             Hinge("l1", Bit(s.Buttons, 0x400) ? 6 : 0);
             Hinge("r1", Bit(s.Buttons, 0x800) ? 6 : 0);
-            Hinge("l2", s.L2 / 255.0 * 22);   // about the top-back hinge: the free end swings in and down
-            Hinge("r2", s.R2 / 255.0 * 22);
+            Hinge("l2", -s.L2 / 255.0 * 22);   // negative about +X here: the free end swings into the body (user-verified pivot, direction corrected)
+            Hinge("r2", -s.R2 / 255.0 * 22);
             // Share / Options: their own parts now (round 6 export).
             Press("btn_share",   Bit(s.Buttons, 0x1), press * 0.6);
             Press("btn_options", Bit(s.Buttons, 0x8), press * 0.6);
