@@ -375,7 +375,7 @@ namespace Pcsx5Ui
             double phi0 = Math.Atan2(rimR, centreAbove);               // polar angle of the rim, measured from +Y (down into the shell)
             for (int i = 0; i <= stacks; i++)
             {
-                double phi = phi0 + (Math.PI - phi0) * i / stacks;     // rim -> pole (straight down, +Y)
+                double phi = phi0 * (1.0 - (double)i / stacks);        // rim -> pole at +Y (down into the shell)
                 for (int j = 0; j <= slices; j++)
                 {
                     double th = 2 * Math.PI * j / slices;
