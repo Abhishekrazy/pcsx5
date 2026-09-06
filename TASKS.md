@@ -545,14 +545,23 @@ Ordered by dependency, one subsystem per change (Rule 10):
   frame_0025.png; 14 unique frames in 26. Two isolated present failures at
   32 s in that log remain unexplained (OBSERVED once; the frame recovered).
   REMAINING, in order:
-  1. The boot overlay's six steps never advance over IPC (phases are raised
-     only by the in-process path); the IPC game_state never leaves boot.
-  3. Esc while the embedded child has focus reaches the child, not the
+  1. DONE 2026-09-06: boot phases over IPC follow the core's log markers
+     (Loading ELF binary -> Loading, PRX_INIT_QUEUE_END -> Linking,
+     GUEST_ENTRY_BEGIN -> Starting CPU, First guest frame -> Running),
+     forward only, in GameSession.PhaseFromCoreLine. Seen: footer "Dreaming
+     Sarah - Booting (Starting guest CPU...)" at 11 s
+     (artifacts/runtime/SHELL_20260906_055052/frames/frame_0014.png).
+     Visible consequence to fold into 4.13 step 12 (booting screen): the
+     shell hides its overlay on window-ready, so the core's own text-mode
+     boot screen shows through inside the shell until the first guest frame;
+     the concept's booting screen should own that interval and the embedded
+     window be revealed on the first guest frame instead.
+  2. Esc while the embedded child has focus reaches the child, not the
      shell (no pause menu opened by Esc in SHELL_20260906_054027); the pause
      overlay needs a key path that works with the child focused.
-  Then the boot-phase reporting over IPC (the overlay
-  keys on log lines the IPC path does not raise). Then the misreported
-  Force Stop.
+  3. The IPC game_state never leaves boot (the core never calls
+     SetGameState(Running)); harmless now that the shell keys on the window,
+     but the field is a lie and should be set on the first guest frame.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the
