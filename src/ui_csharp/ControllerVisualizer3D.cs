@@ -250,11 +250,17 @@ namespace Pcsx5Ui
                     // Same rubber as the stick: the 1011 tile sampled at a plain dark texel,
                     // with the same plastic highlight the other parts get. Centred below the
                     // cap's underside so it never shows through the concave dish.
-                    var rubber = Tex("1011_baseColor.png");
+                    // The stick's neck and skirt are painted from the 1001 tile at (0.648, 0.922)
+                    // (measured from its faces), so the ball samples that same texel.
+                    var rubber = Tex("1001_baseColor.png");
                     var ballMat = new MaterialGroup();
                     ballMat.Children.Add(new DiffuseMaterial(rubber ?? (Brush)new SolidColorBrush(Color.FromRgb(0x2a, 0x2c, 0x36))));
                     ballMat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x55, 0xff, 0xff, 0xff)), 28));
-                    group.Children.Add(new GeometryModel3D(Sphere(new Point3D(cx, mx.Y + 0.045, cz), 0.1, 28, 14, new Point(0.01, 0.5)), ballMat) { BackMaterial = ballMat });
+                    // Measured profile of the stick: cap r=0.115 down to y=-0.36, neck r=0.07 at
+                    // y=-0.32, skirt flaring to r=0.13 at the base y=-0.28. A ball centred on
+                    // the neck (y=-0.31, r=0.11) is hidden inside the cap above, bulges out
+                    // around the neck like the real rubber dome, and meets the skirt below.
+                    group.Children.Add(new GeometryModel3D(Sphere(new Point3D(cx, mx.Y - 0.03, cz), 0.11, 32, 16, new Point(0.648, 1 - 0.922)), ballMat) { BackMaterial = ballMat });
                 }
 
                 var part = new Part { Glow = glowBrush };
