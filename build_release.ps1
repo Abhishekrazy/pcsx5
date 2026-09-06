@@ -108,8 +108,12 @@ if (-not $SkipCpp) {
     }
     Log "C++ binaries in: $cppBinDir"
 } else {
+    # -SkipCpp: locate the already-built binaries the same way the build branch
+    # does, or a stale dist keeps the old core (found 2026-09-06).
     $cppBinDir = Join-Path $buildDir "bin"
-    if (-not (Test-Path $cppBinDir)) { $cppBinDir = $buildDir }
+    if     (Test-Path (Join-Path $buildDir "bin\Release\pcsx5_core.dll")) { $cppBinDir = Join-Path $buildDir "bin\Release" }
+    elseif (Test-Path (Join-Path $buildDir "Release\pcsx5_core.dll"))      { $cppBinDir = Join-Path $buildDir "Release" }
+    elseif (-not (Test-Path $cppBinDir))                                    { $cppBinDir = $buildDir }
 }
 
 # ---------------------------------------------------------------------------
@@ -261,6 +265,9 @@ $distAssets = Join-Path $distDir "assets"
 New-Item $distAssets -Force -Type Directory | Out-Null
 Stage-File (Join-Path $assetsDir "nid_db.txt") (Join-Path $distAssets "nid_db.txt")
 Stage-Dir (Join-Path $assetsDir "lang")        (Join-Path $distDir "lang")
+# The WPF shell reads <appdir>/assets/lang (I18n.Load), so stage there too;
+# without this the app fell back to a stale copy and showed raw keys.
+Stage-Dir (Join-Path $assetsDir "lang")        (Join-Path $distAssets "lang")
 $lua = Join-Path $assetsDir "pcsx5_init.lua"
 if (Test-Path $lua) { Stage-File $lua (Join-Path $distAssets "pcsx5_init.lua") }
 
