@@ -1373,8 +1373,28 @@ namespace Pcsx5Ui
 
         private void OnGameWindowReady(IntPtr hwnd)
         {
-            // Embed the native render window; hide the boot overlay once the window is live.
-            EmbedEmulatorWindow(hwnd);
+            // The core reported its render window (Rule 11: the shell reparents
+            // the HWND the core reports). Until 2026-09-06 _emuHost was never
+            // constructed, so EmbedEmulatorWindow returned at its first line and
+            // the launcher showed the IPC bitmap instead -- black, because a
+            // headless core has no renderer (TASKS 4.14). The host is created
+            // here, on demand; an HwndHost only owns a native window once it is
+            // loaded, so the reparent waits for that.
+            if (_emuHost == null)
+            {
+                _emuHost = new EmulatorWindowHost();
+                EmulatorHostPresenter.SizeChanged -= EmulatorHostPresenter_SizeChanged;
+                EmulatorHostPresenter.SizeChanged += EmulatorHostPresenter_SizeChanged;
+                EmulatorHostPresenter.Content = _emuHost;
+            }
+            if (_emuHost.HostHandle != IntPtr.Zero) EmbedEmulatorWindow(hwnd);
+            else
+            {
+                var pending = hwnd;
+                RoutedEventHandler once = null;
+                once = (s, e) => { _emuHost.Loaded -= once; EmbedEmulatorWindow(pending); };
+                _emuHost.Loaded += once;
+            }
             HideBootOverlay();
             FooterStatus.Text = _selectedGame != null ? $"{_selectedGame.Title} - Running" : "Running";
 

@@ -159,12 +159,19 @@ namespace Pcsx5Ui
             _dispatcher.BeginInvoke(() => Started?.Invoke(game));
 
             _ipc = new IpcSession(_dispatcher) { ConfigDir = ConfigDir };
-            _ipc.LogLine += line => Log(line);
+            _ipc.LogLine += line => { _lastHeartbeat = DateTime.UtcNow; _hangingRaised = false; Log(line); };   // a core line is a heartbeat on this path too
             _ipc.Crashed += (code, msg) =>
-                _dispatcher.BeginInvoke(() => Crashed?.Invoke(code, msg));
+                _dispatcher.BeginInvoke(() =>
+                {
+                    // A non-zero exit after the user asked for a stop (Force Stop,
+                    // Kill) is the stop completing, not a crash; it used to raise
+                    // the crash diagnostics dialog over a deliberate kill.
+                    if (_stopRequested) Stopped?.Invoke(code); else Crashed?.Invoke(code, msg);
+                });
             _ipc.Stopped += code =>
                 _dispatcher.BeginInvoke(() => Stopped?.Invoke(code));
             _ipc.FrameReady += () => { }; // signal for frame display
+            _ipc.WindowHandle += h => OnCoreWindow(h, IntPtr.Zero);   // same path as the in-process callback
 
             // Run IPC connect on background thread so the UI stays responsive.
             Task.Run(() =>
@@ -395,6 +402,7 @@ namespace Pcsx5Ui
 
         private void OnCoreWindow(ulong hwnd, IntPtr user)
         {
+            _lastHeartbeat = DateTime.UtcNow;   // a window is the strongest sign of life
             var handle = new IntPtr((long)hwnd);
             _dispatcher.InvokeAsync(() => WindowReady?.Invoke(handle));
         }

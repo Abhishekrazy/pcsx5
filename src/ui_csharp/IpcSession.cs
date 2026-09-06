@@ -27,6 +27,11 @@ namespace Pcsx5Ui
 
         /// <summary>Fired when a new frame is available in shared memory.</summary>
         public event Action FrameReady;
+        /// <summary>The core created its render window (launched with --embed, hidden)
+        /// and printed PCSX5_WINDOW_HANDLE=; the shell reparents it. This is the
+        /// documented window contract (Rule 11); the IPC frame map stays the
+        /// carrier for input and state.</summary>
+        public event Action<ulong> WindowHandle;
 
         // ── Public state ───────────────────────────────────────────────────
         public bool IsRunning => _process != null && !_process.HasExited;
@@ -139,14 +144,17 @@ namespace Pcsx5Ui
             var psi = new ProcessStartInfo
             {
                 FileName = coreExe,
-                Arguments = $"--ipc-map={mapName} --ipc-pipe={pipeName} --headless \"{ebootPath}\"",
+                // --embed, not --headless (2026-09-06, TASKS 4.14): headless runs on
+                // the Null device and can only ever publish a black frame. With
+                // --embed the core renders with real Vulkan into a hidden window
+                // and prints its handle; the shell reparents that window.
+                Arguments = $"--ipc-map={mapName} --ipc-pipe={pipeName} --embed \"{ebootPath}\"",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 // Working directory must contain plugins/ folder with pcsx5_core.dll.
                 // The Windows loader needs to find the DLL before main() runs, so
                 // SetDllDirectoryW in the CLI's main() is too late for implicit linking.
                 WorkingDirectory = Path.GetDirectoryName(coreExe),
-                EnvironmentVariables = { ["PCSX5_HEADLESS"] = "1" },
             };
             if (!string.IsNullOrEmpty(titleId))
                 psi.Arguments = $"--title-id={titleId} " + psi.Arguments;
@@ -169,6 +177,13 @@ namespace Pcsx5Ui
                 Action<string> forwardLine = (data) =>
                 {
                     if (string.IsNullOrEmpty(data)) return;
+                    // The core's machine-readable window line (see GPU::Initialize).
+                    const string handlePrefix = "PCSX5_WINDOW_HANDLE=";
+                    if (data.StartsWith(handlePrefix, StringComparison.Ordinal)
+                        && ulong.TryParse(data.Substring(handlePrefix.Length).Trim(), out ulong hwnd) && hwnd != 0)
+                    {
+                        _dispatcher.BeginInvoke(() => WindowHandle?.Invoke(hwnd));
+                    }
                     _dispatcher.BeginInvoke(() => LogLine?.Invoke(StripAnsi(data)));
                 };
                 // Auto-cleanup when child exits (crash, stop, or error).

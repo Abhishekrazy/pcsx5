@@ -511,21 +511,41 @@ Ordered by dependency, one subsystem per change (Rule 10):
   gpu/headless/ipc/agc subsets green. No unit test: the defect is a
   cross-module linkage property that a single-module test cannot exhibit;
   the shell run is the test and is recorded here.
+  DECISION 2026-09-06 (loop tick): instead of an offscreen renderer for the
+  headless IPC mode, the launcher now uses the contract Rule 11 already
+  names - the core renders with real Vulkan into a hidden window
+  (`--embed` instead of `--headless`) and prints PCSX5_WINDOW_HANDLE=; the
+  shell reparents that window. Reasons: it is the documented mechanism, it
+  is shell-only, and headless on the Null device can never produce pixels.
+  Done and VERIFIED this tick (shell frames SHELL_20260906_054253):
+  - IpcSession launches with --embed, parses the handle line into a
+    WindowHandle event; GameSession routes it into the same OnCoreWindow
+    as the in-process path. The status bar reads "Running" at ~15 s and the
+    boot overlay hides on the real window, not on a black frame.
+  - FOUND: `_emuHost` (the EmulatorWindowHost) was declared and nulled but
+    never constructed anywhere, so EmbedEmulatorWindow returned at its first
+    line on every path - the reparent contract was dead code. The host is
+    now created on demand when the handle arrives, placed in the presenter,
+    and the reparent waits for the HwndHost to own its native window. The
+    embedded child now occupies the game area (frame_0014.png).
+  - The unresponsive banner was the watchdog starved of heartbeats: only the
+    in-process log callback fed it, never the IPC log lines. Both feed it
+    now, and the window-ready event does too. No banner in the last runs.
+  - A non-zero exit after the user's own Stop/Kill is raised as Stopped, not
+    Crashed; the crash dialog no longer appears over a deliberate stop.
   REMAINING, in order:
-  1. SOFT BOUNDARY - the published frame is black: headless runs on the Null
-     device, so the AGC deferred composite never rasterises into guest memory
-     and the windowed path presents from a Vulkan image, not from memory.
-     The launcher's IPC mode needs an offscreen Vulkan context (no GLFW
-     window) with a readback into the DIB buffer - a known technique,
-     bounded work, its own iteration (GPU subsystem).
-  2. The "Game may be unresponsive" banner appears at ~30 s while frames
-     flow (frame_0020.png): it keys on the IPC game_state, which the core
-     never advances past boot. The core should set Running on the first
-     published frame (SetGameState exists in ipc_server.cpp).
-  3. The boot overlay's six steps never advance over IPC (phases are raised
-     only by the in-process path in GameSession.cs).
-  4. A Force Stop from the banner is reported as "CRASH DIAGNOSTICS ...
-     exit 0xFFFFFFFF" (frame_0028.png); a user-initiated stop is not a crash.
+  1. The embedded child is BLACK: the core's log for that launch shows
+     every present failing from the first guest frame on ("GPU-image
+     present failed", "Vulkan present failed - falling back to GDI") -
+     the swapchain goes out of date the moment the window is reparented
+     and resized, and vk_present.cpp's OUT_OF_DATE branches do not rebuild
+     it. NEXT (GPU subsystem, one change): recreate the swapchain on
+     VK_ERROR_OUT_OF_DATE_KHR / after a resize, then re-present.
+  2. The boot overlay's six steps never advance over IPC (phases are raised
+     only by the in-process path); the IPC game_state never leaves boot.
+  3. Esc while the embedded child has focus reaches the child, not the
+     shell (no pause menu opened by Esc in SHELL_20260906_054027); the pause
+     overlay needs a key path that works with the child focused.
   Then the boot-phase reporting over IPC (the overlay
   keys on log lines the IPC path does not raise). Then the misreported
   Force Stop.
