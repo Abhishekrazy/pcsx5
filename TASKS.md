@@ -596,7 +596,7 @@ Ordered by dependency, one subsystem per change (Rule 10):
     Not persisted across restarts; say if it should be.
   - [x] **SharpEmu launcher navigation compared** - DONE (asked 2026-09-06:
     "sharpemu UI is better ... controller support is better there, check").
-    Read sharpemu_clone/src/SharpEmu.GUI/MainWindow.axaml.cs PollGamepad and
+    Read sharpemu_clone (its src tree): SharpEmu.GUI/MainWindow.axaml.cs PollGamepad and
     SharpEmu.Libs/Pad/SdlLauncherGamepad.cs. Its model: SDL gamepad, timer
     poll, edge-detected buttons, stick-as-D-pad at 64/192, hold-to-repeat
     400 ms then 130 ms, row-step from measured layout, L1/R1 pages, Cross
@@ -621,8 +621,8 @@ Ordered by dependency, one subsystem per change (Rule 10):
     SharpEmu menu navigation and design also superior ... I like our menu
     design but there is far better ... view all titles should be centre
     aligned". No `/design` skill exists in this environment, so the pass was
-    done directly from SharpEmu's launcher XAML and styles (sharpemu_clone/
-    src/SharpEmu.GUI/MainWindow.axaml, Themes/Styles/Library.axaml,
+    done directly from SharpEmu's launcher XAML and styles (sharpemu_clone (its src tree):
+    SharpEmu.GUI/MainWindow.axaml, Themes/Styles/Library.axaml,
     Surfaces.axaml), rewritten in PCSX5's idiom. Done: the shelf takes the
     first five of the recency-ordered list; the View All grid is centred; its
     tiles now put the name under the cover (ending the overlap with cover
