@@ -838,6 +838,26 @@ namespace GPU {
         // Falls through to the GDI path when Vulkan is unavailable or a
         // single present fails.
         if (g_vk_ready) {
+            // Keep the swapchain the size of the window. Until 2026-09-06 it
+            // was rebuilt only on the fullscreen toggle, so a window resized by
+            // anything else -- the launcher reparenting and sizing it, or the
+            // user dragging it -- presented VK_ERROR_OUT_OF_DATE_KHR on every
+            // frame from then on and fell to the GDI path (TASKS 4.14). The
+            // size is read with Win32 rather than GLFW because this runs on
+            // the guest thread; VkPresentResize returns at once when nothing
+            // changed.
+            {
+                RECT rc{};
+                if (::GetClientRect(g_hwnd, &rc)) {
+                    const int cw = rc.right - rc.left, chh = rc.bottom - rc.top;
+                    if (cw > 0 && chh > 0 &&
+                        !VkPresentResize(g_vk, static_cast<u32>(cw), static_cast<u32>(chh))) {
+                        g_vk_ready = false;
+                    }
+                }
+            }
+        }
+        if (g_vk_ready) {
             VkImage rt_image = VK_NULL_HANDLE;
             u32 rt_w = 0, rt_h = 0;
             VkFormat rt_format = VK_FORMAT_UNDEFINED;

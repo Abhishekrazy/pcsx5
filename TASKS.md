@@ -533,15 +533,19 @@ Ordered by dependency, one subsystem per change (Rule 10):
     now, and the window-ready event does too. No banner in the last runs.
   - A non-zero exit after the user's own Stop/Kill is raised as Stopped, not
     Crashed; the crash dialog no longer appears over a deliberate stop.
+  THE LAUNCHER SHOWS THE GAME (VERIFIED 2026-09-06). The last defect: the
+  swapchain was rebuilt only on the fullscreen toggle, so once the shell
+  reparented and resized the window every present returned out-of-date and
+  fell to GDI (core log: "GPU-image present failed" on every frame). The
+  windowed present now reads the client size with Win32 each frame and calls
+  VkPresentResize (a no-op when unchanged). Core log: "swapchain recreated
+  for 1152x675"; the shell shows the Ratalaika splash at 21 s and the
+  title's known half-drawn state after -
+  artifacts/runtime/SHELL_20260906_054602/frames/frame_0014.png and
+  frame_0025.png; 14 unique frames in 26. Two isolated present failures at
+  32 s in that log remain unexplained (OBSERVED once; the frame recovered).
   REMAINING, in order:
-  1. The embedded child is BLACK: the core's log for that launch shows
-     every present failing from the first guest frame on ("GPU-image
-     present failed", "Vulkan present failed - falling back to GDI") -
-     the swapchain goes out of date the moment the window is reparented
-     and resized, and vk_present.cpp's OUT_OF_DATE branches do not rebuild
-     it. NEXT (GPU subsystem, one change): recreate the swapchain on
-     VK_ERROR_OUT_OF_DATE_KHR / after a resize, then re-present.
-  2. The boot overlay's six steps never advance over IPC (phases are raised
+  1. The boot overlay's six steps never advance over IPC (phases are raised
      only by the in-process path); the IPC game_state never leaves boot.
   3. Esc while the embedded child has focus reaches the child, not the
      shell (no pause menu opened by Esc in SHELL_20260906_054027); the pause
