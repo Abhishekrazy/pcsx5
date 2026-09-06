@@ -109,6 +109,13 @@ namespace Pcsx5Ui
             // screens not yet rebuilt still show the user's colour where it
             // matters most: the focus ring.
             Set(res, "PickerAccentBrush", accent);
+            // The in-app folder picker's own brushes (App.xaml) were fixed dark
+            // values; they now follow the palette (TASKS 4.13 step 11).
+            Set(res, "PickerSurfaceBrush", ParseOrThrow(p.Surface));
+            Set(res, "PickerListBrush", ground);
+            Set(res, "PickerBorderBrush", ParseOrThrow(p.Hairline));
+            Set(res, "PickerTextBrush", ParseOrThrow(p.Text));
+            Set(res, "PickerMutedBrush", ParseOrThrow(p.TextMuted));
 
             // Corner radii. Sharp and cut both use 0 here; cut gets its shape
             // from the ClipCorners attached property below.

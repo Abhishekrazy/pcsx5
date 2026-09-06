@@ -1895,6 +1895,31 @@
  Foreground="{DynamicResource PickerTextBrush}" FontSize="{DynamicResource TypeL}"
  MouseDoubleClick="FolderPickerList_MouseDoubleClick"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <!-- Selected row from the tokens, not the system highlight
+                                     (which is a Windows blue on both palettes). -->
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Foreground" Value="{DynamicResource PickerTextBrush}"/>
+                                        <Setter Property="Padding" Value="8,6"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Row" Background="Transparent" CornerRadius="{DynamicResource ThemeCornerS}" Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" Margin="6,7">

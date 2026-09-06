@@ -441,6 +441,23 @@ Ordered by dependency, one subsystem per change (Rule 10):
     since it must dim a live game frame in either theme. It could not be
     seen running because no game reaches gameplay under the shell right now
     (next item). Verify visually once that is fixed.
+  - [ ] Step 10 - Quick settings popup: SOFT BOUNDARY (2026-09-06). The
+    IPC pipe carries only STOP / KILL / PAUSE / RESUME (ipc_shared.h), so a
+    mid-game settings popup could apply nothing to the out-of-process core;
+    building it now would be a stub. Needs an IPC "set option" command with
+    the core applying runtime-safe settings (volume, frame limit, VSync,
+    resolution scale) and a reply; own iteration, after the embedded-input
+    ownership decision under 4.14.
+  - [x] **Step 11 - Folder picker on tokens** - DONE. The picker's own
+    Picker* brushes were fixed dark values in App.xaml; Theme.Apply now
+    derives them from the palette (surface, ground, hairline, text, muted),
+    so the picker follows dark/light and the accent. Two defects found and
+    fixed on the way: its legend was shown raw ("%DEV% %DIR% Move ...")
+    because the text bypassed the glyph substitution the footer uses; and
+    its selected row was the Windows system highlight, now a container style
+    on the soft accent fill. Seen: dark
+    artifacts/runtime/SHELL_20260906_061034/frames/frame_0012.png; light
+    with coral (before the two fixes) SHELL_20260906_060850/frames/frame_0012.png.
   - [ ] Step 12 - Booting screen per the added concept artboard: staged
     (Load / Link / Init / First frame), thin progress line, no spinner.
   - [ ] Step 13 - Stuck notice per the added artboard: shown ONLY when the
@@ -588,6 +605,14 @@ Ordered by dependency, one subsystem per change (Rule 10):
      frame presented" (launch SHELL_20260906_060218); the word in the shared
      block itself is not read back by anything yet, so the write is inferred
      from the call, not observed.
+
+- [ ] **"Add Directory" on the Game Scan Directories page takes no keyboard
+  or pad focus** - found 2026-09-06 while opening the folder picker by
+  keyboard: the page builds its own button stack and sets no initial focus,
+  so Enter after arriving does nothing (artifacts/runtime/SHELL_20260906_060801/frames/frame_0011.png:
+  page shown, nothing focused). Rule 12: a control reachable only by mouse
+  is a defect. Fix: focus the Add button when the page opens and include
+  both buttons in the arrow order.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the

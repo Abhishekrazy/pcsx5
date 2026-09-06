@@ -1752,7 +1752,7 @@ namespace Pcsx5Ui
             FolderPickerOpenBtn.Content = I18n.Tr("picker.open");
             FolderPickerSelectBtn.Content = I18n.Tr("picker.select");
             FolderPickerCancelBtn.Content = I18n.Tr("picker.cancel");
-            FolderPickerHints.Text = I18n.Tr("picker.hints");
+            FolderPickerHints.Text = ApplyGlyphs(I18n.Tr("picker.hints"));   // was shown raw (%DEV% %DIR% ...) until 2026-09-06
 
             System.Windows.Automation.AutomationProperties.SetName(FolderPickerList, I18n.Tr("picker.list_name"));
             System.Windows.Automation.AutomationProperties.SetName(FolderPickerUpBtn, I18n.Tr("picker.up"));
