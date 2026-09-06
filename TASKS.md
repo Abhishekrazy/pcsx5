@@ -30,8 +30,30 @@ Last release: **v0.1.1** (2026-09-06, zip only - see the first open item).
   in by NAudio (~23 MB raw) - a framework-dependent build would be ~10 MB but
   needs the runtime installed; not changed.
 
-- [ ] **Release packaging: v0.1.1 has no Squirrel package, so installed copies
-  cannot auto-update to it.** v0.1.0 shipped `pcsx5-0.1.0-full.nupkg` and a
+- [x] **Update prompt and manual check** (2026-09-06, user request). At
+  startup and from System Information > Check for updates: an overlay
+  "PCSX5 X is available, you have Y" with Download & install (Squirrel
+  installs: download + apply with a progress bar, then Restart now), or Open
+  download page (zip copies, via the GitHub releases API), Skip this version
+  (ui.skipped_update_version; only a newer release asks again) and Later.
+  `UpdateChecker.cs` owns the checks (Rule 11); pad: Cross/Square/Circle with
+  hints.update; 14 keys in eleven locales. Seen:
+  artifacts/runtime/SHELL_20260906_232913/frames/frame_0001.png.
+
+- [x] **2D controller art removed** (2026-09-06, user request): the 3D pad
+  is the only visualizer, so the VSCView/Gamepad-Asset-Pack sprites, layout
+  code (~370 lines of InputTabView), `ControllerVisualizer.xaml` and the
+  csproj content are gone; credits now name the 3D model's author
+  (AHarmlessPotato, CC-BY-4.0) in the README and the in-app credits string.
+
+- [~] **Release packaging: Squirrel assets are built by hand; make it a
+  script.** `Squirrel.exe pack` from the NuGet cache
+  (clowd.squirrel/2.11.1/tools) with `--allowUnaware` produces RELEASES, the
+  full and delta nupkgs and pcsx5Setup.exe from the release stage; the
+  previous full nupkg must be in the release dir for the delta. Done for
+  v0.1.2 by hand (this session); a `-Squirrel` switch in build_release.ps1
+  is the remaining step. CI (ci.yml) builds the zip and the Inno installer on
+  a tag push; its v0.1.1 run failed on a red doc_links test at that commit. v0.1.0 shipped `pcsx5-0.1.0-full.nupkg` and a
   Setup.exe that the in-app `Squirrel.UpdateManager` (MainWindow.xaml.cs:395)
   reads; nothing in the repo produces them (build_and_package.ps1 only knows
   Inno Setup, which is not installed here). Done means: a scripted, repeatable

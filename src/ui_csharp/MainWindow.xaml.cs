@@ -388,33 +388,103 @@ namespace Pcsx5Ui
             }
         }
 
-        private async Task CheckForUpdates()
+        // ── UPDATES ── checked at startup (silently) and from System
+        // Information > Check for updates. The prompt offers Download &
+        // install (Squirrel installs) or the release page (zip copies), Skip
+        // this version (remembered in config; a newer one asks again) and Later.
+        private UpdateCheckResult _pendingUpdate;
+        private bool _updateApplied;
+
+        private async Task CheckForUpdates(bool manual = false)
         {
-            try
+            var result = await UpdateChecker.CheckAsync(ReadVersionString());
+            await Dispatcher.InvokeAsync(() =>
             {
-                using var mgr = new Squirrel.UpdateManager("https://github.com/Abhishekrazy/pcsx5");
-                var updateInfo = await mgr.CheckForUpdate();
-                if (updateInfo != null && updateInfo.ReleasesToApply.Any())
+                if (result.IsNewer)
                 {
-                    await mgr.UpdateApp();
-                    Dispatcher.Invoke(() =>
-                    {
-                        var result = MessageBox.Show("An update was installed in the background. Restart now to apply?", 
-                            "Update Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
-                        if (result == MessageBoxResult.Yes)
-                        {
-                            Squirrel.UpdateManager.RestartApp();
-                        }
-                    });
+                    bool skipped = !manual && string.Equals(_config.ui.skipped_update_version, result.LatestVersion, StringComparison.OrdinalIgnoreCase);
+                    if (!skipped) ShowUpdatePrompt(result);
+                    else LogConsole($"Update {result.LatestVersion} available, skipped by the user.");
                 }
-            }
-            catch (Exception ex)
+                else if (manual)
+                {
+                    FooterStatus.Text = result.Error != null
+                        ? I18n.Tr("update.failed", result.Error)
+                        : I18n.Tr("update.uptodate_fmt", result.CurrentVersion);
+                }
+                else if (result.Error != null)
+                {
+                    LogConsole("Update check failed: " + result.Error);
+                }
+            });
+        }
+
+        private void ShowUpdatePrompt(UpdateCheckResult r)
+        {
+            _pendingUpdate = r;
+            _updateApplied = false;
+            UpdateBodyText.Text = I18n.Tr("update.body_fmt", r.LatestVersion, r.CurrentVersion);
+            UpdateInstallBtn.Content = I18n.Tr(r.CanInstallInPlace ? "update.install" : "update.open_page");
+            UpdateInstallBtn.IsEnabled = true;
+            UpdateProgressRow.Visibility = Visibility.Collapsed;
+            UpdateProgressFill.Width = 0;
+            UpdateOverlay.Visibility = Visibility.Visible;
+            FocusFirst(UpdateInstallBtn);
+        }
+
+        private void HideUpdatePrompt()
+        {
+            UpdateOverlay.Visibility = Visibility.Collapsed;
+            FocusFirst(TabLibraryBtn);
+        }
+
+        private void UpdateLater_Click(object sender, RoutedEventArgs e) => HideUpdatePrompt();
+
+        private void UpdateSkip_Click(object sender, RoutedEventArgs e)
+        {
+            if (_pendingUpdate != null)
             {
-                try {
-                    string logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
-                    Directory.CreateDirectory(logsDir);
-                    File.AppendAllText(Path.Combine(logsDir, "ui_crash_log.txt"), $"[{DateTime.UtcNow}] Update check failed: {ex}\n");
-                } catch { }
+                _config.ui.skipped_update_version = _pendingUpdate.LatestVersion;
+                SaveConfig();
+                LogConsole($"Update {_pendingUpdate.LatestVersion} skipped; a newer version will ask again.");
+            }
+            HideUpdatePrompt();
+        }
+
+        private async void UpdateInstall_Click(object sender, RoutedEventArgs e)
+        {
+            var r = _pendingUpdate;
+            if (r == null) return;
+            if (_updateApplied) { UpdateChecker.RestartApp(); return; }
+            if (!r.CanInstallInPlace)
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(r.ReleaseUrl) { UseShellExecute = true }); } catch { }
+                HideUpdatePrompt();
+                return;
+            }
+            UpdateInstallBtn.IsEnabled = false;
+            UpdateSkipBtn.IsEnabled = false;
+            UpdateProgressRow.Visibility = Visibility.Visible;
+            UpdateBodyText.Text = I18n.Tr("update.downloading");
+            double track = UpdateProgressRow.ActualWidth;
+            var progress = new Progress<int>(p => UpdateProgressFill.Width = Math.Max(0, Math.Min(100, p)) / 100.0 * (track > 0 ? track : 560));
+            bool ok = false;
+            string err = null;
+            try { ok = await UpdateChecker.InstallAsync(progress); }
+            catch (Exception ex) { err = ex.Message; }
+            UpdateSkipBtn.IsEnabled = true;
+            UpdateInstallBtn.IsEnabled = true;
+            if (ok)
+            {
+                _updateApplied = true;
+                UpdateBodyText.Text = I18n.Tr("update.restart_body", r.LatestVersion);
+                UpdateInstallBtn.Content = I18n.Tr("update.restart");
+                UpdateProgressFill.Width = track > 0 ? track : 560;
+            }
+            else
+            {
+                UpdateProgressRow.Visibility = Visibility.Collapsed;
+                UpdateBodyText.Text = I18n.Tr("update.failed", err ?? "");
             }
         }
 
@@ -3141,6 +3211,7 @@ namespace Pcsx5Ui
                     list.Add(new SettingDefinition { Key = "about_input", Title = "Controller", Description = "DualSense over Bluetooth and USB (HID)", GetValueBadge = () => "DualSense", Type = "info" });
                     // Attribution the vendored controller art requires (MIT). Localised,
                     // unlike the rows above, so it does not add to the string ratchet.
+                    list.Add(new SettingDefinition { Key = "about_update", Title = I18n.Tr("settings.about_update"), Description = I18n.Tr("settings.about_update_desc"), GetValueBadge = () => I18n.Tr("settings.action"), Type = "action" });
                     list.Add(new SettingDefinition { Key = "about_credits", Title = I18n.Tr("about.credits_title"), Description = I18n.Tr("about.credits_desc"), GetValueBadge = () => "MIT", Type = "info" });
                     break;
             }
@@ -3744,6 +3815,11 @@ namespace Pcsx5Ui
             {
                 RestoreDefaultMappings_Click(this, null);
                 PopulateCategoryRows(_activeSettingsCategory);
+            }
+            else if (key == "about_update")
+            {
+                FooterStatus.Text = I18n.Tr("update.checking");
+                _ = CheckForUpdates(manual: true);
             }
         }
 
@@ -5500,6 +5576,15 @@ namespace Pcsx5Ui
                     _prevInputState = state;
                     return;
                 }
+                if (UpdateOverlay != null && UpdateOverlay.Visibility == Visibility.Visible)
+                {
+                    ShowHints("hints.update");
+                    if (aPressed && UpdateInstallBtn.IsEnabled) UpdateInstall_Click(this, null);
+                    else if (xPressed && UpdateSkipBtn.IsEnabled) UpdateSkip_Click(this, null);
+                    else if (bPressed) UpdateLater_Click(this, null);
+                    _prevInputState = state;
+                    return;
+                }
                 if (CreditsOverlay != null && CreditsOverlay.Visibility == Visibility.Visible)
                 {
                     ShowHints("hints.credits");
@@ -6412,6 +6497,7 @@ namespace Pcsx5Ui
             public string language { get; set; } = "en-US";
             public bool title_music_enabled { get; set; } = true;
             public double title_music_volume { get; set; } = 0.6;   // lobby (title) music, 0..1, separate from the game's audio
+            public string skipped_update_version { get; set; } = "";  // "Skip this version": only a newer release asks again
             public double scale { get; set; } = 1.0;
             // The shell is a console interface, so fullscreen is the default
             // presentation.  Distinct from graphics.fullscreen, which governs

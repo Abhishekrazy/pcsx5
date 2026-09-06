@@ -22,8 +22,8 @@ namespace Pcsx5Ui
     /// core's own reader.  The previous tab read it through a second C# HID
     /// implementation that interleaved with the core's on the same device.
     ///
-    /// Rendering follows the vendored VSCView theme in
-    /// assets/gamepad/dualsense/layout.json: a 1150x850 canvas, sprites drawn
+    /// Rendering is the 3D DualSense in
+    /// assets/gamepad/dualsense3d (one OBJ per part, see its README).
     /// centred at resolved positions, and small expressions that decide which
     /// sprite shows or how far it slides.  The JSON is consumed as data; the
     /// evaluator below implements just the grammar the theme uses.
@@ -53,10 +53,8 @@ namespace Pcsx5Ui
         private CoreBridge.PadState _state = CoreBridge.PadState.Create();
         private bool _haveState;
 
-        // ── Theme ───────────────────────────────────────────────────────────
-        private string _assetDir;
-        private readonly Dictionary<string, BitmapImage> _sprites = new Dictionary<string, BitmapImage>(StringComparer.OrdinalIgnoreCase);
-        private readonly List<ThemeNode> _nodes = new List<ThemeNode>();
+        // ── 3D pad assets ───────────────────────────────────────────────────
+        private string _assetDir;   // assets/gamepad/dualsense3d
         private readonly List<Point> _trail0 = new List<Point>();
         private readonly List<Point> _trail1 = new List<Point>();
 
@@ -90,16 +88,9 @@ namespace Pcsx5Ui
             }
             else
             {
-                LoadTheme(System.IO.Path.Combine(_assetDir, "layout.json"));
-                // The 3D pad lives beside the 2D sprites: assets/gamepad/dualsense3d.
-                try
-                {
-                    Pad3D.Load(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(_assetDir) ?? _assetDir, "dualsense3d"));
-                }
+                try { Pad3D.Load(_assetDir); }
                 catch (Exception ex) { LogFallback("3D pad failed to load: " + ex.Message); }
-                bool has3d = Pad3D.IsLoaded3D;
-                Pad3D.Visibility = has3d ? Visibility.Visible : Visibility.Collapsed;
-                Pad2DHost.Visibility = has3d ? Visibility.Collapsed : Visibility.Visible;
+                if (!Pad3D.IsLoaded3D) TestStatusText.Text = I18n.Tr("input.assets_missing");
             }
 
             RescanPads();
@@ -128,8 +119,8 @@ namespace Pcsx5Ui
             string dir = AppDomain.CurrentDomain.BaseDirectory;
             for (int i = 0; i < 6 && dir != null; i++)
             {
-                string candidate = System.IO.Path.Combine(dir, "assets", "gamepad", "dualsense");
-                if (File.Exists(System.IO.Path.Combine(candidate, "layout.json"))) return candidate;
+                string candidate = System.IO.Path.Combine(dir, "assets", "gamepad", "dualsense3d");
+                if (File.Exists(System.IO.Path.Combine(candidate, "manifest.json"))) return candidate;
                 dir = System.IO.Path.GetDirectoryName(dir);
             }
             return null;
@@ -208,7 +199,6 @@ namespace Pcsx5Ui
 
             UpdateDeviceInfo();
             PushHistory();
-            PaintController();
             Pad3D.SetPlayerIndex(_padIndex + 1);
             Pad3D.Update(ref _state, _haveState);
             PaintGraphs();
@@ -354,374 +344,6 @@ namespace Pcsx5Ui
                 InputTestBtn.IsEnabled = SpeakerTestBtn.IsEnabled = HapticsTestBtn.IsEnabled = true;
             }
             TestStatusText.Text = ok != 0 ? I18n.Tr("input.test_done_ask") : I18n.Tr("input.test_failed");
-        }
-
-        // ── theme: load ─────────────────────────────────────────────────────
-        private enum NodeKind { Image, ShowHide, Slider, TrailPad, Basic3d }
-
-        private sealed class ThemeNode
-        {
-            public NodeKind Kind;
-            public double X, Y, W, H;       // resolved absolute canvas position
-            public bool Center;
-            public string Image, ShadowL, ShadowR, ShadowU, ShadowD;
-            public string Input, InputX, InputY;
-            public List<ThemeNode> Children = new List<ThemeNode>();
-            // WPF elements
-            public System.Windows.Controls.Image Img;
-            public TranslateTransform Slide;
-            public System.Windows.Controls.Image[] Shadows;
-            public Ellipse Dot;
-            public List<Ellipse> TrailDots;
-            public ThemeNode Parent;
-            public List<Ellipse> Trail => TrailDots;
-        }
-
-        private void LoadTheme(string path)
-        {
-            _nodes.Clear();
-            PadCanvas.Children.Clear();
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            var root = doc.RootElement;
-            foreach (var c in root.GetProperty("children").EnumerateArray())
-                WalkNode(c, 0, 0, null);
-            foreach (var n in _nodes) Materialise(n);
-        }
-
-        private void WalkNode(JsonElement el, double px, double py, ThemeNode parent)
-        {
-            double x = px + Num(el, "x"), y = py + Num(el, "y");
-            string type = el.TryGetProperty("type", out var t) ? t.GetString() : "group";
-            ThemeNode node = null;
-            switch (type)
-            {
-                case "image":    node = new ThemeNode { Kind = NodeKind.Image }; break;
-                case "showhide": node = new ThemeNode { Kind = NodeKind.ShowHide }; break;
-                case "slider":   node = new ThemeNode { Kind = NodeKind.Slider }; break;
-                case "trailpad": node = new ThemeNode { Kind = NodeKind.TrailPad }; break;
-                case "basic3d1": node = new ThemeNode { Kind = NodeKind.Basic3d }; break;
-            }
-            if (node != null)
-            {
-                node.X = x; node.Y = y; node.W = Num(el, "width"); node.H = Num(el, "height");
-                node.Center = el.TryGetProperty("center", out var c) && c.GetBoolean();
-                node.Image = Str(el, "image"); node.ShadowL = Str(el, "shadowl"); node.ShadowR = Str(el, "shadowr");
-                node.ShadowU = Str(el, "shadowu"); node.ShadowD = Str(el, "shadowd");
-                node.Input = Str(el, "input"); node.InputX = Str(el, "inputX"); node.InputY = Str(el, "inputY");
-                node.Parent = parent;
-                _nodes.Add(node);
-                parent?.Children.Add(node);
-            }
-            if (el.TryGetProperty("children", out var kids))
-                foreach (var k in kids.EnumerateArray()) WalkNode(k, x, y, node ?? parent);
-        }
-
-        private static double Num(JsonElement el, string name) => el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
-        private static string Str(JsonElement el, string name) => el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-
-        private BitmapImage Sprite(string themePath)
-        {
-            if (string.IsNullOrEmpty(themePath)) return null;
-            string file = themePath.Replace('\\', '/');
-            file = file.Substring(file.LastIndexOf('/') + 1);
-            if (_sprites.TryGetValue(file, out var cached)) return cached;
-            // The body lives in body/, everything else in sprites/.  The theme's
-            // base image name is colour-specific; ours is the white body.
-            string full = file.StartsWith("DualSense_base", StringComparison.OrdinalIgnoreCase)
-                ? System.IO.Path.Combine(_assetDir, "body", "DualSense_body_white_no_dynamic_parts.png")
-                : System.IO.Path.Combine(_assetDir, "sprites", file);
-            if (!File.Exists(full)) return null;
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.UriSource = new Uri(full);
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.EndInit();
-            bmp.Freeze();
-            _sprites[file] = bmp;
-            return bmp;
-        }
-
-        private void Materialise(ThemeNode n)
-        {
-            // Find the nearest slider ancestor: its transform moves this node.
-            TranslateTransform slide = null;
-            for (var p = n.Parent; p != null; p = p.Parent) if (p.Slide != null) { slide = p.Slide; break; }
-
-            switch (n.Kind)
-            {
-                case NodeKind.Slider:
-                    n.Slide = new TranslateTransform();
-                    break;
-
-                case NodeKind.Image:
-                    n.Img = MakeImage(n.Image, n.X, n.Y, n.W, n.H, n.Center, slide);
-                    break;
-
-                case NodeKind.TrailPad:
-                    n.Dot = new Ellipse { Width = n.W, Height = n.H, Fill = (Brush)Application.Current.Resources["ThemeAccent"], Opacity = 0.9, IsHitTestVisible = false };
-                    Canvas.SetLeft(n.Dot, n.X - n.W / 2); Canvas.SetTop(n.Dot, n.Y - n.H / 2);
-                    n.Dot.Visibility = Visibility.Collapsed;
-                    n.TrailDots = new List<Ellipse>();
-                    for (int i = 0; i < 12; i++)
-                    {
-                        var e = new Ellipse { Width = n.W * 0.7, Height = n.H * 0.7, Fill = (Brush)Application.Current.Resources["ThemeAccent"], Opacity = 0.0, IsHitTestVisible = false };
-                        PadCanvas.Children.Add(e); n.TrailDots.Add(e);
-                    }
-                    PadCanvas.Children.Add(n.Dot);
-                    break;
-
-                case NodeKind.Basic3d:
-                    // The theme's tilt indicator: a second, small pad drawn below
-                    // the controller and leaned by the accelerometer. In VSCView's
-                    // overlay it is the only motion readout; here the Motion panel
-                    // carries real graphs, and on screen the extra pad read as an
-                    // unexplained teal silhouette. Not drawn. The node is still
-                    // parsed so the layout walk stays faithful to the file.
-                    n.Shadows = new System.Windows.Controls.Image[4];
-                    break;
-            }
-        }
-
-        private System.Windows.Controls.Image MakeImage(string sprite, double x, double y, double w, double h, bool center, TranslateTransform slide)
-        {
-            var bmp = Sprite(sprite);
-            if (bmp == null) return null;
-            if (w <= 0) w = bmp.PixelWidth;
-            if (h <= 0) h = bmp.PixelHeight;
-            var img = new System.Windows.Controls.Image { Source = bmp, Width = w, Height = h, Stretch = Stretch.Fill, IsHitTestVisible = false };
-            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
-            Canvas.SetLeft(img, center ? x - w / 2 : x);
-            Canvas.SetTop(img, center ? y - h / 2 : y);
-            if (slide != null) img.RenderTransform = slide;
-            PadCanvas.Children.Add(img);
-            return img;
-        }
-
-        // ── theme: paint ────────────────────────────────────────────────────
-        private void PaintController()
-        {
-            foreach (var n in _nodes)
-            {
-                switch (n.Kind)
-                {
-                    case NodeKind.ShowHide:
-                        {
-                            bool on = _haveState && Eval(n.Input) > 0.5;
-                            SetVisible(n, on);
-                            break;
-                        }
-                    case NodeKind.Slider:
-                        n.Slide.X = _haveState ? Eval(n.InputX) : 0;
-                        n.Slide.Y = _haveState ? Eval(n.InputY) : 0;
-                        break;
-
-                    case NodeKind.TrailPad:
-                        {
-                            bool on = _haveState && Eval(n.Input) > 0.5;
-                            var trail = n.Input != null && n.Input.Contains(":1:") ? _trail1 : _trail0;
-                            if (on)
-                            {
-                                double dx = Eval(n.InputX), dy = Eval(n.InputY);
-                                var p = new Point(n.X + dx, n.Y + dy);
-                                Canvas.SetLeft(n.Dot, p.X - n.W / 2); Canvas.SetTop(n.Dot, p.Y - n.H / 2);
-                                n.Dot.Visibility = Visibility.Visible;
-                                trail.Add(p);
-                                if (trail.Count > n.TrailDots.Count) trail.RemoveAt(0);
-                            }
-                            else
-                            {
-                                n.Dot.Visibility = Visibility.Collapsed;
-                                if (trail.Count > 0) trail.RemoveAt(0);
-                            }
-                            for (int i = 0; i < n.TrailDots.Count; i++)
-                            {
-                                var d = n.TrailDots[i];
-                                if (i < trail.Count)
-                                {
-                                    var p = trail[i];
-                                    Canvas.SetLeft(d, p.X - d.Width / 2); Canvas.SetTop(d, p.Y - d.Height / 2);
-                                    d.Opacity = 0.05 + 0.4 * (i + 1) / trail.Count;
-                                }
-                                else d.Opacity = 0;
-                            }
-                            break;
-                        }
-                    case NodeKind.Basic3d:
-                        {
-                            // Tilt as shadow opacity.  INFERRED: VSCView's exact
-                            // mapping was not read; this reproduces the visible
-                            // effect -- the pad appears to lean the way it is held.
-                            float ax = _haveState ? _state.AccelX : 0, ay = _haveState ? _state.AccelY : 0;
-                            if (n.Shadows[0] != null) n.Shadows[0].Opacity = Clamp01(-ax);
-                            if (n.Shadows[1] != null) n.Shadows[1].Opacity = Clamp01(ax);
-                            if (n.Shadows[2] != null) n.Shadows[2].Opacity = Clamp01(ay);
-                            if (n.Shadows[3] != null) n.Shadows[3].Opacity = Clamp01(-ay);
-                            break;
-                        }
-                }
-            }
-        }
-
-        private static void SetVisible(ThemeNode n, bool on)
-        {
-            var v = on ? Visibility.Visible : Visibility.Collapsed;
-            if (n.Img != null) n.Img.Visibility = v;
-            foreach (var c in n.Children) SetVisible(c, on);
-        }
-
-        private static double Clamp01(double v) => v < 0 ? 0 : v > 1 ? 1 : v;
-
-        // ── theme: expression evaluator ─────────────────────────────────────
-        // Grammar actually used by the theme:
-        //   ident            e.g. quad_right:s, stick_left:x, triggers:l:analog
-        //   number
-        //   a * b, a + b, a - b, a > b
-        //   a OR b, a AND b
-        //   If(cond, a, b)
-        //   ( ... )
-        // Booleans are 1/0.  Unknown identifiers evaluate to 0, so a term the
-        // pad does not report (touch_left:*) drops out instead of throwing.
-        private double Eval(string expr)
-        {
-            if (string.IsNullOrWhiteSpace(expr)) return 0;
-            var p = new Parser(expr, this);
-            return p.ParseOr();
-        }
-
-        private double Input(string id)
-        {
-            if (!_haveState) return 0;
-            var s = _state;
-            switch (id)
-            {
-                case "quad_right:n": return Bit(s.Buttons, 0x1000);   // triangle
-                case "quad_right:e": return Bit(s.Buttons, 0x2000);   // circle
-                case "quad_right:s": return Bit(s.Buttons, 0x4000);   // cross
-                case "quad_right:w": return Bit(s.Buttons, 0x8000);   // square
-                case "quad_left:n":  return Bit(s.Buttons, 0x10);
-                case "quad_left:e":  return Bit(s.Buttons, 0x20);
-                case "quad_left:s":  return Bit(s.Buttons, 0x40);
-                case "quad_left:w":  return Bit(s.Buttons, 0x80);
-                case "bumpers:l":    return Bit(s.Buttons, 0x400);
-                case "bumpers:r":    return Bit(s.Buttons, 0x800);
-                case "triggers:l:stage2": return Bit(s.Buttons, 0x100);
-                case "triggers:r:stage2": return Bit(s.Buttons, 0x200);
-                case "triggers:l:analog": return s.L2 / 255.0;
-                case "triggers:r:analog": return s.R2 / 255.0;
-                case "menu:l":       return Bit(s.Buttons, 0x1);       // create
-                case "menu:r":       return Bit(s.Buttons, 0x8);       // options
-                case "home":         return Bit(s.Buttons, 0x10000);
-                case "mute":         return s.MicMuted;
-                case "stick_left:click":  return Bit(s.Buttons, 0x2);
-                case "stick_right:click": return Bit(s.Buttons, 0x4);
-                case "stick_left:x":  return (s.Lx - 128) / 127.0;
-                case "stick_left:y":  return (s.Ly - 128) / 127.0;
-                case "stick_right:x": return (s.Rx - 128) / 127.0;
-                case "stick_right:y": return (s.Ry - 128) / 127.0;
-                case "touch_center:click":
-                case "touch_right:click":
-                case "touch_left:click": return Bit(s.Buttons, 0x100000);
-                case "touch_center:0:touch": return s.Touch0.Active;
-                case "touch_center:1:touch": return s.Touch1.Active;
-                case "touch_center:0:x": return s.Touch0.X / 1919.0 * 2 - 1;
-                case "touch_center:0:y": return s.Touch0.Y / 941.0 * 2 - 1;
-                case "touch_center:1:x": return s.Touch1.X / 1919.0 * 2 - 1;
-                case "touch_center:1:y": return s.Touch1.Y / 941.0 * 2 - 1;
-                default: return 0;   // touch_left:*, touch_right:* and anything unmodelled
-            }
-        }
-
-        private static double Bit(uint v, uint mask) => (v & mask) != 0 ? 1 : 0;
-
-        private sealed class Parser
-        {
-            private readonly string _s; private int _i; private readonly InputTabView _v;
-            public Parser(string s, InputTabView v) { _s = s; _v = v; }
-
-            private void Ws() { while (_i < _s.Length && char.IsWhiteSpace(_s[_i])) _i++; }
-            private bool Take(string tok)
-            {
-                Ws();
-                if (string.Compare(_s, _i, tok, 0, tok.Length, StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    // Word tokens must not be a prefix of an identifier.
-                    if (char.IsLetter(tok[0]) && _i + tok.Length < _s.Length && (char.IsLetterOrDigit(_s[_i + tok.Length]) || _s[_i + tok.Length] == '_' || _s[_i + tok.Length] == ':')) return false;
-                    _i += tok.Length; return true;
-                }
-                return false;
-            }
-
-            public double ParseOr()
-            {
-                double a = ParseAnd();
-                while (Take("OR")) { double b = ParseAnd(); a = (a > 0.5 || b > 0.5) ? 1 : 0; }
-                return a;
-            }
-            private double ParseAnd()
-            {
-                double a = ParseCmp();
-                while (Take("AND")) { double b = ParseCmp(); a = (a > 0.5 && b > 0.5) ? 1 : 0; }
-                return a;
-            }
-            private double ParseCmp()
-            {
-                double a = ParseAdd();
-                for (; ; )
-                {
-                    if (Take(">=")) a = a >= ParseAdd() ? 1 : 0;
-                    else if (Take("<=")) a = a <= ParseAdd() ? 1 : 0;
-                    else if (Take(">")) a = a > ParseAdd() ? 1 : 0;
-                    else if (Take("<")) a = a < ParseAdd() ? 1 : 0;
-                    else return a;
-                }
-            }
-            private double ParseAdd()
-            {
-                double a = ParseMul();
-                for (; ; )
-                {
-                    if (Take("+")) a += ParseMul();
-                    else if (Take("-")) a -= ParseMul();
-                    else return a;
-                }
-            }
-            private double ParseMul()
-            {
-                double a = ParseUnary();
-                for (; ; )
-                {
-                    if (Take("*")) a *= ParseUnary();
-                    else if (Take("/")) { double b = ParseUnary(); a = b == 0 ? 0 : a / b; }
-                    else return a;
-                }
-            }
-            private double ParseUnary()
-            {
-                if (Take("-")) return -ParseUnary();
-                return ParsePrimary();
-            }
-            private double ParsePrimary()
-            {
-                Ws();
-                if (Take("("))
-                {
-                    double v = ParseOr(); Take(")"); return v;
-                }
-                if (Take("If"))
-                {
-                    Take("("); double c = ParseOr(); Take(","); double a = ParseOr(); Take(","); double b = ParseOr(); Take(")");
-                    return c > 0.5 ? a : b;
-                }
-                int start = _i;
-                if (_i < _s.Length && (char.IsDigit(_s[_i]) || _s[_i] == '.'))
-                {
-                    while (_i < _s.Length && (char.IsDigit(_s[_i]) || _s[_i] == '.')) _i++;
-                    return double.Parse(_s.Substring(start, _i - start), CultureInfo.InvariantCulture);
-                }
-                while (_i < _s.Length && (char.IsLetterOrDigit(_s[_i]) || _s[_i] == '_' || _s[_i] == ':')) _i++;
-                if (_i == start) { _i++; return 0; }   // skip an unexpected character rather than loop
-                return _v.Input(_s.Substring(start, _i - start));
-            }
         }
 
         // ── graphs ──────────────────────────────────────────────────────────

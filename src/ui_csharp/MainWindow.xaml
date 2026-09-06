@@ -2165,6 +2165,25 @@
                 </Border>
             </Grid>
 
+            <!-- UPDATE PROMPT: a new build is on GitHub -->
+            <Grid x:Name="UpdateOverlay" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
+                <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Width="640" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Tr Key=update.title}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}"/>
+                        <TextBlock x:Name="UpdateBodyText" TextWrapping="Wrap" FontSize="{DynamicResource TypeML}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,8,0,18"/>
+                        <Grid x:Name="UpdateProgressRow" Visibility="Collapsed" Margin="0,0,0,18">
+                            <Border Height="6" CornerRadius="{DynamicResource ThemeCornerS}" Background="{DynamicResource ThemeHairline}"/>
+                            <Border x:Name="UpdateProgressFill" Height="6" Width="0" HorizontalAlignment="Left" CornerRadius="{DynamicResource ThemeCornerS}" Background="{DynamicResource ThemeAccent}"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="UpdateSkipBtn" Content="{loc:Tr Key=update.skip}" MinHeight="40" Padding="16,0" Margin="0,0,10,0" Style="{StaticResource SecondaryButtonStyle}" Click="UpdateSkip_Click" AutomationProperties.Name="{loc:Tr Key=update.skip}"/>
+                            <Button x:Name="UpdateLaterBtn" Content="{loc:Tr Key=update.later}" MinHeight="40" Padding="16,0" Margin="0,0,10,0" Style="{StaticResource SecondaryButtonStyle}" Click="UpdateLater_Click" AutomationProperties.Name="{loc:Tr Key=update.later}"/>
+                            <Button x:Name="UpdateInstallBtn" Content="{loc:Tr Key=update.install}" MinHeight="40" Padding="20,0" Style="{StaticResource ModernButtonStyle}" Click="UpdateInstall_Click" AutomationProperties.Name="{loc:Tr Key=update.install}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
             <!-- CREDITS POPUP: the README's Credits section, pad-scrollable -->
             <Grid x:Name="CreditsOverlay" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
                 <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Width="960" MaxHeight="720" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">

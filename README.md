@@ -196,5 +196,9 @@ PCSX5 is released under the **GNU General Public License v2.0**. See
 - **[LibAtrac9](https://github.com/Thealexbarney/LibAtrac9)** by Alex Barney
   (MIT) — ATRAC9 audio decoding.
 - **stb** by Sean Barrett (public domain) — image and audio decoding.
+- **["Playstation 5 Dualsense"](https://sketchfab.com/3d-models/playstation-5-dualsense-878c1f882808477ab81c2fe86d5a3936)**
+  by [AHarmlessPotato](https://sketchfab.com/AHarmlessPotato) (CC-BY-4.0) — the
+  3D controller in the Input tab's testing view, split into animatable parts.
+  Vendored in [`assets/gamepad/dualsense3d`](assets/gamepad/dualsense3d).
 - The wider PS5 emulation and reverse-engineering community, whose public
   research made much of this possible.

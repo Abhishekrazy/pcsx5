@@ -36,7 +36,7 @@
     <!--
         Live controller view.  Reads the pad only through CoreBridge (the
         native reader); renders the DualSense from assets/gamepad/dualsense
-        using the vendored VSCView layout.  No emulator state lives here.
+        as a 3D model (assets/gamepad/dualsense3d).  No emulator state lives here.
 
         Rebuilt to the concept artboard 2026-09-06: hairline-border cards on
         flat theme tokens, a left diagram + tests column and a right device /
@@ -82,13 +82,8 @@
             <Border Grid.Row="1" Background="{DynamicResource ThemeGround}" BorderThickness="0"
                     Padding="12" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
                 <Grid>
-                    <!-- 3D DualSense (assets/gamepad/dualsense3d), animated from the live
-                         pad state. The 2D sprite canvas stays as the fallback when the 3D
-                         assets are missing, and keeps its layout code compiling. -->
-                    <local:ControllerVisualizer3D x:Name="Pad3D" Visibility="Collapsed"/>
-                    <Viewbox x:Name="Pad2DHost" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <Canvas x:Name="PadCanvas" Width="1150" Height="850"/>
-                    </Viewbox>
+                    <!-- 3D DualSense (assets/gamepad/dualsense3d), animated from the live pad state. -->
+                    <local:ControllerVisualizer3D x:Name="Pad3D"/>
                 </Grid>
             </Border>
 
