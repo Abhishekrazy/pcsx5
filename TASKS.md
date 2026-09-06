@@ -219,11 +219,41 @@ updater packages uploaded by hand (see the packaging item).
   guest genuinely never binds a target (measured: 54 registers set, none of
   them colour-target), so this is latent until a title does.
 
+- [ ] **Untargeted draws with a storage binding are never dispatched.**
+  The AGC draw walker has three routes (`src/hle/libagc.cpp:1398-1435`):
+  targeted, discard, or park in a **single** `pending_targetless` slot for
+  the flip. A draw with no colour target but a writable (storage) texture
+  has no route of its own, so it lands in that one slot and every further
+  draw in the frame evicts it. Measured on PPSA02929: 13 draws per frame,
+  `270 executed, 1302 dropped` - 83% discarded, none of them the
+  "nothing can consume this" kind
+  (`artifacts/runtime/PPSA02929_20260906_054720/run.log`). SharpEmu executes
+  exactly this class of draw against its storage target instead
+  (`AgcExports.cs:8519-8560`), which is the difference between their in-game
+  run and our frozen frame. `is_storage` and the Vulkan storage-image
+  descriptors already exist here (`src/gpu/vk_draw.h:64`, `vk_draw.cpp:451`,
+  `:585`, `:999`), so this is one dispatch decision, not new machinery.
+  Shared GPU machinery, not a title hack.
+  **Done requires**: (a) an instrumentation-only run that counts how many
+  dropped draws carry a storage binding - if few, this task is falsified;
+  (b) the fourth branch, with a test; (c) PPSA02929 re-run and the frame-change
+  ratio compared against the baseline. Audit:
+  `docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md`.
+
+- [ ] **`sceVideoOutAddFlipEvent` returns success on every repeat call.**
+  PPSA02929 calls it once per frame (571 times in 60 s) against the same
+  equeue and handle, and we return 0 each time. Retail firmware is unlikely
+  to accept an unbounded re-add of the same event; our unconditional success
+  may hide an error the guest would handle (Rule 04). `UNKNOWN` - needs the
+  caller's use of the return value disassembled. Not the cause of the frozen
+  frame.
+
 - [ ] **Dreaming Sarah (PPSA02929) freezes after the splash.** Baseline
-  status `frozen` from 3 samples. The GPU path is not the cause (its
-  targetless draws are byte-identical repeats of one frozen frame - measured
-  five ways). The stall is elsewhere; twenty minutes produce no new guest
-  output. Title-level work, below the shared-machinery items above.
+  status `frozen` from 3 samples. `FALSIFIED` (2026-09-07): this is not a
+  stall. The guest renders 13 draws and flips every frame, and audio runs
+  throughout; the frame does not change because most draws are discarded.
+  See the storage-binding task above, which now owns this. Kept so the
+  "the stall is elsewhere" reading is not re-attempted.
 
 - [ ] **Save-data mount returns an empty mount point** - the guest builds
   `/-saveindex` with no prefix; `sceSaveDataSetParam`/`SaveIcon` are stubs.
