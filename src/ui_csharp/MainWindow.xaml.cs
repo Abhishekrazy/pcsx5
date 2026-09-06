@@ -1361,35 +1361,6 @@ namespace Pcsx5Ui
             }
         }
 
-        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            if (SearchPlaceholder != null)
-            {
-                SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
-            }
-
-            if (GamesWrapPanel == null) return;
-
-            string query = SearchBox.Text.ToLower().Trim();
-            if (string.IsNullOrEmpty(query))
-            {
-                foreach (FrameworkElement item in GamesWrapPanel.Children)
-                {
-                    item.Visibility = Visibility.Visible;
-                }
-                return;
-            }
-
-            foreach (FrameworkElement item in GamesWrapPanel.Children)
-            {
-                var game = item.Tag as GameEntry;
-                if (game != null)
-                {
-                    bool match = game.Title.ToLower().Contains(query) || game.TitleId.ToLower().Contains(query);
-                    item.Visibility = match ? Visibility.Visible : Visibility.Collapsed;
-                }
-            }
-        }
 
         private void SearchBox_GotFocus(object sender, RoutedEventArgs e)
         {
@@ -2437,7 +2408,6 @@ namespace Pcsx5Ui
             LibraryView.Visibility = Visibility.Visible;
             UpdateTabHighlight(TabLibraryBtn);
             SetTitleMusicAudible(true);
-            if (SearchArea != null) SearchArea.Visibility = Visibility.Visible;   // game search belongs to the Library
         }
 
         private void GameConsoleButton_Click(object sender, RoutedEventArgs e)
@@ -2932,8 +2902,7 @@ namespace Pcsx5Ui
             // LogsView removed
             UpdateTabHighlight(TabLibraryBtn);
             SetTitleMusicAudible(true);
-            if (SearchArea != null) SearchArea.Visibility = Visibility.Visible;   // game search belongs to the Library
-            FocusFirst(LaunchButton, FullLibraryToggleBtn, SearchBox);
+            FocusFirst(LaunchButton, FullLibraryToggleBtn);
         }
 
         private void ToggleFullLibrary_Click(object sender, RoutedEventArgs e)
@@ -3007,7 +2976,6 @@ namespace Pcsx5Ui
             SettingsView.Visibility = Visibility.Collapsed;
             UpdateTabHighlight(TabAnalyzerBtn);
             SetTitleMusicAudible(false);
-            if (SearchArea != null) SearchArea.Visibility = Visibility.Collapsed;
             ShowHints("hints.tools");
             FocusFirst(ToolCardBoot);
         }
@@ -3048,7 +3016,6 @@ namespace Pcsx5Ui
             // LogsView removed
             UpdateTabHighlight(TabControllerBtn);
             SetTitleMusicAudible(false);
-            if (SearchArea != null) SearchArea.Visibility = Visibility.Collapsed;
 
             // Configuration inline; the testing popup opens only from its button.
             SetInputSubTab(true);
@@ -3128,7 +3095,6 @@ namespace Pcsx5Ui
             SettingsView.Visibility = Visibility.Visible;
             UpdateTabHighlight(TabSettingsBtn);
             SetTitleMusicAudible(false);
-            if (SearchArea != null) SearchArea.Visibility = Visibility.Collapsed;
             UpdateSettingsUiFromConfig();
             // Side-nav: land directly on the active section's rows (no hub).
             OpenSettingsCategory(_activeSettingsCategory);
@@ -5785,16 +5751,6 @@ namespace Pcsx5Ui
 
                     ShowHints("hints.library");
 
-                    // Square opens search: the only unassigned face button here,
-                    // and the search field was otherwise unreachable by pad.
-                    if (xPressed && SearchBox != null)
-                    {
-                        SearchBox.Focus();
-                        SearchBox.SelectAll();
-                        _prevInputState = state;
-                        return;
-                    }
-
                     // Options (≡) opens the full library: "View all" was mouse-only.
                     if (optionsPressed)
                     {
@@ -5882,10 +5838,6 @@ namespace Pcsx5Ui
                 // Game library shelf header
                 if (LibraryHeaderTextBlock != null)
                     LibraryHeaderTextBlock.Text = I18n.Tr("ui.recent");
-
-                // Search placeholder
-                if (SearchPlaceholder != null)
-                    SearchPlaceholder.Text = I18n.Tr("library.search_hint");
 
                 // Launch/Stop buttons
                 if (LaunchButton != null)
