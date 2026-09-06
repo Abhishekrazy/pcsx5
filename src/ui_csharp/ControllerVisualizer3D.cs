@@ -205,6 +205,13 @@ namespace Pcsx5Ui
                         SplitFront(kv.Value, -0.03, out var lever, out var visible);
                         geom = visible;
                     }
+                    else if (name == "stick_l" || name == "stick_r")
+                    {
+                        // The stick island includes its shaft down inside the shell; seen
+                        // through the hole from the side it poked out below the body.
+                        SplitFront(kv.Value, -0.285, out var above, out var shaft, anyVertex: true);
+                        geom = above;
+                    }
                     if (isCap && kv.Key == "1001" && diff != null)
                     {
                         // The model builds each cap the way the real part is made: a
@@ -250,6 +257,18 @@ namespace Pcsx5Ui
             // The body has no interior under the sticks (the hole shows the white back
             // shell when a stick tilts): a dark disc at each stick's base plays the well.
             AddWell(root, -0.3176, -0.0013); AddWell(root, 0.3176, -0.0013);
+            if (_parts.TryGetValue("body", out var bodyPart))
+            {
+                // A game-ready shell is hollow: every opening (stick holes, trigger
+                // slots) showed the background through it. A dark copy of the body
+                // shrunk inward plays the interior.
+                var core = new Model3DGroup();
+                var dark = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(0x14, 0x16, 0x1b)));
+                foreach (var gm in ((Model3DGroup)bodyPart.Visual.Content).Children)
+                    if (gm is GeometryModel3D g) core.Children.Add(new GeometryModel3D(g.Geometry, dark) { BackMaterial = dark });
+                var c = new Point3D((bodyPart.Min.X + bodyPart.Max.X) / 2, (bodyPart.Min.Y + bodyPart.Max.Y) / 2, (bodyPart.Min.Z + bodyPart.Max.Z) / 2);
+                root.Children.Add(new ModelVisual3D { Content = core, Transform = new ScaleTransform3D(0.95, 0.90, 0.95, c.X, c.Y, c.Z) });
+            }
             if (_parts.TryGetValue("touchpad", out var tp)) _padRect = new Rect3D(tp.Min.X, tp.Min.Y - 0.006, tp.Min.Z, tp.Max.X - tp.Min.X, 0, tp.Max.Z - tp.Min.Z);
             for (int f = 0; f < 2; f++) for (int i = 0; i < TrailLen; i++) AddTrailDot(root, f, i);
             _view.Children.Add(root);
@@ -259,7 +278,7 @@ namespace Pcsx5Ui
         /// <summary>Partition a mesh's triangles into those lying entirely in
         /// front of <paramref name="yCut"/> (smaller Y = nearer the viewer) and
         /// the rest. Positions, normals and texture coordinates are carried over.</summary>
-        private static void SplitFront(MeshGeometry3D src, double yCut, out MeshGeometry3D front, out MeshGeometry3D rest)
+        private static void SplitFront(MeshGeometry3D src, double yCut, out MeshGeometry3D front, out MeshGeometry3D rest, bool anyVertex = false)
         {
             front = new MeshGeometry3D(); rest = new MeshGeometry3D();
             bool hasN = src.Normals != null && src.Normals.Count == src.Positions.Count;
@@ -278,7 +297,9 @@ namespace Pcsx5Ui
             for (int t = 0; t + 2 < src.TriangleIndices.Count; t += 3)
             {
                 int a = src.TriangleIndices[t], b = src.TriangleIndices[t + 1], c = src.TriangleIndices[t + 2];
-                bool isFront = src.Positions[a].Y < yCut && src.Positions[b].Y < yCut && src.Positions[c].Y < yCut;
+                bool isFront = anyVertex
+                    ? (src.Positions[a].Y < yCut || src.Positions[b].Y < yCut || src.Positions[c].Y < yCut)
+                    : (src.Positions[a].Y < yCut && src.Positions[b].Y < yCut && src.Positions[c].Y < yCut);
                 var dst = isFront ? front : rest; var map = isFront ? mapF : mapR;
                 dst.TriangleIndices.Add(Remap(dst, map, a));
                 dst.TriangleIndices.Add(Remap(dst, map, b));
@@ -373,7 +394,7 @@ namespace Pcsx5Ui
         private static Point3D PivotFor(string name, Point3D mn, Point3D mx)
         {
             double cx = (mn.X + mx.X) / 2, cy = (mn.Y + mx.Y) / 2, cz = (mn.Z + mx.Z) / 2;
-            if (name == "l2" || name == "r2") return new Point3D(cx, 0.10, mx.Z - 0.02);   // hinge near the top-back edge, like the real lever (INFERRED)
+            if (name == "l2" || name == "r2") return new Point3D(cx, mx.Y - 0.015, mx.Z - 0.01);   // hinge at the top-back corner: nothing is behind the pivot to swing up through the shell
             if (name == "l1" || name == "r1") return new Point3D(cx, cy, mx.Z);   // top edge
             if (name == "stick_l" || name == "stick_r") return new Point3D(cx, mx.Y, cz);                      // base (body side)
             return new Point3D(cx, cy, cz);
