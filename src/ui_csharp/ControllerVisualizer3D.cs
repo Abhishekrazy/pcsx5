@@ -75,6 +75,8 @@ namespace Pcsx5Ui
                         new AmbientLight(Color.FromRgb(0x50, 0x54, 0x5c)),
                         new DirectionalLight(Color.FromRgb(0xe8, 0xea, 0xf0), new Vector3D(0.35, 1.0, -0.6)),
                         new DirectionalLight(Color.FromRgb(0x50, 0x60, 0x70), new Vector3D(-0.6, 0.4, 0.3)),
+                        // Key light from above-front: gives the specular term something to reflect.
+                        new DirectionalLight(Color.FromRgb(0x90, 0x94, 0x9c), new Vector3D(0.2, 0.8, -1.0)),
                     }
                 }
             };
@@ -163,6 +165,9 @@ namespace Pcsx5Ui
                         }
                     }
                     mat.Children.Add(dm);
+                    // Viewport3D has no roughness/normal maps; a specular term is the one
+                    // material cue it can give. Body plastic: broad, soft highlight.
+                    mat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x55, 0xff, 0xff, 0xff)), 28));
                     mat.Children.Add(glow);
                     var geom = kv.Value;
                     if (isCap && kv.Key == "1001" && diff != null)
@@ -179,6 +184,8 @@ namespace Pcsx5Ui
                             var glassBrush = diff.Clone(); glassBrush.Opacity = 0.97; glassBrush.Freeze();
                             var gmat = new MaterialGroup();
                             gmat.Children.Add(new DiffuseMaterial(glassBrush) { Color = Color.FromRgb(0x9a, 0x9e, 0xaa) });
+                            // Glass: tight, bright highlight.
+                            gmat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0xc0, 0xff, 0xff, 0xff)), 90));
                             gmat.Children.Add(glow);
                             glassModels.Add(new GeometryModel3D(glassMesh, gmat) { BackMaterial = gmat });
                         }
