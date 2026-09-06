@@ -255,6 +255,31 @@ updater packages uploaded by hand (see the packaging item).
   honestly first - flip rate is not uniform, so flips/duration compares
   nothing across runs of different lengths.
 
+- [ ] **Cross-platform port (Linux / macOS) is gated on the core, not the
+  shell.** Windows coupling sits in memory (`VirtualAlloc` + two VEHs), guest
+  TLS at TEB offset `0x1480`, the Win32 `CONTEXT` used as the syscall register
+  ABI, 40 `__try` blocks and 8 public headers including `<windows.h>`
+  (`docs/audits/AUDIT-2026-09-07-cross-platform-feasibility.md`). If started,
+  in this order, each its own change: header hygiene; memory behind a platform
+  layer; `sigaction`/`sigaltstack` fault path (subsystem boundary, ask first);
+  threads/TLS (macOS fs-base is `UNKNOWN`, possibly a hard boundary);
+  periphery; CMake. Shell (Avalonia, 14-20 weeks `INFERRED`) comes last.
+  Not scheduled; the user said WinUI/portability work is for later.
+
+- [ ] **Two audio output backends coexist** (`src/hle/libaudioout.cpp` and
+  `src/hle/audio/audio_device.cpp`). Found during the portability inventory.
+  Decide the owner, migrate, delete the other (no parallel implementations
+  without a removal plan).
+
+- [ ] **XInput is polled from two places** (`src/gpu/vulkan_backend.cpp:109`
+  loads `XInputGetState` itself; `src/gpu/input/xinput_backend.cpp` is the
+  input backend). One owner for pad polling; the Vulkan backend should not
+  read controllers.
+
+- [ ] **`link_libraries(dualsense_windows opus hid)` is global**
+  (`CMakeLists.txt:241`), so every later target links HID/Opus. Replace with
+  per-target `target_link_libraries` on the object that needs them.
+
 - [ ] **Audio decode is thin** (`libatrac9.cpp` 370 lines, 5 symbols vs
   shadPS4's full AJM with AT9/AAC). LOW: PPSA02929 makes one AJM call per run.
 
