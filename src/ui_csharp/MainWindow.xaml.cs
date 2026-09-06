@@ -3077,6 +3077,31 @@ namespace Pcsx5Ui
 
         private void InputTestClose_Click(object sender, RoutedEventArgs e) => SetInputSubTab(true);
 
+        // ── Testing popup drag ── the header moves the card; the offset is kept
+        // for the session so the popup reopens where it was left, clamped to the window.
+        private bool _testDrag; private Point _testDragStart; private double _testDragX0, _testDragY0;
+        private void InputTestHeader_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is System.Windows.Controls.Primitives.ButtonBase) return;   // the cross keeps its click
+            _testDrag = true; _testDragStart = e.GetPosition(this);
+            _testDragX0 = InputTestCardOffset.X; _testDragY0 = InputTestCardOffset.Y;
+            ((UIElement)sender).CaptureMouse();
+        }
+        private void InputTestHeader_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_testDrag) return;
+            var p = e.GetPosition(this);
+            double x = _testDragX0 + (p.X - _testDragStart.X), y = _testDragY0 + (p.Y - _testDragStart.Y);
+            double maxX = Math.Max(0, (ActualWidth - InputTestCard.ActualWidth) / 2), maxY = Math.Max(0, (ActualHeight - InputTestCard.ActualHeight) / 2);
+            InputTestCardOffset.X = Math.Max(-maxX, Math.Min(maxX, x));
+            InputTestCardOffset.Y = Math.Max(-maxY, Math.Min(maxY, y));
+        }
+        private void InputTestHeader_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_testDrag) return;
+            _testDrag = false; ((UIElement)sender).ReleaseMouseCapture();
+        }
+
         // Title music belongs to the Library: pause it on every other tab and
         // resume where it left off when the Library comes back.
         private void SetTitleMusicAudible(bool on)

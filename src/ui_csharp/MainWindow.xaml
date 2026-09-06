@@ -2282,14 +2282,19 @@
                  button (L1/R1/L2/R2 included) can be tested. Dismiss with the PS button,
                  the Close button, or Esc. Added 2026-09-06 at the user's request. -->
             <Grid x:Name="InputTestOverlay" WindowChrome.IsHitTestVisibleInChrome="True" Visibility="Collapsed" Background="#B305060A" Grid.RowSpan="3">
-                <Border Width="1180" Height="780" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <Border x:Name="InputTestCard" Width="1180" Height="780" HorizontalAlignment="Center" VerticalAlignment="Center"
  Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}"
  BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="28">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="InputTestCardOffset"/>
+                    </Border.RenderTransform>
                     <Border.Effect>
                         <DropShadowEffect Color="#000000" BlurRadius="60" ShadowDepth="20" Direction="270" Opacity="0.55"/>
                     </Border.Effect>
                     <DockPanel LastChildFill="True">
-                        <Grid DockPanel.Dock="Top" Margin="0,0,0,16">
+                        <!-- The header is the drag handle: press and move it to place the popup. -->
+                        <Grid DockPanel.Dock="Top" Margin="0,0,0,16" Background="Transparent" Cursor="SizeAll"
+                              MouseLeftButtonDown="InputTestHeader_MouseDown" MouseMove="InputTestHeader_MouseMove" MouseLeftButtonUp="InputTestHeader_MouseUp">
                             <StackPanel HorizontalAlignment="Left">
                                 <TextBlock Text="{loc:Tr Key=input.test_popup_title}" FontSize="{DynamicResource TypeDisplayS}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
                                 <TextBlock Text="{loc:Tr Key=input.test_popup_hint}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,4,0,0"/>
