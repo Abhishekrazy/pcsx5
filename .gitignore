@@ -155,3 +155,8 @@ shadps4_clone/
 # WPF/tooling temp files
 *_wpftmp.csproj
 *.tmp.*
+
+# The 3D DualSense parts are Wavefront OBJ meshes, not compiled objects
+!assets/gamepad/dualsense3d/*.obj
+# hand-edit backups of those meshes stay local
+assets/gamepad/dualsense3d/*.bak
