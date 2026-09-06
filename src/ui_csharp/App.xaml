@@ -19,6 +19,7 @@
         <SolidColorBrush x:Key="ThemeSurface" Color="#0E1118"/>
         <SolidColorBrush x:Key="ThemeRaised" Color="#11151D"/>
         <SolidColorBrush x:Key="ThemeHairline" Color="#1A1F2A"/>
+        <SolidColorBrush x:Key="ThemeBorderStrong" Color="#2A3140"/>
         <SolidColorBrush x:Key="ThemeText" Color="#E6E9F0"/>
         <SolidColorBrush x:Key="ThemeTextMuted" Color="#8B91A0"/>
         <SolidColorBrush x:Key="ThemeAccent" Color="#5FE3FF"/>

@@ -96,6 +96,9 @@ namespace Pcsx5Ui
             Set(res, "ThemeSurface", ParseOrThrow(p.Surface));
             Set(res, "ThemeRaised", ParseOrThrow(p.Raised));
             Set(res, "ThemeHairline", ParseOrThrow(p.Hairline));
+            // A slightly lighter border for chips and icon boxes than the
+            // divider hairline (the concept uses two weights).
+            Set(res, "ThemeBorderStrong", ParseOrThrow(EffectiveMode == ModeLight ? "#C9CFD9" : "#2A3140"));
             Set(res, "ThemeText", ParseOrThrow(p.Text));
             Set(res, "ThemeTextMuted", ParseOrThrow(p.TextMuted));
             Set(res, "ThemeAccent", accent);

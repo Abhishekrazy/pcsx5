@@ -428,7 +428,7 @@
                         <!-- Upper details area -->
                         <RowDefinition Height="*"/>
                         <!-- Lower carousel shelf -->
-                        <RowDefinition Height="400"/>
+                        <RowDefinition Height="300"/>
                     </Grid.RowDefinitions>
 
                     <!-- Upper details area: details about selected game -->
@@ -450,16 +450,16 @@
                             <TextBlock x:Name="DetailEyebrow" Text="{loc:Tr Key=ui.continue_playing}" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,14"/>
                             <TextBlock x:Name="DetailTitle" Text="{loc:Tr Key=ui.select_a_game}" FontSize="{DynamicResource TypeDisplayXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}" TextWrapping="Wrap" LineHeight="62"/>
                             <StackPanel Orientation="Horizontal" Margin="0,16,0,22">
-                                <Border Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                                <Border Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,10,0">
                                     <TextBlock x:Name="DetailTitleId" Text="{loc:Tr Key=ui.no_game_selected}" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                 </Border>
-                                <Border Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                                <Border Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,10,0">
                                     <TextBlock x:Name="DetailSize" Text="-" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                 </Border>
                                 <Border x:Name="DetailCompatBadge" Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeRaised}" VerticalAlignment="Center" Margin="0,0,10,0">
                                     <TextBlock x:Name="DetailCompatText" Text="{loc:Tr Key=ui.unknown}" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
                                 </Border>
-                                <Border x:Name="DetailLastPlayedChip" Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" VerticalAlignment="Center" Visibility="Collapsed">
+                                <Border x:Name="DetailLastPlayedChip" Padding="12,5,12,5" CornerRadius="{DynamicResource ThemeCornerPill}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" VerticalAlignment="Center" Visibility="Collapsed">
                                     <TextBlock x:Name="DetailLastPlayed" Text="" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                 </Border>
                             </StackPanel>

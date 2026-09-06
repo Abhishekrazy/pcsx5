@@ -871,7 +871,7 @@ namespace Pcsx5Ui
         // Library tile presentation. A focused tile is larger, fully opaque and
         // elevated; unfocused tiles recede. Sized for reading at console
         // distance rather than at a desk.
-        private const double TileSize = 250.0;
+        private const double TileSize = 200.0;
         // Larger tiles need less scale to read as focused; too much and the
         // focused tile crowds its neighbours.
         private const double FocusedTileScale = 1.10;
@@ -3770,7 +3770,7 @@ namespace Pcsx5Ui
             if (FooterHintChips == null) return;
             FooterHintChips.Children.Clear();
             if (string.IsNullOrEmpty(template)) return;
-            var boxBrush = (Brush)FindResource("ThemeHairline");
+            var boxBrush = (Brush)FindResource("ThemeBorderStrong");
             var glyphBrush = (Brush)FindResource("ThemeText");
             var labelBrush = (Brush)FindResource("ThemeTextMuted");
             double typeS = (double)FindResource("TypeS");
