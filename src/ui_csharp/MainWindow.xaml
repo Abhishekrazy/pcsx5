@@ -2292,9 +2292,12 @@
                                 <TextBlock Text="{loc:Tr Key=input.test_popup_title}" FontSize="{DynamicResource TypeDisplayS}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
                                 <TextBlock Text="{loc:Tr Key=input.test_popup_hint}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,4,0,0"/>
                             </StackPanel>
-                            <Button x:Name="InputTestCloseBtn" Content="{loc:Tr Key=input.test_popup_close}" Style="{StaticResource SecondaryButtonStyle}"
- MinHeight="40" Padding="18,0" HorizontalAlignment="Right" VerticalAlignment="Top" Click="InputTestClose_Click"
- AutomationProperties.Name="{loc:Tr Key=input.test_popup_close}"/>
+                            <Button x:Name="InputTestCloseBtn" Style="{StaticResource SecondaryButtonStyle}" Width="40" Height="40" Padding="0"
+ HorizontalAlignment="Right" VerticalAlignment="Top" Click="InputTestClose_Click" ToolTip="{loc:Tr Key=input.test_popup_close}"
+ AutomationProperties.Name="{loc:Tr Key=input.test_popup_close}">
+                                <!-- a drawn cross, not a glyph: identical in every font and theme -->
+                                <Path Data="M0,0 L11,11 M11,0 L0,11" Stroke="{DynamicResource ThemeText}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="11" Height="11" Stretch="None"/>
+                            </Button>
                         </Grid>
                         <local:InputTabView x:Name="InputTab"/>
                     </DockPanel>
