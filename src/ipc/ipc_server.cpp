@@ -103,6 +103,12 @@ void WriteFrame(const void* rgba, uint32_t width, uint32_t height,
     std::atomic_thread_fence(std::memory_order_release);
 }
 
+void TickFrame() {
+    if (!g_shared) return;
+    g_shared->frame_counter++;
+    std::atomic_thread_fence(std::memory_order_release);
+}
+
 // ── Input read ────────────────────────────────────────────────────────────
 uint64_t ReadInputButtons() {
     if (!g_shared) return 0;

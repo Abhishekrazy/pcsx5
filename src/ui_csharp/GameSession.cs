@@ -78,6 +78,10 @@ namespace Pcsx5Ui
         /// WatchdogTimeoutSeconds. UI should surface a "Game may be hung" toast.
         /// </summary>
         public event Action Hanging;
+        /// <summary>Out-of-process only: frames stopped after the first one (seconds
+        /// stalled), and resumed. See IpcSession.</summary>
+        public event Action<int> FrameStalled;
+        public event Action FrameResumed;
 
         /// <summary>A log line was emitted by the core.</summary>
         public event Action<string> LogLine;
@@ -177,6 +181,9 @@ namespace Pcsx5Ui
                 _dispatcher.BeginInvoke(() => Stopped?.Invoke(code));
             _ipc.FrameReady += () => { }; // signal for frame display
             _ipc.WindowHandle += h => OnCoreWindow(h, IntPtr.Zero);   // same path as the in-process callback
+            _ipc.FrameSeen = () => { _lastHeartbeat = DateTime.UtcNow; _hangingRaised = false; };   // a frame is life
+            _ipc.FrameStalled += s => FrameStalled?.Invoke(s);
+            _ipc.FrameResumed += () => FrameResumed?.Invoke();
 
             // Run IPC connect on background thread so the UI stays responsive.
             Task.Run(() =>

@@ -464,5 +464,7 @@
   "ui.boot_stage_executable": "Исполняемый файл",
   "ui.boot_stage_modules": "Модули",
   "ui.boot_stage_cpu": "Гостевой ЦП",
-  "ui.boot_stage_frame": "Первый кадр"
+  "ui.boot_stage_frame": "Первый кадр",
+  "ui.no_new_frames_for": "Нет новых кадров уже {0} с",
+  "ui.stuck_body": "Игра перестала рисовать. Возможно, она ещё работает, а возможно, зависла. В консоли видно её последнее сообщение."
 }

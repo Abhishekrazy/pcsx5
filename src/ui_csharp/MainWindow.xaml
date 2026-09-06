@@ -1694,30 +1694,30 @@
             </Border>
 
             <!-- WATCHDOG TOAST — non-blocking "Game may be hung" warning -->
-            <Border x:Name="WatchdogToast" Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Bottom"
- Background="#CC1A0D00" BorderBrush="#60FF6600" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}"
- Padding="20,12" Margin="0,0,0,80" Visibility="Collapsed" Opacity="0"
+            <!-- Stuck notice (TASKS 4.13 step 13, from the concept). Shown only when
+                 frames stop after the game has drawn at least once, or when the
+                 heartbeat watchdog trips; dismissed by the next frame. Never during
+                 a normal boot. All colours are theme tokens. -->
+            <Border x:Name="WatchdogToast" Grid.RowSpan="3" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+ Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}"
+ Padding="22,18,22,18" Margin="0,0,40,72" Visibility="Collapsed" Opacity="0" Width="440"
  IsHitTestVisible="True">
                 <Border.Effect>
-                    <DropShadowEffect Color="#FF6600" BlurRadius="20" Opacity="0.4" ShadowDepth="0"/>
+                    <DropShadowEffect BlurRadius="40" ShadowDepth="14" Direction="270" Opacity="0.5"/>
                 </Border.Effect>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="⚠" Foreground="#FF8800" FontSize="{DynamicResource TypeL}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock Text="{loc:Tr Key=ui.game_may_be_unresponsive}" Foreground="#E0FFFFFF" FontSize="{DynamicResource TypeML}" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                    <Button x:Name="WatchdogWaitBtn" Content="{loc:Tr Key=ui.wait}" MinWidth="70" MinHeight="28" Style="{StaticResource ModernButtonStyle}"
- FontSize="{DynamicResource TypeM}" Margin="0,0,6,0" Click="WatchdogWait_Click" Focusable="True"/>
-                    <Button x:Name="WatchdogForceStopBtn" Content="{loc:Tr Key=ui.force_stop}" MinWidth="90" MinHeight="28"
- Background="#CC2200" BorderBrush="#FF2200" Foreground="White" FontSize="{DynamicResource TypeM}" FontWeight="Bold"
- Focusable="True" Click="WatchdogForceStop_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                    <TextBlock Text="{loc:Tr Key=ui.wait_stop}" FontSize="{DynamicResource TypeS}" Foreground="#4DFFFFFF" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Border Width="8" Height="8" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeWarning}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <TextBlock x:Name="WatchdogTitle" Text="{loc:Tr Key=ui.game_may_be_unresponsive}" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="{loc:Tr Key=ui.stuck_body}" Foreground="{DynamicResource ThemeTextMuted}" FontSize="{DynamicResource TypeM}" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="WatchdogWaitBtn" Content="{loc:Tr Key=ui.wait}" AutomationProperties.Name="{loc:Tr Key=ui.wait}" MinWidth="120" MinHeight="40" Style="{StaticResource ModernButtonStyle}"
+ FontSize="{DynamicResource TypeM}" Margin="0,0,8,0" Click="WatchdogWait_Click" Focusable="True"/>
+                        <Button x:Name="WatchdogForceStopBtn" Content="{loc:Tr Key=ui.force_stop}" AutomationProperties.Name="{loc:Tr Key=ui.force_stop}" MinWidth="120" MinHeight="40"
+ Style="{StaticResource ModernButtonStyle}" Foreground="{DynamicResource ThemeDanger}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold"
+ Focusable="True" Click="WatchdogForceStop_Click"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

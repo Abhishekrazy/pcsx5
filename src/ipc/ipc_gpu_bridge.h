@@ -23,11 +23,15 @@ inline bool (*g_ipc_is_connected)() = nullptr;
 // is true: the core sets RUNNING on the first guest frame. Same per-module
 // rule as above; set through the exported IPC_SetStateSink.
 inline void (*g_ipc_set_state)(uint32_t) = nullptr;
+// Frame tick: every presented frame, so the launcher can detect a stall
+// (TASKS 4.13 step 13) even though it no longer receives pixels over IPC.
+inline void (*g_ipc_tick_frame)() = nullptr;
 
 // Defined in vulkan_backend.cpp (exported from pcsx5_core.dll); declared with
 // its export attribute in gpu.h.
 void IPC_SetWriteFrame(void (*fn)(const void*, uint32_t, uint32_t, uint32_t),
                        bool (*conn)());
 void IPC_SetStateSink(void (*set_state)(uint32_t));
+void IPC_SetFrameTick(void (*tick)());
 
 } // namespace GPU

@@ -14,6 +14,9 @@ bool IsConnected();
 
 // After each rendered frame, call WriteFrame to publish it to the frontend.
 void WriteFrame(const void* rgba, uint32_t width, uint32_t height, uint32_t pitch);
+// A frame was presented in the core's own window (nothing to copy): advance
+// the counter only, so the frontend can tell "drawing" from "stalled".
+void TickFrame();
 
 // Read input state written by the frontend.
 uint64_t ReadInputButtons();

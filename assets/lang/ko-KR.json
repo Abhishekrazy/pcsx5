@@ -464,5 +464,7 @@
   "ui.boot_stage_executable": "실행 파일",
   "ui.boot_stage_modules": "모듈",
   "ui.boot_stage_cpu": "게스트 CPU",
-  "ui.boot_stage_frame": "첫 프레임"
+  "ui.boot_stage_frame": "첫 프레임",
+  "ui.no_new_frames_for": "{0}초 동안 새 프레임 없음",
+  "ui.stuck_body": "게임이 그리기를 멈췄습니다. 아직 작업 중일 수도, 멈춘 것일 수도 있습니다. 마지막 메시지는 콘솔에 있습니다."
 }

@@ -464,5 +464,7 @@
   "ui.boot_stage_executable": "実行ファイル",
   "ui.boot_stage_modules": "モジュール",
   "ui.boot_stage_cpu": "ゲストCPU",
-  "ui.boot_stage_frame": "最初のフレーム"
+  "ui.boot_stage_frame": "最初のフレーム",
+  "ui.no_new_frames_for": "{0} 秒間フレームの更新がありません",
+  "ui.stuck_body": "ゲームの描画が止まりました。処理中の場合もあれば、停止している場合もあります。最後のメッセージはコンソールにあります。"
 }

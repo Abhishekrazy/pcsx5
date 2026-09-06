@@ -464,5 +464,7 @@
   "ui.boot_stage_executable": "Executável",
   "ui.boot_stage_modules": "Módulos",
   "ui.boot_stage_cpu": "CPU convidada",
-  "ui.boot_stage_frame": "Primeiro quadro"
+  "ui.boot_stage_frame": "Primeiro quadro",
+  "ui.no_new_frames_for": "Sem novos quadros há {0} s",
+  "ui.stuck_body": "O jogo parou de desenhar. Pode ainda estar trabalhando ou travado. O console mostra a última coisa que ele disse."
 }

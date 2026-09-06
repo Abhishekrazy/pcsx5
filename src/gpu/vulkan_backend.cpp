@@ -780,6 +780,10 @@ namespace GPU {
         g_ipc_set_state = set_state;
     }
 
+    PCSX5_API void IPC_SetFrameTick(void (*tick)()) {
+        g_ipc_tick_frame = tick;
+    }
+
     // IPC_STATE_RUNNING from ipc/ipc_shared.h, spelled here so the GPU does not
     // include the IPC server's header.
     static void IpcReportRunning() {
@@ -845,6 +849,9 @@ namespace GPU {
             LOG_INFO(GPU, "First guest frame presented - boot screen complete.");
             IpcReportRunning();
         }
+        // Every guest flip is a frame for the launcher's stall detection,
+        // whichever present path follows.
+        if (g_ipc_tick_frame) g_ipc_tick_frame();
 
         // Preferred path: when the vk_draw image model already has a GPU
         // image for the flipped guest address (M3.2d), blit straight from it

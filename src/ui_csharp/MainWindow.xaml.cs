@@ -233,6 +233,8 @@ namespace Pcsx5Ui
             _session.Stopped += OnGameStopped;
             _session.Crashed += OnGameCrashed;
             _session.Hanging += OnGameHanging;
+            _session.FrameStalled += OnFramesStalled;
+            _session.FrameResumed += OnFramesResumed;
             _session.LogLine += line => {
                 int lvl = 2; // default Info
                 string u = line.ToUpperInvariant();
@@ -1532,6 +1534,7 @@ namespace Pcsx5Ui
 
         private void OnGameHanging()
         {
+            if (WatchdogTitle != null) WatchdogTitle.Text = I18n.Tr("ui.game_may_be_unresponsive");
             LogConsole("[Watchdog] Game appears unresponsive (no heartbeat for 15s).");
             ShowWatchdogToast();
         }
@@ -1740,19 +1743,64 @@ namespace Pcsx5Ui
 
         // ── Watchdog toast helpers ─────────────────────────────────────────
 
+        /// <summary>Frames stopped after the game had drawn (TASKS 4.13 step 13).
+        /// Not while paused: a paused core draws nothing by design.</summary>
+        private void OnFramesStalled(int seconds)
+        {
+            if (_pauseMenuVisible) return;
+            if (WatchdogTitle != null) WatchdogTitle.Text = string.Format(I18n.Tr("ui.no_new_frames_for"), seconds);
+            if (!_watchdogToastVisible) { LogConsole($"[Watchdog] No new frames for {seconds} s."); ShowWatchdogToast(); }
+        }
+
+        private void OnFramesResumed()
+        {
+            if (_watchdogToastVisible) { LogConsole("[Watchdog] Frames resumed."); HideWatchdogToast(); }
+        }
+
+        // Over an embedded game the notice must live in its own top-level window
+        // (OverlayWindow): the game is a native child that paints over every WPF
+        // element in the main window. The toast element is moved there while
+        // shown and back into the main window when hidden.
+        private OverlayWindow _overlay;
+        private System.Windows.Controls.Panel _toastHome;
+
         private void ShowWatchdogToast()
         {
             if (WatchdogToast == null) return;
             _watchdogToastVisible = true;
-            WatchdogToast.Visibility = Visibility.Visible;
-            WatchdogToast.Opacity = 1;
+            if (_embeddedEmuHwnd != IntPtr.Zero && EmulatorHostPresenter != null)
+            {
+                _overlay ??= new OverlayWindow(this, EmulatorHostPresenter);
+                if (WatchdogToast.Parent is System.Windows.Controls.Panel home)
+                {
+                    _toastHome = home;
+                    home.Children.Remove(WatchdogToast);
+                }
+                WatchdogToast.Visibility = Visibility.Visible;
+                WatchdogToast.Opacity = 1;
+                WatchdogToast.Margin = new Thickness(0);
+                _overlay.ShowOver(WatchdogToast);
+            }
+            else
+            {
+                WatchdogToast.Visibility = Visibility.Visible;
+                WatchdogToast.Opacity = 1;
+            }
             WatchdogWaitBtn?.Focus();
         }
 
         private void HideWatchdogToast()
         {
             _watchdogToastVisible = false;
-            if (WatchdogToast != null) { WatchdogToast.Opacity = 0; WatchdogToast.Visibility = Visibility.Collapsed; }
+            if (WatchdogToast == null) return;
+            WatchdogToast.Opacity = 0; WatchdogToast.Visibility = Visibility.Collapsed;
+            if (_overlay != null && ReferenceEquals(_overlay.Content, WatchdogToast))
+            {
+                _overlay.Content = null;
+                _overlay.Hide();
+                WatchdogToast.Margin = new Thickness(0, 0, 40, 72);
+                _toastHome?.Children.Add(WatchdogToast);
+            }
         }
 
         private void WatchdogWait_Click(object sender, RoutedEventArgs e)

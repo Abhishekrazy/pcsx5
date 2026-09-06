@@ -474,9 +474,28 @@ Ordered by dependency, one subsystem per change (Rule 10):
     Resolves the 4.14 note about the core's text-mode boot screen showing
     through. The stage titles in UpdateBootPhaseUI remain hardcoded English
     in C# (pre-existing; the ratchet counts XAML).
-  - [ ] Step 13 - Stuck notice per the added artboard: shown ONLY when the
-    frame counter stops after the game has drawn at least once, dismissed by
-    the next frame; never during a normal load (asked 2026-09-06). Steps 6-11 - Tools, Console,
+  - [~] **Step 13 - Stuck notice** - detection DONE and VERIFIED; rendering
+    over the embedded game NOT yet visually confirmed. The core ticks the IPC
+    frame counter on every guest flip (IPC::TickFrame, exported the same way
+    as the frame/state sinks) even though pixels no longer travel over IPC;
+    the shell's frame poller raises FrameStalled(seconds) only after the game
+    has drawn at least once and >= 6 s without a new frame, and FrameResumed
+    on the next frame. The notice is the concept's card (warning dot, "No new
+    frames for N s", body, Wait / Force Stop), on theme tokens, localized in
+    eleven locales; a normal boot never triggers it and a paused game is
+    exempt. VERIFIED by suspending the core process mid-run (a real stall):
+    shell console shows "No new frames for 6 s" then "Frames resumed" and the
+    frame counter recovers (SHELL_20260906_063100). NOT DONE: showing the
+    card ON TOP of the embedded game. The emulator is a native child window
+    and paints over every WPF element in the same window (airspace), so the
+    notice is hosted in a separate top-level OverlayWindow tracked to the
+    game area's bottom-right; it is created, positioned (logged at
+    1096,682 440x160) and reports visible, but an independent full-screen
+    grab mid-stall did not show it, so its rendering above the native child
+    is unconfirmed. Own focused iteration: WPF airspace over the embedded
+    HWND (a DirectComposition/HwndHost sibling, or drawing the notice inside
+    the core's window). The notice renders correctly in the main window when
+    no game is embedded (the pre-embed watchdog path). Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
 
 - [ ] **4.14 Dreaming Sarah crashes when launched from the shell but not

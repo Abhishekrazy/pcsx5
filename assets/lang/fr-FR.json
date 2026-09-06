@@ -464,5 +464,7 @@
   "ui.boot_stage_executable": "Exécutable",
   "ui.boot_stage_modules": "Modules",
   "ui.boot_stage_cpu": "CPU invité",
-  "ui.boot_stage_frame": "Première image"
+  "ui.boot_stage_frame": "Première image",
+  "ui.no_new_frames_for": "Aucune nouvelle image depuis {0} s",
+  "ui.stuck_body": "Le jeu ne dessine plus. Il travaille peut-être encore, ou il est bloqué. La console montre son dernier message."
 }

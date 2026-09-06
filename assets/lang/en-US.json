@@ -464,5 +464,7 @@
   "ui.boot_stage_executable": "Executable",
   "ui.boot_stage_modules": "Modules",
   "ui.boot_stage_cpu": "Guest CPU",
-  "ui.boot_stage_frame": "First frame"
+  "ui.boot_stage_frame": "First frame",
+  "ui.no_new_frames_for": "No new frames for {0} s",
+  "ui.stuck_body": "The game stopped drawing. It may still be working, or it may be stuck. The console has the last thing it said."
 }

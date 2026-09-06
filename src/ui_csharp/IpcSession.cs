@@ -32,6 +32,15 @@ namespace Pcsx5Ui
         /// documented window contract (Rule 11); the IPC frame map stays the
         /// carrier for input and state.</summary>
         public event Action<ulong> WindowHandle;
+        /// <summary>Frames stopped arriving after the game had drawn at least
+        /// once; raised once per second with the stall length. Never raised
+        /// before the first frame, so a normal boot never shows the notice.</summary>
+        public event Action<int> FrameStalled;
+        /// <summary>A frame arrived after a stall.</summary>
+        public event Action FrameResumed;
+        /// <summary>Called on the poll thread whenever the frame counter moves.</summary>
+        public Action FrameSeen;
+        private const int StallAfterSeconds = 6;
 
         // ── Public state ───────────────────────────────────────────────────
         public bool IsRunning => _process != null && !_process.HasExited;
@@ -309,6 +318,9 @@ namespace Pcsx5Ui
             var token = _cts.Token;
             ulong lastCounter = 0;
             int emptyPolls = 0;
+            bool sawFrame = false, stalled = false;
+            DateTime lastChange = DateTime.UtcNow;
+            int lastReportedStall = 0;
 
             while (!token.IsCancellationRequested)
             {
@@ -324,11 +336,28 @@ namespace Pcsx5Ui
                         CheckGameState();
                         emptyPolls = 0;
                     }
+                    if (sawFrame)
+                    {
+                        int secs = (int)(DateTime.UtcNow - lastChange).TotalSeconds;
+                        if (secs >= StallAfterSeconds && secs != lastReportedStall)
+                        {
+                            stalled = true; lastReportedStall = secs;
+                            _dispatcher.BeginInvoke(() => FrameStalled?.Invoke(secs));
+                        }
+                    }
                     continue;
                 }
                 emptyPolls = 0;
                 lastCounter = counter;
                 _lastFrameCounter = counter;
+                lastChange = DateTime.UtcNow;
+                sawFrame = true;
+                FrameSeen?.Invoke();
+                if (stalled)
+                {
+                    stalled = false; lastReportedStall = 0;
+                    _dispatcher.BeginInvoke(() => FrameResumed?.Invoke());
+                }
 
                 // Read frame dimensions.
                 int w = _view.ReadInt32(OffFrameW);
