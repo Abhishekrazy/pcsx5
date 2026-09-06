@@ -2550,8 +2550,8 @@ namespace Pcsx5Ui
                 case "PLAYABLE": case "COMPLETE":     return Color.FromRgb(0x92, 0xC5, 0x52); // green
                 case "INGAME":                        return Color.FromRgb(0x2F, 0xAD, 0xE0); // blue
                 case "MENUS": case "MENU":            return Color.FromRgb(0xF6, 0xC4, 0x3D); // yellow
-                case "INTROS": case "INTRO":
-                case "BOOTING":                       return Color.FromRgb(0xF0, 0x8A, 0x18); // orange
+                case "BOOTS": case "BOOTING":
+                case "INTROS": case "INTRO":          return Color.FromRgb(0xF0, 0x8A, 0x18); // orange
                 case "NOTHING": case "UNPLAYABLE":
                 case "BROKEN": case "ERROR": case "CRASH": return Color.FromRgb(0xD8, 0x32, 0x2A); // red
                 default:                              return null;   // untested / unknown
