@@ -129,6 +129,7 @@
   "help.usage": "사용법: pcsx5_ui [--games=DIR] [--compat=DIR] [--covers=DIR] [--backend=NAME]",
   "hints.analyzer": "%DEV% %TABS% Tabs  •  %DIR% Select Executable  •  %OK% Analyze All",
   "hints.colorpicker": "%DEV% R스틱 색상  •  L스틱 색조  •  %OK% 적용  •  %BACK% 취소",
+  "hints.colorpicker_sticks": "R스틱 색상  •  L스틱 색조",
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel  •  %OPT% Restore Defaults",
   "hints.crash": "%DEV% %OK% 부트 분석기  •  %ALT% 원시 로그  •  %ALT2% 복사  •  %DIR% 스크롤  •  %BACK% 닫기",

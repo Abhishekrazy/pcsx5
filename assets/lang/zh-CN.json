@@ -129,6 +129,7 @@
   "help.usage": "用法: pcsx5_ui [--games=DIR] [--compat=DIR] [--covers=DIR] [--backend=NAME]",
   "hints.analyzer": "%DEV% %TABS% Tabs  •  %DIR% Select Executable  •  %OK% Analyze All",
   "hints.colorpicker": "%DEV% 右摇杆 颜色  •  左摇杆 色相  •  %OK% 应用  •  %BACK% 取消",
+  "hints.colorpicker_sticks": "右摇杆 颜色  •  左摇杆 色相",
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel  •  %OPT% Restore Defaults",
   "hints.crash": "%DEV% %OK% 启动分析器  •  %ALT% 原始日志  •  %ALT2% 复制  •  %DIR% 滚动  •  %BACK% 关闭",

@@ -2171,15 +2171,16 @@
                     <StackPanel>
                         <TextBlock Text="{loc:Tr Key=colorpicker.title}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}" Margin="0,0,0,16"/>
                         <local:ColorPickerControl x:Name="PopupPicker"/>
-                        <StackPanel Margin="0,20,0,0">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button x:Name="ColorPickerCancelBtn" Content="{loc:Tr Key=colorpicker.cancel}" MinHeight="40" Padding="16,8" FontSize="{DynamicResource TypeS}" Margin="0,0,10,0" Style="{StaticResource SecondaryButtonStyle}" Click="ColorPickerCancel_Click" AutomationProperties.Name="{loc:Tr Key=colorpicker.cancel}"/>
+                        <!-- Footer: stick hints left, the two buttons right (their labels carry the glyphs). -->
+                        <Border BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="0,1,0,0" Margin="0,20,0,0" Padding="0,14,0,0">
+                            <Grid>
+                                <StackPanel x:Name="ColorPickerHintChips" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button x:Name="ColorPickerCancelBtn" Content="{loc:Tr Key=colorpicker.cancel}" MinHeight="40" Padding="16,8" FontSize="{DynamicResource TypeS}" Margin="0,0,10,0" Style="{StaticResource SecondaryButtonStyle}" Click="ColorPickerCancel_Click" AutomationProperties.Name="{loc:Tr Key=colorpicker.cancel}"/>
                             <Button x:Name="ColorPickerApplyBtn" Content="{loc:Tr Key=colorpicker.apply}" MinHeight="40" Padding="20,0" Style="{StaticResource ModernButtonStyle}" Click="ColorPickerApply_Click" AutomationProperties.Name="{loc:Tr Key=colorpicker.apply}"/>
-                        </StackPanel>
-                            <Border BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="0,1,0,0" Margin="0,18,0,0" Padding="0,12,0,0">
-                                <StackPanel x:Name="ColorPickerHintChips" Orientation="Horizontal" HorizontalAlignment="Left"/>
-                            </Border>
-                        </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
                     </StackPanel>
                 </Border>
             </Grid>

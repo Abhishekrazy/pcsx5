@@ -129,6 +129,7 @@
   "help.usage": "Verwendung: pcsx5_ui [--games=DIR] [--compat=DIR] [--covers=DIR] [--backend=NAME]",
   "hints.analyzer": "%DEV% %TABS% Tabs  •  %DIR% Select Executable  •  %OK% Analyze All",
   "hints.colorpicker": "%DEV% R-Stick Farbe  •  L-Stick Farbton  •  %OK% Übernehmen  •  %BACK% Abbrechen",
+  "hints.colorpicker_sticks": "R-Stick Farbe  •  L-Stick Farbton",
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel  •  %OPT% Restore Defaults",
   "hints.crash": "%DEV% %OK% Boot-Analyse  •  %ALT% Rohprotokoll  •  %ALT2% Kopieren  •  %DIR% Blättern  •  %BACK% Schließen",

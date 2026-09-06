@@ -129,6 +129,7 @@
   "help.usage": "Использование: pcsx5_ui [--games=DIR] [--compat=DIR] [--covers=DIR] [--backend=NAME]",
   "hints.analyzer": "%DEV% %TABS% Tabs  •  %DIR% Select Executable  •  %OK% Analyze All",
   "hints.colorpicker": "%DEV% Пр. стик Цвет  •  Лев. стик Оттенок  •  %OK% Применить  •  %BACK% Отмена",
+  "hints.colorpicker_sticks": "Пр. стик Цвет  •  Лев. стик Оттенок",
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel  •  %OPT% Restore Defaults",
   "hints.crash": "%DEV% %OK% Анализ загрузки  •  %ALT% Сырые логи  •  %ALT2% Копировать  •  %DIR% Прокрутка  •  %BACK% Закрыть",

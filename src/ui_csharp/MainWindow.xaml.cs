@@ -399,7 +399,7 @@ namespace Pcsx5Ui
             _colorPickerOnApply = onApply;
             PopupPicker.SelectedColor = initial;
             ColorPickerOverlay.Visibility = Visibility.Visible;
-            BuildFooterHintChips(I18n.Tr("hints.colorpicker"), ColorPickerHintChips);
+            BuildFooterHintChips(I18n.Tr("hints.colorpicker_sticks"), ColorPickerHintChips);
             PopupPicker.ColorChanged -= PopupPicker_Preview; PopupPicker.ColorChanged += PopupPicker_Preview;
             FocusFirst(ColorPickerApplyBtn);
         }

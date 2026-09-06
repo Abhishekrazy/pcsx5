@@ -129,6 +129,7 @@
   "help.usage": "Uso: pcsx5_ui [--games=DIR] [--compat=DIR] [--covers=DIR] [--backend=NAME]",
   "hints.analyzer": "%DEV% %TABS% Tabs  •  %DIR% Select Executable  •  %OK% Analyze All",
   "hints.colorpicker": "%DEV% Stick D Cor  •  Stick E Matiz  •  %OK% Aplicar  •  %BACK% Cancelar",
+  "hints.colorpicker_sticks": "Stick D Cor  •  Stick E Matiz",
   "hints.console": "%DEV% %DIR% Scroll Logs  •  %OK% Copy to Clipboard  •  %BACK% Close Console",
   "hints.controller": "%DEV% %TABS% Tabs  •  %DIR% Navigate  •  %OK% Rebind / Action  •  %BACK% Cancel  •  %OPT% Restore Defaults",
   "hints.crash": "%DEV% %OK% Analisador de boot  •  %ALT% Logs brutos  •  %ALT2% Copiar  •  %DIR% Rolar  •  %BACK% Fechar",
