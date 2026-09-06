@@ -170,6 +170,14 @@ namespace Pcsx5Ui
                     mat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x55, 0xff, 0xff, 0xff)), 28));
                     mat.Children.Add(glow);
                     var geom = kv.Value;
+                    if (name == "l2" || name == "r2")
+                    {
+                        // The trigger island carries its internal lever (vertices down to
+                        // y=-0.2, deep inside the shell), which swung up through the body
+                        // when the trigger hinged. Nothing inside the shell is visible: drop it.
+                        SplitFront(kv.Value, -0.03, out var lever, out var visible);
+                        geom = visible;
+                    }
                     if (isCap && kv.Key == "1001" && diff != null)
                     {
                         // The model builds each cap the way the real part is made: a
@@ -211,6 +219,9 @@ namespace Pcsx5Ui
             // quads on the face, positioned from the touchpad/body bounds (INFERRED).
             AddLed(root, "led_l2", -0.105); AddLed(root, "led_l1", -0.052);
             AddLed(root, "led_c", 0); AddLed(root, "led_r1", 0.052); AddLed(root, "led_r2", 0.105);
+            // The body has no interior under the sticks (the hole shows the white back
+            // shell when a stick tilts): a dark disc at each stick's base plays the well.
+            AddWell(root, -0.3176, -0.0013); AddWell(root, 0.3176, -0.0013);
             _view.Children.Add(root);
             IsLoaded3D = _parts.Count > 0;
         }
@@ -246,6 +257,22 @@ namespace Pcsx5Ui
             front.Freeze(); rest.Freeze();
         }
 
+        private void AddWell(ModelVisual3D root, double x, double z)
+        {
+            const double y = -0.272, r = 0.148; const int n = 32;
+            var m = new MeshGeometry3D();
+            m.Positions.Add(new Point3D(x, y, z));
+            for (int i = 0; i < n; i++)
+            {
+                double a = i * 2 * Math.PI / n;
+                m.Positions.Add(new Point3D(x + r * Math.Cos(a), y, z + r * Math.Sin(a)));
+            }
+            for (int i = 1; i <= n; i++) { m.TriangleIndices.Add(0); m.TriangleIndices.Add(i); m.TriangleIndices.Add(i % n + 1); }
+            m.Freeze();
+            var mat = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(0x14, 0x16, 0x1b)));
+            root.Children.Add(new ModelVisual3D { Content = new GeometryModel3D(m, mat) { BackMaterial = mat } });
+        }
+
         private void AddLed(ModelVisual3D root, string name, double x)
         {
             const double y = -0.306, z = 0.165, hw = 0.011, hh = 0.007;
@@ -274,7 +301,8 @@ namespace Pcsx5Ui
         private static Point3D PivotFor(string name, Point3D mn, Point3D mx)
         {
             double cx = (mn.X + mx.X) / 2, cy = (mn.Y + mx.Y) / 2, cz = (mn.Z + mx.Z) / 2;
-            if (name == "l2" || name == "r2" || name == "l1" || name == "r1") return new Point3D(cx, cy, mx.Z);   // top edge
+            if (name == "l2" || name == "r2") return new Point3D(cx, 0.10, mx.Z - 0.02);   // hinge near the top-back edge, like the real lever (INFERRED)
+            if (name == "l1" || name == "r1") return new Point3D(cx, cy, mx.Z);   // top edge
             if (name == "stick_l" || name == "stick_r") return new Point3D(cx, mx.Y, cz);                      // base (body side)
             return new Point3D(cx, cy, cz);
         }
@@ -399,7 +427,7 @@ namespace Pcsx5Ui
             p.TiltZ.Angle = Clamp(nx * 22, -22, 22);
             p.TiltX.Angle = Clamp(ny * 22, -22, 22);
             p.Press.OffsetY = click ? depth : 0;
-            if (p.Glow != null) p.Glow.Color = (click || Math.Abs(nx) > 0.2 || Math.Abs(ny) > 0.2) ? GlowOn : Colors.Black;
+            if (p.Glow != null) p.Glow.Color = click ? GlowOn : Colors.Black;   // deflection is visible on its own
         }
     }
 }
