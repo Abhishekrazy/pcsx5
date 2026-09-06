@@ -646,6 +646,18 @@ Ordered by dependency, one subsystem per change (Rule 10):
   a keyboard-only sequence (no click) opened the folder picker via Enter -
   artifacts/runtime/SHELL_20260906_064652/frames/frame_0011.png.
 
+- [x] **Compatibility reporting to the external database** - DONE 2026-09-06.
+  Standing rule (saved to memory): whenever a title's status is determined in
+  PCSX5, record it in both the emulator (compat_seed/titles/<id>.json) and the
+  public database (github.com/Abhishekrazy/Pcsx5-Game-Compatibility, one issue
+  per title with a status-* label). tools/compat_report.py does both -- updates
+  the existing issue's label or creates a new compat-report issue, and writes
+  the curated record. Dreaming Sarah recorded as status-boots (issue #1861).
+  Also fixed that repo's stats GitHub Action: it opened a non-existent
+  COMPATIBILITY_README.md (now README.md), duplicated the Total row and never
+  refreshed the date (regex fixes), and installed `requests` on every run (now
+  stdlib urllib, nothing to install or cache). The action passes green.
+
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the
   standing preference for a PS5-console look, and fix what is wrong: spacing,
