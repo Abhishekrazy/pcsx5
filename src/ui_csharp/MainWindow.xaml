@@ -591,21 +591,21 @@
                                 <TextBlock x:Name="HudVramText" Text="VRAM: -- MB" FontSize="{DynamicResource TypeM}" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                             </StackPanel>
 
-                            <Button x:Name="BtnMinimize" Content="⚊" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Minimize_Click" Style="{x:Null}">
+                            <Button x:Name="BtnMinimize" Content="⚊" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Minimize_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
                                     </Style>
                                 </Button.Resources>
                             </Button>
-                            <Button x:Name="BtnMaximize" Content="🗖" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="{DynamicResource TypeS}" Click="Maximize_Click" Style="{x:Null}">
+                            <Button x:Name="BtnMaximize" Content="🗖" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeS}" Click="Maximize_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
                                     </Style>
                                 </Button.Resources>
                             </Button>
-                            <Button x:Name="BtnClose" Content="✕" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="#D0FFFFFF" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Close_Click" Style="{x:Null}">
+                            <Button x:Name="BtnClose" Content="✕" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Close_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
