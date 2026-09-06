@@ -2797,16 +2797,39 @@ namespace Pcsx5Ui
                     list.Add(new SettingDefinition { Key = "ui_fullscreen", Title = I18n.Tr("settings.ui_fullscreen.title"), Description = I18n.Tr("settings.ui_fullscreen.desc"), GetValueBadge = () => _config.ui.start_fullscreen ? I18n.Tr("common.enabled") : I18n.Tr("common.disabled"), Type = "toggle" });
                     break;
                 case "About":
-                    list.Add(new SettingDefinition { Key = "about_core", Title = "Core Architecture", Description = "PCSX5 Windows x64 Native Core (C++20)", GetValueBadge = () => "v0.4.2-alpha", Type = "choice" });
-                    list.Add(new SettingDefinition { Key = "about_vulkan", Title = "Graphics Engine", Description = "Vulkan 1.3 / Direct SPIR-V Translation", GetValueBadge = () => "Active", Type = "choice" });
-                    list.Add(new SettingDefinition { Key = "about_audio", Title = "Audio Subsystem", Description = "WASAPI Zero-Copy Direct Audio Stream", GetValueBadge = () => "Active", Type = "choice" });
-                    list.Add(new SettingDefinition { Key = "about_input", Title = "DualSense Driver", Description = "Direct Windows HID with Adaptive Trigger support", GetValueBadge = () => "Active", Type = "choice" });
+                    // Read-only facts (the concept's System Information page). Values
+                    // are real and checkable, not marketing: the version comes from
+                    // the VERSION file, and none claims a capability the emulator
+                    // may not have (Rule 02: no invented facts).
+                    list.Add(new SettingDefinition { Key = "about_core", Title = "PCSX5 core release", Description = "Windows x64 native core, C++20", GetValueBadge = () => ReadVersionString(), Type = "info" });
+                    list.Add(new SettingDefinition { Key = "about_vulkan", Title = "Graphics", Description = "Vulkan, GCN to SPIR-V translation", GetValueBadge = () => "Vulkan", Type = "info" });
+                    list.Add(new SettingDefinition { Key = "about_audio", Title = "Audio", Description = "WASAPI output", GetValueBadge = () => "WASAPI", Type = "info" });
+                    list.Add(new SettingDefinition { Key = "about_input", Title = "Controller", Description = "DualSense over Bluetooth and USB (HID)", GetValueBadge = () => "DualSense", Type = "info" });
                     // Attribution the vendored controller art requires (MIT). Localised,
                     // unlike the rows above, so it does not add to the string ratchet.
-                    list.Add(new SettingDefinition { Key = "about_credits", Title = I18n.Tr("about.credits_title"), Description = I18n.Tr("about.credits_desc"), GetValueBadge = () => "MIT", Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "about_credits", Title = I18n.Tr("about.credits_title"), Description = I18n.Tr("about.credits_desc"), GetValueBadge = () => "MIT", Type = "info" });
                     break;
             }
             return list;
+        }
+
+        /// <summary>The emulator version from the VERSION file beside the exe or
+        /// up the source tree, prefixed with "v"; "v?" if it cannot be read.</summary>
+        private static string ReadVersionString()
+        {
+            try
+            {
+                string dir = AppDomain.CurrentDomain.BaseDirectory;
+                for (int i = 0; i < 8 && dir != null; i++)
+                {
+                    string vf = System.IO.Path.Combine(dir, "VERSION");
+                    if (System.IO.File.Exists(vf))
+                        return "v" + System.IO.File.ReadAllText(vf).Trim();
+                    dir = System.IO.Directory.GetParent(dir)?.FullName;
+                }
+            }
+            catch { }
+            return "v?";
         }
 
         private void OpenSettingsCategory(string category)
@@ -2882,12 +2905,17 @@ namespace Pcsx5Ui
                     HorizontalAlignment = HorizontalAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                Grid.SetColumn(chevron, 2);
-                grid.Children.Add(chevron);
-
+                // "info" rows are read-only facts (the System Information page):
+                // no chevron, no navigation, so they do not open an empty sub-page.
+                bool isInfo = s.Type == "info";
+                if (!isInfo)
+                {
+                    Grid.SetColumn(chevron, 2);
+                    grid.Children.Add(chevron);
+                }
                 rowBtn.Content = grid;
                 string capturedKey = s.Key;
-                rowBtn.Click += (snd, ea) => OpenSettingsSubPage(capturedKey);
+                if (!isInfo) rowBtn.Click += (snd, ea) => OpenSettingsSubPage(capturedKey);
 
                 SettingsCategoryRowsPanel.Children.Add(rowBtn);
                 if (firstBtn == null) firstBtn = rowBtn;

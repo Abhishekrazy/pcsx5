@@ -653,6 +653,16 @@ Ordered by dependency, one subsystem per change (Rule 10):
   its own small change with a before/after capture. Not started until 4.5 is
   seen running.
 
+  - [x] **Stale About rows made honest** - DONE 2026-09-06. The System
+    Information page (Settings > About) had four rows typed as "choice" with
+    no sub-page, so each opened an empty dead end, and their values were
+    invented ("v0.4.2-alpha" while VERSION is 0.1.1, "WASAPI Zero-Copy",
+    "Adaptive Trigger support"). They are now read-only "info" rows (no
+    chevron, no navigation) with checkable values: the core release reads the
+    VERSION file (shipped via the csproj), and the rest name the real
+    subsystems without claiming unverified capabilities (Rule 02). Seen:
+    artifacts/runtime/SHELL_20260906_065054/frames/frame_0010.png.
+
   - [x] **Compact binding rows** - DONE. Asked 2026-09-06: "button name and
     their values taking too much space - we can make them like input field
     with label type of look." The twenty label-beside-value rows now use a

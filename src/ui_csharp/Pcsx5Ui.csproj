@@ -36,6 +36,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The VERSION file, shown read-only on the System Information page.
+         Two levels up is the repository root. -->
+    <Content Include="$(MSBuildProjectDirectory)/../../VERSION" Link="VERSION">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- WASAPI access for the DualSense USB Audio Class endpoints
          (Controller Setup speaker/mic testers). -->
     <PackageReference Include="Clowd.Squirrel" Version="2.11.1" />
