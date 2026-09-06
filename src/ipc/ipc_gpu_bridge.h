@@ -19,10 +19,15 @@ namespace GPU {
 
 inline void (*g_ipc_write_frame)(const void*, uint32_t, uint32_t, uint32_t) = nullptr;
 inline bool (*g_ipc_is_connected)() = nullptr;
+// Game-state sink (IpcGameState values), so the state word the launcher reads
+// is true: the core sets RUNNING on the first guest frame. Same per-module
+// rule as above; set through the exported IPC_SetStateSink.
+inline void (*g_ipc_set_state)(uint32_t) = nullptr;
 
 // Defined in vulkan_backend.cpp (exported from pcsx5_core.dll); declared with
 // its export attribute in gpu.h.
 void IPC_SetWriteFrame(void (*fn)(const void*, uint32_t, uint32_t, uint32_t),
                        bool (*conn)());
+void IPC_SetStateSink(void (*set_state)(uint32_t));
 
 } // namespace GPU

@@ -776,6 +776,19 @@ namespace GPU {
         LOG_INFO(GPU, "IPC frame sink registered (%s).", write_fn ? "active" : "cleared");
     }
 
+    PCSX5_API void IPC_SetStateSink(void (*set_state)(uint32_t)) {
+        g_ipc_set_state = set_state;
+    }
+
+    // IPC_STATE_RUNNING from ipc/ipc_shared.h, spelled here so the GPU does not
+    // include the IPC server's header.
+    static void IpcReportRunning() {
+        if (g_ipc_set_state) {
+            g_ipc_set_state(1u);
+            LOG_INFO(GPU, "IPC game state -> running (first guest frame).");
+        }
+    }
+
     void RenderFrame(guest_addr_t framebuffer_addr) {
         // In headless mode (IPC) there is no GLFW window, but we still need
         // to write frames to shared memory.  Skip the window-only paths and
@@ -794,6 +807,7 @@ namespace GPU {
                     g_dib_buffer.assign(static_cast<size_t>(g_width) * g_height, 0xFF000000u);
                 if (g_boot_active.exchange(false, std::memory_order_acq_rel)) {
                     LOG_INFO(GPU, "First guest frame published over IPC (headless) - boot screen complete.");
+                    IpcReportRunning();
                 }
                 std::fill(g_dib_buffer.begin(), g_dib_buffer.end(), 0xFF000000u);
                 if (!BlitGuestFramebufferToDib(framebuffer_addr)) {
@@ -829,6 +843,7 @@ namespace GPU {
         // the game; SetBootStatus becomes a no-op from here on.
         if (g_boot_active.exchange(false, std::memory_order_acq_rel)) {
             LOG_INFO(GPU, "First guest frame presented - boot screen complete.");
+            IpcReportRunning();
         }
 
         // Preferred path: when the vk_draw image model already has a GPU

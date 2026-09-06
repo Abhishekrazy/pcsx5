@@ -136,5 +136,6 @@ namespace GPU {
 #endif
     PCSX5_API void IPC_SetWriteFrame(void (*write_fn)(const void*, uint32_t, uint32_t, uint32_t),
                                      bool (*conn_fn)());
+    PCSX5_API void IPC_SetStateSink(void (*set_state)(uint32_t));
 }
 // namespace GPU

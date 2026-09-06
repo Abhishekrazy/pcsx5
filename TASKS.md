@@ -580,9 +580,14 @@ Ordered by dependency, one subsystem per change (Rule 10):
      over the map (WriteInput exists; the core would have to merge IPC input
      into its pad state) - keeps one keyboard owner but leaves the two-reader
      pad problem. Waiting on the user before changing ownership.
-  3. The IPC game_state never leaves boot (the core never calls
-     SetGameState(Running)); harmless now that the shell keys on the window,
-     but the field is a lie and should be set on the first guest frame.
+  3. DONE 2026-09-06: the core sets the IPC game_state to RUNNING on the
+     first guest frame through an exported state sink (IPC_SetStateSink,
+     same per-module rule as the frame sink; main.cpp registers
+     IPC::SetGameState). OBSERVED at the call site: the core log shows "IPC
+     game state -> running (first guest frame)" right after "First guest
+     frame presented" (launch SHELL_20260906_060218); the word in the shared
+     block itself is not read back by anything yet, so the write is inferred
+     from the call, not observed.
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the

@@ -200,6 +200,7 @@ int main(int argc, char* argv[]) {
         }
         // Wire up GPU frame write to shared memory.
         GPU::IPC_SetWriteFrame(IPC::WriteFrame, IPC::IsConnected);
+        GPU::IPC_SetStateSink(IPC::SetGameState);
     }
 
     rc = pcsx5_load(target_path.c_str());
