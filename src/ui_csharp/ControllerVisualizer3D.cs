@@ -247,10 +247,14 @@ namespace Pcsx5Ui
                     // cap and a stub, so a tilted stick showed an empty socket. A dark
                     // sphere at the base rides with the stick and always fills the hole.
                     double cx = (mn.X + mx.X) / 2, cz = (mn.Z + mx.Z) / 2;
-                    var ball = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(0x1a, 0x1c, 0x22)));
-                    var ballMat = new MaterialGroup(); ballMat.Children.Add(ball);
-                    ballMat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x40, 0xff, 0xff, 0xff)), 30));
-                    group.Children.Add(new GeometryModel3D(Sphere(new Point3D(cx, mx.Y - 0.005, cz), 0.105, 28, 14), ballMat) { BackMaterial = ballMat });
+                    // Same rubber as the stick: the 1011 tile sampled at a plain dark texel,
+                    // with the same plastic highlight the other parts get. Centred below the
+                    // cap's underside so it never shows through the concave dish.
+                    var rubber = Tex("1011_baseColor.png");
+                    var ballMat = new MaterialGroup();
+                    ballMat.Children.Add(new DiffuseMaterial(rubber ?? (Brush)new SolidColorBrush(Color.FromRgb(0x2a, 0x2c, 0x36))));
+                    ballMat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x55, 0xff, 0xff, 0xff)), 28));
+                    group.Children.Add(new GeometryModel3D(Sphere(new Point3D(cx, mx.Y + 0.045, cz), 0.1, 28, 14, new Point(0.01, 0.5)), ballMat) { BackMaterial = ballMat });
                 }
 
                 var part = new Part { Glow = glowBrush };
@@ -354,7 +358,7 @@ namespace Pcsx5Ui
             }
         }
 
-        private static MeshGeometry3D Sphere(Point3D c, double r, int slices, int stacks)
+        private static MeshGeometry3D Sphere(Point3D c, double r, int slices, int stacks, Point uv)
         {
             var m = new MeshGeometry3D();
             for (int i = 0; i <= stacks; i++)
@@ -364,7 +368,7 @@ namespace Pcsx5Ui
                 {
                     double th = 2 * Math.PI * j / slices;
                     var n = new Vector3D(Math.Sin(phi) * Math.Cos(th), Math.Cos(phi), Math.Sin(phi) * Math.Sin(th));
-                    m.Positions.Add(c + n * r); m.Normals.Add(n);
+                    m.Positions.Add(c + n * r); m.Normals.Add(n); m.TextureCoordinates.Add(uv);
                 }
             }
             for (int i = 0; i < stacks; i++)
