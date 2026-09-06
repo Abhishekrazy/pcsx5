@@ -3762,9 +3762,24 @@ namespace Pcsx5Ui
             BuildFooterHintChips(I18n.Tr(key));
         }
 
-        /// <summary>Render the footer legend as the concept's icon-box chips: each
-        /// hint segment (split on the bullet) becomes a glyph box plus its label.
-        /// The glyph text follows the active device (pad or keyboard).</summary>
+        // PlayStation control glyphs for the footer legend, stroke geometries in
+        // an ~18-unit box, matching the concept artboard's icons.
+        private static readonly Dictionary<string, string> _hintGlyphGeom = new()
+        {
+            ["DIR"]  = "M9,3 V15 M3,9 H15",
+            ["OK"]   = "M4,4 L14,14 M14,4 L4,14",
+            ["BACK"] = "M3.5,9 A5.5,5.5 0 1 0 14.5,9 A5.5,5.5 0 1 0 3.5,9 Z",
+            ["ALT"]  = "M9,3.5 L15,14 L3,14 Z",
+            ["ALT2"] = "M4.5,4.5 H13.5 V13.5 H4.5 Z",
+            ["TABS"] = "M2,7 H6 A1,1 0 0 1 7,8 V10 A1,1 0 0 1 6,11 H2 A1,1 0 0 1 1,10 V8 A1,1 0 0 1 2,7 Z M12,7 H16 A1,1 0 0 1 17,8 V10 A1,1 0 0 1 16,11 H12 A1,1 0 0 1 11,10 V8 A1,1 0 0 1 12,7 Z",
+            ["OPT"]  = "M4,6 H14 M4,9 H14 M4,12 H14",
+            ["PS"]   = "M9,2.5 A6.5,6.5 0 1 0 9.01,2.5 Z M9,5.5 V10.5",
+        };
+
+        /// <summary>Render the footer legend as the concept's icon boxes: each hint
+        /// segment is a square box with the PlayStation control glyph plus its
+        /// action label. The device token (%DEV%) is dropped; the glyphs are the
+        /// controls themselves.</summary>
         private void BuildFooterHintChips(string template)
         {
             if (FooterHintChips == null) return;
@@ -3773,30 +3788,39 @@ namespace Pcsx5Ui
             var boxBrush = (Brush)FindResource("ThemeBorderStrong");
             var glyphBrush = (Brush)FindResource("ThemeText");
             var labelBrush = (Brush)FindResource("ThemeTextMuted");
-            double typeS = (double)FindResource("TypeS");
             double typeM = (double)FindResource("TypeM");
-            foreach (var raw in template.Split(new[] { '\u2022' }, StringSplitOptions.RemoveEmptyEntries))
+            var tokenRe = new System.Text.RegularExpressions.Regex(@"%([A-Z0-9]+)%");
+            foreach (var raw in template.Split(new[] { '•' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                string seg = ApplyGlyphs(raw.Trim());
+                string seg = raw.Trim();
                 if (seg.Length == 0) continue;
-                // Split into the leading glyph label(s) (in brackets or device icons)
-                // and the trailing text.
-                var m = System.Text.RegularExpressions.Regex.Match(seg, @"^((?:\s*(?:\[[^\]]*\]|[\u2300-\u27BF\uD83C-\uDBFF\uDC00-\uDFFF]))+)\s*(.*)$");
-                string glyphs = m.Success ? m.Groups[1].Value.Trim() : "";
-                string label = m.Success ? m.Groups[2].Value.Trim() : seg;
-                var chip = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 26, 0) };
-                if (glyphs.Length > 0)
+                var tokens = tokenRe.Matches(seg).Select(m => m.Groups[1].Value).Where(t => t != "DEV").ToList();
+                string label = tokenRe.Replace(seg, "").Trim();
+                var chip = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 24, 0) };
+                foreach (var tok in tokens)
                 {
+                    if (!_hintGlyphGeom.TryGetValue(tok, out var geom)) continue;
+                    var icon = new System.Windows.Shapes.Path
+                    {
+                        Data = Geometry.Parse(geom),
+                        Stroke = glyphBrush,
+                        StrokeThickness = 1.6,
+                        StrokeLineJoin = PenLineJoin.Round,
+                        StrokeStartLineCap = PenLineCap.Round,
+                        StrokeEndLineCap = PenLineCap.Round,
+                        Fill = null,
+                    };
+                    var vb = new Viewbox { Width = 16, Height = 16, Child = icon, Stretch = Stretch.Uniform };
                     var box = new Border
                     {
                         BorderBrush = boxBrush,
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(7),
-                        Padding = new Thickness(8, 3, 8, 3),
-                        MinWidth = 28,
+                        Width = 30, Height = 30,
                         Margin = new Thickness(0, 0, 9, 0),
                         VerticalAlignment = VerticalAlignment.Center,
-                        Child = new TextBlock { Text = glyphs, FontSize = typeS, Foreground = glyphBrush, HorizontalAlignment = HorizontalAlignment.Center }
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Child = vb,
                     };
                     chip.Children.Add(box);
                 }
@@ -3806,8 +3830,6 @@ namespace Pcsx5Ui
             }
         }
 
-        /// <summary>Substitute the device-neutral glyph tokens in a hint template
-        /// with labels for whichever device is currently active.</summary>
         private string ApplyGlyphs(string template)
         {
             if (string.IsNullOrEmpty(template)) return template;
