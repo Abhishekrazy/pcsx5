@@ -457,5 +457,12 @@
   "settings.corners_sharp": "Harte Kante",
   "settings.corners_sharp_desc": "Überall eckige Ecken",
   "settings.corners_cut": "Abgeschrägt",
-  "settings.corners_cut_desc": "Abgeschrägte Ecken an Karten und Kacheln"
+  "settings.corners_cut_desc": "Abgeschrägte Ecken an Karten und Kacheln",
+  "ui.starting": "STARTET",
+  "ui.boot_stage_core": "Kern",
+  "ui.boot_stage_package": "Paket",
+  "ui.boot_stage_executable": "Programm",
+  "ui.boot_stage_modules": "Module",
+  "ui.boot_stage_cpu": "Gast-CPU",
+  "ui.boot_stage_frame": "Erstes Bild"
 }

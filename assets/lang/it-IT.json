@@ -457,5 +457,12 @@
   "settings.corners_sharp": "Bordo netto",
   "settings.corners_sharp_desc": "Angoli squadrati ovunque",
   "settings.corners_cut": "Smussati",
-  "settings.corners_cut_desc": "Angoli smussati su schede e riquadri"
+  "settings.corners_cut_desc": "Angoli smussati su schede e riquadri",
+  "ui.starting": "AVVIO",
+  "ui.boot_stage_core": "Nucleo",
+  "ui.boot_stage_package": "Pacchetto",
+  "ui.boot_stage_executable": "Eseguibile",
+  "ui.boot_stage_modules": "Moduli",
+  "ui.boot_stage_cpu": "CPU guest",
+  "ui.boot_stage_frame": "Primo fotogramma"
 }

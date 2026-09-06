@@ -457,5 +457,12 @@
   "settings.corners_sharp": "직각",
   "settings.corners_sharp_desc": "모든 곳에 각진 모서리",
   "settings.corners_cut": "모서리 자르기",
-  "settings.corners_cut_desc": "카드와 타일의 모서리를 깎음"
+  "settings.corners_cut_desc": "카드와 타일의 모서리를 깎음",
+  "ui.starting": "시작 중",
+  "ui.boot_stage_core": "코어",
+  "ui.boot_stage_package": "패키지",
+  "ui.boot_stage_executable": "실행 파일",
+  "ui.boot_stage_modules": "모듈",
+  "ui.boot_stage_cpu": "게스트 CPU",
+  "ui.boot_stage_frame": "첫 프레임"
 }

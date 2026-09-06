@@ -457,5 +457,12 @@
   "settings.corners_sharp": "直角",
   "settings.corners_sharp_desc": "すべて四角い角にする",
   "settings.corners_cut": "面取り",
-  "settings.corners_cut_desc": "カードとタイルの角を切り落とす"
+  "settings.corners_cut_desc": "カードとタイルの角を切り落とす",
+  "ui.starting": "起動中",
+  "ui.boot_stage_core": "コア",
+  "ui.boot_stage_package": "パッケージ",
+  "ui.boot_stage_executable": "実行ファイル",
+  "ui.boot_stage_modules": "モジュール",
+  "ui.boot_stage_cpu": "ゲストCPU",
+  "ui.boot_stage_frame": "最初のフレーム"
 }

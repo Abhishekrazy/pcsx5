@@ -457,5 +457,12 @@
   "settings.corners_sharp": "Hard edge",
   "settings.corners_sharp_desc": "Square corners everywhere",
   "settings.corners_cut": "Corner cut",
-  "settings.corners_cut_desc": "Chamfered corners on cards and tiles"
+  "settings.corners_cut_desc": "Chamfered corners on cards and tiles",
+  "ui.starting": "STARTING",
+  "ui.boot_stage_core": "Core",
+  "ui.boot_stage_package": "Package",
+  "ui.boot_stage_executable": "Executable",
+  "ui.boot_stage_modules": "Modules",
+  "ui.boot_stage_cpu": "Guest CPU",
+  "ui.boot_stage_frame": "First frame"
 }

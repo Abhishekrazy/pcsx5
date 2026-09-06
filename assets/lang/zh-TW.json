@@ -457,5 +457,12 @@
   "settings.corners_sharp": "直角",
   "settings.corners_sharp_desc": "全部使用方角",
   "settings.corners_cut": "切角",
-  "settings.corners_cut_desc": "卡片與磚塊使用倒角"
+  "settings.corners_cut_desc": "卡片與磚塊使用倒角",
+  "ui.starting": "正在啟動",
+  "ui.boot_stage_core": "核心",
+  "ui.boot_stage_package": "套件",
+  "ui.boot_stage_executable": "可執行檔",
+  "ui.boot_stage_modules": "模組",
+  "ui.boot_stage_cpu": "客體 CPU",
+  "ui.boot_stage_frame": "首幀"
 }

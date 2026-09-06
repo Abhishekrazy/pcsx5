@@ -1508,46 +1508,41 @@
 
 
                         <!-- PLAYSTATION 5 PROGRESSIVE BOOT LOADER OVERLAY -->
-                        <Grid x:Name="GameBootOverlay" Grid.ColumnSpan="1" Grid.RowSpan="1" Visibility="Collapsed" Background="{DynamicResource ThemeSurface}">
-                            <Border Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeAccent}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerL}" Padding="32,28" Width="480" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Border.Effect>
-                                    <DropShadowEffect Color="#0070D1" BlurRadius="50" Opacity="0.5" ShadowDepth="0"/>
-                                </Border.Effect>
-                                <StackPanel HorizontalAlignment="Stretch">
-                                    <!-- PS5 Pulse Icon -->
-                                    <Border Background="#1F0070D1" BorderBrush="#500099FF" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerXL}" Width="72" MinHeight="72" HorizontalAlignment="Center" Margin="0,0,0,18">
-                                        <TextBlock x:Name="BootSpinnerText" Text="💠" FontSize="{DynamicResource TypeDisplayM}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-
-                                    <!-- Step indicator badge -->
-                                    <Border Background="#1E0099FF" CornerRadius="{DynamicResource ThemeCornerM}" Padding="12,3" HorizontalAlignment="Center" Margin="0,0,0,10">
-                                        <TextBlock x:Name="BootStepBadge" Text="{loc:Tr Key=ui.step_1_of_6}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="#0099FF"/>
-                                    </Border>
-
-                                    <!-- Phase title -->
-                                    <TextBlock x:Name="BootPhaseTitle" Text="{loc:Tr Key=ui.initializing_emulator_core}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,6" TextAlignment="Center"/>
-
-                                    <!-- Phase detail -->
-                                    <TextBlock x:Name="BootPhaseDetail" Text="{loc:Tr Key=ui.allocating_128gb_virtual_memory_space}" FontSize="{DynamicResource TypeML}" Foreground="#8FA0A0A5" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,20"/>
-
-                                    <!-- Progress bar and percentage -->
-                                    <Grid Margin="0,0,0,16">
-                                        <Border CornerRadius="{DynamicResource ThemeCornerS}" Background="#15FFFFFF" MinHeight="10" VerticalAlignment="Center">
-                                            <ProgressBar x:Name="BootProgressBar" Minimum="0" Maximum="100" Value="15" Background="Transparent" BorderThickness="0" Height="10" Foreground="#0099FF"/>
-                                        </Border>
+                        <!-- BOOTING SCREEN (TASKS 4.13 step 12, from the concept): staged,
+                             a thin progress line, no spinner. It owns the game area until
+                             the first guest frame; the embedded core window is kept hidden
+                             behind it until then (see EmbedEmulatorWindow). Every colour is
+                             a theme token. -->
+                        <Grid x:Name="GameBootOverlay" Grid.ColumnSpan="1" Grid.RowSpan="1" Visibility="Collapsed" Background="{DynamicResource ThemeGround}">
+                            <Grid Margin="56,48,56,40">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Top" MaxWidth="760" HorizontalAlignment="Left">
+                                    <TextBlock Text="{loc:Tr Key=ui.starting}" FontSize="{DynamicResource TypeS}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,10"/>
+                                    <TextBlock x:Name="BootGameTitle" Text="" FontSize="{DynamicResource TypeDisplayL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}" TextWrapping="Wrap" LineHeight="46" Margin="0,0,0,10"/>
+                                    <TextBlock x:Name="BootStepBadge" Text="" FontSize="{DynamicResource TypeS}" FontFamily="Consolas" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,18"/>
+                                    <Grid Width="520" HorizontalAlignment="Left" Margin="0,0,0,24">
+                                        <Border Height="3" CornerRadius="{DynamicResource ThemeCornerS}" Background="{DynamicResource ThemeHairline}"/>
+                                        <ProgressBar x:Name="BootProgressBar" Minimum="0" Maximum="100" Value="15" Height="3" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource ThemeAccent}"/>
                                     </Grid>
-                                    
-                                    <TextBlock x:Name="BootProgressPercentText" Text="15%" FontSize="{DynamicResource TypeML}" FontWeight="Bold" Foreground="#0099FF" HorizontalAlignment="Right" Margin="0,-10,0,16"/>
-
-                                    <!-- Game title -->
-                                    <Border Background="#0DFFFFFF" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12,6" HorizontalAlignment="Center" Margin="0,0,0,20">
-                                        <TextBlock x:Name="BootGameTitle" Text="{loc:Tr Key=ui.dreaming_sarah_ppsa02929}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="#B0FFFFFF"/>
-                                    </Border>
-
-                                    <!-- Cancel button -->
-                                    <Button x:Name="BootCancelBtn" Content="{loc:Tr Key=ui.cancel_boot}" MinWidth="160" MinHeight="36" Style="{StaticResource ModernButtonStyle}" HorizontalAlignment="Center" Click="BootCancelBtn_Click" Focusable="True" Background="#1FFF2200" BorderBrush="#40FF2200"/>
+                                    <TextBlock x:Name="BootProgressPercentText" Text="" Visibility="Collapsed"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12"><Border x:Name="BootStageDot1" Width="10" Height="10" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeHairline}" VerticalAlignment="Center" Margin="0,0,14,0"/><TextBlock x:Name="BootStage1" Text="{loc:Tr Key=ui.boot_stage_core}" FontSize="{DynamicResource TypeL}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/></StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12"><Border x:Name="BootStageDot2" Width="10" Height="10" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeHairline}" VerticalAlignment="Center" Margin="0,0,14,0"/><TextBlock x:Name="BootStage2" Text="{loc:Tr Key=ui.boot_stage_package}" FontSize="{DynamicResource TypeL}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/></StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12"><Border x:Name="BootStageDot3" Width="10" Height="10" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeHairline}" VerticalAlignment="Center" Margin="0,0,14,0"/><TextBlock x:Name="BootStage3" Text="{loc:Tr Key=ui.boot_stage_executable}" FontSize="{DynamicResource TypeL}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/></StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12"><Border x:Name="BootStageDot4" Width="10" Height="10" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeHairline}" VerticalAlignment="Center" Margin="0,0,14,0"/><TextBlock x:Name="BootStage4" Text="{loc:Tr Key=ui.boot_stage_modules}" FontSize="{DynamicResource TypeL}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/></StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12"><Border x:Name="BootStageDot5" Width="10" Height="10" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeHairline}" VerticalAlignment="Center" Margin="0,0,14,0"/><TextBlock x:Name="BootStage5" Text="{loc:Tr Key=ui.boot_stage_cpu}" FontSize="{DynamicResource TypeL}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/></StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12"><Border x:Name="BootStageDot6" Width="10" Height="10" CornerRadius="{DynamicResource ThemeCornerPill}" Background="{DynamicResource ThemeHairline}" VerticalAlignment="Center" Margin="0,0,14,0"/><TextBlock x:Name="BootStage6" Text="{loc:Tr Key=ui.boot_stage_frame}" FontSize="{DynamicResource TypeL}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/></StackPanel>
+                                    <TextBlock x:Name="BootPhaseTitle" Text="" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeText}" Margin="0,14,0,2"/>
+                                    <TextBlock x:Name="BootPhaseDetail" Text="" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" TextTrimming="CharacterEllipsis" Margin="0,0,0,22"/>
+                                    <Button x:Name="BootCancelBtn" Content="{loc:Tr Key=ui.cancel_boot}" AutomationProperties.Name="{loc:Tr Key=ui.cancel_boot}" MinWidth="160" MinHeight="44" HorizontalAlignment="Left" Style="{StaticResource ModernButtonStyle}" Click="BootCancelBtn_Click"/>
                                 </StackPanel>
-                            </Border>
+                                <Border Grid.Column="1" local:Theme.ClipCorners="16" Width="300" Height="300" VerticalAlignment="Top" CornerRadius="{DynamicResource ThemeCornerL}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" Background="{DynamicResource ThemeSurface}" Margin="40,0,0,0">
+                                    <Border.Effect><DropShadowEffect BlurRadius="40" ShadowDepth="16" Direction="270" Opacity="0.5"/></Border.Effect>
+                                    <Border x:Name="BootCoverInner" Background="{DynamicResource ThemeRaised}"/>
+                                </Border>
+                            </Grid>
                         </Grid>
 
                         <!-- IN-GAME PAUSE MENU OVERLAY -->

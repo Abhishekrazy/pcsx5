@@ -1367,6 +1367,14 @@ namespace Pcsx5Ui
 
         private void OnBootPhaseChanged(BootPhase phase, string message)
         {
+            if (phase == BootPhase.Running && _session?.IpcSession != null)
+            {
+                // First guest frame: the game takes the screen.
+                UpdateBootPhaseUI(phase, message);
+                HideBootOverlay();
+                FooterStatus.Text = _selectedGame != null ? $"{_selectedGame.Title} - Running" : "Running";
+                return;
+            }
             ShowBootOverlay(_session?.CurrentGame, phase, message);
             FooterStatus.Text = $"{_session?.CurrentGame?.Title ?? "Game"} - Booting ({message})";
         }
@@ -1380,6 +1388,15 @@ namespace Pcsx5Ui
             // headless core has no renderer (TASKS 4.14). The host is created
             // here, on demand; an HwndHost only owns a native window once it is
             // loaded, so the reparent waits for that.
+            // While the booting screen owns the game area, defer the whole embed:
+            // the host is a native window and paints over WPF even with its
+            // child hidden, so creating it now would cover the booting screen.
+            // The core's window is created hidden (--embed) and waits.
+            if (_session?.IpcSession != null && GameBootOverlay != null && GameBootOverlay.Visibility == Visibility.Visible)
+            {
+                _pendingEmbedHwnd = hwnd;
+                return;
+            }
             if (_emuHost == null)
             {
                 _emuHost = new EmulatorWindowHost();
@@ -1395,7 +1412,10 @@ namespace Pcsx5Ui
                 once = (s, e) => { _emuHost.Loaded -= once; EmbedEmulatorWindow(pending); };
                 _emuHost.Loaded += once;
             }
-            HideBootOverlay();
+            // Out of process, the booting screen stays until the first guest frame
+            // (OnBootPhaseChanged -> Running). In process there is no frame
+            // signal, so the window itself is the cue.
+            if (_session?.IpcSession == null) HideBootOverlay();
             FooterStatus.Text = _selectedGame != null ? $"{_selectedGame.Title} - Running" : "Running";
 
             if (_discordRpc != null && _selectedGame != null)
@@ -1518,37 +1538,25 @@ namespace Pcsx5Ui
 
         // ── Boot overlay helpers ────────────────────────────────────────────
 
-        private static readonly string[] _spinnerFrames = { "❠", "❡", "❢", "❣", "❤", "❥", "❦", "❧" };
-        private int _spinnerFrame = 0;
-        private System.Windows.Threading.DispatcherTimer _spinnerTimer;
-
         private void ShowBootOverlay(GameEntry game, BootPhase phase, string detail)
         {
             if (GameBootOverlay == null) return;
             GameBootOverlay.Visibility = Visibility.Visible;
 
             if (BootGameTitle != null && game != null)
-                BootGameTitle.Text = game.Title?.ToUpperInvariant() ?? "";
+                BootGameTitle.Text = game.Title ?? "";
+            if (BootCoverInner != null && game != null)
+            {
+                var cover = LoadImageHelper(game.CoverPath);
+                BootCoverInner.Background = cover != null
+                    ? new ImageBrush { ImageSource = cover, Stretch = Stretch.Uniform }
+                    : (Brush)FindResource("ThemeRaised");
+            }
 
             UpdateBootPhaseUI(phase, detail);
-
-            // Start spinner animation
-            if (_spinnerTimer == null)
-            {
-                _spinnerTimer = new System.Windows.Threading.DispatcherTimer
-                {
-                    Interval = TimeSpan.FromMilliseconds(120)
-                };
-                _spinnerTimer.Tick += (s, ev) =>
-                {
-                    if (BootSpinnerText != null)
-                    {
-                        _spinnerFrame = (_spinnerFrame + 1) % _spinnerFrames.Length;
-                        BootSpinnerText.Text = _spinnerFrames[_spinnerFrame];
-                    }
-                };
-            }
-            _spinnerTimer.Start();
+            // No spinner: the concept's booting screen is staged and quiet. A
+            // "stuck" notice appears only when frames stop after the first one
+            // (TASKS 4.13 step 13), never during a normal boot.
         }
 
         private void UpdateBootPhaseUI(BootPhase phase, string detail)
@@ -1599,18 +1607,52 @@ namespace Pcsx5Ui
                     break;
             }
 
-            if (BootStepBadge != null) BootStepBadge.Text = badge;
+            if (BootStepBadge != null) BootStepBadge.Text = $"{_session?.CurrentGame?.TitleId ?? ""} · {badge}";
             if (BootPhaseTitle != null) BootPhaseTitle.Text = title;
             if (BootPhaseDetail != null) BootPhaseDetail.Text = desc;
             if (BootProgressBar != null) BootProgressBar.Value = percent;
             if (BootProgressPercentText != null) BootProgressPercentText.Text = $"{percent}%";
+
+            // Stage list: done stages carry the accent dot and text, the current
+            // one full text, the rest muted.
+            int now = (int)phase;   // BootPhase is declared in stage order
+            var dots = new[] { BootStageDot1, BootStageDot2, BootStageDot3, BootStageDot4, BootStageDot5, BootStageDot6 };
+            var labels = new[] { BootStage1, BootStage2, BootStage3, BootStage4, BootStage5, BootStage6 };
+            var accent = (Brush)FindResource("ThemeAccent");
+            var text = (Brush)FindResource("ThemeText");
+            var muted = (Brush)FindResource("ThemeTextMuted");
+            var hair = (Brush)FindResource("ThemeHairline");
+            for (int i = 0; i < 6; i++)
+            {
+                if (dots[i] == null || labels[i] == null) continue;
+                bool done = i < now, current = i == now;
+                dots[i].Background = done || current ? accent : hair;
+                labels[i].Foreground = current ? text : done ? muted : hair;
+                labels[i].Opacity = current ? 1.0 : done ? 1.0 : 0.9;
+            }
         }
 
         private void HideBootOverlay()
         {
-            _spinnerTimer?.Stop();
             if (GameBootOverlay != null) GameBootOverlay.Visibility = Visibility.Collapsed;
+            if (_pendingEmbedHwnd != IntPtr.Zero)
+            {
+                var h = _pendingEmbedHwnd; _pendingEmbedHwnd = IntPtr.Zero;
+                OnGameWindowReady(h);   // the booting screen is down; embed and show now
+                return;
+            }
+            // The embedded core window was kept hidden behind the booting screen
+            // (a native child always paints over WPF); reveal it now.
+            if (_embedPendingShow && _embeddedEmuHwnd != IntPtr.Zero && NativeMethods.IsWindow(_embeddedEmuHwnd))
+            {
+                _embedPendingShow = false;
+                NativeMethods.ShowWindow(_embeddedEmuHwnd, NativeMethods.SW_SHOW);
+                ResizeEmbeddedWindow();
+                NativeMethods.SetFocus(_embeddedEmuHwnd);
+            }
         }
+        private bool _embedPendingShow;
+        private IntPtr _pendingEmbedHwnd = IntPtr.Zero;
 
         private void BootCancelBtn_Click(object sender, RoutedEventArgs e)
         {
@@ -1995,9 +2037,19 @@ namespace Pcsx5Ui
 
             _embeddedEmuHwnd = emuHwnd;
             NativeMethods.SetParent(emuHwnd, _emuHost.HostHandle);
-            NativeMethods.ShowWindow(emuHwnd, NativeMethods.SW_SHOW);
-            ResizeEmbeddedWindow();
-            NativeMethods.SetFocus(emuHwnd); // keyboard input must reach the emulator window
+            bool bootScreenUp = GameBootOverlay != null && GameBootOverlay.Visibility == Visibility.Visible;
+            if (bootScreenUp)
+            {
+                // Stay hidden until the first guest frame; HideBootOverlay reveals it.
+                _embedPendingShow = true;
+                ResizeEmbeddedWindow();
+            }
+            else
+            {
+                NativeMethods.ShowWindow(emuHwnd, NativeMethods.SW_SHOW);
+                ResizeEmbeddedWindow();
+                NativeMethods.SetFocus(emuHwnd); // keyboard input must reach the emulator window
+            }
             LogConsole("Emulator window embedded into launcher.");
         }
 

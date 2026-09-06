@@ -457,5 +457,12 @@
   "settings.corners_sharp": "Borda reta",
   "settings.corners_sharp_desc": "Cantos quadrados em toda parte",
   "settings.corners_cut": "Cortados",
-  "settings.corners_cut_desc": "Cantos chanfrados em cartões e blocos"
+  "settings.corners_cut_desc": "Cantos chanfrados em cartões e blocos",
+  "ui.starting": "INICIANDO",
+  "ui.boot_stage_core": "Núcleo",
+  "ui.boot_stage_package": "Pacote",
+  "ui.boot_stage_executable": "Executável",
+  "ui.boot_stage_modules": "Módulos",
+  "ui.boot_stage_cpu": "CPU convidada",
+  "ui.boot_stage_frame": "Primeiro quadro"
 }

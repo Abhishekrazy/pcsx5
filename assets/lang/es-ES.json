@@ -457,5 +457,12 @@
   "settings.corners_sharp": "Borde duro",
   "settings.corners_sharp_desc": "Esquinas cuadradas en todas partes",
   "settings.corners_cut": "Recortadas",
-  "settings.corners_cut_desc": "Esquinas achaflanadas en tarjetas y mosaicos"
+  "settings.corners_cut_desc": "Esquinas achaflanadas en tarjetas y mosaicos",
+  "ui.starting": "INICIANDO",
+  "ui.boot_stage_core": "Núcleo",
+  "ui.boot_stage_package": "Paquete",
+  "ui.boot_stage_executable": "Ejecutable",
+  "ui.boot_stage_modules": "Módulos",
+  "ui.boot_stage_cpu": "CPU invitada",
+  "ui.boot_stage_frame": "Primer fotograma"
 }

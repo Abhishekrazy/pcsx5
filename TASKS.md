@@ -458,8 +458,22 @@ Ordered by dependency, one subsystem per change (Rule 10):
     on the soft accent fill. Seen: dark
     artifacts/runtime/SHELL_20260906_061034/frames/frame_0012.png; light
     with coral (before the two fixes) SHELL_20260906_060850/frames/frame_0012.png.
-  - [ ] Step 12 - Booting screen per the added concept artboard: staged
-    (Load / Link / Init / First frame), thin progress line, no spinner.
+  - [x] **Step 12 - Booting screen** - DONE. Per the added artboard: STARTING
+    eyebrow, title, a mono "title id · step n of 6" line, a 3 px accent
+    progress line, six staged rows (Core, Package, Executable, Modules, Guest
+    CPU, First frame) with done and current stages lit, the stage name and
+    detail, Cancel Boot, and the cover in a clipped card; no spinner. All
+    tokens; stage labels localized in eleven locales. The screen owns the
+    game area until the first guest frame: the whole embed (host creation
+    included) is deferred while it is up, because a native host window
+    paints over WPF even with its child hidden (found when the first cut
+    showed an empty dark host instead of the screen). On the Running phase
+    the screen hides, the core window is embedded and shown, and the footer
+    reads Running. Seen: artifacts/runtime/SHELL_20260906_061736/frames/frame_0013.png
+    (stages at step 5) and frame_0016.png (game revealed, "Running").
+    Resolves the 4.14 note about the core's text-mode boot screen showing
+    through. The stage titles in UpdateBootPhaseUI remain hardcoded English
+    in C# (pre-existing; the ratchet counts XAML).
   - [ ] Step 13 - Stuck notice per the added artboard: shown ONLY when the
     frame counter stops after the game has drawn at least once, dismissed by
     the next frame; never during a normal load (asked 2026-09-06). Steps 6-11 - Tools, Console,

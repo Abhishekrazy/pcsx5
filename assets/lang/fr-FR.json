@@ -457,5 +457,12 @@
   "settings.corners_sharp": "Bord net",
   "settings.corners_sharp_desc": "Coins carrés partout",
   "settings.corners_cut": "Coupés",
-  "settings.corners_cut_desc": "Coins chanfreinés sur les cartes et tuiles"
+  "settings.corners_cut_desc": "Coins chanfreinés sur les cartes et tuiles",
+  "ui.starting": "DÉMARRAGE",
+  "ui.boot_stage_core": "Cœur",
+  "ui.boot_stage_package": "Paquet",
+  "ui.boot_stage_executable": "Exécutable",
+  "ui.boot_stage_modules": "Modules",
+  "ui.boot_stage_cpu": "CPU invité",
+  "ui.boot_stage_frame": "Première image"
 }
