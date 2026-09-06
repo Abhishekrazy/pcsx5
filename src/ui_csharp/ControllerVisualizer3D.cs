@@ -170,6 +170,7 @@ namespace Pcsx5Ui
 
                 var group = new Model3DGroup();
                 var glassModels = new List<GeometryModel3D>();
+                Material mat1001 = null;   // the part's own textured material, reused for synthesized geometry
                 var glowBrush = new SolidColorBrush(Colors.Black);
                 var glow = new EmissiveMaterial(glowBrush);
                 // WPF blends in draw order: the translucent 1001 glass caps go last so
@@ -193,6 +194,7 @@ namespace Pcsx5Ui
                         }
                     }
                     mat.Children.Add(dm);
+                    if (kv.Key == "1001") mat1001 = mat;
                     // Viewport3D has no roughness/normal maps; a specular term is the one
                     // material cue it can give. Body plastic: broad, soft highlight.
                     mat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x55, 0xff, 0xff, 0xff)), 28));
@@ -247,20 +249,14 @@ namespace Pcsx5Ui
                     // cap and a stub, so a tilted stick showed an empty socket. A dark
                     // sphere at the base rides with the stick and always fills the hole.
                     double cx = (mn.X + mx.X) / 2, cz = (mn.Z + mx.Z) / 2;
-                    // Same rubber as the stick: the 1011 tile sampled at a plain dark texel,
-                    // with the same plastic highlight the other parts get. Centred below the
-                    // cap's underside so it never shows through the concave dish.
-                    // The stick's neck and skirt are painted from the 1001 tile at (0.648, 0.922)
-                    // (measured from its faces), so the ball samples that same texel.
-                    var rubber = Tex("1001_baseColor.png");
-                    var ballMat = new MaterialGroup();
-                    ballMat.Children.Add(new DiffuseMaterial(rubber ?? (Brush)new SolidColorBrush(Color.FromRgb(0x2a, 0x2c, 0x36))));
-                    ballMat.Children.Add(new SpecularMaterial(new SolidColorBrush(Color.FromArgb(0x55, 0xff, 0xff, 0xff)), 28));
+                    // Exactly the stick's own material (texture, highlight and press glow),
+                    // sampled at the texel its rim faces use (measured: 0.621, 0.924).
+                    var domeMat = mat1001 ?? new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(0x26, 0x26, 0x30)));
                     // Extrude the stick's bottom rim (r=0.13 at its base plane) downward as a
                     // partial sphere: the rim circle continues on a sphere centred 0.05 above
                     // it, curving inward to a pole 0.09 below. Not a full ball - just the
                     // rounded underside the split mesh lost.
-                    group.Children.Add(new GeometryModel3D(RimDome(new Point3D(cx, mx.Y, cz), 0.13, 0.05, 32, 10, new Point(0.648, 1 - 0.922)), ballMat) { BackMaterial = ballMat });
+                    group.Children.Add(new GeometryModel3D(RimDome(new Point3D(cx, mx.Y, cz), 0.13, 0.05, 32, 10, new Point(0.621, 1 - 0.924)), domeMat) { BackMaterial = domeMat });
                 }
 
                 var part = new Part { Glow = glowBrush };
