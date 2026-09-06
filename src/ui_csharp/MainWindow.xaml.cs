@@ -3878,7 +3878,7 @@ namespace Pcsx5Ui
             {
                 Style = (Style)FindResource("Ps5OptionItemStyle"),
                 Focusable = true,
-                Margin = new Thickness(0, 5, 0, 5)
+                Margin = new Thickness(0, 6, 12, 6)   // breathing room between option cards in the wrap grid
             };
 
             var grid = new Grid();
