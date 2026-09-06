@@ -986,7 +986,7 @@ namespace Pcsx5Ui
 
             DetailTitle.Text = game.Title;
             DetailTitleId.Text = game.TitleId;
-            DetailSize.Text = $"{I18n.Tr("library.size_label")} {FormatBytes(game.SizeBytes)}";
+            DetailSize.Text = FormatSizeChip(game.SizeBytes);
 
             if (_discordRpc != null)
             {
@@ -996,19 +996,27 @@ namespace Pcsx5Ui
             DetailPath.Text = game.EbootPath;
 
             DetailCompatText.Text = game.CompatStatus;
-            switch (game.CompatStatus)
+            // Artboard status badge: a dark tint of the status colour with the
+            // bright colour as text (PLAYABLE is #123c3a fill / #6ff0c3 text),
+            // not a flat grey box.
+            string statusToken = game.CompatStatus switch
             {
-                case "PLAYABLE":
-                case "COMPLETE":
-                    DetailCompatBadge.Background = (Brush)FindResource("ThemeSuccess"); DetailCompatText.Foreground = (Brush)FindResource("ThemeGround");
-                    break;
-                case "MENU":
-                case "INTRO":
-                    DetailCompatBadge.Background = (Brush)FindResource("ThemeWarning"); DetailCompatText.Foreground = (Brush)FindResource("ThemeGround");
-                    break;
-                default:
-                    DetailCompatBadge.Background = (Brush)FindResource("ThemeRaised"); DetailCompatText.Foreground = (Brush)FindResource("ThemeText");
-                    break;
+                "PLAYABLE" or "COMPLETE" => "ThemeSuccess",
+                "MENU" or "INTRO"        => "ThemeWarning",
+                "BROKEN" or "CRASH" or "ERROR" or "NOTHING" => "ThemeDanger",
+                _ => "",   // untested / unknown -> neutral
+            };
+            if (statusToken.Length > 0)
+            {
+                var c = ((SolidColorBrush)FindResource(statusToken)).Color;
+                var fill = new SolidColorBrush(Color.FromArgb(0x2E, c.R, c.G, c.B)); fill.Freeze();
+                DetailCompatBadge.Background = fill;
+                DetailCompatText.Foreground = (Brush)FindResource(statusToken);
+            }
+            else
+            {
+                DetailCompatBadge.Background = (Brush)FindResource("ThemeRaised");
+                DetailCompatText.Foreground = (Brush)FindResource("ThemeTextMuted");
             }
 
             var coverImage = LoadImageHelper(game.CoverPath);
@@ -2522,6 +2530,17 @@ namespace Pcsx5Ui
         private void FooterConsole_Click(object sender, RoutedEventArgs e)
         {
             SetGameConsoleVisible(!_gameConsoleVisible);
+        }
+
+        /// <summary>Short size for the hero chip: "102 MB", "8.5 GB" - whole
+        /// numbers over 100, one decimal below, no "Size:" prefix (artboard).</summary>
+        private static string FormatSizeChip(long bytes)
+        {
+            string[] suffix = { "B", "KB", "MB", "GB", "TB" };
+            double v = bytes; int i = 0;
+            while (v >= 1024 && i < suffix.Length - 1) { i++; v /= 1024; }
+            string num = v >= 100 ? ((long)System.Math.Round(v)).ToString() : v.ToString("0.#");
+            return $"{num} {suffix[i]}";
         }
 
         private string FormatBytes(long bytes)
@@ -5153,7 +5172,7 @@ namespace Pcsx5Ui
                 {
                     DetailTitle.Text = _selectedGame.Title;
                     DetailTitleId.Text = _selectedGame.TitleId;
-                    DetailSize.Text = $"{I18n.Tr("library.size_label")} {FormatBytes(_selectedGame.SizeBytes)}";
+                    DetailSize.Text = FormatSizeChip(_selectedGame.SizeBytes);
                 }
             }
             catch (Exception ex)
