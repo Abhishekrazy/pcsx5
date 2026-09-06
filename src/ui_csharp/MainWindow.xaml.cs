@@ -796,10 +796,21 @@ namespace Pcsx5Ui
             }
             catch { }
 
-            // Compatibility Status
+            // Compatibility Status. The curated record lives in
+            // <compat>/titles/<id>.json; look in the resolved compat dir and in
+            // a compat_seed beside the game's own tree, since the exe's working
+            // directory is not always the repo root.
             string compatStatus = "untested";
-            string compatFile = Path.Combine(_compatDir, "titles", titleId + ".json");
-            if (File.Exists(compatFile))
+            string gamesParent = Directory.GetParent(dir)?.FullName;                 // the Games folder
+            string repoRootGuess = gamesParent != null ? Directory.GetParent(gamesParent)?.FullName : null;
+            var compatCandidates = new System.Collections.Generic.List<string>();
+            void AddCandidate(string baseDir) { if (!string.IsNullOrEmpty(baseDir)) compatCandidates.Add(Path.Combine(baseDir, "titles", titleId + ".json")); }
+            AddCandidate(_compatDir);
+            if (repoRootGuess != null) AddCandidate(Path.Combine(repoRootGuess, "compat_seed"));
+            if (gamesParent != null) AddCandidate(Path.Combine(gamesParent, "compat_seed"));
+            AddCandidate(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "compat_seed"));
+            string compatFile = compatCandidates.FirstOrDefault(File.Exists);
+            if (compatFile != null)
             {
                 try
                 {
@@ -996,24 +1007,19 @@ namespace Pcsx5Ui
             DetailPath.Text = game.EbootPath;
 
             DetailCompatText.Text = game.CompatStatus;
-            // Artboard status badge: a dark tint of the status colour with the
-            // bright colour as text (PLAYABLE is #123c3a fill / #6ff0c3 text),
-            // not a flat grey box.
-            string statusToken = game.CompatStatus switch
+            // Compatibility tier badge: the standard six-tier palette (the colours
+            // the user provided), shown as a tint of the tier colour with the
+            // bright colour as text, matching the artboard hero.
+            var tier = CompatTierColor(game.CompatStatus);
+            if (tier.HasValue)
             {
-                "PLAYABLE" or "COMPLETE" => "ThemeSuccess",
-                "MENU" or "INTRO"        => "ThemeWarning",
-                "BROKEN" or "CRASH" or "ERROR" or "NOTHING" => "ThemeDanger",
-                _ => "",   // untested / unknown -> neutral
-            };
-            if (statusToken.Length > 0)
-            {
-                var c = ((SolidColorBrush)FindResource(statusToken)).Color;
+                var c = tier.Value;
                 var fill = new SolidColorBrush(Color.FromArgb(0x2E, c.R, c.G, c.B)); fill.Freeze();
+                var text = new SolidColorBrush(c); text.Freeze();
                 DetailCompatBadge.Background = fill;
-                DetailCompatText.Foreground = (Brush)FindResource(statusToken);
+                DetailCompatText.Foreground = text;
             }
-            else
+            else   // untested / unknown -> neutral
             {
                 DetailCompatBadge.Background = (Brush)FindResource("ThemeRaised");
                 DetailCompatText.Foreground = (Brush)FindResource("ThemeTextMuted");
@@ -2530,6 +2536,26 @@ namespace Pcsx5Ui
         private void FooterConsole_Click(object sender, RoutedEventArgs e)
         {
             SetGameConsoleVisible(!_gameConsoleVisible);
+        }
+
+        /// <summary>The compatibility-tier colour for a status, or null for
+        /// untested/unknown. The six canonical tiers use the standard palette
+        /// (Perfect purple, Playable green, In-Game blue, Menus yellow, Intros
+        /// orange, Nothing red); Booting and Unplayable fold into the nearest.</summary>
+        private static Color? CompatTierColor(string status)
+        {
+            switch ((status ?? "").ToUpperInvariant().Replace(" ", "").Replace("-", ""))
+            {
+                case "PERFECT":                       return Color.FromRgb(0xB0, 0x5C, 0xB8); // purple
+                case "PLAYABLE": case "COMPLETE":     return Color.FromRgb(0x92, 0xC5, 0x52); // green
+                case "INGAME":                        return Color.FromRgb(0x2F, 0xAD, 0xE0); // blue
+                case "MENUS": case "MENU":            return Color.FromRgb(0xF6, 0xC4, 0x3D); // yellow
+                case "INTROS": case "INTRO":
+                case "BOOTING":                       return Color.FromRgb(0xF0, 0x8A, 0x18); // orange
+                case "NOTHING": case "UNPLAYABLE":
+                case "BROKEN": case "ERROR": case "CRASH": return Color.FromRgb(0xD8, 0x32, 0x2A); // red
+                default:                              return null;   // untested / unknown
+            }
         }
 
         /// <summary>Short size for the hero chip: "102 MB", "8.5 GB" - whole

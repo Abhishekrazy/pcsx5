@@ -1,0 +1,7 @@
+{
+  "title_id": "PPSA02929",
+  "title": "Dreaming Sarah",
+  "curated_status": "intros",
+  "evidence": "2026-09-06: boots and renders the Ratalaika Games publisher intro splash, then freezes without reaching the menu (shell run SHELL_20260906_054602; runtime baseline status=frozen, first_frame 2.02s). OBSERVED.",
+  "schema": "pcsx5.curated.v1"
+}
