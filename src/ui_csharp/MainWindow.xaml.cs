@@ -4890,6 +4890,7 @@ namespace Pcsx5Ui
         {
             return new List<Control>
             {
+                TestControllerBtn,
                 BtnMapUp,
                 BtnMapLeft,
                 BtnMapRight,

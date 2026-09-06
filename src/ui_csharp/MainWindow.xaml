@@ -1336,7 +1336,7 @@
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,16">
                         <Button x:Name="TestControllerBtn" Content="{loc:Tr Key=input.test_controller}" Style="{StaticResource ModernButtonStyle}"
  MinHeight="40" Padding="20,0" Click="SubTabTest_Click" AutomationProperties.Name="{loc:Tr Key=input.test_controller}"/>
-                        <Button x:Name="ControllerSettingsBtn" Content="{loc:Tr Key=input.controller_settings}" Style="{StaticResource SecondaryButtonStyle}" MinHeight="40" Padding="20,0" Margin="10,0,0,0" Click="ControllerSettings_Click" AutomationProperties.Name="{loc:Tr Key=input.controller_settings}"/>
+                        <Button x:Name="ControllerSettingsBtn" Content="{loc:Tr Key=input.controller_settings}" Style="{StaticResource SecondaryButtonStyle}" MinHeight="40" Padding="20,8" FontSize="{DynamicResource TypeS}" Margin="10,0,0,0" Click="ControllerSettings_Click" AutomationProperties.Name="{loc:Tr Key=input.controller_settings}"/>
                     </StackPanel>
 
                     <!-- Live controller view (TESTING): device info, real-time input, motion,
