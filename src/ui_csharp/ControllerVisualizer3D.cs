@@ -89,8 +89,8 @@ namespace Pcsx5Ui
             _view.EffectsManager = new DefaultEffectsManager();
             _view.Camera = new HelixToolkit.Wpf.SharpDX.PerspectiveCamera
             {
-                Position = new Point3D(0, -3.6, 0.6),
-                LookDirection = new Vector3D(0, 3.6, -0.6),
+                Position = new Point3D(0, -2.55, 0.42),   // close enough that the pad fills the panel
+                LookDirection = new Vector3D(0, 2.55, -0.42),
                 UpDirection = new Vector3D(0, 0, 1),
                 FieldOfView = 40,
                 NearPlaneDistance = 0.1,
