@@ -2437,6 +2437,7 @@ namespace Pcsx5Ui
             LibraryView.Visibility = Visibility.Visible;
             UpdateTabHighlight(TabLibraryBtn);
             SetTitleMusicAudible(true);
+            if (SearchArea != null) SearchArea.Visibility = Visibility.Visible;   // game search belongs to the Library
         }
 
         private void GameConsoleButton_Click(object sender, RoutedEventArgs e)
@@ -2931,6 +2932,7 @@ namespace Pcsx5Ui
             // LogsView removed
             UpdateTabHighlight(TabLibraryBtn);
             SetTitleMusicAudible(true);
+            if (SearchArea != null) SearchArea.Visibility = Visibility.Visible;   // game search belongs to the Library
             FocusFirst(LaunchButton, FullLibraryToggleBtn, SearchBox);
         }
 
@@ -3005,6 +3007,7 @@ namespace Pcsx5Ui
             SettingsView.Visibility = Visibility.Collapsed;
             UpdateTabHighlight(TabAnalyzerBtn);
             SetTitleMusicAudible(false);
+            if (SearchArea != null) SearchArea.Visibility = Visibility.Collapsed;
             ShowHints("hints.tools");
             FocusFirst(ToolCardBoot);
         }
@@ -3045,6 +3048,7 @@ namespace Pcsx5Ui
             // LogsView removed
             UpdateTabHighlight(TabControllerBtn);
             SetTitleMusicAudible(false);
+            if (SearchArea != null) SearchArea.Visibility = Visibility.Collapsed;
 
             // Configuration inline; the testing popup opens only from its button.
             SetInputSubTab(true);
@@ -3124,6 +3128,7 @@ namespace Pcsx5Ui
             SettingsView.Visibility = Visibility.Visible;
             UpdateTabHighlight(TabSettingsBtn);
             SetTitleMusicAudible(false);
+            if (SearchArea != null) SearchArea.Visibility = Visibility.Collapsed;
             UpdateSettingsUiFromConfig();
             // Side-nav: land directly on the active section's rows (no hub).
             OpenSettingsCategory(_activeSettingsCategory);

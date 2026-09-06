@@ -16,7 +16,7 @@
     <WindowChrome.WindowChrome>
         <WindowChrome GlassFrameThickness="-1" 
  CornerRadius="{DynamicResource ThemeCornerM}" 
- CaptionHeight="50" 
+ CaptionHeight="64" 
  ResizeBorderThickness="6"/>
     </WindowChrome.WindowChrome>
 
@@ -549,7 +549,7 @@
         <Grid x:Name="MainLayoutRoot" Margin="0">
             <Grid.RowDefinitions>
                 <!-- Title Bar & Navigation -->
-                <RowDefinition Height="65"/>
+                <RowDefinition Height="80"/>
                 <!-- Content Area -->
                 <RowDefinition Height="*"/>
                 <!-- Status/Footer Bar -->
@@ -591,21 +591,21 @@
                                 <TextBlock x:Name="HudVramText" Text="VRAM: -- MB" FontSize="{DynamicResource TypeM}" Foreground="#FFA0A0A5" VerticalAlignment="Center"/>
                             </StackPanel>
 
-                            <Button x:Name="BtnMinimize" Content="⚊" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Minimize_Click" Style="{x:Null}">
+                            <Button x:Name="BtnMinimize" Content="⚊" MinWidth="52" MinHeight="40" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeL}" Click="Minimize_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
                                     </Style>
                                 </Button.Resources>
                             </Button>
-                            <Button x:Name="BtnMaximize" Content="🗖" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeS}" Click="Maximize_Click" Style="{x:Null}">
+                            <Button x:Name="BtnMaximize" Content="🗖" MinWidth="52" MinHeight="40" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Maximize_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
                                     </Style>
                                 </Button.Resources>
                             </Button>
-                            <Button x:Name="BtnClose" Content="✕" MinWidth="42" MinHeight="26" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeM}" Click="Close_Click" Style="{x:Null}">
+                            <Button x:Name="BtnClose" Content="✕" MinWidth="52" MinHeight="40" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" FontSize="{DynamicResource TypeL}" Click="Close_Click" Style="{x:Null}">
                                 <Button.Resources>
                                     <Style TargetType="Border">
                                         <Setter Property="CornerRadius" Value="0"/>
@@ -615,7 +615,7 @@
                         </StackPanel>
 
                         <!-- Search box below controls -->
-                        <Grid Width="200" Height="30" Margin="0,0,25,6" HorizontalAlignment="Right" VerticalAlignment="Bottom" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Grid x:Name="SearchArea" Width="260" Height="40" Margin="0,0,25,10" HorizontalAlignment="Right" VerticalAlignment="Bottom" WindowChrome.IsHitTestVisibleInChrome="True">
                             <!-- Background Pill -->
                             <Border x:Name="SearchBoxBorder" CornerRadius="{DynamicResource ThemeCornerL}" Background="#2FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1">
                                 <Grid>
@@ -1043,7 +1043,7 @@
                                     <TextBlock Text="{loc:Tr Key=tools.card.crash.title}" Style="{StaticResource ToolCardTitle}"/>
                                     <TextBlock Text="{loc:Tr Key=tools.card.crash.desc}" Style="{StaticResource ToolCardDesc}"/>
                                 </StackPanel>
-                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Padding="10,3">
                                     <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
                                 </Border>
                             </Grid>
@@ -1056,7 +1056,7 @@
                                     <TextBlock Text="{loc:Tr Key=tools.card.pkg.title}" Style="{StaticResource ToolCardTitle}"/>
                                     <TextBlock Text="{loc:Tr Key=tools.card.pkg.desc}" Style="{StaticResource ToolCardDesc}"/>
                                 </StackPanel>
-                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Padding="10,3">
                                     <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
                                 </Border>
                             </Grid>
@@ -1069,7 +1069,7 @@
                                     <TextBlock Text="{loc:Tr Key=tools.card.shader.title}" Style="{StaticResource ToolCardTitle}"/>
                                     <TextBlock Text="{loc:Tr Key=tools.card.shader.desc}" Style="{StaticResource ToolCardDesc}"/>
                                 </StackPanel>
-                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Padding="10,3">
                                     <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
                                 </Border>
                             </Grid>
@@ -1082,7 +1082,7 @@
                                     <TextBlock Text="{loc:Tr Key=tools.card.recorder.title}" Style="{StaticResource ToolCardTitle}"/>
                                     <TextBlock Text="{loc:Tr Key=tools.card.recorder.desc}" Style="{StaticResource ToolCardDesc}"/>
                                 </StackPanel>
-                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Padding="10,3">
                                     <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
                                 </Border>
                             </Grid>
@@ -1095,7 +1095,7 @@
                                     <TextBlock Text="{loc:Tr Key=tools.card.memory.title}" Style="{StaticResource ToolCardTitle}"/>
                                     <TextBlock Text="{loc:Tr Key=tools.card.memory.desc}" Style="{StaticResource ToolCardDesc}"/>
                                 </StackPanel>
-                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerM}" Padding="10,3">
                                     <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
                                 </Border>
                             </Grid>
