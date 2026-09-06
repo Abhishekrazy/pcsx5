@@ -35,7 +35,7 @@ namespace Pcsx5Ui
         private double _rollF, _pitchF;               // low-passed gravity tilt, degrees
         private bool _muteLocal, _mutePrev;           // mute toggled by the pad's own button (the reader has no LED state)
         private int _player = 1;
-        private static readonly Color GlowOn = Color.FromRgb(0x5f, 0xe3, 0xff);
+        private static readonly Color GlowOn = Color.FromRgb(0x1e, 0x5a, 0x68);   // press tint: emissive adds to the texture, so keep it dim (user: full accent was too bright)
         private static readonly Color GlowDim = Color.FromRgb(0x18, 0x3c, 0x48);   // for the black triggers: a tint, not a sticker
         private static readonly Color LedOn = Color.FromRgb(0x9c, 0xc8, 0xff);
         private static readonly Color MuteOn = Color.FromRgb(0xff, 0x8a, 0x1a);
