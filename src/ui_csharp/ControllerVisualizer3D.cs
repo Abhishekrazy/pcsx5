@@ -106,9 +106,9 @@ namespace Pcsx5Ui
             // Three-point studio: one key from above-front, one soft fill from the left,
             // a low ambient. Fewer, dimmer lights than before: the white shell was
             // blowing out and the glyphs washed away on the caps.
-            _view.Items.Add(new AmbientLight3D { Color = MediaColor.FromRgb(0x3a, 0x3c, 0x42) });
-            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0xdc, 0xde, 0xe4), Direction = new Vector3D(0.3, 0.9, -0.7) });
-            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0x52, 0x58, 0x64), Direction = new Vector3D(-0.7, 0.5, 0.2) });
+            _view.Items.Add(new AmbientLight3D { Color = MediaColor.FromRgb(0x24, 0x26, 0x2c) });   // low ambient: shadows stay dark, so the render keeps contrast
+            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0xf0, 0xf2, 0xf6), Direction = new Vector3D(0.3, 0.9, -0.7) });
+            _view.Items.Add(new DirectionalLight3D { Color = MediaColor.FromRgb(0x44, 0x4a, 0x56), Direction = new Vector3D(-0.7, 0.5, 0.2) });
             _rootXf.Children.Add(new RotateTransform3D(_tiltFree));
             _rootXf.Children.Add(new RotateTransform3D(_basePose));
             _root.Transform = new MatrixTransform3D(_rootXf.Value);
@@ -178,7 +178,7 @@ namespace Pcsx5Ui
                 RenderNormalMap = true,
                 EnableAutoTangent = true,
                 DiffuseColor = Color4.White,
-                AmbientColor = new Color4(0.55f, 0.55f, 0.58f, 1),
+                AmbientColor = new Color4(0.5f, 0.5f, 0.53f, 1),
                 SpecularColor = new Color4(0.12f, 0.12f, 0.13f, 1),   // matte plastic: a soft, narrow highlight, never a hot spot over a glyph
                 SpecularShininess = 60,
                 ReflectiveColor = new Color4(0.05f, 0.05f, 0.055f, 1),  // a faint mirror of the environment
