@@ -2095,7 +2095,7 @@
 
 
             <!-- CRASH DIAGNOSTICS OVERLAY DIALOG -->
-            <Grid x:Name="CrashDialogOverlay" Visibility="Collapsed" Background="{DynamicResource ThemeGround}" Grid.RowSpan="3">
+            <Grid x:Name="CrashDialogOverlay" WindowChrome.IsHitTestVisibleInChrome="True" Visibility="Collapsed" Background="{DynamicResource ThemeGround}" Grid.RowSpan="3">
                 <Border Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeDanger}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" MinWidth="580" MaxWidth="680" MinHeight="420" MaxHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="25">
                     <Border.Effect>
                         <DropShadowEffect Color="#FF2200" BlurRadius="25" Opacity="0.4" ShadowDepth="0"/>
@@ -2166,7 +2166,7 @@
             </Grid>
 
             <!-- CUSTOM COLOUR POPUP: the picker, driven by the sticks -->
-            <Grid x:Name="ColorPickerOverlay" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
+            <Grid x:Name="ColorPickerOverlay" WindowChrome.IsHitTestVisibleInChrome="True" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
                 <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Width="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
                     <StackPanel>
                         <TextBlock Text="{loc:Tr Key=colorpicker.title}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}" Margin="0,0,0,16"/>
@@ -2186,7 +2186,7 @@
             </Grid>
 
             <!-- UPDATE PROMPT: a new build is on GitHub -->
-            <Grid x:Name="UpdateOverlay" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
+            <Grid x:Name="UpdateOverlay" WindowChrome.IsHitTestVisibleInChrome="True" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
                 <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Width="640" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
                     <StackPanel>
                         <TextBlock Text="{loc:Tr Key=update.title}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}"/>
@@ -2205,7 +2205,7 @@
             </Grid>
 
             <!-- CREDITS POPUP: the README's Credits section, pad-scrollable -->
-            <Grid x:Name="CreditsOverlay" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
+            <Grid x:Name="CreditsOverlay" WindowChrome.IsHitTestVisibleInChrome="True" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
                 <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Width="960" MaxHeight="720" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -2229,7 +2229,7 @@
             </Grid>
 
             <!-- FIRST-RUN SETUP OVERLAY DIALOG (games folder picker) -->
-            <Grid x:Name="FirstRunOverlay" Visibility="Collapsed" Background="{DynamicResource ThemeGround}" Grid.RowSpan="3">
+            <Grid x:Name="FirstRunOverlay" WindowChrome.IsHitTestVisibleInChrome="True" Visibility="Collapsed" Background="{DynamicResource ThemeGround}" Grid.RowSpan="3">
                 <Border Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeAccent}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30">
                     <Border.Effect>
                         <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>
@@ -2281,7 +2281,7 @@
                  open the pad is captured: nothing switches tabs or sub-tabs, so every
                  button (L1/R1/L2/R2 included) can be tested. Dismiss with the PS button,
                  the Close button, or Esc. Added 2026-09-06 at the user's request. -->
-            <Grid x:Name="InputTestOverlay" Visibility="Collapsed" Background="#B305060A" Grid.RowSpan="3">
+            <Grid x:Name="InputTestOverlay" WindowChrome.IsHitTestVisibleInChrome="True" Visibility="Collapsed" Background="#B305060A" Grid.RowSpan="3">
                 <Border Width="1180" Height="780" HorizontalAlignment="Center" VerticalAlignment="Center"
  Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}"
  BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="28">
@@ -2306,7 +2306,7 @@
                 </Border>
             </Grid>
 
-            <Grid x:Name="FolderPickerOverlay" Visibility="Collapsed" Background="#B305060A" Grid.RowSpan="3">
+            <Grid x:Name="FolderPickerOverlay" WindowChrome.IsHitTestVisibleInChrome="True" Visibility="Collapsed" Background="#B305060A" Grid.RowSpan="3">
                 <Border Width="860" MaxHeight="760" HorizontalAlignment="Center" VerticalAlignment="Center"
  Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}"
  BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="32">
