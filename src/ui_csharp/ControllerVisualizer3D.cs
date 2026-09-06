@@ -32,7 +32,11 @@ namespace Pcsx5Ui
         // Resting pose: the pad LYING on a table seen from its near edge, which is
         // how everyone's pad sits. Applied after the gravity tilt, so tilt stays in
         // the pad's own frame and the pose is only the viewpoint.
-        private readonly AxisAngleRotation3D _basePose = new AxisAngleRotation3D(new Vector3D(1, 0, 0), 0);   // top-down = the pad lying flat
+        // The classic lying-down product view: top edge (triggers, lightbar) nearest
+        // and low, the face seen at a shallow angle. Yaw 180 turns the top edge to
+        // the camera, then the near edge is dropped.
+        private readonly AxisAngleRotation3D _baseYaw = new AxisAngleRotation3D(new Vector3D(0, 1, 0), 180);
+        private readonly AxisAngleRotation3D _basePose = new AxisAngleRotation3D(new Vector3D(1, 0, 0), -48);
         // Level reference: the gravity vector captured when the first samples
         // arrive (the pad is resting when the popup opens). Tilt is measured from
         // it, so a sensor that is not mounted exactly parallel to the face still
@@ -101,6 +105,7 @@ namespace Pcsx5Ui
             _view.Children.Add(lights);
             _rootXf.Children.Add(new RotateTransform3D(_tiltX));
             _rootXf.Children.Add(new RotateTransform3D(_tiltZ));
+            _rootXf.Children.Add(new RotateTransform3D(_baseYaw));
             _rootXf.Children.Add(new RotateTransform3D(_basePose));
             Children.Add(_view);
         }
@@ -416,8 +421,8 @@ namespace Pcsx5Ui
             // Signs flipped 2026-09-06 after the user's hand test read both axes
             // mirrored - consistent with the IMU frame being rotated 180 deg about
             // Y relative to the assumed one (X and Z both negated). INFERRED.
-            _tiltX.Angle = Clamp(_pitchF, -85, 85);
-            _tiltZ.Angle = -Clamp(_rollF, -85, 85);
+            _tiltX.Angle = _pitchF;    // no clamp: the pad may go fully over (atan2 covers +/-180)
+            _tiltZ.Angle = -_rollF;
 
             // Face buttons / D-pad / system buttons depress into the face (+Y).
             const double press = 0.014;
