@@ -4669,7 +4669,13 @@ namespace Pcsx5Ui
         /// <summary>Map the normalized button mask the input tick builds (for both
         /// DualSense and XInput) to a binding token. Returns null when neutral.
         /// The PS button is excluded: it is the cancel gesture, not bindable.</summary>
-        private static string BindingTokenFromMask(ushort mask, byte leftTrigger, byte rightTrigger)
+        // Where the finger was when the touchpad clicked: 0 none, 1 left, 2 centre,
+        // 3 right (thirds of the 1920-wide touch space). The pad has one physical
+        // click; PS5 titles read the zone from the finger, so the binding editor
+        // and the test view do the same.
+        private int _touchClickZone;
+
+        private string BindingTokenFromMask(ushort mask, byte leftTrigger, byte rightTrigger)
         {
             if ((mask & 0x1000) != 0) return "cross";
             if ((mask & 0x2000) != 0) return "circle";
@@ -4686,7 +4692,13 @@ namespace Pcsx5Ui
             if ((mask & 0x0004) != 0) return "pad_left";
             if ((mask & 0x0008) != 0) return "pad_right";
             if ((mask & 0x0010) != 0) return "options";
-            if ((mask & 0x0020) != 0) return "back";
+            if ((mask & 0x0020) != 0)
+            {
+                if (_touchClickZone == 1) return "touchpadleft";
+                if (_touchClickZone == 3) return "touchpadright";
+                if (_touchClickZone == 2) return "touchpadcenter";
+                return "back";   // the Share/Create button
+            }
             return null;
         }
 
@@ -5326,6 +5338,9 @@ namespace Pcsx5Ui
                 state.Gamepad.sThumbLY = ly;
 
                 HandleMicButtonLed((dsButtons & HostGamepadButtons.Mic) != 0);
+                if ((dsButtons & HostGamepadButtons.TouchPad) != 0)
+                    _touchClickZone = pad.Touch0.Active == 0 ? 2 : (pad.Touch0.X < 640 ? 1 : pad.Touch0.X >= 1280 ? 3 : 2);
+                else _touchClickZone = 0;
             }
             else
             {

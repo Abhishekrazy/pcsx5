@@ -67,6 +67,9 @@ namespace Pcsx5Ui
         private readonly PhongMaterial[,] _trailMat = new PhongMaterial[2, TrailLen];
         private readonly List<Point3D>[] _trailHist = { new List<Point3D>(), new List<Point3D>() };
         private Rect3D _padRect = new Rect3D(-0.41744, -0.318, 0.18186, 0.83488, 0, 0.45824);
+        // Touchpad click zones (left / centre / right thirds): translucent overlays
+        // that light where the finger was when the pad clicked.
+        private readonly PhongMaterial[] _zoneMat = new PhongMaterial[3];
 
         public bool IsLoaded3D { get; private set; }
 
@@ -282,6 +285,14 @@ namespace Pcsx5Ui
             AddLed("led_c", 0); AddLed("led_r1", 0.052); AddLed("led_r2", 0.105);
             if (_parts.TryGetValue("touchpad", out var tp)) _padRect = new Rect3D(tp.Min.X, tp.Min.Y - 0.006, tp.Min.Z, tp.Max.X - tp.Min.X, 0, tp.Max.Z - tp.Min.Z);
             for (int f = 0; f < 2; f++) for (int i = 0; i < TrailLen; i++) AddTrailDot(f, i);
+            for (int z = 0; z < 3; z++)
+            {
+                var mat = new PhongMaterial { DiffuseColor = new Color4(0, 0, 0, 0), EmissiveColor = new Color4(0, 0, 0, 0), SpecularColor = Color4.Black };
+                double w = _padRect.SizeX / 3, cx = _padRect.X + w * (z + 0.5), cz = _padRect.Z + _padRect.SizeZ / 2;
+                var quad = Quad(w / 2 - 0.006, _padRect.SizeZ / 2 - 0.006);
+                _root.Children.Add(new MeshGeometryModel3D { Geometry = quad, Material = mat, Transform = new TranslateTransform3D(cx, _padRect.Y + 0.002, cz), IsTransparent = true, CullMode = SharpDX.Direct3D11.CullMode.None });
+                _zoneMat[z] = mat;
+            }
             IsLoaded3D = _parts.Count > 0;
         }
 
@@ -527,6 +538,15 @@ namespace Pcsx5Ui
             Press("dpad_left",    Bit(s.Buttons, 0x80),   press);
             Press("btn_ps",       Bit(s.Buttons, 0x10000), press * 0.7);
             Press("touchpad",     Bit(s.Buttons, 0x100000), press * 0.6);
+            {
+                bool click = Bit(s.Buttons, 0x100000);
+                int zone = !click ? -1 : s.Touch0.Active == 0 ? 1 : (s.Touch0.X < 640 ? 0 : s.Touch0.X >= 1280 ? 2 : 1);
+                for (int z = 0; z < 3; z++)
+                {
+                    var c = z == zone ? new Color4(0.37f, 0.89f, 1f, 0.45f) : new Color4(0, 0, 0, 0);
+                    if (_zoneMat[z] != null) { _zoneMat[z].DiffuseColor = c; _zoneMat[z].EmissiveColor = c; }
+                }
+            }
             Press("btn_share",    Bit(s.Buttons, 0x1), press * 0.6);
             Press("btn_options",  Bit(s.Buttons, 0x8), press * 0.6);
 
