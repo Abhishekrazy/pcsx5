@@ -232,7 +232,9 @@ Ordered by dependency, one subsystem per change (Rule 10):
   one source and cannot drift. The layout JSON is consumed directly, not
   transcribed. The ripped-vs-recreated caution is recorded in the README: the
   pack does not say per file, so the honest position is that it is unknown.
-- [ ] **The About text is stale and there is no credits surface.**
+- [~] **The About text is stale and there is no credits surface.** (Credits
+  surface DONE 2026-09-06: System Information > Credits opens the README's
+  Credits section. The stale `about.line3/4` strings remain.)
   `about.line3` reads "UI: Dear ImGui + GLFW + OpenGL3" and `about.line4`
   "Layout: top toolbar + grid + bottom console" - the ImGui shell that no
   longer exists - and nothing in the WPF shell references `about.*` or shows
