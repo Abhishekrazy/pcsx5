@@ -129,7 +129,12 @@ namespace GPU {
     void SetVrrConfig(bool vsync, bool vrr);
 
     // Wire up IPC frame-write callbacks (set from main.cpp when --ipc is used).
-    void IPC_SetWriteFrame(void (*write_fn)(const void*, uint32_t, uint32_t, uint32_t),
-                           bool (*conn_fn)());
+    // Exported: the caller is the CLI executable and the pointers it sets
+    // must land in the DLL's copies (see ipc/ipc_gpu_bridge.h).
+#ifndef PCSX5_API
+#define PCSX5_API __declspec(dllexport)
+#endif
+    PCSX5_API void IPC_SetWriteFrame(void (*write_fn)(const void*, uint32_t, uint32_t, uint32_t),
+                                     bool (*conn_fn)());
 }
 // namespace GPU

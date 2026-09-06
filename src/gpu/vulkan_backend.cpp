@@ -767,13 +767,39 @@ namespace GPU {
         return true;
     }
 
+    // The IPC frame sink, set by the CLI process. Defined here so the pointers
+    // written are this DLL's copies -- the ones RenderFrame reads.
+    PCSX5_API void IPC_SetWriteFrame(void (*write_fn)(const void*, uint32_t, uint32_t, uint32_t),
+                                     bool (*conn_fn)()) {
+        g_ipc_write_frame = write_fn;
+        g_ipc_is_connected = conn_fn;
+        LOG_INFO(GPU, "IPC frame sink registered (%s).", write_fn ? "active" : "cleared");
+    }
+
     void RenderFrame(guest_addr_t framebuffer_addr) {
         // In headless mode (IPC) there is no GLFW window, but we still need
         // to write frames to shared memory.  Skip the window-only paths and
         // jump straight to the IPC write at the bottom.
         if (!g_window || !g_hwnd) {
-            // IPC: share the boot screen / current DIB buffer with frontend.
-            if (g_ipc_is_connected && g_ipc_is_connected() && !g_dib_buffer.empty()) {
+            // Headless + IPC (the launcher's mode). Found 2026-09-06 (TASKS
+            // 4.14): the DIB buffer is only allocated when a window is created,
+            // so this branch's "buffer non-empty" guard was never true and the
+            // launcher never received a frame; and nothing here converted the
+            // guest framebuffer even if it had. Now: allocate on first use,
+            // blit the guest frame when there is one, and publish only then --
+            // a real frame is what tells the launcher the game is up, so the
+            // boot overlay must not be dismissed by a black buffer.
+            if (g_ipc_is_connected && g_ipc_is_connected() && framebuffer_addr != 0) {
+                if (g_dib_buffer.empty())
+                    g_dib_buffer.assign(static_cast<size_t>(g_width) * g_height, 0xFF000000u);
+                if (g_boot_active.exchange(false, std::memory_order_acq_rel)) {
+                    LOG_INFO(GPU, "First guest frame published over IPC (headless) - boot screen complete.");
+                }
+                std::fill(g_dib_buffer.begin(), g_dib_buffer.end(), 0xFF000000u);
+                if (!BlitGuestFramebufferToDib(framebuffer_addr)) {
+                    LOG_WARN(GPU, "RenderFrame(headless): fault reading guest framebuffer 0x%llx; frame not published.", framebuffer_addr);
+                    return;
+                }
                 g_ipc_write_frame(g_dib_buffer.data(),
                                   static_cast<uint32_t>(g_width),
                                   static_cast<uint32_t>(g_height),

@@ -490,12 +490,43 @@ Ordered by dependency, one subsystem per change (Rule 10):
     the shell only skips a frame it reads as wider than 1920, which a clamped
     frame never is. Dreaming Sarah composites at 2160x1080, so under IPC it
     would show cropped, not blank.
-  Checked: the headless present path does call the hook -
-  GPU::RenderFrame, with no window, writes g_dib_buffer over IPC when
-  connected AND the DIB buffer is non-empty (vulkan_backend.cpp ~777).
-  NEXT (first boundary): whether the Null device ever fills g_dib_buffer
-  for a headless IPC run - if it stays empty, every frame is silently
-  dropped and the shell never sees one. Then the boot-phase reporting over IPC (the overlay
+  ROOT CAUSE FOUND AND FIXED (VERIFIED 2026-09-06): two defects stacked.
+  (a) src/ipc/ipc_gpu_bridge.h defined the IPC hook pointers AND their
+  setter as C++17 inline - one copy per module. main.cpp (CLI executable)
+  called the header-inline setter and filled the executable's copies;
+  GPU::RenderFrame in pcsx5_core.dll read the DLL's copies, null forever.
+  Nothing in the windowed or in-process paths uses the hook, so only the
+  launcher was blind. Fix: the setter is a real function defined in
+  vulkan_backend.cpp and exported from the DLL (declared PCSX5_API in
+  gpu.h); the header keeps only the pointer variables. (b) In headless mode
+  the DIB buffer was never allocated (only window creation allocated it) and
+  the headless branch never converted the guest framebuffer, so even with a
+  live hook nothing could be published. Fix: allocate on first use, blit
+  the guest frame, publish only when a real frame exists. Evidence: the
+  core's own log for a shell launch (logging.file_path in the shell's
+  per-title override, written to the untracked .work directory): "IPC frame sink registered
+  (active)" at startup and "First guest frame published over IPC
+  (headless)" at 5.5 s; the shell hid the boot overlay at 13.8 s
+  (artifacts/runtime/SHELL_20260906_053150/frames/frame_0012.png). ctest
+  gpu/headless/ipc/agc subsets green. No unit test: the defect is a
+  cross-module linkage property that a single-module test cannot exhibit;
+  the shell run is the test and is recorded here.
+  REMAINING, in order:
+  1. SOFT BOUNDARY - the published frame is black: headless runs on the Null
+     device, so the AGC deferred composite never rasterises into guest memory
+     and the windowed path presents from a Vulkan image, not from memory.
+     The launcher's IPC mode needs an offscreen Vulkan context (no GLFW
+     window) with a readback into the DIB buffer - a known technique,
+     bounded work, its own iteration (GPU subsystem).
+  2. The "Game may be unresponsive" banner appears at ~30 s while frames
+     flow (frame_0020.png): it keys on the IPC game_state, which the core
+     never advances past boot. The core should set Running on the first
+     published frame (SetGameState exists in ipc_server.cpp).
+  3. The boot overlay's six steps never advance over IPC (phases are raised
+     only by the in-process path in GameSession.cs).
+  4. A Force Stop from the banner is reported as "CRASH DIAGNOSTICS ...
+     exit 0xFFFFFFFF" (frame_0028.png); a user-initiated stop is not a crash.
+  Then the boot-phase reporting over IPC (the overlay
   keys on log lines the IPC path does not raise). Then the misreported
   Force Stop.
 
