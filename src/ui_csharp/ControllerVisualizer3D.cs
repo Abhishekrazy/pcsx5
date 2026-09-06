@@ -210,7 +210,9 @@ namespace Pcsx5Ui
                     {
                         // The stick island includes its shaft down inside the shell; seen
                         // through the hole from the side it poked out below the body.
-                        SplitFront(kv.Value, -0.285, out var above, out var shaft, anyVertex: true);
+                        // Cut a little inside the shell so the rounded base survives; the
+                        // dark well hides the short stub.
+                        SplitFront(kv.Value, -0.25, out var above, out var shaft, anyVertex: true);
                         geom = above;
                     }
                     if (isCap && kv.Key == "1001" && diff != null)
@@ -385,7 +387,9 @@ namespace Pcsx5Ui
         private static Point3D PivotFor(string name, Point3D mn, Point3D mx)
         {
             double cx = (mn.X + mx.X) / 2, cy = (mn.Y + mx.Y) / 2, cz = (mn.Z + mx.Z) / 2;
-            if (name == "l2" || name == "r2") return new Point3D(cx, mx.Y - 0.015, mx.Z - 0.01);   // hinge at the top-back corner: nothing is behind the pivot to swing up through the shell
+            // Trigger hinge: at the trigger's TOP edge on the body side (y ~ 0, the
+            // shell's mid-plane), so the free end below swings inward on press.
+            if (name == "l2" || name == "r2") return new Point3D(cx, 0.0, mx.Z - 0.005);
             if (name == "l1" || name == "r1") return new Point3D(cx, cy, mx.Z);   // top edge
             if (name == "stick_l" || name == "stick_r") return new Point3D(cx, mx.Y, cz);                      // base (body side)
             return new Point3D(cx, cy, cz);
