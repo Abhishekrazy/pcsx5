@@ -78,6 +78,7 @@ namespace Pcsx5Ui
         {
             var c = HsvToRgb(_h, _s, _v);
             _syncing = true;
+            HueSlider.Value = _h;   // the bar's thumb follows stick/plane changes too
             SvHueFill.Fill = new SolidColorBrush(HsvToRgb(_h, 1, 1));
             Preview.Background = new SolidColorBrush(c);
             HexBox.Text = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
