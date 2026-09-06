@@ -7,6 +7,7 @@
          with `fixed` buffers, which require unsafe blocks. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseWpf>true</UseWpf>
+    <UseWindowsForms>true</UseWindowsForms>   <!-- Helix Viewport3DX hosts its D3D surface via WindowsFormsIntegration -->
     <AssemblyName>pcsx5</AssemblyName>
     <ApplicationTitle>PCSX5 PlayStation 5 Emulator</ApplicationTitle>
     <ApplicationIcon>pcsx5_icon.ico</ApplicationIcon>
@@ -51,6 +52,11 @@
          (Controller Setup speaker/mic testers). -->
     <PackageReference Include="Clowd.Squirrel" Version="2.11.1" />
     <PackageReference Include="NAudio" Version="2.3.0" />
+    <!-- 3D DualSense renderer (Input tab testing view): Direct3D 11 with real
+         PBR shaders (base colour, normal, roughness/metallic maps), which WPF's
+         own Viewport3D cannot do. MIT. Owner: shell. Update: bump the pin, run
+         the Input popup capture. See architecture/decisions/ADR-004-3d-pad-renderer.md. -->
+    <PackageReference Include="HelixToolkit.SharpDX.Core.Wpf" Version="2.27.3" />
   </ItemGroup>
 
   <!-- Localization files.  I18n.Load looks for assets/lang next to the app and

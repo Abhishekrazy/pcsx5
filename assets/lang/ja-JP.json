@@ -1,5 +1,5 @@
 {
-  "about.credits_desc": "DualSenseWindows (Ludwig Füchsl, MIT) · LibAtrac9 (MIT) · libopus (Xiph.Org, BSD-3) · NAudio · Squirrel · 3D DualSense model by AHarmlessPotato (CC-BY-4.0)",
+  "about.credits_desc": "DualSenseWindows (Ludwig Füchsl, MIT) · LibAtrac9 (MIT) · libopus (Xiph.Org, BSD-3) · NAudio · Squirrel · Helix Toolkit (MIT) · 3D DualSense model by AHarmlessPotato (CC-BY-4.0)",
   "about.credits_title": "クレジット",
   "about.line1": "PCSX5 — PlayStation 5 emulator",
   "about.line2": "コア: pcsx5_core.dll（シェルから別プロセスで実行）",

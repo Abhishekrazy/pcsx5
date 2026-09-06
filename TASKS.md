@@ -146,6 +146,17 @@ updater packages uploaded by hand (see the packaging item).
   strings and controls without `AutomationProperties.Name`. The rule is that
   no change adds to it; paying it down is a separate pass.
 
+- [x] **3D pad renderer swapped to Helix Toolkit (D3D11) for the normal map**
+  (2026-09-07, user decision; ADR-004). WPF's Viewport3D has no shader stage,
+  so the model's normal and roughness maps were unusable; the pad now renders
+  through HelixToolkit.SharpDX.Core.Wpf 2.27.3 (MIT, pinned) with base colour
+  + normal map and a plastic specular. Found on the way: Helix's PBR material
+  did not sample this model's albedo map (Phong path used instead), and Helix
+  drifts when a Transform3D is mutated in place (fresh MatrixTransform3D per
+  update). Textures now shipped unbaked plus *_normal and
+  *_metallicRoughness at 1024. Seen: artifacts/runtime/SHELL_20260907_023417
+  frames/frame_0002.png (embossed PS logo, speaker holes, creases).
+
 - [ ] **Compat refresh from the database erases the local evidence.**
   `RefreshCompatFromDatabase` rewrites `compat_seed/titles/<id>.json` with
   `source=database` and drops the `evidence` sentence the curated record
