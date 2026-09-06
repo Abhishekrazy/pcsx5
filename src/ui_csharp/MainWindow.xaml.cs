@@ -4747,7 +4747,17 @@ namespace Pcsx5Ui
             // Press & hold 1.0s -> close game and navigate to Home/Library
             // Tap PS button -> show/dismiss pause menu overlay
             bool psPressed = (pad.Buttons & 0x10000u) != 0;
-            if (psPressed)
+            if (InputTestOverlay != null && InputTestOverlay.Visibility == Visibility.Visible)
+            {
+                // The testing popup owns PS (a tap is a test, a 2 s hold closes it,
+                // handled in the input tick). This timer's 1 s hold was firing
+                // "return to Library" underneath the popup, so the Input tab was
+                // gone when the popup closed. Swallow the whole press, release
+                // included, so nothing fires once the popup is closed either.
+                _psDown = psPressed;
+                _psHoldTriggered = true;
+            }
+            else if (psPressed)
             {
                 if (!_psDown)
                 {
