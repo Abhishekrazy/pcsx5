@@ -78,6 +78,8 @@ namespace Pcsx5Ui
             Unloaded += (s, e) => Stop();
         }
 
+        private void LogFallback(string msg) { try { TestStatusText.Text = msg; } catch { } }
+
         // ── lifecycle ───────────────────────────────────────────────────────
         private void Start()
         {
@@ -89,6 +91,15 @@ namespace Pcsx5Ui
             else
             {
                 LoadTheme(System.IO.Path.Combine(_assetDir, "layout.json"));
+                // The 3D pad lives beside the 2D sprites: assets/gamepad/dualsense3d.
+                try
+                {
+                    Pad3D.Load(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(_assetDir) ?? _assetDir, "dualsense3d"));
+                }
+                catch (Exception ex) { LogFallback("3D pad failed to load: " + ex.Message); }
+                bool has3d = Pad3D.IsLoaded3D;
+                Pad3D.Visibility = has3d ? Visibility.Visible : Visibility.Collapsed;
+                Pad2DHost.Visibility = has3d ? Visibility.Collapsed : Visibility.Visible;
             }
 
             RescanPads();
@@ -198,6 +209,8 @@ namespace Pcsx5Ui
             UpdateDeviceInfo();
             PushHistory();
             PaintController();
+            Pad3D.SetPlayerIndex(_padIndex + 1);
+            Pad3D.Update(ref _state, _haveState);
             PaintGraphs();
             if (_inputTest) AccumulateInputTest();
         }
@@ -232,7 +245,13 @@ namespace Pcsx5Ui
 
         private void PushHistory()
         {
-            _accelHist[0, _histPos] = _state.AccelX; _accelHist[1, _histPos] = _state.AccelY; _accelHist[2, _histPos] = _state.AccelZ;
+            // The core hands over the RAW int16 accelerometer; normalize it to g by the
+            // pad's own resting magnitude (learnt slowly) so the graph reads in g on a
+            // fixed scale instead of auto-zooming into sensor noise.
+            double am = Math.Sqrt((double)_state.AccelX * _state.AccelX + (double)_state.AccelY * _state.AccelY + (double)_state.AccelZ * _state.AccelZ);
+            if (am > 1) { if (_gRest <= 0) _gRest = am; else _gRest += (am - _gRest) * 0.02; }
+            float gn = (float)(_gRest > 0 ? 1.0 / _gRest : 0);
+            _accelHist[0, _histPos] = _state.AccelX * gn; _accelHist[1, _histPos] = _state.AccelY * gn; _accelHist[2, _histPos] = _state.AccelZ * gn;
             _gyroHist[0, _histPos] = _state.GyroX;   _gyroHist[1, _histPos] = _state.GyroY;   _gyroHist[2, _histPos] = _state.GyroZ;
             _histPos = (_histPos + 1) % HistoryLen;
         }
@@ -714,10 +733,11 @@ namespace Pcsx5Ui
         // turned the small noise on a near-zero axis into a full-height square
         // wave -- a graph that looked alive and meant nothing.
         private double _accelScale = 1, _gyroScale = 1;
+        private double _gRest;   // accelerometer magnitude at rest (= 1 g), raw units
 
         private void PaintGraphs()
         {
-            _accelScale = DrawGraph(AccelGraph, _accelHist, _accelScale);
+            _accelScale = DrawGraph(AccelGraph, _accelHist, _accelScale, 2.0);   // fixed +/-2 g
             _gyroScale = DrawGraph(GyroGraph, _gyroHist, _gyroScale);
         }
 
@@ -726,7 +746,7 @@ namespace Pcsx5Ui
         /// <summary>Draws three axes over the history window. Returns the scale
         /// used, which decays slowly so a burst of motion does not leave the
         /// graph flattened forever afterwards.</summary>
-        private double DrawGraph(Canvas canvas, float[,] hist, double prevScale)
+        private double DrawGraph(Canvas canvas, float[,] hist, double prevScale, double fixedScale = 0)
         {
             canvas.Children.Clear();
             double w = canvas.ActualWidth, h = canvas.ActualHeight;
@@ -739,6 +759,7 @@ namespace Pcsx5Ui
             // Rise immediately, fall over ~2 s so the trace stays readable.
             double scale = peak > prevScale ? peak : prevScale * 0.985 + peak * 0.015;
             if (scale < 1) scale = 1;
+            if (fixedScale > 0) scale = fixedScale;
 
             canvas.Children.Add(new Line { X1 = 0, X2 = w, Y1 = h / 2, Y2 = h / 2, Stroke = (Brush)Application.Current.Resources["ThemeHairline"], StrokeThickness = 0.5, Opacity = 0.6 });
             for (int axis = 0; axis < 3; axis++)

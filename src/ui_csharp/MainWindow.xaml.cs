@@ -222,6 +222,13 @@ namespace Pcsx5Ui
             catch { }
 
             InitializeComponent();
+            // Pad navigation moves keyboard focus; whatever receives it must be
+            // scrolled into view, on every screen, or the focus ring walks off
+            // the visible area (user report, Settings sub-pages and Input grid).
+            AddHandler(Keyboard.GotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler((s, e) =>
+            {
+                if (e.NewFocus is FrameworkElement fe && !(fe is Window)) { try { fe.BringIntoView(); } catch { } }
+            }), true);
             InitializeAudioPlayer();
             this.Closed += MainWindow_Closed;
 
@@ -363,6 +370,7 @@ namespace Pcsx5Ui
                     {
                         LoadGames();
                         MaybeShowFirstRunSetup();
+                        ApplyLightbarFromConfig();
                     });
                 });
 
@@ -1006,24 +1014,7 @@ namespace Pcsx5Ui
 
             DetailPath.Text = game.EbootPath;
 
-            DetailCompatText.Text = game.CompatStatus;
-            // Compatibility tier badge: the standard six-tier palette (the colours
-            // the user provided), shown as a tint of the tier colour with the
-            // bright colour as text, matching the artboard hero.
-            var tier = CompatTierColor(game.CompatStatus);
-            if (tier.HasValue)
-            {
-                var c = tier.Value;
-                var fill = new SolidColorBrush(Color.FromArgb(0x2E, c.R, c.G, c.B)); fill.Freeze();
-                var text = new SolidColorBrush(c); text.Freeze();
-                DetailCompatBadge.Background = fill;
-                DetailCompatText.Foreground = text;
-            }
-            else   // untested / unknown -> neutral
-            {
-                DetailCompatBadge.Background = (Brush)FindResource("ThemeRaised");
-                DetailCompatText.Foreground = (Brush)FindResource("ThemeTextMuted");
-            }
+            ApplyCompatBadge(game.CompatStatus);
 
             var coverImage = LoadImageHelper(game.CoverPath);
             if (coverImage != null)
@@ -1133,7 +1124,7 @@ namespace Pcsx5Ui
             }
 
             string musicPath = game.MusicPath;
-            double volume = _config.audio.volume;
+            double volume = Math.Max(0, Math.Min(1, _config.ui.title_music_volume));
 
             Task.Run(async () =>
             {
@@ -1304,6 +1295,7 @@ namespace Pcsx5Ui
         private void LaunchButton_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedGame == null) return;
+            SetTitleMusicAudible(false);   // the lobby music ends when Play is pressed
 
             // Aggressively clean up any orphaned emulator processes on the system first
             try
@@ -1342,6 +1334,7 @@ namespace Pcsx5Ui
 
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
+            ToolsHubView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Collapsed;
             GameView.Visibility = Visibility.Visible;
@@ -1486,6 +1479,9 @@ namespace Pcsx5Ui
             }
 
             if (_selectedGame != null) TriggerTitleMusic(_selectedGame);
+
+            // Pull the latest community status for the title we just ran.
+            RefreshCompatFromDatabase(_selectedGame);
         }
 
         private void OnGameCrashed(int exitCode, string message)
@@ -1876,15 +1872,14 @@ namespace Pcsx5Ui
             _folderPickerTarget = target;
 
             FolderPickerTitle.Text = I18n.Tr("picker.title");
-            FolderPickerUpBtn.Content = I18n.Tr("picker.up");
-            FolderPickerOpenBtn.Content = I18n.Tr("picker.open");
+            FolderPickerSubtitle.Text = I18n.Tr("picker.subtitle");
             FolderPickerSelectBtn.Content = I18n.Tr("picker.select");
             FolderPickerCancelBtn.Content = I18n.Tr("picker.cancel");
-            FolderPickerHints.Text = ApplyGlyphs(I18n.Tr("picker.hints"));   // was shown raw (%DEV% %DIR% ...) until 2026-09-06
+            // The controller glyph legend now carries navigation; the old Up/Open
+            // buttons are gone (".." row, double-click and the pad drive that.)
+            BuildFooterHintChips(I18n.Tr("picker.hints"), FolderPickerHintChips);
 
             System.Windows.Automation.AutomationProperties.SetName(FolderPickerList, I18n.Tr("picker.list_name"));
-            System.Windows.Automation.AutomationProperties.SetName(FolderPickerUpBtn, I18n.Tr("picker.up"));
-            System.Windows.Automation.AutomationProperties.SetName(FolderPickerOpenBtn, I18n.Tr("picker.open"));
             System.Windows.Automation.AutomationProperties.SetName(FolderPickerSelectBtn, I18n.Tr("picker.select"));
             System.Windows.Automation.AutomationProperties.SetName(FolderPickerCancelBtn, I18n.Tr("picker.cancel"));
 
@@ -1925,7 +1920,7 @@ namespace Pcsx5Ui
                 // Parent entry; a null FullPath means "back to the drive list".
                 string parent = null;
                 try { parent = Directory.GetParent(path)?.FullName; } catch { parent = null; }
-                items.Add(new FolderEntry { Icon = "⬆", Name = I18n.Tr("picker.parent"), FullPath = parent, IsParent = true });
+                items.Add(new FolderEntry { Icon = "⬆", Name = "..", FullPath = parent, IsParent = true, Meta = I18n.Tr("picker.up_one") });
 
                 string[] dirs = null;
                 string problem = null;
@@ -1945,13 +1940,17 @@ namespace Pcsx5Ui
                         string name = null;
                         try { name = Path.GetFileName(d); } catch { continue; }
                         if (string.IsNullOrEmpty(name)) continue;
-                        items.Add(new FolderEntry { Icon = "📁", Name = name, FullPath = d });
+                        var entry = new FolderEntry { Icon = "📁", Name = name, FullPath = d };
+                        AnnotateEboot(entry, d);   // eboot.bin -> accent icon + size meta
+                        items.Add(entry);
                     }
                     if (items.Count == 1)
                         items.Add(new FolderEntry { Icon = "—", Name = I18n.Tr("picker.empty") });
                 }
             }
 
+            BuildBreadcrumb(path);
+            BuildDriveChips(path);
             FolderPickerList.ItemsSource = items;
             if (items.Count > 0)
             {
@@ -1960,6 +1959,127 @@ namespace Pcsx5Ui
             }
             // "Select this folder" is meaningless while the drive list is shown.
             FolderPickerSelectBtn.IsEnabled = !string.IsNullOrEmpty(path);
+        }
+
+        /// <summary>Mark a folder that holds a PS5 eboot so the list shows it with
+        /// the accent game icon and its eboot size, the way the concept does. The
+        /// eboot may sit directly in the folder or in a single -app0 child. Cheap
+        /// and best-effort: any I/O error just leaves it a plain folder.</summary>
+        private static void AnnotateEboot(FolderEntry entry, string dir)
+        {
+            try
+            {
+                string eboot = Path.Combine(dir, "eboot.bin");
+                if (!File.Exists(eboot))
+                {
+                    // one-level probe: <id>-app0/eboot.bin is the common dump shape
+                    foreach (var sub in Directory.EnumerateDirectories(dir))
+                    {
+                        string cand = Path.Combine(sub, "eboot.bin");
+                        if (File.Exists(cand)) { eboot = cand; break; }
+                        eboot = null;
+                    }
+                    if (eboot == null) return;
+                }
+                long bytes = new FileInfo(eboot).Length;
+                entry.IsGame = true;
+                entry.Meta = "eboot.bin · " + FormatSizeShort(bytes);
+            }
+            catch { /* leave as a plain folder */ }
+        }
+
+        // Concept-style size: whole numbers at 100+, one decimal below ("102 MB",
+        // "8.5 GB"). The other FormatBytes keeps two decimals for detail views.
+        private static string FormatSizeShort(long bytes)
+        {
+            string[] units = { "B", "KB", "MB", "GB", "TB" };
+            double v = bytes; int u = 0;
+            while (v >= 1024 && u < units.Length - 1) { v /= 1024; u++; }
+            return (v >= 100 || u == 0 ? v.ToString("0") : v.ToString("0.0")) + " " + units[u];
+        }
+
+        /// <summary>Render the current path as the concept's mono breadcrumb: dim
+        /// segments split by dim slashes, the final segment bright.</summary>
+        private void BuildBreadcrumb(string path)
+        {
+            if (FolderPickerBreadcrumb == null) return;
+            FolderPickerBreadcrumb.Children.Clear();
+            // Announce the current location to assistive tech (the breadcrumb is
+            // otherwise a row of decorative segments).
+            System.Windows.Automation.AutomationProperties.SetName(FolderPickerBreadcrumb,
+                string.IsNullOrEmpty(path) ? I18n.Tr("picker.this_pc") : path);
+            var mutedBrush = (Brush)FindResource("ThemeTextMuted");
+            var textBrush = (Brush)FindResource("ThemeText");
+            var sepBrush = (Brush)FindResource("ThemeHairline");
+            double typeM = (double)FindResource("TypeM");
+
+            var segs = new List<string> { I18n.Tr("picker.this_pc") };
+            if (!string.IsNullOrEmpty(path))
+                segs.AddRange(path.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                                        StringSplitOptions.RemoveEmptyEntries));
+            for (int i = 0; i < segs.Count; i++)
+            {
+                if (i > 0)
+                    FolderPickerBreadcrumb.Children.Add(new TextBlock { Text = "/", FontFamily = new System.Windows.Media.FontFamily("Consolas"), FontSize = typeM, Foreground = sepBrush, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+                FolderPickerBreadcrumb.Children.Add(new TextBlock
+                {
+                    Text = segs[i],
+                    FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                    FontSize = typeM,
+                    Foreground = i == segs.Count - 1 ? textBrush : mutedBrush,
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+            }
+        }
+
+        /// <summary>Quick drive chips: "This PC" plus each ready drive, the chip
+        /// containing the current path highlighted. Clicking one jumps there.</summary>
+        private void BuildDriveChips(string path)
+        {
+            if (FolderPickerDriveChips == null) return;
+            FolderPickerDriveChips.Children.Clear();
+
+            string curRoot = null;
+            try { curRoot = string.IsNullOrEmpty(path) ? null : Path.GetPathRoot(path); } catch { curRoot = null; }
+
+            AddDriveChip(I18n.Tr("picker.this_pc"), null, string.IsNullOrEmpty(path));
+            // Current drive first so its highlight is always in view, then the rest.
+            var drives = SafeGetDrives();
+            bool IsCur(FolderEntry d) => curRoot != null && d.FullPath != null &&
+                string.Equals(Path.GetPathRoot(d.FullPath), curRoot, StringComparison.OrdinalIgnoreCase);
+            foreach (var d in drives.Where(IsCur)) AddDriveChip(d.Name.Trim(), d.FullPath, true);
+            foreach (var d in drives.Where(x => !IsCur(x))) AddDriveChip(d.Name.Trim(), d.FullPath, false);
+        }
+
+        private void AddDriveChip(string label, string target, bool active)
+        {
+            var text = new TextBlock
+            {
+                Text = label,
+                FontSize = (double)FindResource("TypeM"),
+                Foreground = (Brush)FindResource(active ? "ThemeText" : "ThemeTextMuted"),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var chip = new Border
+            {
+                Background = (Brush)FindResource(active ? "ThemeGround" : "ThemeRaised"),
+                BorderBrush = (Brush)FindResource(active ? "ThemeBorderStrong" : "ThemeHairline"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(14, 8, 14, 8),
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Tag = target,
+                Child = text,
+            };
+            chip.MouseLeftButtonUp += FolderPickerDriveChip_Click;
+            System.Windows.Automation.AutomationProperties.SetName(chip, label);
+            FolderPickerDriveChips.Children.Add(chip);
+        }
+
+        private void FolderPickerDriveChip_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border b) PopulateFolderPicker(b.Tag as string);
         }
 
         private List<FolderEntry> SafeGetDrives()
@@ -2199,6 +2319,7 @@ namespace Pcsx5Ui
             GameView.Visibility = Visibility.Collapsed;
             LibraryView.Visibility = Visibility.Visible;
             UpdateTabHighlight(TabLibraryBtn);
+            SetTitleMusicAudible(true);
         }
 
         private void GameConsoleButton_Click(object sender, RoutedEventArgs e)
@@ -2288,7 +2409,8 @@ namespace Pcsx5Ui
         private void ShowTab(string tabName)
         {
             if (LibraryView != null) LibraryView.Visibility = tabName == "Library" ? Visibility.Visible : Visibility.Collapsed;
-            if (AnalyzerView != null) AnalyzerView.Visibility = tabName == "Analyzer" ? Visibility.Visible : Visibility.Collapsed;
+            if (ToolsHubView != null) ToolsHubView.Visibility = (tabName == "Analyzer" || tabName == "Tools") ? Visibility.Visible : Visibility.Collapsed;
+            if (AnalyzerView != null) AnalyzerView.Visibility = Visibility.Collapsed;
             if (ControllerView != null) ControllerView.Visibility = (tabName == "Controller" || tabName == "Input") ? Visibility.Visible : Visibility.Collapsed;
             if (SettingsView != null) SettingsView.Visibility = tabName == "Settings" ? Visibility.Visible : Visibility.Collapsed;
             if (GameView != null) GameView.Visibility = tabName == "Game" ? Visibility.Visible : Visibility.Collapsed;
@@ -2538,6 +2660,73 @@ namespace Pcsx5Ui
             SetGameConsoleVisible(!_gameConsoleVisible);
         }
 
+        /// <summary>Paint the hero status badge for a status word: a tint of the
+        /// tier colour with the bright colour as text, or neutral for
+        /// untested/unknown. The standard six-tier palette.</summary>
+        private void ApplyCompatBadge(string status)
+        {
+            if (DetailCompatText == null || DetailCompatBadge == null) return;
+            DetailCompatText.Text = status;
+            var tier = CompatTierColor(status);
+            if (tier.HasValue)
+            {
+                var c = tier.Value;
+                var fill = new SolidColorBrush(Color.FromArgb(0x2E, c.R, c.G, c.B)); fill.Freeze();
+                var text = new SolidColorBrush(c); text.Freeze();
+                DetailCompatBadge.Background = fill;
+                DetailCompatText.Foreground = text;
+            }
+            else
+            {
+                DetailCompatBadge.Background = (Brush)FindResource("ThemeRaised");
+                DetailCompatText.Foreground = (Brush)FindResource("ThemeTextMuted");
+            }
+        }
+
+        /// <summary>After a run, pull the title's latest community status from the
+        /// compatibility database and reflect it: update the game's status, the
+        /// hero badge if it is selected, and the local curated record so it
+        /// persists. Network failures are silent - the local status stays.</summary>
+        private async void RefreshCompatFromDatabase(GameEntry game)
+        {
+            if (game == null || string.IsNullOrEmpty(game.TitleId)) return;
+            string status = await CompatDatabase.FetchStatusAsync(game.TitleId);
+            if (string.IsNullOrEmpty(status)) return;
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (!string.Equals(game.CompatStatus, status, StringComparison.OrdinalIgnoreCase))
+                    LogConsole($"[Compat] {game.TitleId}: database status = {status} (was {game.CompatStatus}).");
+                game.CompatStatus = status;
+                if (ReferenceEquals(_selectedGame, game)) ApplyCompatBadge(status);
+            });
+            WriteCuratedStatus(game, status);
+        }
+
+        /// <summary>Persist a fetched status to the local curated record so the
+        /// shell shows it on next launch without a network call.</summary>
+        private static void WriteCuratedStatus(GameEntry game, string status)
+        {
+            try
+            {
+                string gamesParent = Directory.GetParent(game.DirPath)?.FullName;
+                string repoRoot = gamesParent != null ? Directory.GetParent(gamesParent)?.FullName : null;
+                string baseDir = repoRoot ?? gamesParent ?? AppDomain.CurrentDomain.BaseDirectory;
+                string dir = Path.Combine(baseDir, "compat_seed", "titles");
+                Directory.CreateDirectory(dir);
+                var rec = new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["title_id"] = game.TitleId,
+                    ["title"] = game.Title ?? "",
+                    ["curated_status"] = status.ToLowerInvariant(),
+                    ["source"] = "database",
+                    ["schema"] = "pcsx5.curated.v1",
+                };
+                File.WriteAllText(Path.Combine(dir, game.TitleId + ".json"),
+                    System.Text.Json.JsonSerializer.Serialize(rec, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch { }
+        }
+
         /// <summary>The compatibility-tier colour for a status, or null for
         /// untested/unknown. The six canonical tiers use the standard palette
         /// (Perfect purple, Playable green, In-Game blue, Menus yellow, Intros
@@ -2619,10 +2808,12 @@ namespace Pcsx5Ui
 
             LibraryView.Visibility = Visibility.Visible;
             AnalyzerView.Visibility = Visibility.Collapsed;
+            ToolsHubView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Collapsed;
             // LogsView removed
             UpdateTabHighlight(TabLibraryBtn);
+            SetTitleMusicAudible(true);
             FocusFirst(LaunchButton, FullLibraryToggleBtn, SearchBox);
         }
 
@@ -2631,6 +2822,8 @@ namespace Pcsx5Ui
             bool showFull = FullLibraryGrid.Visibility != Visibility.Visible;
             FullLibraryGrid.Visibility = showFull ? Visibility.Visible : Visibility.Collapsed;
             LibraryCarousel.Visibility = showFull ? Visibility.Collapsed : Visibility.Visible;
+            // The concept's All-games page is the whole screen: the hero goes too.
+            if (LibraryHero != null) LibraryHero.Visibility = showFull ? Visibility.Collapsed : Visibility.Visible;
             FullLibraryToggleBtn.Content = showFull ? "◀ Carousel" : "View All ▸";
             if (showFull)
             {
@@ -2679,6 +2872,8 @@ namespace Pcsx5Ui
             return null;
         }
 
+        // The Tools tab lands on the hub of tool cards (concept artboard). The
+        // Boot analyzer card opens the analyzer sub-view via ToolBootAnalyzer_Click.
         private void TabAnalyzer_Click(object sender, RoutedEventArgs e)
         {
             if (GameView.Visibility == Visibility.Visible) return; // a game is embedded
@@ -2687,18 +2882,36 @@ namespace Pcsx5Ui
             MainLayoutRoot.Visibility = Visibility.Visible;
             TitleBarBorder.Visibility = Visibility.Visible;
             LibraryView.Visibility = Visibility.Collapsed;
-            AnalyzerView.Visibility = Visibility.Visible;
+            ToolsHubView.Visibility = Visibility.Visible;
+            AnalyzerView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Collapsed;
-            // LogsView removed
             UpdateTabHighlight(TabAnalyzerBtn);
+            SetTitleMusicAudible(false);
+            ShowHints("hints.tools");
+            FocusFirst(ToolCardBoot);
+        }
 
-            // Auto run analyzer on first opening if empty
-            if (_analysisResults.Count == 0 && _games.Count > 0)
-            {
-                RunBootAnalyzer();
-            }
+        // Open the Boot analyzer sub-view from its hub card.
+        private void ToolBootAnalyzer_Click(object sender, RoutedEventArgs e)
+        {
+            ToolsHubView.Visibility = Visibility.Collapsed;
+            AnalyzerView.Visibility = Visibility.Visible;
+            UpdateTabHighlight(TabAnalyzerBtn);
+            ShowHints("hints.analyzer");
+            // Populate the table with the games (unanalyzed); the user picks which
+            // to analyze. No automatic parse on open.
+            BuildAnalyzerRows();
             FocusFirst(AnalyzerListView);
+        }
+
+        // Return from the analyzer to the Tools hub.
+        private void AnalyzerBack_Click(object sender, RoutedEventArgs e)
+        {
+            AnalyzerView.Visibility = Visibility.Collapsed;
+            ToolsHubView.Visibility = Visibility.Visible;
+            ShowHints("hints.tools");
+            FocusFirst(ToolCardBoot);
         }
 
         private void TabController_Click(object sender, RoutedEventArgs e)
@@ -2709,13 +2922,46 @@ namespace Pcsx5Ui
             TitleBarBorder.Visibility = Visibility.Visible;
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
+            ToolsHubView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Visible;
             SettingsView.Visibility = Visibility.Collapsed;
             // LogsView removed
             UpdateTabHighlight(TabControllerBtn);
+            SetTitleMusicAudible(false);
 
-            StartControllerVizPolling();
-            FocusFirst(CtrlConfigCombo, BtnMapUp);
+            // Configuration inline; the testing popup opens only from its button.
+            SetInputSubTab(true);
+            FocusFirst(TestControllerBtn);
+        }
+
+        // Input sub-tabs: Configuration (mapping editor) vs Testing (live pad).
+        private void SubTabConfig_Click(object sender, RoutedEventArgs e) => SetInputSubTab(true);
+        private void SubTabTest_Click(object sender, RoutedEventArgs e) => SetInputSubTab(false);
+
+        private bool _inputSubConfig = true;
+        private DateTime? _psHoldStart;   // PS held for 2 s closes the testing popup
+
+        // Configuration is the inline body of the Input tab; Testing opens the
+        // controller-testing popup, which captures the pad while it is open.
+        private void SetInputSubTab(bool config)
+        {
+            if (InputConfigView == null || InputTestOverlay == null) return;
+            _inputSubConfig = config;
+            InputConfigView.Visibility = Visibility.Visible;
+            InputTestOverlay.Visibility = config ? Visibility.Collapsed : Visibility.Visible;
+            // The live pad only needs the reader while the popup is shown.
+            if (config) StopControllerVizPolling();
+            else { StartControllerVizPolling(); FocusFirst(InputTestCloseBtn); }
+        }
+
+        private void InputTestClose_Click(object sender, RoutedEventArgs e) => SetInputSubTab(true);
+
+        // Title music belongs to the Library: pause it on every other tab and
+        // resume where it left off when the Library comes back.
+        private void SetTitleMusicAudible(bool on)
+        {
+            if (_mediaPlayer == null) return;
+            try { if (on) _mediaPlayer.Play(); else _mediaPlayer.Pause(); } catch { }
         }
 
         private void TabSettings_Click(object sender, RoutedEventArgs e)
@@ -2727,14 +2973,15 @@ namespace Pcsx5Ui
             TitleBarBorder.Visibility = Visibility.Visible;
             LibraryView.Visibility = Visibility.Collapsed;
             AnalyzerView.Visibility = Visibility.Collapsed;
+            ToolsHubView.Visibility = Visibility.Collapsed;
             ControllerView.Visibility = Visibility.Collapsed;
             SettingsView.Visibility = Visibility.Visible;
             UpdateTabHighlight(TabSettingsBtn);
+            SetTitleMusicAudible(false);
             UpdateSettingsUiFromConfig();
-            ResetSettingsView();
-            // The hub is a Grid; focus its first real category tile instead.
-            var hub = GetHubCategoryButtons();
-            FocusFirst(hub != null && hub.Count > 0 ? hub[0] : null);
+            // Side-nav: land directly on the active section's rows (no hub).
+            OpenSettingsCategory(_activeSettingsCategory);
+            FocusFirst(SettingsNavButtons().FirstOrDefault(b => (b?.CommandParameter as string) == _activeSettingsCategory));
         }
 
         private int _settingsLevel = 1; // 1 = Main Categories Hub, 2 = Category Rows Overview, 3 = Dedicated Sub-Page
@@ -2764,6 +3011,26 @@ namespace Pcsx5Ui
             }
         }
 
+        // Side-section nav: open the section's rows and mark it active. The
+        // category is in CommandParameter; Tag carries the active flag for the style.
+        private void SettingsNav_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.CommandParameter is string category)
+                OpenSettingsCategory(category);
+        }
+
+        private Button[] SettingsNavButtons() => new[]
+        {
+            SettingsNav_Graphics, SettingsNav_Audio, SettingsNav_Input, SettingsNav_Folders,
+            SettingsNav_Emulation, SettingsNav_Logging, SettingsNav_UI, SettingsNav_About,
+        };
+
+        private void HighlightSettingsNav(string category)
+        {
+            foreach (var b in SettingsNavButtons())
+                if (b != null) b.Tag = string.Equals(b.CommandParameter as string, category, StringComparison.OrdinalIgnoreCase) ? "active" : null;
+        }
+
         private void BtnSettingsBack_Click(object sender, RoutedEventArgs e)
         {
             if (_settingsLevel == 3)
@@ -2772,7 +3039,8 @@ namespace Pcsx5Ui
             }
             else if (_settingsLevel == 2)
             {
-                ResetSettingsView();
+                // Rows are the top of the side-nav now; Back leaves Settings.
+                TabLibrary_Click(this, null);
             }
             else if (_settingsLevel == 1)
             {
@@ -2780,18 +3048,10 @@ namespace Pcsx5Ui
             }
         }
 
+        // No hub in the side-nav layout: return to the active section's rows.
         private void ResetSettingsView()
         {
-            _settingsLevel = 1;
-            if (SettingsHubView != null) SettingsHubView.Visibility = Visibility.Visible;
-            if (SettingsCategoryView != null) SettingsCategoryView.Visibility = Visibility.Collapsed;
-            if (SettingsSubPageView != null) SettingsSubPageView.Visibility = Visibility.Collapsed;
-
-            if (HubBtn_Graphics != null)
-            {
-                HubBtn_Graphics.Focus();
-                HubBtn_Graphics.BringIntoView();
-            }
+            OpenSettingsCategory(_activeSettingsCategory);
         }
 
         private string GetCategoryTitle(string category)
@@ -2840,6 +3100,10 @@ namespace Pcsx5Ui
                     list.Add(new SettingDefinition { Key = "in_backend", Title = "Gamepad Input Driver", Description = "Driver interface for DualSense/Xbox controllers", GetValueBadge = () => _config.input.backend == 0 ? "DualSense Direct HID / SDL" : "XInput Emulation", Type = "choice" });
                     list.Add(new SettingDefinition { Key = "in_deadzone", Title = "Stick Deadzone", Description = "Stick drift prevention threshold for analog sticks", GetValueBadge = () => $"{(int)(_config.input.deadzone * 100)}%", Type = "slider" });
                     list.Add(new SettingDefinition { Key = "in_rumble", Title = "Vibration & Haptics", Description = "Enable force feedback and DualSense haptic actuators", GetValueBadge = () => _config.input.rumble ? "Yes (Enabled)" : "No (Disabled)", Type = "toggle" });
+                    list.Add(new SettingDefinition { Key = "in_active_slot", Title = I18n.Tr("settings.in_active_slot"), Description = I18n.Tr("settings.in_active_slot_desc"), GetValueBadge = () => SlotName(_config.input.active_slot, true), Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "in_lightbar", Title = I18n.Tr("settings.in_lightbar"), Description = I18n.Tr("settings.in_lightbar_desc"), GetValueBadge = () => string.IsNullOrWhiteSpace(_config.input.lightbar) ? I18n.Tr("settings.lightbar_default") : _config.input.lightbar.ToUpperInvariant(), Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "in_per_game", Title = I18n.Tr("settings.in_per_game"), Description = I18n.Tr("settings.in_per_game_desc"), GetValueBadge = () => _config.input.per_game_configs ? I18n.Tr("common.enabled") : I18n.Tr("common.disabled"), Type = "toggle" });
+                    list.Add(new SettingDefinition { Key = "in_restore", Title = I18n.Tr("settings.in_restore"), Description = I18n.Tr("settings.in_restore_desc"), GetValueBadge = () => I18n.Tr("settings.action"), Type = "action" });
                     break;
                 case "Folders":
                     list.Add(new SettingDefinition { Key = "storage_folders", Title = "Game Scan Directories", Description = "Manage folders scanned on startup to discover PS5 games", GetValueBadge = () => $"{_gameFolders.Count} Folders Configured", Type = "custom" });
@@ -2863,6 +3127,7 @@ namespace Pcsx5Ui
                     list.Add(new SettingDefinition { Key = "ui_corners", Title = I18n.Tr("settings.corners"), Description = I18n.Tr("settings.corners_desc"), GetValueBadge = () => I18n.Tr("settings.corners_" + (_config.ui.corners ?? "rounded")), Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_ground", Title = I18n.Tr("settings.ground"), Description = I18n.Tr("settings.ground_desc"), GetValueBadge = () => string.IsNullOrEmpty(_config.ui.ground) ? I18n.Tr("settings.ground_default") : _config.ui.ground.ToUpperInvariant(), Type = "choice" });
                     list.Add(new SettingDefinition { Key = "ui_scale", Title = "UI Scale (Display Size)", Description = "Scale factor for high-DPI monitors and large TV screens", GetValueBadge = () => $"{_config.ui.scale * 100:0}%", Type = "choice" });
+                    list.Add(new SettingDefinition { Key = "ui_music_volume", Title = I18n.Tr("settings.music_volume"), Description = I18n.Tr("settings.music_volume_desc"), GetValueBadge = () => $"{(int)(_config.ui.title_music_volume * 100)}%", Type = "slider" });
                     list.Add(new SettingDefinition { Key = "ui_fullscreen", Title = I18n.Tr("settings.ui_fullscreen.title"), Description = I18n.Tr("settings.ui_fullscreen.desc"), GetValueBadge = () => _config.ui.start_fullscreen ? I18n.Tr("common.enabled") : I18n.Tr("common.disabled"), Type = "toggle" });
                     break;
                 case "About":
@@ -2912,6 +3177,7 @@ namespace Pcsx5Ui
             if (SettingsCategoryViewHeaderTitle != null)
                 SettingsCategoryViewHeaderTitle.Text = GetCategoryTitle(category);
 
+            HighlightSettingsNav(category);
             PopulateCategoryRows(category);
         }
 
@@ -2976,7 +3242,7 @@ namespace Pcsx5Ui
                 };
                 // "info" rows are read-only facts (the System Information page):
                 // no chevron, no navigation, so they do not open an empty sub-page.
-                bool isInfo = s.Type == "info";
+                bool isInfo = s.Type == "info" && s.Key != "about_credits";   // credits open the full list
                 if (!isInfo)
                 {
                     Grid.SetColumn(chevron, 2);
@@ -2984,7 +3250,9 @@ namespace Pcsx5Ui
                 }
                 rowBtn.Content = grid;
                 string capturedKey = s.Key;
-                if (!isInfo) rowBtn.Click += (snd, ea) => OpenSettingsSubPage(capturedKey);
+                if (capturedKey == "about_credits") rowBtn.Click += (snd, ea) => ShowCredits();
+                else if (s.Type == "action") rowBtn.Click += (snd, ea) => RunSettingAction(capturedKey);
+                else if (!isInfo) rowBtn.Click += (snd, ea) => OpenSettingsSubPage(capturedKey);
 
                 SettingsCategoryRowsPanel.Children.Add(rowBtn);
                 if (firstBtn == null) firstBtn = rowBtn;
@@ -3031,6 +3299,7 @@ namespace Pcsx5Ui
                 else if (settingKey == "ui_fullscreen") { isEnabled = _config.ui.start_fullscreen; setter = v => { _config.ui.start_fullscreen = v; ApplyShellFullscreen(v); }; }
                 else if (settingKey == "snd_title_music") { isEnabled = _config.ui.title_music_enabled; setter = v => _config.ui.title_music_enabled = v; }
                 else if (settingKey == "in_rumble") { isEnabled = _config.input.rumble; setter = v => _config.input.rumble = v; }
+                else if (settingKey == "in_per_game") { isEnabled = _config.input.per_game_configs; setter = v => _config.input.per_game_configs = v; }
                 else if (settingKey == "hle_strict") { isEnabled = _config.hle.strict_imports; setter = v => _config.hle.strict_imports = v; }
                 else if (settingKey == "hle_trace") { isEnabled = _config.hle.trace_calls; setter = v => _config.hle.trace_calls = v; }
                 else if (settingKey == "hle_dump") { isEnabled = _config.crash.write_minidump; setter = v => _config.crash.write_minidump = v; }
@@ -3083,6 +3352,13 @@ namespace Pcsx5Ui
                     minVal = 0.0; maxVal = 1.0; stepVal = 0.05;
                     formatVal = v => $"{(int)(v * 100)}% Volume";
                     sliderSetter = v => _config.audio.volume = v;
+                }
+                else if (settingKey == "ui_music_volume")
+                {
+                    currentVal = _config.ui.title_music_volume;
+                    minVal = 0.0; maxVal = 1.0; stepVal = 0.05;
+                    formatVal = v => $"{(int)(v * 100)}%";
+                    sliderSetter = v => { _config.ui.title_music_volume = v; try { if (_mediaPlayer != null) _mediaPlayer.Volume = v; } catch { } };
                 }
                 else if (settingKey == "snd_buffer")
                 {
@@ -3160,6 +3436,7 @@ namespace Pcsx5Ui
                     if (settingKey == "gpu_res_scale") sld.Value = 1.0;
                     else if (settingKey == "snd_volume") sld.Value = 1.0;
                     else if (settingKey == "snd_buffer") sld.Value = 50;
+                    else if (settingKey == "ui_music_volume") sld.Value = 0.6;
                     else if (settingKey == "in_deadzone") sld.Value = 0.15;
                     else if (settingKey == "hle_trace_cap") sld.Value = 256;
                 };
@@ -3245,7 +3522,9 @@ namespace Pcsx5Ui
             else
             {
                 // MULTI-CHOICE RADIO PICKER (Vulkan, Languages, Log levels, Scales, Window Sizes)
-                var optionsPanel = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+                // A wrap grid, not a column: the concept's swatch/option pages use
+                // the width (user report: one narrow column in an empty page).
+                var optionsPanel = new WrapPanel { Margin = new Thickness(0, 10, 0, 0), ItemWidth = 280 };
                 Button firstOptionBtn = null;
 
                 if (settingKey == "gpu_renderer")
@@ -3390,8 +3669,81 @@ namespace Pcsx5Ui
                     }
                 }
 
+                else if (settingKey == "in_active_slot")
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        int slot = i;
+                        bool isSel = _config.input.active_slot == slot;
+                        var btn = CreateOptionChoiceButton(SlotName(slot, false), slot == 4 ? "XInput" : $"Player {slot + 1}", isSel, () => {
+                            _config.input.active_slot = slot; ApplyLightbarFromConfig(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                }
+                else if (settingKey == "in_lightbar")
+                {
+                    // "Pad default" plus presets as a grid, then the picker for a custom
+                    // colour (its hue strip and hex field work with the pad).
+                    var presets = new[] { (I18n.Tr("settings.lightbar_default"), ""), ("PlayStation blue", "#005AFF"), ("Red", "#FF2A2A"), ("Green", "#1FE06A"),
+                                          ("Purple", "#B400FF"), ("Orange", "#FF8A1A"), ("Cyan", "#00E0E0"), ("Pink", "#FF2D9B"), ("White", "#F2F4F8") };
+                    string cur = (_config.input.lightbar ?? "").Trim();
+                    bool anyPreset = false;
+                    foreach (var p in presets)
+                    {
+                        bool isSel = string.Equals(cur, p.Item2, StringComparison.OrdinalIgnoreCase);
+                        anyPreset |= isSel;
+                        var btn = CreateOptionChoiceButton(p.Item1, string.IsNullOrEmpty(p.Item2) ? I18n.Tr("settings.lightbar_default_desc") : p.Item2, isSel, () => {
+                            _config.input.lightbar = p.Item2; ApplyLightbarFromConfig(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                        if (!string.IsNullOrEmpty(p.Item2))
+                        {
+                            try { btn.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(p.Item2)); btn.BorderThickness = new Thickness(0, 0, 0, 3); } catch { }
+                        }
+                        optionsPanel.Children.Add(btn);
+                        if (isSel) firstOptionBtn = btn;
+                    }
+                    var picker = new ColorPickerControl { Margin = new Thickness(0, 18, 0, 0), MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Left };
+                    var c0 = LightbarOverride();
+                    if (c0.HasValue) picker.SelectedColor = c0.Value;
+                    picker.ColorChanged += (snd, c) =>
+                    {
+                        _config.input.lightbar = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+                        ApplyLightbarFromConfig();
+                        SaveConfig();
+                    };
+                    SettingsSubPageContentContainer.Children.Add(optionsPanel);
+                    SettingsSubPageContentContainer.Children.Add(new TextBlock { Text = I18n.Tr("settings.lightbar_custom"), FontSize = 12, Margin = new Thickness(0, 16, 0, 0), Foreground = (Brush)FindResource("ThemeTextMuted") });
+                    SettingsSubPageContentContainer.Children.Add(picker);
+                    if (firstOptionBtn != null) firstOptionBtn.Focus(); else picker.NavControls.FirstOrDefault()?.Focus();
+                    return;
+                }
+
                 SettingsSubPageContentContainer.Children.Add(optionsPanel);
                 if (firstOptionBtn != null) firstOptionBtn.Focus();
+            }
+        }
+
+        private string SlotName(int slot, bool shortForm)
+        {
+            switch (slot)
+            {
+                case 0: return I18n.Tr("ui.player_1_dualsense_wireless_controller");
+                case 1: return I18n.Tr("ui.player_2_controller_slot_2");
+                case 2: return I18n.Tr("ui.player_3_controller_slot_3");
+                case 3: return I18n.Tr("ui.player_4_controller_slot_4");
+                default: return I18n.Tr("ui.xbox_controller_xinput");
+            }
+        }
+
+        // Rows of Type "action" run something instead of opening a sub-page.
+        private void RunSettingAction(string key)
+        {
+            if (key == "in_restore")
+            {
+                RestoreDefaultMappings_Click(this, null);
+                PopulateCategoryRows(_activeSettingsCategory);
             }
         }
 
@@ -3472,14 +3824,36 @@ namespace Pcsx5Ui
             MessageBox.Show("Controller vibration test pulse sent successfully!", "Haptic Feedback Test", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
-        private void CtrlColorSliders_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        // Input tab -> the tuning rows now live in Settings > Accessories & Controllers.
+        private void ControllerSettings_Click(object sender, RoutedEventArgs e)
         {
-            if (CtrlColorBox != null && CtrlColorRSlider != null && CtrlColorGSlider != null && CtrlColorBSlider != null)
+            TabSettings_Click(this, null);
+            OpenSettingsCategory("Input");
+            FocusFirst(SettingsNavButtons().FirstOrDefault(b => (b?.CommandParameter as string) == "Input"));
+        }
+
+        /// <summary>The configured lightbar override as a colour, or null for the
+        /// pad's own player colour.</summary>
+        private Color? LightbarOverride()
+        {
+            string hex = _config.input.lightbar;
+            if (string.IsNullOrWhiteSpace(hex)) return null;
+            try { return (Color)ColorConverter.ConvertFromString(hex.Trim()); } catch { return null; }
+        }
+
+        /// <summary>Push the lightbar setting to the pad and the 3D pad: the
+        /// override colour if set, else the active slot's player colour.</summary>
+        private void ApplyLightbarFromConfig()
+        {
+            var c = LightbarOverride();
+            if (c.HasValue)
             {
-                byte r = (byte)CtrlColorRSlider.Value;
-                byte g = (byte)CtrlColorGSlider.Value;
-                byte b = (byte)CtrlColorBSlider.Value;
-                CtrlColorBox.Background = new SolidColorBrush(Color.FromRgb(r, g, b));
+                try { CoreBridge.pcsx5_pad_set_lightbar(0, c.Value.R, c.Value.G, c.Value.B); } catch { }
+                if (InputTab?.Pad3D != null) InputTab.Pad3D.LightbarColor = c.Value;
+            }
+            else
+            {
+                ApplyActiveGamepadSlot(_config.input.active_slot);
             }
         }
 
@@ -3825,10 +4199,12 @@ namespace Pcsx5Ui
         /// segment is a square box with the PlayStation control glyph plus its
         /// action label. The device token (%DEV%) is dropped; the glyphs are the
         /// controls themselves.</summary>
-        private void BuildFooterHintChips(string template)
+        private void BuildFooterHintChips(string template) => BuildFooterHintChips(template, FooterHintChips);
+
+        private void BuildFooterHintChips(string template, StackPanel target)
         {
-            if (FooterHintChips == null) return;
-            FooterHintChips.Children.Clear();
+            if (target == null) return;
+            target.Children.Clear();
             if (string.IsNullOrEmpty(template)) return;
             var boxBrush = (Brush)FindResource("ThemeBorderStrong");
             var glyphBrush = (Brush)FindResource("ThemeText");
@@ -3871,7 +4247,7 @@ namespace Pcsx5Ui
                 }
                 if (label.Length > 0)
                     chip.Children.Add(new TextBlock { Text = label, FontSize = typeM, Foreground = labelBrush, VerticalAlignment = VerticalAlignment.Center });
-                FooterHintChips.Children.Add(chip);
+                target.Children.Add(chip);
             }
         }
 
@@ -3932,6 +4308,11 @@ namespace Pcsx5Ui
                 case Key.Enter:
                 case Key.Space: _kbCross = true; break;
                 case Key.Escape:
+                    if (InputTestOverlay != null && InputTestOverlay.Visibility == Visibility.Visible)
+                    {
+                        SetInputSubTab(true);   // close the controller-testing popup
+                        break;
+                    }
                     // While a game runs, Esc is the keyboard's PS tap and opens or
                     // dismisses the pause menu (the concept: "hold PS or press Esc").
                     // Everywhere else Esc stays Back/Circle.
@@ -4390,10 +4771,10 @@ namespace Pcsx5Ui
             FooterStatus.Text = "Mappings Restored to Default";
         }
 
-        private void CtrlActiveGamepadCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        /// <summary>Light the pad for a player slot: lightbar in the slot's
+        /// colour and the matching player-LED pattern (INFERRED from the console).</summary>
+        private void ApplyActiveGamepadSlot(int idx)
         {
-            if (CtrlActiveGamepadCombo == null) return;
-            int idx = CtrlActiveGamepadCombo.SelectedIndex;
             byte r = 0, g = 0, b = 255;
             byte playerLed = 0x04;
 
@@ -4416,8 +4797,13 @@ namespace Pcsx5Ui
                     break;
             }
 
-            CoreBridge.pcsx5_pad_set_lightbar(0, r, g, b);
-            CoreBridge.pcsx5_pad_set_player_leds(0, playerLed, 0);
+            try
+            {
+                CoreBridge.pcsx5_pad_set_lightbar(0, r, g, b);
+                CoreBridge.pcsx5_pad_set_player_leds(0, playerLed, 0);
+            }
+            catch { }
+            if (InputTab?.Pad3D != null) { InputTab.Pad3D.LightbarColor = Color.FromRgb(r, g, b); InputTab.Pad3D.SetPlayerIndex(Math.Min(4, idx + 1)); }
             LogConsole($"Active Gamepad Slot {idx + 1} selected (Player LED 0x{playerLed:X2}, Lightbar RGB #{r:X2}{g:X2}{b:X2}).");
         }
 
@@ -4428,17 +4814,12 @@ namespace Pcsx5Ui
         {
             return new List<Control>
             {
-                CtrlConfigCombo,
-                CtrlUsePerGameConfigCheck,
-                CtrlActiveGamepadCombo,
                 BtnMapUp,
                 BtnMapLeft,
                 BtnMapRight,
                 BtnMapDown,
                 BtnMapL1,
                 BtnMapL2,
-                CtrlMinDeadzoneLSlider,
-                CtrlMaxDeadzoneLSlider,
                 BtnMapLeftStickUp,
                 BtnMapLeftStickLeft,
                 BtnMapLeftStickRight,
@@ -4449,8 +4830,6 @@ namespace Pcsx5Ui
                 BtnMapSquare,
                 BtnMapR1,
                 BtnMapR2,
-                CtrlMinDeadzoneRSlider,
-                CtrlMaxDeadzoneRSlider,
                 BtnMapRightStickUp,
                 BtnMapRightStickLeft,
                 BtnMapRightStickRight,
@@ -4462,8 +4841,7 @@ namespace Pcsx5Ui
                 BtnMapTouchpadLeft,
                 BtnMapTouchpadCenter,
                 BtnMapTouchpadRight,
-                RestoreDefaultMappingsBtn,
-                SaveSettingsBtn
+                ControllerSettingsBtn
             };
         }
 
@@ -4512,13 +4890,43 @@ namespace Pcsx5Ui
 
                 if (SettingsCategoryRowsPanel == null) return;
                 var rowButtons = SettingsCategoryRowsPanel.Children.OfType<Button>().ToList();
-                if (rowButtons.Count == 0) return;
+                var navButtons = SettingsNavButtons().Where(n => n != null && n.IsVisible).ToList();
+                int navIdx = navButtons.FindIndex(n => n.IsKeyboardFocused);
+
+                // Side-nav column: up/down change the section (its rows open at
+                // once, focus stays in the column); right or Cross enter the rows.
+                if (navIdx >= 0)
+                {
+                    if (up || down)
+                    {
+                        int n = down ? Math.Min(navButtons.Count - 1, navIdx + 1) : Math.Max(0, navIdx - 1);
+                        if (navButtons[n].CommandParameter is string cat) OpenSettingsCategory(cat);
+                        navButtons[n].Focus();
+                        navButtons[n].BringIntoView();
+                    }
+                    else if (right || a)
+                    {
+                        if (rowButtons.Count > 0) { rowButtons[0].Focus(); rowButtons[0].BringIntoView(); }
+                    }
+                    else if (b)
+                    {
+                        ResetSettingsView();
+                    }
+                    return;
+                }
+
+                Button activeNav = navButtons.FirstOrDefault(n => (n.CommandParameter as string) == _activeSettingsCategory) ?? navButtons.FirstOrDefault();
+                if (rowButtons.Count == 0)
+                {
+                    activeNav?.Focus();
+                    return;
+                }
 
                 int focusedIdx = rowButtons.FindIndex(btn => btn.IsKeyboardFocused);
 
                 if (up || down)
                 {
-                    int nextIdx = (focusedIdx == -1) ? 0 : (down ? (focusedIdx + 1) % rowButtons.Count : (focusedIdx - 1 + rowButtons.Count) % rowButtons.Count);
+                    int nextIdx = (focusedIdx == -1) ? 0 : (down ? Math.Min(rowButtons.Count - 1, focusedIdx + 1) : Math.Max(0, focusedIdx - 1));
                     rowButtons[nextIdx].Focus();
                     rowButtons[nextIdx].BringIntoView();
                     return;
@@ -4530,7 +4938,14 @@ namespace Pcsx5Ui
                     return;
                 }
 
-                if (b || left)
+                if (left || focusedIdx == -1)
+                {
+                    // Back to the section column (also where an unfocused row list starts).
+                    activeNav?.Focus();
+                    return;
+                }
+
+                if (b)
                 {
                     ResetSettingsView();
                     return;
@@ -4551,11 +4966,15 @@ namespace Pcsx5Ui
 
                 int focusedIdx = focusables.FindIndex(c => c.IsKeyboardFocused);
 
-                if (up || down)
+                var focusedNow = focusedIdx >= 0 ? focusables[focusedIdx] : null;
+                bool adjusts = (left || right) && focusedNow is Slider;
+                if ((up || down || left || right) && !adjusts)
                 {
-                    int nextIdx = (focusedIdx == -1) ? 0 : (down ? (focusedIdx + 1) % focusables.Count : (focusedIdx - 1 + focusables.Count) % focusables.Count);
-                    focusables[nextIdx].Focus();
-                    focusables[nextIdx].BringIntoView();
+                    // Option grids are walked as grids (TV-remote movement).
+                    var dir = up ? SpatialNav.Dir.Up : down ? SpatialNav.Dir.Down : left ? SpatialNav.Dir.Left : SpatialNav.Dir.Right;
+                    var target = SpatialNav.Find(focusables, focusedNow, dir);
+                    if (target != null) { target.Focus(); target.BringIntoView(); }
+                    else if (left && focusedNow != null) { BtnSettingsBack_Click(this, null); }   // off the left edge = back to the rows
                     return;
                 }
 
@@ -4602,6 +5021,10 @@ namespace Pcsx5Ui
                         yield return desc;
                 }
             }
+            else if (root is ColorPickerControl picker)
+            {
+                foreach (var c in picker.NavControls) yield return c;
+            }
             else if (root is ContentControl cc && cc.Content is FrameworkElement fe)
             {
                 foreach (var desc in GetFocusableDescendants(fe))
@@ -4623,12 +5046,21 @@ namespace Pcsx5Ui
             if (controls.Count == 0) return;
 
             int focusedIdx = controls.FindIndex(c => c.IsKeyboardFocused);
+            var focusedNow = focusedIdx >= 0 ? controls[focusedIdx] : null;
 
-            if (up || down)
+            // Left/right on a value control adjust it; every other direction moves
+            // focus to whatever is visually that way (TV-remote navigation), so the
+            // 4-column binding grid is walked as a grid, not as a list.
+            bool adjusts = (left || right) && (focusedNow is ComboBox || focusedNow is Slider);
+            if ((up || down || left || right) && !adjusts)
             {
-                int newIdx = (focusedIdx == -1) ? 0 : (down ? (focusedIdx + 1) % controls.Count : (focusedIdx - 1 + controls.Count) % controls.Count);
-                controls[newIdx].Focus();
-                controls[newIdx].BringIntoView();
+                var dir = up ? SpatialNav.Dir.Up : down ? SpatialNav.Dir.Down : left ? SpatialNav.Dir.Left : SpatialNav.Dir.Right;
+                var target = SpatialNav.Find(controls, focusedNow, dir);
+                if (target != null)
+                {
+                    target.Focus();
+                    target.BringIntoView();
+                }
                 return;
             }
 
@@ -5057,25 +5489,57 @@ namespace Pcsx5Ui
                 }
                 if (CrashDialogOverlay != null && CrashDialogOverlay.Visibility == Visibility.Visible)
                 {
-                    ShowHints("hints.overlay");
-                    if (aPressed || bPressed) DismissCrashDialog_Click(this, null);
+                    // One pad button per dialog button, listed in the legend.
+                    ShowHints("hints.crash");
+                    if (aPressed) AnalyzeCrashedGame_Click(this, null);
+                    else if (bPressed) DismissCrashDialog_Click(this, null);
+                    else if (xPressed) CopyCrashToClipboard_Click(this, null);
+                    else if (yPressed) ViewCrashRawLogs_Click(this, null);
+                    else if (upPressed) CrashRawText?.LineUp();
+                    else if (downPressed) CrashRawText?.LineDown();
+                    _prevInputState = state;
+                    return;
+                }
+                if (CreditsOverlay != null && CreditsOverlay.Visibility == Visibility.Visible)
+                {
+                    ShowHints("hints.credits");
+                    if (upPressed) CreditsScroll.LineUp();
+                    else if (downPressed) CreditsScroll.LineDown();
+                    else if (aPressed || bPressed) CreditsClose_Click(this, null);
                     _prevInputState = state;
                     return;
                 }
 
-                // ── TAB CYCLING WITH BUMPERS (L1 / R1) & TRIGGERS (L2 / R2) ──
-                if (l1Pressed || r1Pressed || l2Pressed || r2Pressed)
+                // ── CONTROLLER TESTING POPUP: capture everything. A PS *tap* is just
+                //    another button under test; holding PS for 2 s closes the popup. ──
+                if (InputTestOverlay != null && InputTestOverlay.Visibility == Visibility.Visible)
+                {
+                    bool psHeld = (buttons & 0x0400) != 0;
+                    if (!psHeld) _psHoldStart = null;
+                    else if (_psHoldStart == null) _psHoldStart = DateTime.UtcNow;
+                    else if ((DateTime.UtcNow - _psHoldStart.Value).TotalSeconds >= 2.0)
+                    {
+                        _psHoldStart = null;
+                        SetInputSubTab(true);
+                    }
+                    _prevInputState = state;
+                    return;
+                }
+                _psHoldStart = null;
+
+                // ── TAB CYCLING WITH BUMPERS (L1 / R1) ──
+                if (l1Pressed || r1Pressed)
                 {
                     Button[] tabs = { TabLibraryBtn, TabAnalyzerBtn, TabControllerBtn, TabSettingsBtn };
                     int activeIndexTab = 0;
                     if (LibraryView.Visibility == Visibility.Visible) activeIndexTab = 0;
-                    else if (AnalyzerView.Visibility == Visibility.Visible) activeIndexTab = 1;
+                    else if (AnalyzerView.Visibility == Visibility.Visible || ToolsHubView.Visibility == Visibility.Visible) activeIndexTab = 1;
                     else if (ControllerView.Visibility == Visibility.Visible) activeIndexTab = 2;
                     else if (SettingsView.Visibility == Visibility.Visible) activeIndexTab = 3;
 
                     int nextIndex = activeIndexTab;
-                    if (l1Pressed || l2Pressed) nextIndex = (activeIndexTab - 1 + tabs.Length) % tabs.Length;
-                    else if (r1Pressed || r2Pressed) nextIndex = (activeIndexTab + 1) % tabs.Length;
+                    if (l1Pressed) nextIndex = (activeIndexTab - 1 + tabs.Length) % tabs.Length;
+                    else if (r1Pressed) nextIndex = (activeIndexTab + 1) % tabs.Length;
 
                     switch (nextIndex)
                     {
@@ -5108,6 +5572,14 @@ namespace Pcsx5Ui
                     {
                         SearchBox.Focus();
                         SearchBox.SelectAll();
+                        _prevInputState = state;
+                        return;
+                    }
+
+                    // Options (≡) opens the full library: "View all" was mouse-only.
+                    if (optionsPressed)
+                    {
+                        ToggleFullLibrary_Click(this, null);
                         _prevInputState = state;
                         return;
                     }
@@ -5155,12 +5627,21 @@ namespace Pcsx5Ui
                 else if (ControllerView.Visibility == Visibility.Visible)
                 {
                     ShowHints("hints.controller");
-                    HandleControllerSetupGamepadNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
+                    if (optionsPressed) RestoreDefaultMappings_Click(this, null);
+                    else HandleControllerSetupGamepadNav(upPressed, downPressed, leftPressed, rightPressed, aPressed, bPressed);
                 }
                 else if (AnalyzerView.Visibility == Visibility.Visible)
                 {
                     ShowHints("hints.analyzer");
                     HandleAnalyzerGamepadNav(upPressed, downPressed, aPressed);
+                }
+                else if (ToolsHubView.Visibility == Visibility.Visible)
+                {
+                    ShowHints("hints.tools");
+                    // Only the Boot analyzer card is live; Cross opens it, Circle
+                    // returns to the Library.
+                    if (aPressed) ToolBootAnalyzer_Click(this, null);
+                    else if (bPressed) TabLibrary_Click(this, null);
                 }
             });
 
@@ -5205,6 +5686,54 @@ namespace Pcsx5Ui
             {
                 LogConsole("UI translation error: " + ex.Message);
             }
+        }
+
+        // ── CREDITS POPUP ── the README's "## Credits" section, read from the
+        // README staged beside the executable, so the in-app list can never
+        // drift from the published one. Falls back to the short locale string.
+        private void ShowCredits()
+        {
+            string text = null;
+            try
+            {
+                string readme = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "README.md");
+                if (File.Exists(readme))
+                {
+                    string md = File.ReadAllText(readme);
+                    int at = md.IndexOf("## Credits", StringComparison.Ordinal);
+                    if (at >= 0)
+                    {
+                        string sec = md.Substring(at + "## Credits".Length);
+                        int next = sec.IndexOf("\n## ", StringComparison.Ordinal);
+                        if (next >= 0) sec = sec.Substring(0, next);
+                        sec = System.Text.RegularExpressions.Regex.Replace(sec, @"\[([^\]]+)\]\([^)]*\)", "$1");
+                        sec = sec.Replace("**", "").Replace("`", "");
+                        // Un-wrap the markdown's hard line breaks inside a bullet.
+                        var lines = new List<string>();
+                        foreach (var raw in sec.Trim().Split('\n'))
+                        {
+                            string l = raw.TrimEnd();
+                            if (l.StartsWith("- ")) lines.Add("•  " + l.Substring(2).Trim());
+                            else if (l.Trim().Length == 0) lines.Add("");
+                            else if (lines.Count > 0) lines[lines.Count - 1] += " " + l.Trim();
+                            else lines.Add(l.Trim());
+                        }
+                        text = string.Join("\n", lines);
+                    }
+                }
+            }
+            catch { text = null; }
+            if (string.IsNullOrWhiteSpace(text)) text = I18n.Tr("about.credits_desc");
+            CreditsText.Text = text;
+            CreditsScroll.ScrollToTop();
+            CreditsOverlay.Visibility = Visibility.Visible;
+            FocusFirst(CreditsCloseBtn);
+        }
+
+        private void CreditsClose_Click(object sender, RoutedEventArgs e)
+        {
+            CreditsOverlay.Visibility = Visibility.Collapsed;
+            FocusFirst(SettingsNavButtons().FirstOrDefault(b => (b?.CommandParameter as string) == _activeSettingsCategory));
         }
 
         private void DismissCrashDialog_Click(object sender, RoutedEventArgs e)
@@ -5291,33 +5820,78 @@ namespace Pcsx5Ui
             }
         }
 
+        // From the Library "Analyze" action: open the analyzer, then check and
+        // analyze just this one title.
         private async void RunSingleGameAnalysis(GameEntry game)
         {
-            string parserPath = LocateBootParser();
-            if (parserPath == null || !File.Exists(parserPath))
+            BuildAnalyzerRows();
+            var row = _analysisResults.FirstOrDefault(r =>
+                string.Equals(r.EbootPath, game.EbootPath, StringComparison.OrdinalIgnoreCase));
+            if (row == null)
             {
-                MessageBox.Show("Could not locate pcsx5_boot_parser.exe binary. Please compile the project first.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                row = new BootAnalysisResult { Title = game.Title, TitleId = game.TitleId, EbootPath = game.EbootPath,
+                    ResultText = I18n.Tr("analyzer.not_analyzed"), ResultState = "idle" };
+                _analysisResults.Add(row);
+                RefreshAnalyzerView();
+            }
+            AnalyzerListView.SelectedItem = row;
+            row.IsChecked = true;
+            await AnalyzeRows(new List<BootAnalysisResult> { row });
+        }
+
+        // Build the table from the game list as unanalyzed rows. Keeps existing
+        // rows (their checks and results) if already built this session.
+        private void BuildAnalyzerRows()
+        {
+            if (_analysisResults.Count > 0)
+            {
+                AnalyzerListView.ItemsSource ??= _analysisResults;
                 return;
             }
-
-            _analysisResults.Clear();
-            AnalyzerListView.ItemsSource = null;
-            AnalyzerOutputTextBox.Text = $"Running analysis on {game.Title}...";
-
-            string rawOutput = "";
-            try
-            {
-                rawOutput = await RunParserProcessAsync(parserPath, game.EbootPath);
-            }
-            catch (Exception ex)
-            {
-                rawOutput = "Execution Error: " + ex.Message;
-            }
-
-            var res = ParseParserOutput(rawOutput, game);
-            _analysisResults.Add(res);
+            _analysisResults = _games
+                .Where(g => !string.IsNullOrEmpty(g.EbootPath))
+                .Select(g => new BootAnalysisResult
+                {
+                    Title = g.Title, TitleId = g.TitleId, EbootPath = g.EbootPath,
+                    ResultText = I18n.Tr("analyzer.not_analyzed"), ResultState = "idle",
+                }).ToList();
             AnalyzerListView.ItemsSource = _analysisResults;
-            AnalyzerListView.SelectedIndex = 0;
+            var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_analysisResults);
+            if (view != null) view.Filter = AnalyzerRowFilter;
+            if (_analysisResults.Count > 0) AnalyzerListView.SelectedIndex = 0;
+        }
+
+        private void RefreshAnalyzerView()
+        {
+            System.Windows.Data.CollectionViewSource.GetDefaultView(_analysisResults)?.Refresh();
+        }
+
+        // --- Search filter over the title table ---
+        private string _analyzerSearch = "";
+        private bool AnalyzerRowFilter(object o)
+        {
+            if (string.IsNullOrWhiteSpace(_analyzerSearch)) return true;
+            var r = o as BootAnalysisResult;
+            if (r == null) return false;
+            string q = _analyzerSearch.Trim();
+            return (r.Title ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0
+                || (r.TitleId ?? "").IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private void AnalyzerSearch_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _analyzerSearch = (sender as TextBox)?.Text ?? "";
+            if (AnalyzerSearchPlaceholder != null)
+                AnalyzerSearchPlaceholder.Visibility = string.IsNullOrEmpty(_analyzerSearch) ? Visibility.Visible : Visibility.Collapsed;
+            RefreshAnalyzerView();
+        }
+
+        // Header "select all" toggles the checkbox on every visible (filtered) row.
+        private void AnalyzerSelectAll_Click(object sender, RoutedEventArgs e)
+        {
+            bool on = (sender as CheckBox)?.IsChecked == true;
+            foreach (var r in _analysisResults)
+                if (AnalyzerRowFilter(r)) r.IsChecked = on;
         }
 
         private void UpdateSettingsUiFromConfig()
@@ -5332,12 +5906,22 @@ namespace Pcsx5Ui
         }
 
         // Executable Boot & Memory Analyzer UI actions
-        private void AnalyzeAll_Click(object sender, RoutedEventArgs e)
+        // Analyze the checked rows, or - if none are checked - the focused row.
+        private async void AnalyzeAll_Click(object sender, RoutedEventArgs e)
         {
-            RunBootAnalyzer();
+            var rows = _analysisResults.Where(r => r.IsChecked).ToList();
+            if (rows.Count == 0 && AnalyzerListView.SelectedItem is BootAnalysisResult one)
+                rows.Add(one);
+            if (rows.Count == 0)
+            {
+                FooterStatus.Text = I18n.Tr("analyzer.pick_first");
+                return;
+            }
+            await AnalyzeRows(rows);
         }
 
-        private async void RunBootAnalyzer()
+        // Run the parser for each row and fill its result in place.
+        private async Task AnalyzeRows(List<BootAnalysisResult> rows)
         {
             string parserPath = LocateBootParser();
             if (parserPath == null || !File.Exists(parserPath))
@@ -5346,48 +5930,31 @@ namespace Pcsx5Ui
                 return;
             }
 
-            _analysisResults.Clear();
-            AnalyzerListView.ItemsSource = null;
-            AnalyzerOutputTextBox.Text = "Running analysis on all games...";
-
-            var gamesToAnalyze = _games.ToList();
-            var results = new List<BootAnalysisResult>();
-
-            foreach (var game in gamesToAnalyze)
+            foreach (var row in rows)
             {
-                if (string.IsNullOrEmpty(game.EbootPath) || !File.Exists(game.EbootPath))
-                    continue;
+                if (string.IsNullOrEmpty(row.EbootPath)) continue;
+                row.ResultText = I18n.Tr("analyzer.running");
+                row.ResultState = "idle";
 
-                // pcsx5_boot_parser takes the game DIRECTORY.  Handed the eboot
-                // file it prints a usage banner and exits, leaving the grid empty.
+                // pcsx5_boot_parser takes the game DIRECTORY; handed the eboot file
+                // it prints a usage banner and exits.
                 string gameDir = null;
-                try { gameDir = Path.GetDirectoryName(game.EbootPath); } catch { gameDir = null; }
+                try { gameDir = Path.GetDirectoryName(row.EbootPath); } catch { gameDir = null; }
                 if (string.IsNullOrEmpty(gameDir)) continue;
 
                 string rawOutput = "";
-                try
+                try { rawOutput = await RunParserProcessAsync(parserPath, gameDir); }
+                catch (Exception ex) { rawOutput = "Execution Error: " + ex.Message; }
+
+                FillResult(row, rawOutput);
+
+                // Refresh the report if this row is the one on screen.
+                if (ReferenceEquals(AnalyzerListView.SelectedItem, row) && AnalyzerReport != null)
                 {
-                    rawOutput = await RunParserProcessAsync(parserPath, gameDir);
+                    AnalyzerReport.DataContext = null;
+                    AnalyzerReport.DataContext = row;
+                    AnalyzerOutputTextBox.Text = row.RawOutput;
                 }
-                catch (Exception ex)
-                {
-                    rawOutput = "Execution Error: " + ex.Message;
-                }
-
-                var res = ParseParserOutput(rawOutput, game);
-                results.Add(res);
-            }
-
-            _analysisResults = results;
-            AnalyzerListView.ItemsSource = _analysisResults;
-
-            if (_analysisResults.Count > 0)
-            {
-                AnalyzerListView.SelectedIndex = 0;
-            }
-            else
-            {
-                AnalyzerOutputTextBox.Text = "No executables parsed.";
             }
         }
 
@@ -5452,21 +6019,16 @@ namespace Pcsx5Ui
 
         /// <summary>Extract the analyzer columns from pcsx5_boot_parser output.
         /// Every marker below was taken from real output, not assumed.</summary>
-        private BootAnalysisResult ParseParserOutput(string raw, GameEntry game)
+        // Parse a raw parser dump into an existing row, in place, so the table and
+        // the report update live for that title.
+        private void FillResult(BootAnalysisResult res, string raw)
         {
             raw = StripAnsi(raw ?? "");
-
-            var res = new BootAnalysisResult
-            {
-                Title = game.Title,
-                TitleId = game.TitleId,
-                EbootPath = game.EbootPath,
-                RawOutput = raw,
-                Format = I18n.Tr("analyzer.unknown"),
-                EncryptionStatus = I18n.Tr("analyzer.unknown"),
-                MemoryFootprint = "-",
-                AlignmentStatus = I18n.Tr("analyzer.unknown"),
-            };
+            res.RawOutput = raw;
+            res.Format = I18n.Tr("analyzer.unknown");
+            res.EncryptionStatus = I18n.Tr("analyzer.unknown");
+            res.MemoryFootprint = "-";
+            res.AlignmentStatus = I18n.Tr("analyzer.unknown");
 
             bool isSelf = false, isElf = false, isPie = false, moduleLoaded = false;
             bool sawLoadSegment = false, misaligned = false;
@@ -5559,12 +6121,55 @@ namespace Pcsx5Ui
                     : I18n.Tr("analyzer.misaligned_at", misalignedDetail);
             else res.AlignmentStatus = I18n.Tr("analyzer.aligned_16k");
 
-            return res;
+            // --- Concept report: header meta, result verdict and the readiness
+            // checklist, built only from what this static parser evidences. ---
+            res.HeaderMeta = res.TitleId + "  ·  eboot.bin"
+                + (res.MemoryFootprint != "-" ? "  ·  " + res.MemoryFootprint : "");
+
+            string St(bool ok, bool fail = false) => fail ? "fail" : (ok ? "ok" : "warn");
+
+            bool container = isSelf || isElf;
+            bool segments = sawLoadSegment || selfSegs > 0;
+            bool encrypted = encryptedSegs > 0;
+
+            var stages = new System.Collections.Generic.List<BootStage>();
+            stages.Add(new BootStage {
+                Label = I18n.Tr("analyzer.stage.container"),
+                Detail = container ? res.Format : I18n.Tr("analyzer.unknown"),
+                State = St(container, !container) });
+            stages.Add(new BootStage {
+                Label = I18n.Tr("analyzer.stage.segments"),
+                Detail = selfSegs > 0 ? selfSegs.ToString() : (sawLoadSegment ? "PT_LOAD" : "-"),
+                State = St(segments) });
+            stages.Add(new BootStage {
+                Label = I18n.Tr("analyzer.stage.decrypt"),
+                Detail = res.EncryptionStatus,
+                State = selfSegs == 0 ? (isElf ? "ok" : "warn") : St(!encrypted, encrypted) });
+            stages.Add(new BootStage {
+                Label = I18n.Tr("analyzer.stage.alignment"),
+                Detail = res.AlignmentStatus,
+                State = !sawLoadSegment ? "warn" : St(!misaligned) });
+            stages.Add(new BootStage {
+                Label = I18n.Tr("analyzer.stage.module"),
+                Detail = moduleLoaded ? I18n.Tr("analyzer.stage.loaded") : I18n.Tr("analyzer.stage.not_loaded"),
+                State = bootError != null ? "fail" : St(moduleLoaded) });
+
+            // Verdict: the first blocking stage, else clean.
+            if (bootError != null) { res.ResultState = "fail"; res.ResultText = I18n.Tr("analyzer.result.fails"); }
+            else if (encrypted) { res.ResultState = "fail"; res.ResultText = I18n.Tr("analyzer.result.encrypted"); }
+            else if (!container) { res.ResultState = "fail"; res.ResultText = I18n.Tr("analyzer.result.unreadable"); }
+            else if (!moduleLoaded) { res.ResultState = "warn"; res.ResultText = I18n.Tr("analyzer.result.stops_load"); }
+            else if (misaligned) { res.ResultState = "warn"; res.ResultText = I18n.Tr("analyzer.result.alignment"); }
+            else { res.ResultState = "ok"; res.ResultText = I18n.Tr("analyzer.result.clean"); }
+
+            res.Stages = stages;
+            res.Analyzed = true;
         }
 
         private void AnalyzerListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             var selected = AnalyzerListView.SelectedItem as BootAnalysisResult;
+            if (AnalyzerReport != null) AnalyzerReport.DataContext = selected;
             if (selected != null)
             {
                 AnalyzerOutputTextBox.Text = selected.RawOutput;
@@ -5577,7 +6182,8 @@ namespace Pcsx5Ui
 
         private void ExportSummary_Click(object sender, RoutedEventArgs e)
         {
-            if (_analysisResults.Count == 0)
+            var analyzed = _analysisResults.Where(r => r.Analyzed).ToList();
+            if (analyzed.Count == 0)
             {
                 MessageBox.Show("No analysis results to export. Run the analyzer first.", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
@@ -5595,7 +6201,7 @@ namespace Pcsx5Ui
                 try
                 {
                     // Create minimal summary payload containing only needed fields
-                    var payload = _analysisResults.Select(r => new
+                    var payload = analyzed.Select(r => new
                     {
                         title_id = r.TitleId,
                         title = r.Title,
@@ -5670,16 +6276,77 @@ namespace Pcsx5Ui
         }
     }
 
-    public class BootAnalysisResult
+    public class BootAnalysisResult : System.ComponentModel.INotifyPropertyChanged
     {
+        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
+        private void N([System.Runtime.CompilerServices.CallerMemberName] string p = null)
+            => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(p));
+
+        // Identity (set once, at row creation).
         public string Title { get; set; }
         public string TitleId { get; set; }
-        public string Format { get; set; }
-        public string EncryptionStatus { get; set; }
-        public string MemoryFootprint { get; set; }
-        public string AlignmentStatus { get; set; }
-        public string RawOutput { get; set; }
         public string EbootPath { get; set; }
+
+        // Selection for the analyze set, toggled by the row checkbox.
+        private bool _isChecked;
+        public bool IsChecked { get => _isChecked; set { _isChecked = value; N(); } }
+
+        // Whether the parser has run for this row yet.
+        private bool _analyzed;
+        public bool Analyzed { get => _analyzed; set { _analyzed = value; N(); } }
+
+        // Results, filled in place when the parser runs (so the row updates live).
+        private string _raw; public string RawOutput { get => _raw; set { _raw = value; N(); } }
+        private string _format = "—"; public string Format { get => _format; set { _format = value; N(); } }
+        private string _enc = "—"; public string EncryptionStatus { get => _enc; set { _enc = value; N(); } }
+        private string _foot = "—"; public string MemoryFootprint { get => _foot; set { _foot = value; N(); } }
+        private string _align = "—"; public string AlignmentStatus { get => _align; set { _align = value; N(); } }
+        private string _resultText = ""; public string ResultText { get => _resultText; set { _resultText = value; N(); } }
+        private string _resultState = "idle"; public string ResultState { get => _resultState; set { _resultState = value; N(); } } // idle | ok | warn | fail
+        private string _headerMeta; public string HeaderMeta { get => _headerMeta; set { _headerMeta = value; N(); } }
+        private System.Collections.Generic.List<BootStage> _stages = new System.Collections.Generic.List<BootStage>();
+        public System.Collections.Generic.List<BootStage> Stages { get => _stages; set { _stages = value; N(); } }
+    }
+
+    // One row of the boot-readiness checklist. Only stages the static parser can
+    // actually evidence are emitted (Rule 04): container, segments, decryption,
+    // alignment, module load - never runtime stages it cannot observe.
+    public class BootStage
+    {
+        public string Label { get; set; }
+        public string Detail { get; set; }
+        public string State { get; set; } = "ok";   // ok | warn | fail
+    }
+
+    // Maps a boot state (ok/warn/fail) to a theme brush: the bright token, or the
+    // soft tint when ConverterParameter is "soft" (the checklist status discs).
+    public class AnalyzerStateBrushConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            string state = (value as string) ?? "warn";
+            bool soft = string.Equals(parameter as string, "soft", StringComparison.OrdinalIgnoreCase);
+            string key = state switch
+            {
+                "ok" => "ThemeSuccess",
+                "fail" => "ThemeDanger",
+                "idle" => "ThemeTextMuted",
+                _ => "ThemeWarning",
+            };
+            var res = Application.Current?.TryFindResource(key);
+            if (res is SolidColorBrush b)
+            {
+                if (!soft) return b;
+                var c = b.Color;
+                var tint = new SolidColorBrush(Color.FromArgb(0x24, c.R, c.G, c.B));
+                tint.Freeze();
+                return tint;
+            }
+            return System.Windows.Media.Brushes.Gray;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => System.Windows.Data.Binding.DoNothing;
     }
 
     public class EmulatorConfig
@@ -5727,6 +6394,9 @@ namespace Pcsx5Ui
             public int backend { get; set; } = 0;
             public double deadzone { get; set; } = 0.15;
             public bool rumble { get; set; } = true;
+            public int active_slot { get; set; } = 0;            // 0-3 = player slot, 4 = XInput
+            public bool per_game_configs { get; set; } = false;
+            public string lightbar { get; set; } = "";           // #RRGGBB override; empty = the slot's player colour
         }
 
         public class LoggingSection
@@ -5741,6 +6411,7 @@ namespace Pcsx5Ui
         {
             public string language { get; set; } = "en-US";
             public bool title_music_enabled { get; set; } = true;
+            public double title_music_volume { get; set; } = 0.6;   // lobby (title) music, 0..1, separate from the game's audio
             public double scale { get; set; } = 1.0;
             // The shell is a console interface, so fullscreen is the default
             // presentation.  Distinct from graphics.fullscreen, which governs
@@ -5764,6 +6435,8 @@ namespace Pcsx5Ui
         public string FullPath { get; set; }   // null on status rows, and on the
                                                // parent entry at a drive root
         public bool IsParent { get; set; }
+        public bool IsGame { get; set; }        // holds an eboot.bin -> accent icon
+        public string Meta { get; set; }        // mono right column, e.g. "eboot.bin - 102 MB"
     }
 
     public class IniFile

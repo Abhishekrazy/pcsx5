@@ -362,12 +362,21 @@ bool ServiceSlot(PadSlot& p) {
     CopyTouch(in.touchPoint1, s.touch[0], s.touch_count);
     CopyTouch(in.touchPoint2, s.touch[1], s.touch_count);
 
-    s.accel[0] = static_cast<float>(in.accelerometer.x);
-    s.accel[1] = static_cast<float>(in.accelerometer.y);
-    s.accel[2] = static_cast<float>(in.accelerometer.z);
-    s.gyro[0]  = static_cast<float>(in.gyroscope.x);
-    s.gyro[1]  = static_cast<float>(in.gyroscope.y);
-    s.gyro[2]  = static_cast<float>(in.gyroscope.z);
+    // DualSenseWindows reads its "accelerometer" from report offset 0x0F and
+    // its "gyroscope" from 0x15, but the DualSense input report carries the
+    // GYRO at 0x0F and the ACCELEROMETER at 0x15 (INFERRED from the Linux
+    // hid-playstation dualsense_input_report layout: buttons[4], reserved[4],
+    // gyro[3], accel[3]; OBSERVED 2026-09-06 on Bluetooth: the field labelled
+    // accelerometer swung every sample with the pad at rest while the one
+    // labelled gyroscope held a steady non-zero vector - the signature of a
+    // gyro and a gravity vector, respectively). The vendored library is left
+    // as upstream; the swap is undone here, at the one point it is consumed.
+    s.accel[0] = static_cast<float>(in.gyroscope.x);
+    s.accel[1] = static_cast<float>(in.gyroscope.y);
+    s.accel[2] = static_cast<float>(in.gyroscope.z);
+    s.gyro[0]  = static_cast<float>(in.accelerometer.x);
+    s.gyro[1]  = static_cast<float>(in.accelerometer.y);
+    s.gyro[2]  = static_cast<float>(in.accelerometer.z);
 
     s.battery_level       = in.battery.level;
     s.battery_charging    = in.battery.chargin;

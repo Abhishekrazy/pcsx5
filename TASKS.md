@@ -258,7 +258,7 @@ Ordered by dependency, one subsystem per change (Rule 10):
   `artifacts/runtime/SHELL_20260906_015955/frames/frame_0025.png` shows the
   Up sprite unlit on an idle pad where the previous capture showed it lit.
 
-- [ ] **NEEDS_EVIDENCE: the accelerometer shows no gravity axis at rest.**
+- [x] **RESOLVED 2026-09-06 (see "Core: DualSense accelerometer misparsed" below - it was the accel/gyro field swap). Was: NEEDS_EVIDENCE: the accelerometer shows no gravity axis at rest.**
   With the pad lying still, the Input tab autoscaled accelerometer trace is
   jitter around zero on all three axes and no constant line; a gravity-sensing
   accelerometer must show roughly 1 g on one axis. Either the DualSenseWindows
@@ -497,6 +497,422 @@ Ordered by dependency, one subsystem per change (Rule 10):
     the core's window). The notice renders correctly in the main window when
     no game is embedded (the pre-embed watchdog path). Steps 6-11 - Tools, Console,
     Error, Pause overlay, Quick settings, Folder picker.
+  - **Layout rebuild pass** (asked 2026-09-06: "rebuild each screen layout to
+    match the artboard start with main screen, footer, title, chips etc").
+    Steps 1-13 put screens on tokens without changing their shape; this pass
+    rebuilds each screen's structure to the concept artboard (artifact
+    12445a87). One screen per change, each seen running.
+    - [x] **Library (main)** - DONE (commits f416826 back). Flat ground, hero
+      eyebrow/title/mono chips/Play+Settings/cover, RECENT shelf, and a footer
+      control legend of glyph-box chips.
+    - [x] **Folder picker** - DONE 2026-09-06. Rebuilt the overlay to the
+      FolderPicker artboard: a centred card on flat theme tokens (no accent
+      glow), header "Add a games folder" with the eboot note, a mono
+      breadcrumb of the current path (last segment bright), quick drive chips
+      with the current drive first and highlighted, an eboot-aware directory
+      list (folders holding an eboot.bin get the accent game icon and an
+      "eboot.bin · SIZE" mono meta, sizes in the concept's short form via
+      FormatSizeShort), a Cancel / "Add this folder" pair bottom-right, and
+      the controller glyph legend along the bottom (BuildFooterHintChips
+      retargeted to the picker footer). The old Up/Open buttons are gone
+      (the ".." row, double-click and the pad do that); their two
+      AutomationProperties.SetName sites were replaced by names on the drive
+      chips and the breadcrumb so accessibility coverage did not regress. Two
+      new keys (picker.subtitle, picker.up_one) in all eleven locales;
+      picker.title/select reworded to the artboard in en-US. Built clean
+      (0 warnings), ui-strings ratchet unchanged. Seen (via a temporary
+      env-gated auto-open, since removed):
+      artifacts/runtime/SHELL_20260906_112825/frames/frame_0000.png.
+    - [x] **Tools** - DONE 2026-09-06. The Tools tab used to land straight on
+      the Boot Analyzer table; per the Tools artboard it now lands on a hub of
+      tool cards (ToolsHubView): a "Tools" title and a 3-column grid of cards
+      (title + description, 170 px, theme tokens, accent focus ring). Boot
+      analyzer is the one live card and opens the analyzer as a sub-view (an
+      added Back button returns to the hub); the other five artboard tools
+      (Crash reports, Extract package, Shader cache, Input recorder, Memory
+      map) are shown disabled with a "Soon" tag rather than faked, honest
+      about what exists. Tab switching, ShowTab, the pad L1/R1 tab cycling
+      (hub counts as the Tools tab) and per-tab pad nav (Cross opens Boot
+      analyzer, Circle back to Library; footer hints.tools) all account for
+      the hub. Fifteen new keys (six card title/desc pairs, tools.soon,
+      tools.back, hints.tools) in all eleven locales. Built clean (0
+      warnings), ratchet unchanged. Seen (temporary env-gated auto-open, since
+      removed): artifacts/runtime/SHELL_20260906_121158/frames/frame_0000.png.
+    - [x] **Boot analyzer detail (inside Tools)** - DESIGN DRAFTED then BUILT,
+      DONE 2026-09-06. Design: a BootAnalyzer artboard on the concept canvas
+      (artifact 12445a87), approved by the user. Implementation: AnalyzerView
+      rebuilt from the old GridView table + raw log to the artboard - a
+      breadcrumb + Analyze all / Export summary header, a titles table whose
+      rows carry a per-title result chip (ok/warn/fail coloured from the
+      ThemeSuccess/Warning/Danger tokens via AnalyzerStateBrushConverter), an
+      accent selection ring, and a right-hand report bound to the selection:
+      the title's facts (format, encryption, footprint, alignment), a
+      boot-readiness checklist, and the parser log. IMPORTANT divergence from
+      the mockup, on purpose (Rule 04): the checklist shows only stages the
+      STATIC parser actually evidences - container recognised, segments
+      mapped, decrypted, alignment, module loaded - NOT the mockup's runtime
+      stages (relocations / imports / first frame), which the static parser
+      cannot know. Result verdict and stages are derived in ParseParserOutput
+      from the real parser signals (BootStage list on BootAnalysisResult).
+      Seventeen new keys (subtitle, result, readiness, parser_log, six result
+      verdicts, five stage labels, loaded/not_loaded) in all eleven locales.
+      Follow-up 2026-09-06 (user: "let user select and analyze one/multiple/all,
+      add a search bar"): the tab no longer auto-analyzes on open. It lists the
+      games as unanalyzed rows (BootAnalysisResult is now INotifyPropertyChanged
+      so rows fill in place); each row has a checkbox, the header a select-all,
+      and a search box filters by title or ID via the collection view. "Analyze
+      selected" runs the parser only for the checked rows (or the focused row if
+      none are checked) and updates each live; the Library "Analyze" action
+      checks and analyzes just that one title. Six more keys (search, select_all,
+      analyze, pick_first, running, not_analyzed) in all eleven locales. Built
+      clean (0 warnings), ratchet unchanged. Seen idle
+      (artifacts/runtime/SHELL_20260906_144801/frames/frame_0000.png) and after
+      select-all + analyze (SHELL_20260906_144825/frames/frame_0000.png).
+    - [~] **Input** - SLICE 1 DONE 2026-09-06. The Input tab is the largest,
+      most functional screen (live DualSense visualizer + device panel + tests
+      + a working rebind mapping editor, ~900 lines across InputTabView and
+      ControllerView), so it is staged. Slice 1 rebuilt the live panel
+      (InputTabView.xaml) to the concept artboard: hairline-border cards on
+      flat tokens (ThemeCornerL), the pad diagram in a raised card, a transport
+      pill by the picker, device rows as label/value DockPanels, motion graphs,
+      and a new "Keyboard & mouse" card; test/refresh buttons use a local
+      OutlineButton style (the shell's SecondaryButtonStyle lives in
+      MainWindow's own resources and a separate UserControl cannot see it via
+      StaticResource - that mismatch crashed the first attempt at load,
+      artifacts/runtime/SHELL_20260906_145612, fixed by the local style). The
+      ControllerView header is now a display-size title. All live x:Names and
+      handlers preserved. Two new keys (input.kbm, input.kbm_help) in eleven
+      locales. Built clean (0 warnings), ratchet unchanged. Seen:
+      artifacts/runtime/SHELL_20260906_145716/frames/frame_0000.png (no pad
+      connected in the capture VM, so the diagram is neutral and device fields
+      read "—"). NOT YET: the artboard's 4-column mapping reference grid with
+      Rebind on the focused card - the app still has its older 3-column rebind
+      mapping editor below the diagram (untouched, still functional). That
+      rework touches rebind capture/persistence and is slice 2.
+      Slice 2 (2026-09-06): the mapping editor below the diagram is a full
+      functional rebind UI (per-control BtnMap_Click bind buttons, deadzone
+      sliders, config profiles, save) - the artboard's compact read-only grid
+      would DROP those features, so it was not swapped wholesale (that is a
+      functional decision, not a re-skin). Instead the editor was aligned to
+      the artboard's flat card aesthetic without losing function: its container
+      moved from the translucent CardBackgroundBrush + small corners to
+      ThemeRaised + ThemeCornerL, and its 11 inner section cards from ThemeRaised
+      to ThemeSurface with ThemeCornerM, so the whole Input tab reads as one
+      screen. Built clean (0 warnings), ratchet unchanged, tab renders
+      (artifacts/runtime/SHELL_20260906_152303/frames/frame_0000.png; editor is
+      below the fold). Full grid redesign that preserves deadzones/profiles/save
+      remains open if wanted.
+    - [x] **Concept screens recreated in Figma** - DONE 2026-09-06. On request,
+      regenerated the shell's screens as native, editable Figma frames (not
+      image exports) in a new file (PCSX5 Console Concept,
+      figma.com/design/hcglWG0tSW6pUQGAcCzl4l): Library, Tools, Boot analyzer,
+      Folder picker, Input, Settings, Console, Error, Booting, Pause overlay,
+      Stuck notice - all auto-layout, void-console palette, Inter as the
+      stand-in for Space Grotesk / IBM Plex (swappable). Built via the Figma
+      MCP (use_figma). This is a design asset, not shipped code.
+      Follow-up: the user noted the canvas has 16 real screens (18 artboards
+      minus the 2 low-fi direction sketches) vs 11 built, so the remaining 5
+      were added - Library all-games grid, Console docked right / bottom /
+      floating, and the in-game Quick settings overlay - for 16 total. The
+      Figma Starter plan's MCP tool-call limit was hit on the final
+      verification screenshot; every build call itself returned node ids.
+      Input sub-tabs (2026-09-06): designed two new artboards splitting the
+      Input tab into Configuration (rebind grid + deadzones/profile/lightbar/
+      save) and Testing (live pad diagram, live button/stick readouts, device,
+      motion, test buttons); both added to the concept canvas and published
+      (launches focused on Configuration). The matching Figma frames could NOT
+      be added - the Figma Starter plan's MCP tool-call limit is exhausted and
+      refused the call; the build script is ready to run once the quota resets
+      or the plan is upgraded. Two sub-tabs still to be BUILT in the shell:
+      Configuration = the mapping editor, Testing = InputTabView's live pad /
+      device / motion / tests.
+      BUILT in the shell 2026-09-06: ControllerView now has a sub-tab bar
+      (SubTabButtonStyle - text label with an accent underline when
+      Tag="active") between the title and the content; SetInputSubTab(bool)
+      toggles InputTab (Testing, live pad + device + motion + tests) against
+      InputConfigView (Configuration, the full mapping editor) and starts/stops
+      the live-pad polling accordingly. Lands on Testing; Configuration is one
+      click away and keeps ALL its controls (rebind buttons, deadzones,
+      profiles, lightbar colour, Save/Apply/Restore) - no functionality lost.
+      Two new keys (input.subtab_config/test) in all eleven locales. Built clean
+      (0 warnings), ratchet unchanged. Seen: Testing
+      artifacts/runtime/SHELL_20260906_154225/frames/frame_0000.png,
+      Configuration SHELL_20260906_154259/frames/frame_0000.png.
+      Configuration rebuilt to the artboard grid 2026-09-06 (the earlier
+      "rebuild to artboard grid" choice): the old 3-column editor became a
+      4-column grid of binding cards (MapCardStyle rings accent when a card's
+      bind button is focused; card = control label + the binding on a borderless
+      mono MapValueStyle button) beside a tuning sidebar (deadzones, profile,
+      active gamepad, lightbar + haptics, Restore/Apply/Save). All 39 x:Named
+      controls preserved with handlers (26 BtnMap_Click buttons, 4 deadzone
+      sliders, config/per-game/active-gamepad combos, 3 colour sliders +
+      override + swatch, RestoreDefaultMappingsBtn); the old centre DualSense
+      image (not x:Named) was dropped. 31 new keys (input.map.* labels +
+      header/hint, input.tune.deadzones/profile/lightbar) in all eleven locales;
+      net hardcoded XAML strings went down, ratchet unchanged. Built clean.
+      Seen: artifacts/runtime/SHELL_20260906_155927/frames/frame_0000.png.
+    - [x] **Settings (side-section list)** - DONE 2026-09-06. The old 3-layer
+      hub (grid of category tiles -> category rows -> sub-page) became the
+      concept's side-section layout: a persistent left nav rail (SETTINGS title
+      + the 8 sections via SettingsNavButtonStyle, the active one on a soft
+      accent fill) in a new column 0, with the selected section's rows on the
+      right (column 1). The legacy SettingsHubView is kept in XAML but collapsed
+      and never shown. Reuses everything: SettingsNav_Click ->
+      OpenSettingsCategory builds the rows (PopulateCategoryRows) and highlights
+      the nav (CommandParameter holds the section, Tag the active flag);
+      sub-pages still open on the right; Save still works (ResetSettingsView now
+      re-opens the active section instead of the hub); Back leaves Settings.
+      Footer hint "Back to Settings Hub" -> "Back". Built clean (0 warnings),
+      ratchet unchanged. Seen:
+      artifacts/runtime/SHELL_20260906_161854/frames/frame_0000.png.
+    - [x] **Console panel** - polished 2026-09-06 toward the concept. The
+      dockable GameConsolePanel already provides the concept's right / bottom /
+      left / floating variants (ConsoleDockMode_Click); its log area now uses the
+      darker ThemeGround terminal ground with a rounded ThemeCornerM card, matching
+      the concept's console. A command-input line was deliberately NOT added -
+      the emulator console has no command processor, so it would be a fake
+      control (Rule 04). Built clean.
+    - [x] **Input Testing polish** - DONE 2026-09-06 from user screenshots: the
+      "Not connected" transport chip was a full stadium pill (ThemeCornerPill)
+      and read as an oval - now ThemeCornerM like every other chip (standing
+      rule saved to memory); the pad no longer sits in a raised card but
+      directly on ThemeGround to match the emulator background; it fills the
+      available height and centres (MaxHeight cap removed, Testing and
+      Configuration now share one star row so whichever is shown fills).
+      Global dark ComboBox + ComboBoxItem templates and a thin dark ScrollBar
+      template replaced the WPF defaults (unreadable light dropdown, chunky
+      scrollbar) app-wide. Seen:
+      artifacts/runtime/SHELL_20260906_190915/frames/frame_0000.png.
+    - [ ] Remaining screens to rebuild: Error, pause overlay, quick
+      settings, first-run setup.
+
+- [~] **3D DualSense in the Input Testing tab, animated by live input** -
+  asked and BUILT 2026-09-06; rendering, textures, lightbar and live tilt
+  VERIFIED on screen, the per-part press/hinge directions await the user's
+  hand test. Model: Sketchfab "PlayStation 5 Dualsense" by AHarmlessPotato,
+  CC-BY-4.0 (user supplied the glTF zip; vendored as assets/gamepad/
+  dualsense3d with LICENSE.txt + README carrying the required credit).
+  Pipeline (headless Blender 5.1, no MCP needed - `blender --background
+  --python`, scripts in the session scratchpad, documented in the README):
+  import glTF -> apply transforms -> parent_clear (drop Sketchfab's root
+  empties so world == local) -> separate by loose parts (120 islands) ->
+  classify by bbox anchors into 18 named parts (body, 4 face buttons, 4 D-pad
+  arms, 2 sticks, L1/R1, L2/R2, touchpad, PS, mute) -> decimate (112k ->
+  47k tris) -> one OBJ per part exported with IDENTITY axes so OBJ and
+  manifest share one frame (+X right, -Y face, +Z top edge) + baseColor/
+  emissive textures at 1024 + manifest.json with bboxes. Shell: ObjLoader.cs
+  (per-usemtl meshes, V flipped) + ControllerVisualizer3D.cs (WPF Viewport3D,
+  no new dependency) hosted in InputTabView over the 2D canvas (kept as
+  fallback when assets are missing); Pad3D.Update runs from the existing 16 ms
+  PollOnce. Animations: whole-pad tilt from the accelerometer, L2/R2 hinge
+  about their top edge from the analog axes, L1/R1 click, face/D-pad/PS/
+  touchpad depress into the face, sticks lean about their base from
+  Lx/Ly/Rx/Ry, lightbar = 1011 emissive tinted by the Configuration colour
+  sliders (CtrlColorSliders_ValueChanged -> Pad3D.LightbarColor).
+  Two defects found and fixed on the way: (1) the OBJ export wrote world
+  coordinates under Sketchfab's parent empties while the manifest measured
+  local ones - pivots were off and the pad rendered edge-on and tiny (fixed by
+  parent_clear + identity-axis export; verified 577/577 btn_cross vertices
+  inside their bbox); (2) VERIFIED in dualsense_ds5w.cpp that the core hands
+  over the RAW int16 accelerometer, not g, so a fixed gain saturated at the
+  clamp and turned sensor noise into thrash ("moving all over the place" with
+  the pad flat) - tilt now comes from the gravity vector via non-degenerate
+  atan2 (unit-free), low-passed (k=0.12) with a 1.5 deg deadband.
+  build_release.ps1 now stages assets/gamepad (2D and 3D): a dist app had been
+  finding the REPO copy via InputTabView's five-parent walk-up, so a shipped
+  dist was not self-contained. Seen: face-on, textured, lightbar glowing, live
+  accel tilt - artifacts/runtime/SHELL_20260906_194914/frames/frame_0000.png.
+  Follow-ups 2026-09-06 from the user's hand test:
+  - "D-pad and Triangle/Cross/Square/Circle are missing": the geometry was
+    there (each part ~940-2340 tris) - the 1001 texture atlas those parts use
+    has alpha down to 24 in exactly their regions, and WPF DiffuseMaterial
+    honours brush alpha, so the caps rendered ~90% transparent and read as
+    holes. Fixed by flattening the three baseColor textures to opaque (1002/
+    1011 were already 240-255). Buttons and D-pad now visible.
+  - Testing is now a POPUP (InputTestOverlay, hosting InputTabView) instead
+    of an inline sub-tab body, so the pad can be tested without changing
+    tabs: while it is open the global pad handler swallows everything (L1/R1/
+    L2/R2 included); a PS *tap* is a test like any other button, holding PS
+    for 2 s (_psHoldStart) closes it, as do Esc and the Close button. On the
+    Input tab with the popup closed, L2/R2 switch the sub-tabs
+    (Configuration <-> Testing) and L1/R1 alone cycle the main tabs; L2/R2
+    no longer cycle main tabs anywhere. Three keys (input.test_popup_*) in all
+    eleven locales. Built clean, ratchet unchanged, dist re-staged 20:03.
+    Seen: artifacts/runtime/SHELL_20260906_200201/frames/frame_0000.png.
+  Round 3 (2026-09-06, user hand test): sticks and triggers were moving the
+  wrong way - both stick lean signs and the trigger/bumper hinge sign were
+  inverted (derived from the rotation math, +nx/+ny and +hinge now); pressed
+  parts now also GLOW (an EmissiveMaterial per part, accent when down) so an
+  input is noticed; the five player-indicator LED dots were re-extracted as
+  parts (led_c/l1/l2/r1/r2, with a size guard so the 0.26-wide speaker grille
+  sharing their centre does not join them) and light in the DualSense
+  player pattern from the pad index (INFERRED pattern), the mute button glows
+  orange from MicMuted; the face-button caps are dark GLASS: the atlas's low
+  alpha was the intended translucency, so the 1001 texture keeps ~35% alpha on
+  the caps and translucent (1001) meshes are drawn LAST with BackMaterial set,
+  so the white glyph pieces beneath show through (flattening them to opaque
+  had hidden the glyphs - reverted). The Testing SUB-TAB is gone: the Input tab
+  is the Configuration editor and a "Test controller" button opens the popup;
+  entering the tab no longer opens it; L2/R2 do nothing on the Input tab (and
+  still never cycle main tabs). Title music now pauses on every non-Library
+  tab and resumes on the Library. The accelerometer graph is normalized to g
+  by the pad's resting magnitude on a fixed +/-2 g scale.
+  Tilt was then moved off the accelerometer entirely (it is misparsed over
+  Bluetooth - next item) onto the gyro: slow bias estimate subtracted, raw
+  deadband, leaky integration on pitch/roll/yaw (three axes) that settles
+  back to level. VERIFIED level and still with the pad resting:
+  artifacts/runtime/SHELL_20260906_202106/frames/frame_0000.png (gyro flat,
+  pad face-on, no rocking). dist re-staged 20:22 with all 23 parts.
+  Round 4 (2026-09-06, user hand test + photos): (1) the pad still rocked
+  and yawed - the gyro integration drifted; root-caused instead to the
+  accel/gyro field swap in the core (next item, fixed), and tilt is now
+  ABSOLUTE from the gravity vector (roll = atan2(ax, ay), pitch =
+  atan2(-az, ay), light low-pass, no yaw): no integration, so nothing to
+  drift or settle. Axis signs INFERRED from the SDL/hid-playstation sensor
+  frame (+Y out of the face, +Z towards the player). (2) NO glow and NO
+  player/mute LEDs ever showed: `EmissiveMaterial.Color` only FILTERS the
+  brush, so a black brush with Color=accent stays black - the glow is now
+  a SolidColorBrush whose Color is set. VERIFIED: the P1 LED dot lights in
+  SHELL_20260906_205955/frames/frame_0001.png and a held R2 glows accent.
+  (3) The re-extracted led_* islands were internal geometry 0.24 behind
+  the face (removed from the manifest); the five LEDs are now small quads
+  synthesized under the touchpad edge at the measured body surface
+  (y=-0.306 vs body -0.294, INFERRED position). (4) L2/R2 swung outward:
+  hinge sign negated. (5) Mute: the core already maps the mic button to
+  bit 0x00200000 - it now depresses, and the mute LED follows a LOCAL
+  toggle (lit on first press, dark on the next) OR MicMuted, because the
+  reader exposes no LED state. (6) Face-button glyphs were invisible for a
+  real reason: the model builds each cap like the real part - a clear top
+  disc, walls, and a floor 0.03 below carrying the printed glyph - and the
+  low-alpha atlas regions were white BODY panels, not caps (so the 35%
+  alpha made the body translucent). Now: alpha opaque everywhere; each
+  cap's 1001 mesh is split by depth into the front disc (drawn last as
+  smoked glass, opacity 0.88, tinted) and the opaque rest; and the atlas
+  has each glyph PAINTED onto the cap's own top disc, oriented through a
+  least-squares model->UV affine per disc (so D-pad arrows point along
+  their arm). Reproducible from the upstream texture by
+  scratchpad tex_round4.py; recorded in the asset README. VERIFIED
+  legible: SHELL_20260906_205955 (triangle, square, cross, circle, four
+  arrows). dist re-staged 21:0x with 18 parts. OPEN: tilt axis signs and
+  the LED pattern remain INFERRED until the user confirms by hand.
+
+- [x] **Round 6 (2026-09-06): Input tab rebuilt to the new artboards; View all
+  is the concept's full page; 3D pad share/options, tilt, glass** - design
+  first (artifact "Controller Setup v2", three artboards, also kept as
+  scratchpad design2/controller-setup-v2.html), then built:
+  (1) The Input tab is bindings only: a 6-column grid in a single scroll,
+  with "Test controller" and "Controller settings ›" (opens System >
+  Accessories & Controllers). The tuning sidebar - sliders whose values were
+  never persisted anyway - is gone, and Options (≡) restores default
+  bindings (legend updated in eleven locales). Seen:
+  artifacts/runtime/SHELL_20260906_220850/frames/frame_0001.png.
+  (2) System > Accessories & Controllers gained rows that ARE persisted
+  (input.active_slot, input.lightbar, input.per_game_configs): Active
+  gamepad (choice, applies lightbar + player LEDs to the pad and the 3D pad),
+  Lightbar colour (swatch grid + the colour picker beneath for a custom
+  colour, applied to the pad live and at startup; "Pad default" = the slot's
+  player colour), Per-game controller configs (toggle), Restore default
+  bindings (a new "action" row type). Seen: SHELL_20260906_220902 and
+  SHELL_20260906_220915.
+  (3) View all now hides the hero and fills the screen like the Library
+  artboard; the ring is on the selected tile, not the whole list. Seen:
+  SHELL_20260906_220927.
+  (4) 3D pad: Share and Options are their own parts (re-exported with two
+  new anchors; 20 parts) and depress/glow on bits 0x1/0x8; both tilt signs
+  flipped (INFERRED: the user read both axes mirrored, which matches an IMU
+  frame rotated 180 deg about Y, not a single-axis error); trigger glow is a
+  dim tint instead of a cyan sticker on the black triggers; cap glass is
+  near-opaque (0.97) so the floor no longer shows as crescents; all four
+  face glyphs share one size (0.032 model units). Seen: SHELL_20260906_220940.
+  OPEN: the tilt direction still needs the user's confirmation per axis.
+
+- [x] **Round-5 shell feedback (2026-09-06, user screenshots)** - seven items,
+  all built clean, ratchet unchanged, dist re-staged 21:4x:
+  (1) Settings option pages (accent colour etc.) were one narrow column in an
+  empty page: the option list is now a WrapPanel (280 px items) in a
+  stretched container, and level-3 pad navigation is spatial (SpatialNav),
+  with Left off the left edge going back. Seen:
+  artifacts/runtime/SHELL_20260906_214233/frames/frame_0001.png (two columns
+  in the harness's 1200 px window; five on a 1920 px screen).
+  (2) Credits popup: the System Information "Credits" row opens an overlay
+  showing the README's "## Credits" section, read at runtime from the
+  README.md staged beside the exe (build_release.ps1 + csproj Content), so it
+  cannot drift from the published list; markdown links/bold stripped, pad
+  scroll, Circle/Cross close, its own legend. Seen:
+  artifacts/runtime/SHELL_20260906_214136/frames/frame_0001.png.
+  (3) Focus auto-scroll: a window-level GotKeyboardFocus handler brings the
+  newly focused element into view on every screen (user: focus walked off
+  the visible area).
+  (4) Input configuration is ONE scroll area (the sidebar and the grid were
+  two ScrollViewers with two bars); the three tuning cards use MapCardStyle
+  so the card holding the focused slider/picker rings accent like the
+  binding cards. Seen: SHELL_20260906_214149/frames/frame_0001.png. Sliders
+  adjust with Left/Right, swatches with Cross, the hue strip with Left/Right;
+  NOT hand-verified by pad (harness cannot press).
+  (5) Library: Options (≡) opens the full library ("View all" was
+  mouse-only); the library legend now lists it, localized from ui.view_all.
+  (6) Play stops the lobby music (it already resumed on return); new
+  setting UI & Personalization > "Lobby music volume" (ui.title_music_volume,
+  0..1, default 0.6, applied live), and the title music now uses it instead
+  of the game's audio volume.
+  (7) Crash overlay: Cross = Boot analyzer, Triangle = Raw logs, Square =
+  Copy, Circle = Dismiss, D-pad scrolls the raw text; legend hints.crash in
+  eleven locales.
+
+- [x] **Pad navigation on the Input configuration grid is spatial** (2026-09-06).
+  The 4-column binding grid was walked as a hand-ordered flat list with
+  up/down only, so Down from a card landed "all over the place" (user
+  report). New `SpatialNav` (src/ui_csharp/SpatialNav.cs, geometry only):
+  from the focused control, a direction picks the nearest control whose
+  centre lies that way, preferring ones in the same lane - TV-remote
+  movement. Left/right on a focused combo/slider still adjust its value.
+  The colour picker's hue slider, swatches and hex field join the set.
+  Built clean, ratchet unchanged. NOT yet seen by pad through the harness
+  (it cannot press pad buttons); needs the user's hand test.
+
+- [x] **Settings side-nav is reachable by pad** (2026-09-06). The rows-only
+  navigation never focused the section column, so the pad was stuck on
+  Display & video (user report). Now: Left from the rows (or an unfocused
+  row list) focuses the active section; Up/Down in the column switch the
+  section and open its rows at once; Right or Cross enter the rows; Circle
+  in the column returns to the Library. Same caveat: needs a hand test.
+
+- [x] **Lightbar colour picker replaces the three RGB sliders** (2026-09-06,
+  user request). `ColorPickerControl` (own UserControl, Rule 11): a
+  saturation/brightness plane (mouse), a hue strip (pad/keyboard/mouse),
+  eight preset swatches and a hex field - every route reachable without a
+  mouse (Rule 12), four new keys in all eleven locales, AutomationProperties
+  on each. Feeds the 3D pad's lightbar as before. Seen:
+  artifacts/runtime/SHELL_20260906_210036/frames/frame_0001.png.
+
+- [x] **Core: DualSense accelerometer misparsed on Bluetooth - FIXED 2026-09-06.**
+  ROOT CAUSE: DualSenseWindows reads its `accelerometer` from report offset
+  0x0F and its `gyroscope` from 0x15, but the DualSense report carries the
+  GYRO at 0x0F and the ACCELEROMETER at 0x15 (INFERRED from the Linux
+  hid-playstation `dualsense_input_report` layout: buttons[4], reserved[4],
+  gyro[3], accel[3]). It is not a Bluetooth-only bug - the swap is the same
+  on USB; it only *looked* like a BT layout problem. Fixed at the one
+  consumption point, `src/gpu/dualsense_ds5w.cpp` ServiceSlot (the vendored
+  library is untouched), by assigning the swapped fields. VERIFIED with the
+  pad resting: artifacts/runtime/SHELL_20260906_205805/frames/frame_0001.png
+  shows the accelerometer as three flat lines (a steady gravity vector) and
+  the gyro as noise around zero - the signature the two fields should have.
+  The 3D pad's tilt is back on the accelerometer (gravity, no drift) as a
+  result. Original observation kept below for the record. Was: OBSERVED
+  2026-09-06 in the Input testing popup with the pad resting on a table over
+  Bluetooth: the gyro traces are flat (the pad is not moving) while all three
+  accelerometer channels swing roughly +/-2 g every sample
+  (artifacts/runtime/SHELL_20260906_201743/frames/frame_0000.png; the earlier
+  autoscaled trace SHELL_20260906_195330 shows the same). No physical IMU does
+  that at rest, so the accelerometer bytes are being read wrongly. HYPOTHESIS:
+  the Bluetooth input report has a different layout/offset from the USB one
+  and the accelerometer is decoded at the USB offset (the gyro landing right
+  by luck), in DualSenseWindows' parse or in src/gpu/dualsense_ds5w.cpp which
+  copies in.accelerometer.x/y/z straight through. Not investigated; needs a
+  raw-report capture over BT vs USB and the DualSenseWindows report parser
+  read. UNTIL FIXED the 3D pad's tilt is driven from the gyro (bias-removed
+  leaky integration), not the accelerometer, and anything else that trusts
+  AccelX/Y/Z over Bluetooth is suspect.
 
 - [ ] **4.14 Dreaming Sarah crashes when launched from the shell but not
   from the CLI harness** - OBSERVED 2026-09-06, high blast radius (the user's
@@ -657,6 +1073,17 @@ Ordered by dependency, one subsystem per change (Rule 10):
   COMPATIBILITY_README.md (now README.md), duplicated the Total row and never
   refreshed the date (regex fixes), and installed `requests` on every run (now
   stdlib urllib, nothing to install or cache). The action passes green.
+
+- [x] **Shell fetches community status after a run** - DONE 2026-09-06.
+  New CompatDatabase.cs reads a title's status from the public database's issue
+  labels (read-only, unauthenticated, every failure returns null so the local
+  status stands). MainWindow.RefreshCompatFromDatabase runs when a title stops
+  (OnGameStopped): on a non-null result it updates the game's badge if selected
+  and persists the tier to compat_seed/titles/<id>.json (source=database), so a
+  later launch shows it without a network call. Badge painting extracted to
+  ApplyCompatBadge so the hero and the refresh share one path. Built clean
+  (0 warnings), ui-strings ratchet unchanged, Library verified in a shell
+  capture (BOOTS badge, orange tint).
 
 - [ ] **4.11 UI polish pass** (asked 2026-09-06: "take screenshots and improve
   the UI"). Screenshot every screen of the shell, judge each against the

@@ -139,12 +139,229 @@
             </Style.Triggers>
         </Style>
 
-        <!-- Global Controller Focus Style for ComboBox, Slider, CheckBox -->
-        <Style TargetType="ComboBox">
+        <!-- Sub-tab: text label with an accent underline when active (Tag="active"). -->
+        <Style x:Key="SubTabButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="{DynamicResource TypeL}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextMuted}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <StackPanel Background="Transparent">
+                            <ContentPresenter Margin="2,0,2,10"/>
+                            <Border x:Name="U" Height="2" Background="{DynamicResource ThemeAccent}" Visibility="Collapsed"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="active">
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+                                <Setter TargetName="U" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Mapping card: hairline card that rings accent when its bind button is focused. -->
+        <Style x:Key="MapCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeHairline}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="{DynamicResource ThemeCornerM}"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="Margin" Value="0,0,10,10"/>
             <Style.Triggers>
-                <Trigger Property="IsKeyboardFocused" Value="True">
-                    <Setter Property="BorderBrush" Value="#0099FF"/>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
                     <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="Background" Value="{DynamicResource ThemeSurface}"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Bind value: the current binding shown as a borderless mono line; still clickable/focusable. -->
+        <Style x:Key="MapValueStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+            <Setter Property="FontFamily" Value="Consolas, monospace"/>
+            <Setter Property="FontSize" Value="{DynamicResource TypeM}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent"><ContentPresenter VerticalAlignment="Center"/></Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Settings side-nav row: left-aligned; active row gets a soft accent fill (Tag="active"). -->
+        <Style x:Key="SettingsNavButtonStyle" TargetType="Button">
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextMuted}"/>
+            <Setter Property="FontSize" Value="{DynamicResource TypeL}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="B" Background="Transparent" CornerRadius="{DynamicResource ThemeCornerM}" Padding="18,14" Margin="0,2">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="active">
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="B" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Global Controller Focus Style for ComboBox, Slider, CheckBox -->
+        <!-- Dark themed dropdown items: readable text, accent hover/selected. -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="FontSize" Value="{DynamicResource TypeM}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="{DynamicResource ThemeCornerS}" Margin="4,1">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark themed ComboBox: dark box + dark dropdown popup with a chevron. -->
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeSurface}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderStrong}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="FontSize" Value="{DynamicResource TypeM}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+ IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="Bd" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeBorderStrong}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}">
+                                            <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+ Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource ThemeTextMuted}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+ ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" Margin="12,0,30,0"
+ VerticalAlignment="Center" HorizontalAlignment="Left" TextElement.Foreground="{DynamicResource ThemeText}"/>
+                            <Popup x:Name="Popup" Placement="Bottom" Focusable="False" AllowsTransparency="True"
+ IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Slide">
+                                <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}" Margin="0,4,0,8"
+ MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="320">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="6" Opacity="0.5"/>
+                                    </Border.Effect>
+                                    <ScrollViewer>
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Toggle" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Thin dark scrollbar (replaces the chunky default). -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="{DynamicResource ThemeBorderStrong}" CornerRadius="4" Margin="3,2"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" Opacity="0" Background="Transparent" BorderThickness="0"/>
+                                </Track.IncreaseRepeatButton>
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" Opacity="0" Background="Transparent" BorderThickness="0"/>
+                                </Track.DecreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Width" Value="Auto"/>
+                    <Setter Property="Height" Value="10"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -432,7 +649,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- Upper details area: details about selected game -->
-                    <Grid Grid.Row="0" Margin="40,25,40,10">
+                    <Grid x:Name="LibraryHero" Grid.Row="0" Margin="40,25,40,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="2.5*"/> <!-- Text Details -->
                             <ColumnDefinition Width="1*"/>   <!-- Mini Cover Display -->
@@ -587,7 +804,7 @@
 
                     <!-- Full library grid view (hidden by default) -->
                     <!-- All games (TASKS 4.13 step 3): every colour a theme token. -->
-                    <Grid x:Name="FullLibraryGrid" Grid.Row="1" Visibility="Collapsed" Background="Transparent" Margin="40,15,40,15">
+                    <Grid x:Name="FullLibraryGrid" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed" Background="Transparent" Margin="40,25,40,15">
                         <Grid.Resources>
                             <!-- One segment of the sort control. The active one is set
                                  from code (UpdateSortSegments) by Tag == _librarySort. -->
@@ -654,7 +871,7 @@
                              and the item source are unchanged; only the item
                              layout differs. Tiles are 180 px square with the
                              title over the bottom edge, matching the shelf. -->
-                        <ListView x:Name="FullLibraryListView" FocusVisualStyle="{StaticResource AccentFocusVisual}" Grid.Row="1" Background="Transparent" Foreground="White" BorderThickness="0"
+                        <ListView x:Name="FullLibraryListView" FocusVisualStyle="{x:Null}" Grid.Row="1" Background="Transparent" Foreground="White" BorderThickness="0"
                                   ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                   SelectionMode="Single" SelectionChanged="FullLibraryListView_SelectionChanged" MouseDoubleClick="FullLibraryListView_MouseDoubleClick"
                                   AutomationProperties.Name="{loc:Tr Key=ui.view_all}">
@@ -746,445 +963,593 @@
                     </Grid>
                 </Grid>
                 
-                <!-- 1.5. BOOT ANALYZER VIEW (GRID) -->
-                <Grid x:Name="AnalyzerView" Visibility="Collapsed" Margin="40,20,40,20">
+                <!-- 1.4b. TOOLS HUB VIEW - rebuilt to the concept artboard 2026-09-06.
+                     The Tools tab lands on a grid of tool cards; the Boot analyzer
+                     card opens the analyzer sub-view below. Cards for tools not yet
+                     built are shown disabled with a "Soon" tag rather than faked. -->
+                <Grid x:Name="ToolsHubView" Visibility="Collapsed" Margin="56,28,56,20">
+                    <Grid.Resources>
+                        <Style x:Key="ToolCardStyle" TargetType="Button">
+                            <Setter Property="Cursor" Value="Hand"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Card" Height="170" Padding="24"
+ Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                                <Setter TargetName="Card" Property="BorderThickness" Value="2"/>
+                                                <Setter TargetName="Card" Property="Background" Value="{DynamicResource ThemeSurface}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                                <Setter TargetName="Card" Property="BorderThickness" Value="2"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter TargetName="Card" Property="Opacity" Value="0.5"/>
+                                                <Setter Property="Cursor" Value="Arrow"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                        <Style x:Key="ToolCardTitle" TargetType="TextBlock">
+                            <Setter Property="FontSize" Value="{DynamicResource TypeXL}"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                            <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
+                        </Style>
+                        <Style x:Key="ToolCardDesc" TargetType="TextBlock">
+                            <Setter Property="FontSize" Value="{DynamicResource TypeM}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource ThemeTextMuted}"/>
+                            <Setter Property="TextWrapping" Value="Wrap"/>
+                            <Setter Property="Margin" Value="0,10,0,0"/>
+                            <Setter Property="LineHeight" Value="21"/>
+                        </Style>
+                    </Grid.Resources>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/> <!-- Top Buttons -->
-                        <RowDefinition Height="*"/>    <!-- Main Split Area -->
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0" Margin="0,0,0,10">
-                        <TextBlock x:Name="AnalyzerHeaderTextBlock" Text="{loc:Tr Key=ui.executable_boot_amp_memory_analyzer}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
-                        
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="{loc:Tr Key=ui.analyze_all_games}" Style="{StaticResource ModernButtonStyle}" Click="AnalyzeAll_Click"/>
-                            <Button Content="{loc:Tr Key=ui.export_minimal_summary}" Style="{StaticResource ModernButtonStyle}" Margin="10,0,0,0" Click="ExportSummary_Click"/>
+                    <TextBlock x:Name="ToolsHubTitle" Grid.Row="0" Text="{loc:Tr Key=sidebar.tools}"
+ FontSize="{DynamicResource TypeDisplayL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}" Margin="0,0,0,22"/>
+
+                    <ItemsControl Grid.Row="1" VerticalAlignment="Top">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="3"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+
+                        <!-- Boot analyzer - the one live tool -->
+                        <Button x:Name="ToolCardBoot" Style="{StaticResource ToolCardStyle}" Margin="0,0,20,20" Click="ToolBootAnalyzer_Click">
+                            <StackPanel VerticalAlignment="Top">
+                                <TextBlock Text="{loc:Tr Key=tools.card.boot.title}" Style="{StaticResource ToolCardTitle}"/>
+                                <TextBlock Text="{loc:Tr Key=tools.card.boot.desc}" Style="{StaticResource ToolCardDesc}"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Crash reports -->
+                        <Button Style="{StaticResource ToolCardStyle}" Margin="0,0,20,20" IsEnabled="False" Focusable="False">
+                            <Grid>
+                                <StackPanel VerticalAlignment="Top">
+                                    <TextBlock Text="{loc:Tr Key=tools.card.crash.title}" Style="{StaticResource ToolCardTitle}"/>
+                                    <TextBlock Text="{loc:Tr Key=tools.card.crash.desc}" Style="{StaticResource ToolCardDesc}"/>
+                                </StackPanel>
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                    <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                </Border>
+                            </Grid>
+                        </Button>
+
+                        <!-- Extract package -->
+                        <Button Style="{StaticResource ToolCardStyle}" Margin="0,0,0,20" IsEnabled="False" Focusable="False">
+                            <Grid>
+                                <StackPanel VerticalAlignment="Top">
+                                    <TextBlock Text="{loc:Tr Key=tools.card.pkg.title}" Style="{StaticResource ToolCardTitle}"/>
+                                    <TextBlock Text="{loc:Tr Key=tools.card.pkg.desc}" Style="{StaticResource ToolCardDesc}"/>
+                                </StackPanel>
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                    <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                </Border>
+                            </Grid>
+                        </Button>
+
+                        <!-- Shader cache -->
+                        <Button Style="{StaticResource ToolCardStyle}" Margin="0,0,20,0" IsEnabled="False" Focusable="False">
+                            <Grid>
+                                <StackPanel VerticalAlignment="Top">
+                                    <TextBlock Text="{loc:Tr Key=tools.card.shader.title}" Style="{StaticResource ToolCardTitle}"/>
+                                    <TextBlock Text="{loc:Tr Key=tools.card.shader.desc}" Style="{StaticResource ToolCardDesc}"/>
+                                </StackPanel>
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                    <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                </Border>
+                            </Grid>
+                        </Button>
+
+                        <!-- Input recorder -->
+                        <Button Style="{StaticResource ToolCardStyle}" Margin="0,0,20,0" IsEnabled="False" Focusable="False">
+                            <Grid>
+                                <StackPanel VerticalAlignment="Top">
+                                    <TextBlock Text="{loc:Tr Key=tools.card.recorder.title}" Style="{StaticResource ToolCardTitle}"/>
+                                    <TextBlock Text="{loc:Tr Key=tools.card.recorder.desc}" Style="{StaticResource ToolCardDesc}"/>
+                                </StackPanel>
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                    <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                </Border>
+                            </Grid>
+                        </Button>
+
+                        <!-- Memory map -->
+                        <Button Style="{StaticResource ToolCardStyle}" Margin="0,0,0,0" IsEnabled="False" Focusable="False">
+                            <Grid>
+                                <StackPanel VerticalAlignment="Top">
+                                    <TextBlock Text="{loc:Tr Key=tools.card.memory.title}" Style="{StaticResource ToolCardTitle}"/>
+                                    <TextBlock Text="{loc:Tr Key=tools.card.memory.desc}" Style="{StaticResource ToolCardDesc}"/>
+                                </StackPanel>
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource ThemeAccentSoft}" CornerRadius="{DynamicResource ThemeCornerPill}" Padding="10,3">
+                                    <TextBlock Text="{loc:Tr Key=tools.soon}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                </Border>
+                            </Grid>
+                        </Button>
+                    </ItemsControl>
+                </Grid>
+                <!-- 1.5. BOOT ANALYZER VIEW - rebuilt to the concept artboard
+                     2026-09-06. Breadcrumb + actions header; a titles table with a
+                     per-title "where the parse stops" result chip; and a report for
+                     the selected title (facts, a boot-readiness checklist built from
+                     the parser's own signals, and the raw parser log). The checklist
+                     stages are only those the static parser actually evidences -
+                     container, segments, decryption, alignment, module load - not
+                     runtime stages (relocations/imports/first frame) it cannot know. -->
+                <Grid x:Name="AnalyzerView" Visibility="Collapsed" Margin="56,28,56,20">
+                    <Grid.Resources>
+                        <local:AnalyzerStateBrushConverter x:Key="StateBrush"/>
+                    </Grid.Resources>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header: breadcrumb + title + actions -->
+                    <Grid Grid.Row="0" Margin="0,0,0,22">
+                        <StackPanel HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Button x:Name="AnalyzerBackBtn" Content="{loc:Tr Key=tools.back}" Style="{StaticResource SecondaryButtonStyle}"
+ MinHeight="30" Padding="12,0" Click="AnalyzerBack_Click"/>
+                                <TextBlock Text="/" FontFamily="Consolas" Foreground="{DynamicResource ThemeHairline}" Margin="12,0,12,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{loc:Tr Key=tools.card.boot.title}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock x:Name="AnalyzerHeaderTextBlock" Text="{loc:Tr Key=tools.card.boot.title}" FontSize="{DynamicResource TypeDisplayL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                            <TextBlock Text="{loc:Tr Key=analyzer.subtitle}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,6,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                            <Button Content="{loc:Tr Key=ui.export_minimal_summary}" Style="{StaticResource SecondaryButtonStyle}" MinHeight="44" Padding="18,0" Click="ExportSummary_Click"/>
+                            <Button Content="{loc:Tr Key=analyzer.analyze}" Style="{StaticResource ModernButtonStyle}" MinHeight="44" Padding="20,0" Margin="12,0,0,0" Click="AnalyzeAll_Click"/>
                         </StackPanel>
                     </Grid>
 
+                    <!-- Body: titles table (left) + report (right) -->
                     <Grid Grid.Row="1">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.8*"/> <!-- Left: ListView -->
-                            <ColumnDefinition Width="1.2*"/> <!-- Right: Selected Game Details / Log -->
+                            <ColumnDefinition Width="1.35*"/>
+                            <ColumnDefinition Width="1*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- ListView -->
-                        <Border Grid.Column="0" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Margin="0,0,10,0">
-                            <ListView x:Name="AnalyzerListView" FocusVisualStyle="{StaticResource AccentFocusVisual}" Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0" SelectionChanged="AnalyzerListView_SelectionChanged">
-                                <ListView.View>
-                                    <GridView>
-                                        <GridViewColumn Header="{loc:Tr Key=ui.game_title}" Width="220" DisplayMemberBinding="{Binding Title}"/>
-                                        <GridViewColumn Header="{loc:Tr Key=ui.title_id}" Width="110" DisplayMemberBinding="{Binding TitleId}"/>
-                                        <GridViewColumn Header="{loc:Tr Key=ui.format}" Width="210" DisplayMemberBinding="{Binding Format}"/>
-                                        <GridViewColumn Header="{loc:Tr Key=ui.encryption}" Width="210" DisplayMemberBinding="{Binding EncryptionStatus}"/>
-                                        <GridViewColumn Header="{loc:Tr Key=ui.footprint}" Width="120" DisplayMemberBinding="{Binding MemoryFootprint}"/>
-                                        <GridViewColumn Header="{loc:Tr Key=ui.alignment}" Width="260" DisplayMemberBinding="{Binding AlignmentStatus}"/>
-                                    </GridView>
-                                </ListView.View>
-                                <ListView.ItemContainerStyle>
-                                    <Style TargetType="ListViewItem">
-                                        <Setter Property="Background" Value="Transparent"/>
-                                        <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
-                                        <Setter Property="BorderThickness" Value="0"/>
-                                        <Setter Property="Margin" Value="0,2,0,2"/>
-                                        <Style.Triggers>
-                                            <Trigger Property="IsSelected" Value="True">
-                                                <Setter Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
-                                                <Setter Property="Foreground" Value="{DynamicResource ThemeText}"/>
-                                            </Trigger>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Background" Value="{DynamicResource ThemeRaised}"/>
-                                            </Trigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </ListView.ItemContainerStyle>
-                            </ListView>
-                        </Border>
-
-                        <!-- Raw Log View on the Right -->
-                        <Border Grid.Column="1" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12">
+                        <!-- Titles table -->
+                        <Border Grid.Column="0" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Margin="0,0,20,0">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/> <!-- search -->
+                                    <RowDefinition Height="Auto"/> <!-- column headers -->
+                                    <RowDefinition Height="*"/>    <!-- list -->
                                 </Grid.RowDefinitions>
-                                <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.detailed_parser_analysis_log}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,8"/>
-                                <TextBox x:Name="AnalyzerOutputTextBox" Grid.Row="1" Background="Transparent" Foreground="{DynamicResource ThemeTextMuted}" FontFamily="Consolas, Courier New" FontSize="10.5" 
- BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsReadOnly="True" AcceptsReturn="True"/>
+
+                                <!-- search -->
+                                <Border Grid.Row="0" Margin="16,14,16,10" Background="{DynamicResource ThemeSurface}"
+ BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}" Padding="12,0">
+                                    <Grid>
+                                        <TextBox x:Name="AnalyzerSearchBox" MinHeight="38" BorderThickness="0" Background="Transparent"
+ Foreground="{DynamicResource ThemeText}" CaretBrush="{DynamicResource ThemeText}" VerticalContentAlignment="Center"
+ FontSize="{DynamicResource TypeM}" TextChanged="AnalyzerSearch_TextChanged"
+ AutomationProperties.Name="{loc:Tr Key=analyzer.search}"/>
+                                        <TextBlock x:Name="AnalyzerSearchPlaceholder" Text="{loc:Tr Key=analyzer.search}" IsHitTestVisible="False"
+ Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}" Margin="2,0,0,0"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- column headers -->
+                                <Grid Grid.Row="1" Margin="22,4,22,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="1.6*"/>
+                                        <ColumnDefinition Width="0.9*"/>
+                                        <ColumnDefinition Width="1*"/>
+                                        <ColumnDefinition Width="1.1*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" x:Name="AnalyzerSelectAll" Margin="0,0,14,0" VerticalAlignment="Center"
+ Click="AnalyzerSelectAll_Click" ToolTip="{loc:Tr Key=analyzer.select_all}" AutomationProperties.Name="{loc:Tr Key=analyzer.select_all}"/>
+                                    <TextBlock Grid.Column="1" Text="{loc:Tr Key=ui.game_title}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                    <TextBlock Grid.Column="2" Text="{loc:Tr Key=ui.title_id}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                    <TextBlock Grid.Column="3" Text="{loc:Tr Key=ui.format}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                    <TextBlock Grid.Column="4" Text="{loc:Tr Key=analyzer.result}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/>
+                                </Grid>
+                                <Border Grid.Row="1" VerticalAlignment="Bottom" Height="1" Background="{DynamicResource ThemeHairline}"/>
+
+                                <ListView x:Name="AnalyzerListView" Grid.Row="2" FocusVisualStyle="{StaticResource AccentFocusVisual}"
+ Background="Transparent" Foreground="{DynamicResource ThemeText}" BorderThickness="0"
+ ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="AnalyzerListView_SelectionChanged">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListViewItem">
+                                                        <Border x:Name="Row" Background="Transparent" BorderBrush="Transparent"
+ BorderThickness="2" CornerRadius="{DynamicResource ThemeCornerM}" Padding="20,0" Margin="8,1">
+                                                            <ContentPresenter VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsSelected" Value="True">
+                                                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource ThemeSurface}"/>
+                                                                <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Height="56">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="1.6*"/>
+                                                    <ColumnDefinition Width="0.9*"/>
+                                                    <ColumnDefinition Width="1*"/>
+                                                    <ColumnDefinition Width="1.1*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,14,0"
+ AutomationProperties.Name="{Binding Title}"/>
+                                                <DockPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                    <Border DockPanel.Dock="Left" Width="34" Height="34" CornerRadius="{DynamicResource ThemeCornerS}" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" Margin="0,0,12,0"/>
+                                                    <TextBlock Text="{Binding Title}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                </DockPanel>
+                                                <TextBlock Grid.Column="2" Text="{Binding TitleId}" FontFamily="Consolas, monospace" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Grid.Column="3" Text="{Binding Format}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Ellipse Width="8" Height="8" Margin="0,0,7,0" Fill="{Binding ResultState, Converter={StaticResource StateBrush}}"/>
+                                                    <TextBlock Text="{Binding ResultText}" FontSize="{DynamicResource TypeS}" Foreground="{Binding ResultState, Converter={StaticResource StateBrush}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
                             </Grid>
                         </Border>
+
+                        <!-- Report for the selected title -->
+                        <Grid Grid.Column="1" x:Name="AnalyzerReport">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- header + facts -->
+                            <Border Grid.Row="0" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="22" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                                        <Border Width="52" Height="52" CornerRadius="{DynamicResource ThemeCornerM}" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" Margin="0,0,14,0"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}" FontSize="{DynamicResource TypeXL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                            <TextBlock Text="{Binding HeaderMeta}" FontFamily="Consolas, monospace" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <UniformGrid Columns="2">
+                                        <Border BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}" Padding="12,10" Margin="0,0,6,6">
+                                            <StackPanel><TextBlock Text="{loc:Tr Key=ui.format}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/><TextBlock Text="{Binding Format}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeText}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+                                        </Border>
+                                        <Border BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}" Padding="12,10" Margin="6,0,0,6">
+                                            <StackPanel><TextBlock Text="{loc:Tr Key=ui.encryption}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/><TextBlock Text="{Binding EncryptionStatus}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeText}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+                                        </Border>
+                                        <Border BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}" Padding="12,10" Margin="0,6,6,0">
+                                            <StackPanel><TextBlock Text="{loc:Tr Key=ui.footprint}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/><TextBlock Text="{Binding MemoryFootprint}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeText}" Margin="0,4,0,0"/></StackPanel>
+                                        </Border>
+                                        <Border BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}" Padding="12,10" Margin="6,6,0,0">
+                                            <StackPanel><TextBlock Text="{loc:Tr Key=ui.alignment}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}"/><TextBlock Text="{Binding AlignmentStatus}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeText}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+                                        </Border>
+                                    </UniformGrid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- boot-readiness checklist -->
+                            <Border Grid.Row="1" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="22" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Tr Key=analyzer.readiness}" FontSize="{DynamicResource TypeM}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,10"/>
+                                    <ItemsControl ItemsSource="{Binding Stages}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Ellipse Grid.Column="0" Width="20" Height="20" Margin="0,0,12,0" Fill="{Binding State, Converter={StaticResource StateBrush}, ConverterParameter=soft}"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding Detail}" FontFamily="Consolas, monospace" FontSize="{DynamicResource TypeS}" Foreground="{Binding State, Converter={StaticResource StateBrush}}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- parser log -->
+                            <Border Grid.Row="2" Background="{DynamicResource ThemeGround}" BorderBrush="{DynamicResource ThemeHairline}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="16,14">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="{loc:Tr Key=analyzer.parser_log}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,8"/>
+                                    <TextBox x:Name="AnalyzerOutputTextBox" Grid.Row="1" Background="Transparent" Foreground="{DynamicResource ThemeTextMuted}" FontFamily="Consolas, Courier New" FontSize="11.5"
+ BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsReadOnly="True" AcceptsReturn="True"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
                     </Grid>
                 </Grid>
-                
+
                 <!-- 1.7. CONTROLLER SETUP VIEW (GRID) -->
                 <Grid x:Name="ControllerView" Visibility="Collapsed" Margin="40,10,40,10">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>                 <!-- title -->
-                        <RowDefinition Height="Auto" MinHeight="500"/> <!-- live controller view -->
-                        <RowDefinition Height="*"/>                    <!-- mapping editor -->
+                        <RowDefinition Height="Auto"/>  <!-- title -->
+                        <RowDefinition Height="Auto"/>  <!-- sub-tab bar -->
+                        <RowDefinition Height="*"/>     <!-- Testing / Configuration (one shown at a time) -->
+                        <RowDefinition Height="Auto"/>  <!-- unused -->
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.controller_setup_2}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,5"/>
+                    <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.controller_setup_2}" FontSize="{DynamicResource TypeDisplayL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}" Margin="0,0,0,14"/>
 
-                    <!-- Live controller view: device info, real-time input, motion, tests.
-                         Reads the pad through CoreBridge (the core's reader) and draws it from
+                    <!-- The Input tab is the Configuration editor; live testing is a popup
+                         opened only from this button (user request 2026-09-06). -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,16">
+                        <Button x:Name="TestControllerBtn" Content="{loc:Tr Key=input.test_controller}" Style="{StaticResource ModernButtonStyle}"
+ MinHeight="40" Padding="20,0" Click="SubTabTest_Click" AutomationProperties.Name="{loc:Tr Key=input.test_controller}"/>
+                        <Button x:Name="ControllerSettingsBtn" Content="{loc:Tr Key=input.controller_settings}" Style="{StaticResource SecondaryButtonStyle}" MinHeight="40" Padding="20,0" Margin="10,0,0,0" Click="ControllerSettings_Click" AutomationProperties.Name="{loc:Tr Key=input.controller_settings}"/>
+                    </StackPanel>
+
+                    <!-- Live controller view (TESTING): device info, real-time input, motion,
+                         tests. Reads the pad through CoreBridge; drawn from
                          assets/gamepad/dualsense. All logic lives in InputTabView (Rule 11). -->
-                    <local:InputTabView x:Name="InputTab" Grid.Row="1" Margin="0,0,0,12"/>
+                    <!-- The live Testing view is a popup (InputTestOverlay) so the pad can be
+                         tested without L1/R1/L2/R2 changing tabs; see SetInputSubTab. -->
 
-                    <Border Grid.Row="2" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="15">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <!-- Left side mapping (D-Pad, L1/L2, Left Stick, Deadzone) -->
-                                <ColumnDefinition Width="260"/>
-                                <!-- Center side (Config Selection, DualSense Image, Touchpad, Color, Save buttons) -->
-                                <ColumnDefinition Width="*"/>
-                                <!-- Right side mapping (Face buttons, R1/R2, Right Stick, Deadzone) -->
-                                <ColumnDefinition Width="260"/>
-                            </Grid.ColumnDefinitions>
+                    <!-- Mapping editor (CONFIGURATION) -->
+                    <Border x:Name="InputConfigView" Grid.Row="2" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="18">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"><DockPanel LastChildFill="True">
 
-                            <!-- COLUMN 0: LEFT SIDE MAPPINGS -->
-                            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                <StackPanel Margin="0,0,10,0">
-                                    <!-- D-PAD CARD -->
-                                    <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.d_pad}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapUp" Tag="PadUp|pad_up" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapLeft" Tag="PadLeft|pad_left" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapRight" Tag="PadRight|pad_right" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapDown" Tag="PadDown|pad_down" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- L1 and L2 CARD -->
-                                    <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.l1_and_l2}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="L1" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapL1" Tag="L1|l1" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="L2" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapL2" Tag="L2|l2" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- LEFT STICK DEADZONE CARD -->
-                                    <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.left_stick_deadzone}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.min_deadzone_def_2_max_127}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,4"/>
-                                            <Grid Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="30"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Slider x:Name="CtrlMinDeadzoneLSlider" FocusVisualStyle="{StaticResource AccentFocusVisual}" Minimum="0" Maximum="127" Value="2" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ElementName=CtrlMinDeadzoneLSlider, Path=Value}" Foreground="{DynamicResource ThemeText}" FontWeight="Bold" FontSize="{DynamicResource TypeS}" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
-                                            </Grid>
-                                            <TextBlock Text="{loc:Tr Key=ui.max_deadzone_def_127_max_127}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,4"/>
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="30"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Slider x:Name="CtrlMaxDeadzoneLSlider" FocusVisualStyle="{StaticResource AccentFocusVisual}" Minimum="0" Maximum="127" Value="127" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ElementName=CtrlMaxDeadzoneLSlider, Path=Value}" Foreground="{DynamicResource ThemeText}" FontWeight="Bold" FontSize="{DynamicResource TypeS}" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- LEFT STICK CARD -->
-                                    <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.left_stick}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapLeftStickUp" Tag="LeftStickUp|axis_left_y" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapLeftStickLeft" Tag="LeftStickLeft|axis_left_x" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapLeftStickRight" Tag="LeftStickRight|axis_left_x" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapLeftStickDown" Tag="LeftStickDown|axis_left_y" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
+                            <!-- TUNING SIDEBAR (deadzones, profile, lightbar, actions) -->
+                            <!-- BINDINGS GRID -->
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,14">
+                                        <TextBlock Text="{loc:Tr Key=input.map.header}" FontSize="{DynamicResource TypeML}" FontWeight="SemiBold" Foreground="{DynamicResource ThemeText}" HorizontalAlignment="Left"/>
+                                        <TextBlock Text="{loc:Tr Key=input.map.hint}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <UniformGrid Columns="6">
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.cross}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapCross" Tag="Cross|cross" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.circle}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapCircle" Tag="Circle|circle" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.square}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapSquare" Tag="Square|square" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.triangle}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapTriangle" Tag="Triangle|triangle" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.l1}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapL1" Tag="L1|l1" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.r1}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapR1" Tag="R1|r1" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.l2}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapL2" Tag="L2|l2" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.r2}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapR2" Tag="R2|r2" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.dpad_up}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapUp" Tag="PadUp|pad_up" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.dpad_down}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapDown" Tag="PadDown|pad_down" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.dpad_left}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapLeft" Tag="PadLeft|pad_left" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.dpad_right}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapRight" Tag="PadRight|pad_right" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.lstick_up}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapLeftStickUp" Tag="LeftStickUp|axis_left_y" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.lstick_down}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapLeftStickDown" Tag="LeftStickDown|axis_left_y" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.lstick_left}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapLeftStickLeft" Tag="LeftStickLeft|axis_left_x" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.lstick_right}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapLeftStickRight" Tag="LeftStickRight|axis_left_x" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.rstick_up}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapRightStickUp" Tag="RightStickUp|axis_right_y" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.rstick_down}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapRightStickDown" Tag="RightStickDown|axis_right_y" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.rstick_left}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapRightStickLeft" Tag="RightStickLeft|axis_right_x" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.rstick_right}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapRightStickRight" Tag="RightStickRight|axis_right_x" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.l3}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapL3" Tag="L3|l3" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.r3}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapR3" Tag="R3|r3" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.options}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapOptions" Tag="Options|options" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.touchpad_left}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapTouchpadLeft" Tag="TouchpadLeft|unmapped" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.touchpad_center}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapTouchpadCenter" Tag="TouchpadCenter|back" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border Style="{StaticResource MapCardStyle}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{loc:Tr Key=input.map.touchpad_right}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,6"/>
+                                                        <Button x:Name="BtnMapTouchpadRight" Tag="TouchpadRight|unmapped" Click="BtnMap_Click" Style="{StaticResource MapValueStyle}"/>
+                                                    </StackPanel>
+                                                </Border>
+                                    </UniformGrid>
                                 </StackPanel>
+                        </DockPanel>
                             </ScrollViewer>
-
-                            <!-- COLUMN 1: CENTER AREA -->
-                            <Grid Grid.Column="1" Margin="10,0,10,0">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/> <!-- Config selection -->
-                                    <RowDefinition Height="Auto"/> <!-- Bottom buttons (L3, Options, R3, etc.) -->
-                                    <RowDefinition Height="Auto"/> <!-- Color adjustment -->
-                                    <RowDefinition Height="Auto"/> <!-- Action Buttons -->
-                                </Grid.RowDefinitions>
-
-                                <!-- Config Selection Card -->
-                                <Border Grid.Row="0" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="12" Margin="0,0,0,10">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                        
-                                        <TextBlock Grid.Row="0" Text="{loc:Tr Key=ui.config_selection}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" HorizontalAlignment="Center" Margin="0,0,0,5"/>
-                                        
-                                        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,5">
-                                            <ComboBox x:Name="CtrlConfigCombo" FocusVisualStyle="{StaticResource AccentFocusVisual}" SelectedIndex="0" Width="140" Height="24" Background="{DynamicResource ThemeSurface}" Foreground="{DynamicResource ThemeText}">
-                                                <ComboBoxItem Content="{loc:Tr Key=ui.common_config}"/>
-                                            </ComboBox>
-                                            <CheckBox x:Name="CtrlUsePerGameConfigCheck" FocusVisualStyle="{StaticResource AccentFocusVisual}" Content="{loc:Tr Key=ui.use_per_game_configs}" Foreground="{DynamicResource ThemeText}" Margin="15,0,0,0" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}"/>
-                                        </StackPanel>
-
-                                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,0">
-                                            <TextBlock Text="{loc:Tr Key=ui.active_gamepad}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" FontSize="{DynamicResource TypeM}" Margin="0,0,10,0"/>
-                                            <ComboBox x:Name="CtrlActiveGamepadCombo" FocusVisualStyle="{StaticResource AccentFocusVisual}" SelectedIndex="0" Width="200" Height="24" Background="{DynamicResource ThemeSurface}" Foreground="{DynamicResource ThemeText}" SelectionChanged="CtrlActiveGamepadCombo_SelectionChanged">
-                                                <ComboBoxItem Content="{loc:Tr Key=ui.player_1_dualsense_wireless_controller}"/>
-                                                <ComboBoxItem Content="{loc:Tr Key=ui.player_2_controller_slot_2}"/>
-                                                <ComboBoxItem Content="{loc:Tr Key=ui.player_3_controller_slot_3}"/>
-                                                <ComboBoxItem Content="{loc:Tr Key=ui.player_4_controller_slot_4}"/>
-                                                <ComboBoxItem Content="{loc:Tr Key=ui.xbox_controller_xinput}"/>
-                                            </ComboBox>
-                                            <Button Content="{loc:Tr Key=ui.set_active_gamepad_as_default}" Style="{StaticResource ModernButtonStyle}" MinHeight="24" FontSize="{DynamicResource TypeS}" Padding="8,0,8,0" Margin="10,0,0,0" Click="SaveSettingsBtn_Click"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <!-- Controller Image with live input overlays (1017x1017 design space, scaled by the Viewbox) -->
-                                <!-- Bottom buttons (L3, Options, R3, Touchpad) -->
-                                <Border Grid.Row="1" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,10,0,10">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-
-                                        <StackPanel Grid.Column="0" Grid.Row="0" Margin="2,0,2,0">
-                                            <TextBlock Text="L3" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeAccent}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapL3" Tag="L3|l3" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Grid.Row="0" Margin="2,0,2,0">
-                                            <TextBlock Text="{loc:Tr Key=ui.options}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeAccent}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapOptions" Tag="Options|options" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" Grid.Row="0" Margin="2,0,2,0">
-                                            <TextBlock Text="R3" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeAccent}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapR3" Tag="R3|r3" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
-                                        </StackPanel>
-
-                                        <StackPanel Grid.Column="0" Grid.Row="1" Margin="2,5,2,0">
-                                            <TextBlock Text="{loc:Tr Key=ui.touchpad_left}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapTouchpadLeft" Tag="TouchpadLeft|unmapped" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Grid.Row="1" Margin="2,5,2,0">
-                                            <TextBlock Text="{loc:Tr Key=ui.touchpad_center}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapTouchpadCenter" Tag="TouchpadCenter|back" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" Grid.Row="1" Margin="2,5,2,0">
-                                            <TextBlock Text="{loc:Tr Key=ui.touchpad_right}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Center" Margin="0,0,0,2"/>
-                                            <Button x:Name="BtnMapTouchpadRight" Tag="TouchpadRight|unmapped" Click="BtnMap_Click" Style="{StaticResource ModernButtonStyle}" MinHeight="22" FontSize="{DynamicResource TypeXS}" Padding="0"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <!-- Color Adjustment & Rumble Card -->
-                                <Border Grid.Row="2" Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="2*"/>
-                                            <ColumnDefinition Width="1*"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{loc:Tr Key=ui.color_adjustment_amp_haptics}" FontSize="{DynamicResource TypeS}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,4"/>
-                                            
-                                            <!-- RED -->
-                                            <Grid Margin="0,1,0,1">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="35"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.red}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center"/>
-                                                <Slider x:Name="CtrlColorRSlider" Minimum="0" Maximum="255" Value="0" TickFrequency="16" IsSnapToTickEnabled="True" Grid.Column="1" VerticalAlignment="Center" ValueChanged="CtrlColorSliders_ValueChanged"/>
-                                            </Grid>
-                                            
-                                            <!-- GREEN -->
-                                            <Grid Margin="0,1,0,1">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="35"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.green}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center"/>
-                                                <Slider x:Name="CtrlColorGSlider" Minimum="0" Maximum="255" Value="0" TickFrequency="16" IsSnapToTickEnabled="True" Grid.Column="1" VerticalAlignment="Center" ValueChanged="CtrlColorSliders_ValueChanged"/>
-                                            </Grid>
-                                            
-                                            <!-- BLUE -->
-                                            <Grid Margin="0,1,0,1">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="35"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{loc:Tr Key=ui.blue}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center"/>
-                                                <Slider x:Name="CtrlColorBSlider" Minimum="0" Maximum="255" Value="255" TickFrequency="16" IsSnapToTickEnabled="True" Grid.Column="1" VerticalAlignment="Center" ValueChanged="CtrlColorSliders_ValueChanged"/>
-                                            </Grid>
-                                        </StackPanel>
-
-                                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                            <CheckBox x:Name="CtrlOverrideColorCheck" Content="{loc:Tr Key=ui.override_color}" Foreground="{DynamicResource ThemeText}" FontSize="{DynamicResource TypeS}" IsChecked="True" Margin="0,0,0,6"/>
-                                            <Border Background="Blue" MinHeight="24" BorderBrush="{DynamicResource ThemeText}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" x:Name="CtrlColorBox"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <!-- Bottom actions -->
-                                <Grid Grid.Row="3" Margin="0,5,0,0">
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                        <Button x:Name="RestoreDefaultMappingsBtn" Content="{loc:Tr Key=ui.restore_defaults}" Style="{StaticResource ModernButtonStyle}" MinWidth="110" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Click="RestoreDefaultMappings_Click"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                        <Button Content="{loc:Tr Key=ui.save}" Style="{StaticResource ModernButtonStyle}" MinWidth="65" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Click="SaveSettingsBtn_Click"/>
-                                        <Button Content="{loc:Tr Key=ui.cancel}" Style="{StaticResource ModernButtonStyle}" MinWidth="65" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Margin="6,0,0,0"/>
-                                        <Button Content="{loc:Tr Key=ui.apply}" Style="{StaticResource ModernButtonStyle}" MinWidth="65" MinHeight="26" FontSize="{DynamicResource TypeS}" Padding="0" Margin="6,0,0,0" Click="SaveSettingsBtn_Click"/>
-                                    </StackPanel>
-                                </Grid>
-
-                            </Grid>
-
-                            <!-- COLUMN 2: RIGHT SIDE MAPPINGS -->
-                            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                <StackPanel Margin="10,0,0,0">
-                                    <!-- FACE BUTTONS CARD -->
-                                    <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.face_buttons}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.triangle}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapTriangle" Tag="Triangle|triangle" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.circle}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapCircle" Tag="Circle|circle" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.cross}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapCross" Tag="Cross|cross" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.square}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapSquare" Tag="Square|square" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- R1 and R2 CARD -->
-                                    <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.r1_and_r2}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="R1" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapR1" Tag="R1|r1" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="R2" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapR2" Tag="R2|r2" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- RIGHT STICK DEADZONE CARD -->
-                                    <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.right_stick_deadzone}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"/>
-                                            <TextBlock Text="{loc:Tr Key=ui.min_deadzone_def_2_max_127}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,4"/>
-                                            <Grid Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="30"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Slider x:Name="CtrlMinDeadzoneRSlider" FocusVisualStyle="{StaticResource AccentFocusVisual}" Minimum="0" Maximum="127" Value="2" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ElementName=CtrlMinDeadzoneRSlider, Path=Value}" Foreground="{DynamicResource ThemeText}" FontWeight="Bold" FontSize="{DynamicResource TypeS}" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
-                                            </Grid>
-                                            <TextBlock Text="{loc:Tr Key=ui.max_deadzone_def_127_max_127}" FontSize="{DynamicResource TypeS}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,0,0,4"/>
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="30"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Slider x:Name="CtrlMaxDeadzoneRSlider" FocusVisualStyle="{StaticResource AccentFocusVisual}" Minimum="0" Maximum="127" Value="127" TickFrequency="5" IsSnapToTickEnabled="True" Grid.Column="0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ElementName=CtrlMaxDeadzoneRSlider, Path=Value}" Foreground="{DynamicResource ThemeText}" FontWeight="Bold" FontSize="{DynamicResource TypeS}" HorizontalAlignment="Right" Grid.Column="1" VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- RIGHT STICK CARD -->
-                                    <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="10" Margin="0,0,0,10">
-                                        <StackPanel>
-                                            <TextBlock Text="{loc:Tr Key=ui.right_stick}" FontSize="{DynamicResource TypeM}" FontWeight="Bold" Foreground="{DynamicResource ThemeAccent}" Margin="0,0,0,8"/>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.up}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapRightStickUp" Tag="RightStickUp|axis_right_y" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.left}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapRightStickLeft" Tag="RightStickLeft|axis_right_x" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.right}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapRightStickRight" Tag="RightStickRight|axis_right_x" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                            <Grid Margin="0,1,0,1">
-                                                <TextBlock Text="{loc:Tr Key=ui.down}" Foreground="{DynamicResource ThemeText}" VerticalAlignment="Center" FontSize="{DynamicResource TypeS}"/>
-                                                <Button x:Name="BtnMapRightStickDown" Tag="RightStickDown|axis_right_y" Click="BtnMap_Click" Style="{DynamicResource BindingValueButtonStyle}" MinWidth="120" MinHeight="22" FontSize="{DynamicResource TypeS}" Padding="0" HorizontalAlignment="Right"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Grid>
                     </Border>
                 </Grid>
                 
                 <!-- 2. SYSTEM SETTINGS VIEW (PLAYSTATION 5 MULTI-PAGE ARCHITECTURE) -->
-                <Grid x:Name="SettingsView" Visibility="Collapsed" Margin="40,10,40,15">
+                <Grid x:Name="SettingsView" Visibility="Collapsed" Margin="40,20,40,15">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>  <!-- side-section nav -->
+                        <ColumnDefinition Width="*"/>     <!-- content -->
+                    </Grid.ColumnDefinitions>
+
+                    <!-- SIDE-SECTION NAV (concept artboard): persistent category list; the
+                         selected section's rows show on the right. Replaces the old hub grid. -->
+                    <StackPanel Grid.Row="0" Grid.RowSpan="3" Grid.Column="0" Width="300" Margin="0,0,28,0">
+                        <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeDisplayL}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}" Margin="0,0,0,20"/>
+                        <Button x:Name="SettingsNav_Graphics" CommandParameter="Graphics" Content="{loc:Tr Key=ui.display_amp_video}" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click"/>
+                        <Button x:Name="SettingsNav_Audio" CommandParameter="Audio" Content="{loc:Tr Key=ui.audio_output}" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click"/>
+                        <Button x:Name="SettingsNav_Input" CommandParameter="Input" Content="{loc:Tr Key=ui.accessories_amp_controllers}" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click"/>
+                        <Button x:Name="SettingsNav_Folders" CommandParameter="Folders" Content="{loc:Tr Key=ui.storage_amp_game_folders}" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click"/>
+                        <Button x:Name="SettingsNav_Emulation" CommandParameter="Emulation" Content="{loc:Tr Key=ui.system_amp_emulation_hle}" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click"/>
+                        <Button x:Name="SettingsNav_Logging" CommandParameter="Logging" Content="{loc:Tr Key=ui.diagnostics_amp_logging}" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click"/>
+                        <Button x:Name="SettingsNav_UI" CommandParameter="UI" Content="{loc:Tr Key=ui.ui_amp_personalization}" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click"/>
+                        <Button x:Name="SettingsNav_About" CommandParameter="About" Content="{loc:Tr Key=ui.system_information}" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click"/>
+                    </StackPanel>
 
                     <!-- ========================================================================= -->
-                    <!-- LEVEL 1: PS5 MAIN SETTINGS HUB (Categories Grid)                          -->
+                    <!-- LEGACY HUB GRID - kept but never shown (nav above replaces it)            -->
                     <!-- ========================================================================= -->
-                    <Grid x:Name="SettingsHubView" Grid.Row="0" Grid.RowSpan="2" Visibility="Visible">
+                    <Grid x:Name="SettingsHubView" Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Visibility="Collapsed">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
@@ -1357,7 +1722,7 @@
                     <!-- ========================================================================= -->
                     <!-- LEVEL 2: PS5 CATEGORY SETTINGS VIEW (List of Setting Cards)               -->
                     <!-- ========================================================================= -->
-                    <Grid x:Name="SettingsCategoryView" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed">
+                    <Grid x:Name="SettingsCategoryView" Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Visibility="Collapsed">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
@@ -1369,7 +1734,7 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="BtnCatBack" Content="{loc:Tr Key=ui.back}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="34" FontSize="{DynamicResource TypeML}" Click="BtnSettingsBack_Click"/>
+                            <Button x:Name="BtnCatBack" Content="{loc:Tr Key=ui.back}" Style="{StaticResource ModernButtonStyle}" MinWidth="100" MinHeight="34" FontSize="{DynamicResource TypeML}" Click="BtnSettingsBack_Click" Visibility="Collapsed"/>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                                 <TextBlock Text="{loc:Tr Key=ui.settings}" FontSize="{DynamicResource TypeL}" FontWeight="Bold" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
                                 <TextBlock Text="  ›  " FontSize="{DynamicResource TypeL}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center"/>
@@ -1388,7 +1753,7 @@
                     <!-- ========================================================================= -->
                     <!-- LEVEL 3: PS5 DEDICATED OPTION SUB-PAGE VIEW                               -->
                     <!-- ========================================================================= -->
-                    <Grid x:Name="SettingsSubPageView" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed">
+                    <Grid x:Name="SettingsSubPageView" Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Visibility="Collapsed">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
@@ -1415,14 +1780,14 @@
 
                         <!-- Dynamic Subpage Body Container -->
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel x:Name="SettingsSubPageContentContainer" MaxWidth="800" HorizontalAlignment="Left">
+                            <StackPanel x:Name="SettingsSubPageContentContainer" MaxWidth="1400" HorizontalAlignment="Stretch">
                                 <!-- Option Choices, Sliders, Yes/No Toggles, or Folder Manager -->
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>
 
                     <!-- Persistent Bottom Bar -->
-                    <Grid Grid.Row="2" Margin="0,10,0,0">
+                    <Grid Grid.Row="2" Grid.Column="1" Margin="0,10,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -1482,8 +1847,8 @@
  Click="ConsoleDockMode_Click" Tag="Float" Style="{StaticResource ModernButtonStyle}">↗ Float</Button>
                                     </StackPanel>
                                 </Grid>
-                                <Border x:Name="GameConsoleSlot" Grid.Row="1" Margin="6,0,6,6">
-                                    <Border x:Name="ConsoleBorder" Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}" Padding="8">
+                                <Border x:Name="GameConsoleSlot" Grid.Row="1" Margin="8,0,8,6">
+                                    <Border x:Name="ConsoleBorder" Background="{DynamicResource ThemeGround}" BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerM}" Padding="12">
                                         <RichTextBox x:Name="ConsoleOutputBox" Background="Transparent" FontFamily="Consolas, Courier New" FontSize="{DynamicResource TypeM}"
  BorderThickness="0" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
  HorizontalScrollBarVisibility="Disabled" IsDocumentEnabled="True">
@@ -1800,6 +2165,28 @@
                 </Border>
             </Grid>
 
+            <!-- CREDITS POPUP: the README's Credits section, pad-scrollable -->
+            <Grid x:Name="CreditsOverlay" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
+                <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Width="960" MaxHeight="720" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="{loc:Tr Key=credits.title}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}"/>
+                                <TextBlock Text="{loc:Tr Key=credits.subtitle}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <Button x:Name="CreditsCloseBtn" Content="{loc:Tr Key=credits.close}" HorizontalAlignment="Right" VerticalAlignment="Top" MinHeight="36" Padding="16,0" Style="{StaticResource SecondaryButtonStyle}" Click="CreditsClose_Click" AutomationProperties.Name="{loc:Tr Key=credits.close}"/>
+                        </Grid>
+                        <ScrollViewer x:Name="CreditsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="CreditsText" TextWrapping="Wrap" FontSize="{DynamicResource TypeML}" LineHeight="24" Foreground="{DynamicResource ThemeText}"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
             <!-- FIRST-RUN SETUP OVERLAY DIALOG (games folder picker) -->
             <Grid x:Name="FirstRunOverlay" Visibility="Collapsed" Background="{DynamicResource ThemeGround}" Grid.RowSpan="3">
                 <Border Background="{DynamicResource ThemeSurface}" BorderBrush="{DynamicResource ThemeAccent}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}" Width="560" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30">
@@ -1842,65 +2229,102 @@
                  driven by a controller at all, so the shell browses the
                  filesystem itself.  All text is assigned from I18n at runtime,
                  which is why Content/Text are empty here. -->
-            <Grid x:Name="FolderPickerOverlay" Visibility="Collapsed" Background="#D905060A" Grid.RowSpan="3">
-                <Border Background="{DynamicResource PickerSurfaceBrush}"
- BorderBrush="{DynamicResource PickerAccentBrush}" BorderThickness="1.5" CornerRadius="{DynamicResource ThemeCornerM}"
- Width="780" MinHeight="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28">
+            <!-- FOLDER PICKER OVERLAY - rebuilt to the concept artboard 2026-09-06.
+                 A centred card on a dimmed ground: header + eboot note, a mono
+                 breadcrumb, quick drive chips, an eboot-aware directory list, a
+                 Cancel / Add pair, and a controller glyph legend along the bottom.
+                 A Windows folder dialog cannot be driven by a controller, so the
+                 shell browses the filesystem itself. Text is assigned from I18n at
+                 runtime. Flat theme tokens, no accent glow. -->
+            <!-- CONTROLLER TESTING POPUP - the Input tab's Testing view. While it is
+                 open the pad is captured: nothing switches tabs or sub-tabs, so every
+                 button (L1/R1/L2/R2 included) can be tested. Dismiss with the PS button,
+                 the Close button, or Esc. Added 2026-09-06 at the user's request. -->
+            <Grid x:Name="InputTestOverlay" Visibility="Collapsed" Background="#B305060A" Grid.RowSpan="3">
+                <Border Width="1180" Height="780" HorizontalAlignment="Center" VerticalAlignment="Center"
+ Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="28">
                     <Border.Effect>
-                        <DropShadowEffect Color="#0099FF" BlurRadius="25" Opacity="0.35" ShadowDepth="0"/>
+                        <DropShadowEffect Color="#000000" BlurRadius="60" ShadowDepth="20" Direction="270" Opacity="0.55"/>
                     </Border.Effect>
-                    <DockPanel>
-                        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
-                            <TextBlock x:Name="FolderPickerTitle" FontSize="{DynamicResource Type2XL}" FontWeight="Bold"
- Foreground="{DynamicResource PickerTextBrush}"/>
-                            <TextBlock x:Name="FolderPickerCurrentPath" FontSize="{DynamicResource TypeML}" Margin="0,6,0,0"
- Foreground="{DynamicResource PickerAccentBrush}"
- TextTrimming="CharacterEllipsis"/>
+                    <DockPanel LastChildFill="True">
+                        <Grid DockPanel.Dock="Top" Margin="0,0,0,16">
+                            <StackPanel HorizontalAlignment="Left">
+                                <TextBlock Text="{loc:Tr Key=input.test_popup_title}" FontSize="{DynamicResource TypeDisplayS}" FontWeight="Bold" Foreground="{DynamicResource ThemeText}"/>
+                                <TextBlock Text="{loc:Tr Key=input.test_popup_hint}" FontSize="{DynamicResource TypeM}" Foreground="{DynamicResource ThemeTextMuted}" Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <Button x:Name="InputTestCloseBtn" Content="{loc:Tr Key=input.test_popup_close}" Style="{StaticResource SecondaryButtonStyle}"
+ MinHeight="40" Padding="18,0" HorizontalAlignment="Right" VerticalAlignment="Top" Click="InputTestClose_Click"
+ AutomationProperties.Name="{loc:Tr Key=input.test_popup_close}"/>
+                        </Grid>
+                        <local:InputTabView x:Name="InputTab"/>
+                    </DockPanel>
+                </Border>
+            </Grid>
+
+            <Grid x:Name="FolderPickerOverlay" Visibility="Collapsed" Background="#B305060A" Grid.RowSpan="3">
+                <Border Width="860" MaxHeight="760" HorizontalAlignment="Center" VerticalAlignment="Center"
+ Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}"
+ BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Padding="32">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" BlurRadius="60" ShadowDepth="20" Direction="270" Opacity="0.55"/>
+                    </Border.Effect>
+                    <DockPanel LastChildFill="True">
+                        <!-- Header: title left, eboot note right -->
+                        <Grid DockPanel.Dock="Top" Margin="0,0,0,16">
+                            <TextBlock x:Name="FolderPickerTitle" FontSize="{DynamicResource TypeDisplayL}" FontWeight="Bold"
+ Foreground="{DynamicResource ThemeText}" HorizontalAlignment="Left"/>
+                            <TextBlock x:Name="FolderPickerSubtitle" FontSize="{DynamicResource TypeM}"
+ Foreground="{DynamicResource ThemeTextMuted}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                        </Grid>
+
+                        <!-- Mono breadcrumb of the current path (built in code) -->
+                        <StackPanel x:Name="FolderPickerBreadcrumb" DockPanel.Dock="Top" Orientation="Horizontal"
+ Margin="0,0,0,12" VerticalAlignment="Center"/>
+
+                        <!-- Quick drive chips (built in code) -->
+                        <StackPanel x:Name="FolderPickerDriveChips" DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,14"/>
+
+                        <!-- Controller glyph legend (built in code from picker.hints) -->
+                        <StackPanel x:Name="FolderPickerHintChips" DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,18,0,0"/>
+
+                        <!-- Cancel / Add -->
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                            <Button x:Name="FolderPickerCancelBtn" MinWidth="120" MinHeight="46" Margin="0,0,12,0"
+ Style="{StaticResource SecondaryButtonStyle}" Click="FolderPickerCancel_Click" Focusable="True"/>
+                            <Button x:Name="FolderPickerSelectBtn" MinWidth="180" MinHeight="46"
+ Style="{StaticResource ModernButtonStyle}" Click="FolderPickerSelect_Click" Focusable="True"/>
                         </StackPanel>
 
-                        <TextBlock x:Name="FolderPickerHints" DockPanel.Dock="Bottom" FontSize="{DynamicResource TypeM}"
- Foreground="{DynamicResource PickerMutedBrush}" Margin="0,14,0,0"/>
+                        <!-- Legacy controls kept for code that assigns them; not shown. -->
+                        <TextBlock x:Name="FolderPickerCurrentPath" DockPanel.Dock="Bottom" Visibility="Collapsed"/>
+                        <TextBlock x:Name="FolderPickerHints" DockPanel.Dock="Bottom" Visibility="Collapsed"/>
 
-                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
- HorizontalAlignment="Right" Margin="0,16,0,0">
-                            <Button x:Name="FolderPickerUpBtn" MinWidth="110" MinHeight="36" Margin="0,0,10,0"
- Style="{StaticResource SecondaryButtonStyle}"
- Click="FolderPickerUp_Click" Focusable="True"/>
-                            <Button x:Name="FolderPickerOpenBtn" MinWidth="110" MinHeight="36" Margin="0,0,10,0"
- Style="{StaticResource SecondaryButtonStyle}"
- Click="FolderPickerOpen_Click" Focusable="True"/>
-                            <Button x:Name="FolderPickerSelectBtn" MinWidth="190" MinHeight="36" Margin="0,0,10,0"
- Style="{StaticResource ModernButtonStyle}"
- Click="FolderPickerSelect_Click" Focusable="True"/>
-                            <Button x:Name="FolderPickerCancelBtn" MinWidth="110" MinHeight="36"
- Style="{StaticResource SecondaryButtonStyle}"
- Click="FolderPickerCancel_Click" Focusable="True"/>
-                        </StackPanel>
-
-                        <ListBox x:Name="FolderPickerList" FocusVisualStyle="{StaticResource AccentFocusVisual}"
- Background="{DynamicResource PickerListBrush}"
- BorderBrush="{DynamicResource PickerBorderBrush}" BorderThickness="1"
- Foreground="{DynamicResource PickerTextBrush}" FontSize="{DynamicResource TypeL}"
+                        <!-- Directory list, hairline-bounded top and bottom -->
+                        <Border BorderBrush="{DynamicResource ThemeHairline}" BorderThickness="0,1,0,1" Padding="0,6">
+                            <ListBox x:Name="FolderPickerList" FocusVisualStyle="{StaticResource AccentFocusVisual}"
+ Background="Transparent" BorderThickness="0"
+ Foreground="{DynamicResource ThemeText}"
  MouseDoubleClick="FolderPickerList_MouseDoubleClick"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                <!-- Selected row from the tokens, not the system highlight
-                                     (which is a Windows blue on both palettes). -->
+ ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
-                                        <Setter Property="Foreground" Value="{DynamicResource PickerTextBrush}"/>
-                                        <Setter Property="Padding" Value="8,6"/>
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                         <Setter Property="Template">
                                             <Setter.Value>
                                                 <ControlTemplate TargetType="ListBoxItem">
-                                                    <Border x:Name="Row" Background="Transparent" CornerRadius="{DynamicResource ThemeCornerS}" Padding="{TemplateBinding Padding}">
-                                                        <ContentPresenter/>
+                                                    <Border x:Name="Row" Background="Transparent" BorderBrush="Transparent"
+ BorderThickness="2" CornerRadius="{DynamicResource ThemeCornerM}" Padding="14,0" Margin="0,1">
+                                                        <ContentPresenter VerticalAlignment="Center"/>
                                                     </Border>
                                                     <ControlTemplate.Triggers>
                                                         <Trigger Property="IsSelected" Value="True">
-                                                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
+                                                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                                            <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
                                                         </Trigger>
                                                         <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource ThemeRaised}"/>
+                                                            <Setter TargetName="Row" Property="Background" Value="{DynamicResource ThemeAccentSoft}"/>
                                                         </Trigger>
                                                     </ControlTemplate.Triggers>
                                                 </ControlTemplate>
@@ -1908,16 +2332,40 @@
                                         </Setter>
                                     </Style>
                                 </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Margin="6,7">
-                                        <TextBlock Text="{Binding Icon}" FontSize="{DynamicResource TypeL}" Margin="0,0,12,0"/>
-                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
- TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Height="52">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Viewbox Grid.Column="0" Width="18" Height="18" Margin="0,0,14,0" VerticalAlignment="Center">
+                                                <Path StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent">
+                                                    <Path.Style>
+                                                        <Style TargetType="Path">
+                                                            <Setter Property="Data" Value="M2,5.5 A1.5,1.5 0 0 1 3.5,4 H7.5 L9,5.5 H14.5 A1.5,1.5 0 0 1 16,7 V13.5 A1.5,1.5 0 0 1 14.5,15 H3.5 A1.5,1.5 0 0 1 2,13.5 Z"/>
+                                                            <Setter Property="Stroke" Value="{DynamicResource ThemeTextMuted}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsGame}" Value="True">
+                                                                    <Setter Property="Data" Value="M4,3 H14 A1,1 0 0 1 15,4 V14 A1,1 0 0 1 14,15 H4 A1,1 0 0 1 3,14 V4 A1,1 0 0 1 4,3 Z M6,9 H12 M9,6 V12"/>
+                                                                    <Setter Property="Stroke" Value="{DynamicResource ThemeAccent}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Path.Style>
+                                                </Path>
+                                            </Viewbox>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+ FontSize="{DynamicResource TypeL}" Foreground="{DynamicResource ThemeText}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Meta}" VerticalAlignment="Center"
+ FontSize="{DynamicResource TypeS}" FontFamily="Consolas, monospace"
+ Foreground="{DynamicResource ThemeTextMuted}" Margin="12,0,4,0"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
                     </DockPanel>
                 </Border>
             </Grid>

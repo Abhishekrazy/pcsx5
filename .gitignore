@@ -151,3 +151,7 @@ GEMINI.md
 
 # Reference-only clone of shadPS4, not part of the repo
 shadps4_clone/
+
+# WPF/tooling temp files
+*_wpftmp.csproj
+*.tmp.*

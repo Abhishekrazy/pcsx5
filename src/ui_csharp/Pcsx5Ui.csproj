@@ -41,6 +41,9 @@
     <Content Include="$(MSBuildProjectDirectory)/../../VERSION" Link="VERSION">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="$(MSBuildProjectDirectory)/../../README.md" Link="README.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -63,6 +66,13 @@
          README in that folder. -->
     <Content Include="$(MSBuildProjectDirectory)/../../assets/gamepad/dualsense/**/*.*"
              Link="assets/gamepad/dualsense/%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- 3D DualSense for the Input tab's Testing view: one OBJ per animatable
+         part plus textures and manifest, split from a CC-BY-4.0 Sketchfab model;
+         credit in that folder's README. Rendered with WPF's own Viewport3D. -->
+    <Content Include="$(MSBuildProjectDirectory)/../../assets/gamepad/dualsense3d/**/*.*"
+             Link="assets/gamepad/dualsense3d/%(RecursiveDir)%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="$(MSBuildProjectDirectory)/../../assets/lang/*.json"

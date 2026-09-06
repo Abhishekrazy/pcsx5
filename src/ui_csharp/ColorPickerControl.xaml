@@ -1,0 +1,96 @@
+<UserControl x:Class="Pcsx5Ui.ColorPickerControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Pcsx5Ui"
+             Focusable="False">
+    <UserControl.Resources>
+        <!-- Preset swatch: a small rounded square that rings accent on focus (UserControls
+             cannot reach MainWindow's styles, so this one is local). -->
+        <Style x:Key="SwatchButton" TargetType="Button">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource ThemeCornerS}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeText}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <!-- Saturation / brightness plane (mouse), hue strip (pad + keyboard) -->
+        <Border x:Name="SvPlane" Height="110" CornerRadius="{DynamicResource ThemeCornerS}" ClipToBounds="True"
+                Cursor="Cross" Margin="0,0,0,8"
+                MouseLeftButtonDown="SvPlane_MouseDown" MouseMove="SvPlane_MouseMove" MouseLeftButtonUp="SvPlane_MouseUp"
+                AutomationProperties.Name="{loc:Tr Key=input.color.plane}">
+            <Grid>
+                <Rectangle x:Name="SvHueFill" Fill="Red"/>
+                <Rectangle>
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#FFFFFFFF" Offset="0"/>
+                            <GradientStop Color="#00FFFFFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Rectangle>
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#00000000" Offset="0"/>
+                            <GradientStop Color="#FF000000" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Canvas>
+                    <Ellipse x:Name="SvThumb" Width="14" Height="14" Stroke="White" StrokeThickness="2" Fill="Transparent"/>
+                </Canvas>
+            </Grid>
+        </Border>
+
+        <Grid Margin="0,0,0,8">
+            <Border Height="10" VerticalAlignment="Center" CornerRadius="{DynamicResource ThemePill}" Margin="6,0">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#FF0000" Offset="0"/>
+                        <GradientStop Color="#FFFF00" Offset="0.167"/>
+                        <GradientStop Color="#00FF00" Offset="0.333"/>
+                        <GradientStop Color="#00FFFF" Offset="0.5"/>
+                        <GradientStop Color="#0000FF" Offset="0.667"/>
+                        <GradientStop Color="#FF00FF" Offset="0.833"/>
+                        <GradientStop Color="#FF0000" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <Slider x:Name="HueSlider" Minimum="0" Maximum="360" Value="0" TickFrequency="10" IsSnapToTickEnabled="False"
+                    Background="Transparent" ValueChanged="HueSlider_ValueChanged"
+                    AutomationProperties.Name="{loc:Tr Key=input.color.hue}"/>
+        </Grid>
+
+        <!-- Presets, hex entry, preview -->
+        <DockPanel LastChildFill="True">
+            <Border DockPanel.Dock="Right" x:Name="Preview" Width="44" Height="26" Margin="8,0,0,0"
+                    BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerS}"/>
+            <TextBox DockPanel.Dock="Right" x:Name="HexBox" Width="78" Height="26" VerticalContentAlignment="Center"
+                     Background="{DynamicResource ThemeGround}" Foreground="{DynamicResource ThemeText}"
+                     BorderBrush="{DynamicResource ThemeHairline}" FontFamily="Consolas" FontSize="{DynamicResource TypeS}"
+                     KeyDown="HexBox_KeyDown" LostFocus="HexBox_LostFocus"
+                     AutomationProperties.Name="{loc:Tr Key=input.color.hex}"/>
+            <StackPanel x:Name="Presets" Orientation="Horizontal" VerticalAlignment="Center"/>
+        </DockPanel>
+    </StackPanel>
+</UserControl>

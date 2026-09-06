@@ -1,0 +1,384 @@
+{
+ "parts": [
+  {
+   "name": "btn_triangle",
+   "file": "btn_triangle.obj",
+   "tris": 936,
+   "bbox_min": [
+    0.55861,
+    -0.32354,
+    0.35915
+   ],
+   "bbox_max": [
+    0.6868,
+    -0.27044,
+    0.4875
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "btn_square",
+   "file": "btn_square.obj",
+   "tris": 944,
+   "bbox_min": [
+    0.41087,
+    -0.32774,
+    0.21077
+   ],
+   "bbox_max": [
+    0.54103,
+    -0.28101,
+    0.34093
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "btn_cross",
+   "file": "btn_cross.obj",
+   "tris": 944,
+   "bbox_min": [
+    0.55823,
+    -0.31664,
+    0.06395
+   ],
+   "bbox_max": [
+    0.68819,
+    -0.25382,
+    0.19391
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "btn_circle",
+   "file": "btn_circle.obj",
+   "tris": 936,
+   "bbox_min": [
+    0.7048,
+    -0.31947,
+    0.2113
+   ],
+   "bbox_max": [
+    0.83405,
+    -0.24103,
+    0.34039
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "dpad_up",
+   "file": "dpad_up.obj",
+   "tris": 2340,
+   "bbox_min": [
+    -0.68357,
+    -0.32245,
+    0.29941
+   ],
+   "bbox_max": [
+    -0.55641,
+    -0.24904,
+    0.45237
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "dpad_right",
+   "file": "dpad_right.obj",
+   "tris": 2341,
+   "bbox_min": [
+    -0.60061,
+    -0.32245,
+    0.21004
+   ],
+   "bbox_max": [
+    -0.44766,
+    -0.24904,
+    0.33721
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "dpad_down",
+   "file": "dpad_down.obj",
+   "tris": 2341,
+   "bbox_min": [
+    -0.69004,
+    -0.32245,
+    0.10028
+   ],
+   "bbox_max": [
+    -0.56288,
+    -0.2465,
+    0.25324
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "dpad_left",
+   "file": "dpad_left.obj",
+   "tris": 2340,
+   "bbox_min": [
+    -0.79928,
+    -0.32245,
+    0.2166
+   ],
+   "bbox_max": [
+    -0.64635,
+    -0.24156,
+    0.34373
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "stick_r",
+   "file": "stick_r.obj",
+   "tris": 2336,
+   "bbox_min": [
+    0.18658,
+    -0.40995,
+    -0.13232
+   ],
+   "bbox_max": [
+    0.44871,
+    -0.28042,
+    0.12981
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "stick_l",
+   "file": "stick_l.obj",
+   "tris": 2336,
+   "bbox_min": [
+    -0.44871,
+    -0.40995,
+    -0.13232
+   ],
+   "bbox_max": [
+    -0.18658,
+    -0.28042,
+    0.12981
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "r2",
+   "file": "r2.obj",
+   "tris": 825,
+   "bbox_min": [
+    0.47254,
+    -0.23973,
+    0.40899
+   ],
+   "bbox_max": [
+    0.77213,
+    0.23951,
+    0.64655
+   ],
+   "materials": [
+    "1001",
+    "1002"
+   ]
+  },
+  {
+   "name": "l2",
+   "file": "l2.obj",
+   "tris": 825,
+   "bbox_min": [
+    -0.77213,
+    -0.23973,
+    0.40899
+   ],
+   "bbox_max": [
+    -0.47254,
+    0.23951,
+    0.64655
+   ],
+   "materials": [
+    "1001",
+    "1002"
+   ]
+  },
+  {
+   "name": "r1",
+   "file": "r1.obj",
+   "tris": 384,
+   "bbox_min": [
+    0.47309,
+    -0.23989,
+    0.50469
+   ],
+   "bbox_max": [
+    0.76445,
+    -0.01321,
+    0.64996
+   ],
+   "materials": [
+    "1001"
+   ]
+  },
+  {
+   "name": "l1",
+   "file": "l1.obj",
+   "tris": 384,
+   "bbox_min": [
+    -0.76445,
+    -0.23989,
+    0.50469
+   ],
+   "bbox_max": [
+    -0.47309,
+    -0.01321,
+    0.64996
+   ],
+   "materials": [
+    "1001"
+   ]
+  },
+  {
+   "name": "btn_ps",
+   "file": "btn_ps.obj",
+   "tris": 2907,
+   "bbox_min": [
+    -0.06842,
+    -0.28314,
+    -0.03422
+   ],
+   "bbox_max": [
+    0.06819,
+    -0.22758,
+    0.0747
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "btn_mute",
+   "file": "btn_mute.obj",
+   "tris": 616,
+   "bbox_min": [
+    -0.10237,
+    -0.23219,
+    -0.12535
+   ],
+   "bbox_max": [
+    0.10237,
+    -0.19178,
+    -0.0654
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "btn_share",
+   "file": "btn_share.obj",
+   "tris": 184,
+   "bbox_min": [
+    -0.49425,
+    -0.3147,
+    0.44794
+   ],
+   "bbox_max": [
+    -0.43929,
+    -0.27085,
+    0.53859
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "btn_options",
+   "file": "btn_options.obj",
+   "tris": 184,
+   "bbox_min": [
+    0.43929,
+    -0.3147,
+    0.44794
+   ],
+   "bbox_max": [
+    0.49425,
+    -0.27085,
+    0.5385
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "touchpad",
+   "file": "touchpad.obj",
+   "tris": 3920,
+   "bbox_min": [
+    -0.41744,
+    -0.31194,
+    0.18186
+   ],
+   "bbox_max": [
+    0.41744,
+    -0.17178,
+    0.6401
+   ],
+   "materials": [
+    "1001",
+    "1011"
+   ]
+  },
+  {
+   "name": "body",
+   "file": "body.obj",
+   "tris": 19466,
+   "bbox_min": [
+    -1.0,
+    -0.32574,
+    -0.64994
+   ],
+   "bbox_max": [
+    1.0,
+    0.40995,
+    0.64031
+   ],
+   "materials": [
+    "1001",
+    "1002",
+    "1011"
+   ]
+  }
+ ],
+ "credit": "This work is based on \"Playstation 5 Dualsense\" (https://sketchfab.com/3d-models/playstation-5-dualsense-878c1f882808477ab81c2fe86d5a3936) by AHarmlessPotato (https://sketchfab.com/AHarmlessPotato) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+}

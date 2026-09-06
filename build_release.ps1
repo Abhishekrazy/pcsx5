@@ -151,6 +151,10 @@ function Stage-File {
 function Stage-Dir {
     param([string]$Src, [string]$Dst)
     if (Test-Path $Src) {
+        # Remove an existing destination first: Copy-Item -Recurse into an
+        # existing folder nests the source rather than overwriting its files,
+        # which silently left stale lang/ in dist (found 2026-09-06).
+        if (Test-Path $Dst) { Remove-Item $Dst -Recurse -Force }
         Copy-Item -Path $Src -Destination $Dst -Recurse -Force
         Log "  + $(Split-Path $Dst -Leaf)\ (dir)"
     }
@@ -181,6 +185,7 @@ $distPlugins = Join-Path $distDir "plugins"
 New-Item $distPlugins -Force -Type Directory | Out-Null
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distPlugins "pcsx5_core.dll")
 Stage-File (Join-Path $cppBinDir "pcsx5_core.dll") (Join-Path $distDir     "pcsx5_core.dll")
+Stage-File (Join-Path $repoRoot "README.md") (Join-Path $distDir "README.md")   # the Credits popup reads its Credits section
 
 # Bink2 video decoder (bink2w64.dll) — place next to the CLI so
 # CreateBink2Decoder can find it via LoadLibrary.  Optional; games
@@ -268,6 +273,10 @@ Stage-Dir (Join-Path $assetsDir "lang")        (Join-Path $distDir "lang")
 # The WPF shell reads <appdir>/assets/lang (I18n.Load), so stage there too;
 # without this the app fell back to a stale copy and showed raw keys.
 Stage-Dir (Join-Path $assetsDir "lang")        (Join-Path $distAssets "lang")
+# Controller art: the 2D sprite layout and the 3D DualSense parts. InputTabView
+# walks up to five parents to find assets/gamepad, which hides a missing copy
+# on a developer machine; stage it so a shipped dist is self-contained.
+Stage-Dir (Join-Path $assetsDir "gamepad")     (Join-Path $distAssets "gamepad")
 $lua = Join-Path $assetsDir "pcsx5_init.lua"
 if (Test-Path $lua) { Stage-File $lua (Join-Path $distAssets "pcsx5_init.lua") }
 
