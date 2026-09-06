@@ -3,34 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Pcsx5Ui"
              Focusable="False">
-    <UserControl.Resources>
-        <!-- Preset swatch: a small rounded square that rings accent on focus (UserControls
-             cannot reach MainWindow's styles, so this one is local). -->
-        <Style x:Key="SwatchButton" TargetType="Button">
-            <Setter Property="Width" Value="26"/>
-            <Setter Property="Height" Value="26"/>
-            <Setter Property="Margin" Value="0,0,6,0"/>
-            <Setter Property="BorderThickness" Value="2"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource ThemeCornerS}"/>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsKeyboardFocused" Value="True">
-                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
-                </Trigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeText}"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-    </UserControl.Resources>
 
     <StackPanel>
         <!-- Saturation / brightness plane (mouse), hue strip (pad + keyboard) -->
@@ -90,7 +62,7 @@
                      BorderBrush="{DynamicResource ThemeHairline}" FontFamily="Consolas" FontSize="{DynamicResource TypeS}"
                      KeyDown="HexBox_KeyDown" LostFocus="HexBox_LostFocus"
                      AutomationProperties.Name="{loc:Tr Key=input.color.hex}"/>
-            <StackPanel x:Name="Presets" Orientation="Horizontal" VerticalAlignment="Center"/>
+            <TextBlock x:Name="PickerHint" Text="{loc:Tr Key=colorpicker.hint}" FontSize="{DynamicResource TypeXS}" Foreground="{DynamicResource ThemeTextMuted}" VerticalAlignment="Center" TextWrapping="Wrap"/>
         </DockPanel>
     </StackPanel>
 </UserControl>

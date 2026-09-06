@@ -388,6 +388,43 @@ namespace Pcsx5Ui
             }
         }
 
+        // ── CUSTOM COLOUR POPUP ── the picker with the sticks: right stick
+        // moves the cursor on the plane, left stick the hue bar; Cross applies,
+        // Circle cancels. Fed from the pad tick's stick values.
+        private (double x, double y) _stickL, _stickR;
+        private Action<Color> _colorPickerOnApply;
+
+        private void ShowColorPicker(Color initial, Action<Color> onApply)
+        {
+            _colorPickerOnApply = onApply;
+            PopupPicker.SelectedColor = initial;
+            ColorPickerOverlay.Visibility = Visibility.Visible;
+            PopupPicker.ColorChanged -= PopupPicker_Preview; PopupPicker.ColorChanged += PopupPicker_Preview;
+            FocusFirst(ColorPickerApplyBtn);
+        }
+
+        private void PopupPicker_Preview(object sender, Color c)
+        {
+            // The pad's lightbar follows the cursor so the colour is judged on the real thing.
+            try { CoreBridge.pcsx5_pad_set_lightbar(0, c.R, c.G, c.B); } catch { }
+            if (InputTab?.Pad3D != null) InputTab.Pad3D.LightbarColor = c;
+        }
+
+        private void ColorPickerApply_Click(object sender, RoutedEventArgs e)
+        {
+            var cb = _colorPickerOnApply; _colorPickerOnApply = null;
+            ColorPickerOverlay.Visibility = Visibility.Collapsed;
+            cb?.Invoke(PopupPicker.SelectedColor);
+        }
+
+        private void ColorPickerCancel_Click(object sender, RoutedEventArgs e)
+        {
+            _colorPickerOnApply = null;
+            ColorPickerOverlay.Visibility = Visibility.Collapsed;
+            ApplyLightbarFromConfig();   // undo the live preview
+            FocusFirst(SettingsNavButtons().FirstOrDefault(b => (b?.CommandParameter as string) == _activeSettingsCategory));
+        }
+
         // ── UPDATES ── checked at startup (silently) and from System
         // Information > Check for updates. The prompt offers Download &
         // install (Squirrel installs) or the release page (zip copies), Skip
@@ -3775,19 +3812,21 @@ namespace Pcsx5Ui
                         optionsPanel.Children.Add(btn);
                         if (isSel) firstOptionBtn = btn;
                     }
-                    var picker = new ColorPickerControl { Margin = new Thickness(0, 18, 0, 0), MaxWidth = 520, HorizontalAlignment = HorizontalAlignment.Left };
-                    var c0 = LightbarOverride();
-                    if (c0.HasValue) picker.SelectedColor = c0.Value;
-                    picker.ColorChanged += (snd, c) =>
-                    {
-                        _config.input.lightbar = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
-                        ApplyLightbarFromConfig();
-                        SaveConfig();
-                    };
+                    // Custom colour: one more entry in the grid, opening the stick-driven
+                    // popup. Selected when the configured colour is not a preset.
+                    bool customSel = !anyPreset && !string.IsNullOrEmpty(cur);
+                    var customBtn = CreateOptionChoiceButton(I18n.Tr("settings.lightbar_custom_btn"), customSel ? cur.ToUpperInvariant() : I18n.Tr("settings.lightbar_custom_desc"), customSel, () => {
+                        var start = LightbarOverride() ?? Color.FromRgb(0x00, 0x5a, 0xff);
+                        ShowColorPicker(start, chosen => {
+                            _config.input.lightbar = $"#{chosen.R:X2}{chosen.G:X2}{chosen.B:X2}";
+                            ApplyLightbarFromConfig(); SaveConfig(); PopulateSubPage(settingKey);
+                        });
+                    });
+                    if (customSel) { try { customBtn.BorderBrush = new SolidColorBrush(LightbarOverride().Value); customBtn.BorderThickness = new Thickness(0, 0, 0, 3); } catch { } }
+                    optionsPanel.Children.Add(customBtn);
+                    if (customSel) firstOptionBtn = customBtn;
                     SettingsSubPageContentContainer.Children.Add(optionsPanel);
-                    SettingsSubPageContentContainer.Children.Add(new TextBlock { Text = I18n.Tr("settings.lightbar_custom"), FontSize = 12, Margin = new Thickness(0, 16, 0, 0), Foreground = (Brush)FindResource("ThemeTextMuted") });
-                    SettingsSubPageContentContainer.Children.Add(picker);
-                    if (firstOptionBtn != null) firstOptionBtn.Focus(); else picker.NavControls.FirstOrDefault()?.Focus();
+                    if (firstOptionBtn != null) firstOptionBtn.Focus();
                     return;
                 }
 
@@ -5261,6 +5300,8 @@ namespace Pcsx5Ui
 
                 lx = (short)((pad.Lx - 128) * 256);
                 ly = (short)(-(pad.Ly - 128) * 256);
+                _stickL = ((pad.Lx - 128) / 127.0, -(pad.Ly - 128) / 127.0);
+                _stickR = ((pad.Rx - 128) / 127.0, -(pad.Ry - 128) / 127.0);
                 state.Gamepad.wButtons = buttons;
                 state.Gamepad.sThumbLX = lx;
                 state.Gamepad.sThumbLY = ly;
@@ -5584,6 +5625,20 @@ namespace Pcsx5Ui
                     else if (yPressed) ViewCrashRawLogs_Click(this, null);
                     else if (upPressed) CrashRawText?.LineUp();
                     else if (downPressed) CrashRawText?.LineDown();
+                    _prevInputState = state;
+                    return;
+                }
+                if (ColorPickerOverlay != null && ColorPickerOverlay.Visibility == Visibility.Visible)
+                {
+                    ShowHints("hints.colorpicker");
+                    const double dead = 0.18;
+                    double rx = Math.Abs(_stickR.x) > dead ? _stickR.x : 0, ry = Math.Abs(_stickR.y) > dead ? _stickR.y : 0;
+                    double lxs = Math.Abs(_stickL.x) > dead ? _stickL.x : 0, lys = Math.Abs(_stickL.y) > dead ? _stickL.y : 0;
+                    if (rx != 0 || ry != 0) PopupPicker.NudgePlane(rx * 0.025, ry * 0.025);
+                    double hue = lxs != 0 ? lxs : lys;   // either axis of the left stick walks the bar
+                    if (hue != 0) PopupPicker.NudgeHue(hue * 4);
+                    if (aPressed) ColorPickerApply_Click(this, null);
+                    else if (bPressed) ColorPickerCancel_Click(this, null);
                     _prevInputState = state;
                     return;
                 }

@@ -11,9 +11,9 @@ namespace Pcsx5Ui
 {
     /// <summary>
     /// A compact HSV colour picker for the lightbar: a saturation/brightness
-    /// plane (mouse), a hue strip (pad, keyboard and mouse), preset swatches
-    /// and a hex field, so every route to a colour is reachable without a
-    /// mouse (Rule 12). Presentation only; whoever listens to
+    /// plane (mouse, or the right stick), a hue strip (left stick, keyboard,
+    /// mouse) and a hex field, so every route to a colour is reachable without
+    /// a mouse (Rule 12). Presentation only; whoever listens to
     /// <see cref="ColorChanged"/> owns what the colour means (Rule 11).
     /// </summary>
     public partial class ColorPickerControl : UserControl
@@ -30,13 +30,6 @@ namespace Pcsx5Ui
 
         public event EventHandler<Color> ColorChanged;
 
-        private static readonly Color[] PresetColors =
-        {
-            Color.FromRgb(0x00, 0x5a, 0xff), Color.FromRgb(0xff, 0x00, 0x00), Color.FromRgb(0x00, 0xff, 0x00),
-            Color.FromRgb(0xb4, 0x00, 0xff), Color.FromRgb(0xff, 0x8a, 0x1a), Color.FromRgb(0x00, 0xe0, 0xe0),
-            Color.FromRgb(0xff, 0x2d, 0x9b), Color.FromRgb(0xff, 0xff, 0xff),
-        };
-
         private double _h, _s = 1, _v = 1;   // working HSV
         private bool _syncing;                // guards slider/hex feedback loops
         private bool _dragging;
@@ -44,14 +37,6 @@ namespace Pcsx5Ui
         public ColorPickerControl()
         {
             InitializeComponent();
-            for (int i = 0; i < PresetColors.Length; i++)
-            {
-                var c = PresetColors[i];
-                var b = new Button { Style = (Style)FindResource("SwatchButton"), Background = new SolidColorBrush(c), Tag = c };
-                AutomationProperties.SetName(b, I18n.Tr("input.color.preset_fmt", $"#{c.R:X2}{c.G:X2}{c.B:X2}"));
-                b.Click += (s, e) => SelectedColor = (Color)((Button)s).Tag;
-                Presets.Children.Add(b);
-            }
             Loaded += (s, e) => SyncFromColor(SelectedColor);
             SvPlane.SizeChanged += (s, e) => PlaceThumb();
         }
@@ -62,7 +47,6 @@ namespace Pcsx5Ui
             get
             {
                 yield return HueSlider;
-                foreach (var c in Presets.Children) if (c is Control ctl) yield return ctl;
                 yield return HexBox;
             }
         }
@@ -100,6 +84,24 @@ namespace Pcsx5Ui
             SelectedColor = c;
             _syncing = false;
             PlaceThumb();
+        }
+
+        /// <summary>Pad control: move the plane cursor (saturation right, value
+        /// up) by a fraction of the plane per call.</summary>
+        public void NudgePlane(double dx, double dy)
+        {
+            if (dx == 0 && dy == 0) return;
+            _s = Math.Max(0, Math.Min(1, _s + dx));
+            _v = Math.Max(0, Math.Min(1, _v + dy));
+            Commit();
+        }
+
+        /// <summary>Pad control: move the hue bar by degrees.</summary>
+        public void NudgeHue(double degrees)
+        {
+            if (degrees == 0) return;
+            _h = (_h + degrees) % 360; if (_h < 0) _h += 360;
+            Commit();
         }
 
         private void PlaceThumb()

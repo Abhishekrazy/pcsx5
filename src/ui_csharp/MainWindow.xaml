@@ -2165,6 +2165,20 @@
                 </Border>
             </Grid>
 
+            <!-- CUSTOM COLOUR POPUP: the picker, driven by the sticks -->
+            <Grid x:Name="ColorPickerOverlay" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
+                <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Width="620" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Tr Key=colorpicker.title}" FontSize="{DynamicResource Type3XL}" FontWeight="ExtraBold" Foreground="{DynamicResource ThemeText}" Margin="0,0,0,16"/>
+                        <local:ColorPickerControl x:Name="PopupPicker"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                            <Button x:Name="ColorPickerCancelBtn" Content="{loc:Tr Key=colorpicker.cancel}" MinHeight="40" Padding="16,8" FontSize="{DynamicResource TypeS}" Margin="0,0,10,0" Style="{StaticResource SecondaryButtonStyle}" Click="ColorPickerCancel_Click" AutomationProperties.Name="{loc:Tr Key=colorpicker.cancel}"/>
+                            <Button x:Name="ColorPickerApplyBtn" Content="{loc:Tr Key=colorpicker.apply}" MinHeight="40" Padding="20,0" Style="{StaticResource ModernButtonStyle}" Click="ColorPickerApply_Click" AutomationProperties.Name="{loc:Tr Key=colorpicker.apply}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
             <!-- UPDATE PROMPT: a new build is on GitHub -->
             <Grid x:Name="UpdateOverlay" Visibility="Collapsed" Background="#CC000000" Grid.RowSpan="3">
                 <Border Background="{DynamicResource ThemeRaised}" BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1" CornerRadius="{DynamicResource ThemeCornerL}" Width="640" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32">
