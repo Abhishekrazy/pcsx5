@@ -29,6 +29,8 @@ struct VkFunctions {
     PFN_vkGetPhysicalDeviceFeatures                 GetPhysicalDeviceFeatures = nullptr;
     PFN_vkGetPhysicalDeviceQueueFamilyProperties    GetPhysicalDeviceQueueFamilyProperties = nullptr;
     PFN_vkGetPhysicalDeviceMemoryProperties         GetPhysicalDeviceMemoryProperties = nullptr;
+    PFN_vkGetPhysicalDeviceMemoryProperties2        GetPhysicalDeviceMemoryProperties2 = nullptr;
+    PFN_vkEnumerateDeviceExtensionProperties        EnumerateDeviceExtensionProperties = nullptr;
     PFN_vkGetPhysicalDeviceSurfaceSupportKHR        GetPhysicalDeviceSurfaceSupportKHR = nullptr;
     PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR   GetPhysicalDeviceSurfaceCapabilitiesKHR = nullptr;
     PFN_vkGetPhysicalDeviceSurfaceFormatsKHR        GetPhysicalDeviceSurfaceFormatsKHR = nullptr;
@@ -128,6 +130,9 @@ struct VkContext {
     u32                     queue_family = 0;
     VkQueue                 queue = VK_NULL_HANDLE;
     VkPhysicalDeviceMemoryProperties mem_props = {};
+    // True when VK_EXT_memory_budget was enabled on the device, so heap usage
+    // and budget can be queried for the readout.
+    bool has_memory_budget = false;
     VkFunctions             fn = {};
     char                    device_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE] = {};
 };

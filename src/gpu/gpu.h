@@ -104,6 +104,14 @@ namespace GPU {
     // no window (headless) or when the launcher owns the window chrome.
     void SetWindowTitle(const char* title);
 
+    // Video memory in use and the driver's budget, both in bytes, for the
+    // device this session is rendering on. False when the device does not
+    // report it (VK_EXT_memory_budget absent) or the GPU is not up yet.
+    //
+    // Vulkan exposes no portable GPU-utilisation percentage, so this is the
+    // honest GPU-side figure available rather than an invented one.
+    bool GetVideoMemoryUsage(u64* out_used_bytes, u64* out_budget_bytes);
+
     // True while the boot screen is still displayed.  Flips to false on the
     // first presented guest frame (the game takes over the window).
     bool IsBootScreenActive();

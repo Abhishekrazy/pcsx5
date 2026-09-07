@@ -1,4 +1,5 @@
 #include "gpu.h"
+#include "../diagnostics/frame_timing.h"
 #include "vk_context.h"
 #include "vk_present.h"
 #include "vk_draw.h"
@@ -793,7 +794,26 @@ namespace GPU {
         }
     }
 
+    // Closes one entry in the frame-timing ring. Nothing called
+    // Diagnostics::EndFrame(), so the ring stayed empty and GetFps() returned
+    // zero for the whole run - which is why the window readout showed
+    // "0.0 fps | 0.00 ms" while the guest was plainly drawing. A frame is
+    // counted where the guest's flip is actually turned into a presented
+    // image, so the number means the guest flip rate rather than how often
+    // this function was entered.
+    struct PresentTiming {
+        u64 start = Diagnostics::NowUs();
+        bool counted = false;
+        void Done() {
+            if (counted) return;
+            counted = true;
+            Diagnostics::RecordStage(Diagnostics::FrameStage::Present, start);
+            Diagnostics::EndFrame();
+        }
+    };
+
     void RenderFrame(guest_addr_t framebuffer_addr) {
+        PresentTiming timing;
         // In headless mode (IPC) there is no GLFW window, but we still need
         // to write frames to shared memory.  Skip the window-only paths and
         // jump straight to the IPC write at the bottom.
@@ -885,6 +905,7 @@ namespace GPU {
             VkFormat rt_format = VK_FORMAT_UNDEFINED;
             if (VkDrawLookupRenderTarget(framebuffer_addr, &rt_image, &rt_w, &rt_h, &rt_format)) {
                 if (VkPresentFromImage(g_vk, rt_image, rt_format, rt_w, rt_h)) {
+                    timing.Done();
                     LOG_DEBUG(GPU, "RenderFrame: Vulkan present of GPU image for guest buffer 0x%llx.",
                               framebuffer_addr);
                     return;
@@ -893,6 +914,7 @@ namespace GPU {
             }
             if (ConvertFramebufferToBgra(framebuffer_addr)) {
                 if (VkPresentFrame(g_vk, g_vk_pixels.data(), g_fb_width, g_fb_height)) {
+                    timing.Done();
                     LOG_DEBUG(GPU, "RenderFrame: Vulkan present of guest framebuffer 0x%llx.",
                               framebuffer_addr);
                     return;
@@ -1128,6 +1150,36 @@ namespace GPU {
         // work on every frame.
         if (!g_window || !title || g_embed_mode) return;
         glfwSetWindowTitle(g_window, title);
+    }
+
+    bool GetVideoMemoryUsage(u64* out_used_bytes, u64* out_budget_bytes) {
+        if (!g_vk_ready || g_vk == nullptr || !g_vk->has_memory_budget ||
+            g_vk->fn.GetPhysicalDeviceMemoryProperties2 == nullptr) {
+            return false;
+        }
+        VkPhysicalDeviceMemoryBudgetPropertiesEXT budget = {};
+        budget.sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+        VkPhysicalDeviceMemoryProperties2 props = {};
+        props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+        props.pNext = &budget;
+        g_vk->fn.GetPhysicalDeviceMemoryProperties2(g_vk->phys, &props);
+
+        // Report the device-local heaps only: that is the memory a user means
+        // by "GPU memory". Host-visible system heaps are counted elsewhere.
+        u64 used = 0, avail = 0;
+        const auto& mp = props.memoryProperties;
+        for (u32 i = 0; i < mp.memoryHeapCount && i < VK_MAX_MEMORY_HEAPS; ++i) {
+            if ((mp.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) == 0) {
+                continue;
+            }
+            used  += budget.heapUsage[i];
+            avail += budget.heapBudget[i];
+        }
+        if (avail == 0) return false;
+        if (out_used_bytes)   *out_used_bytes   = used;
+        if (out_budget_bytes) *out_budget_bytes = avail;
+        return true;
     }
 
     PadButtonState GetCurrentPadState() {

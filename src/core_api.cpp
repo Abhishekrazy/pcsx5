@@ -557,11 +557,23 @@ void UpdateWindowTitleReadout() {
 #endif
     s_primed = true;
 
-    char title[256];
+    // GPU side: Vulkan exposes no portable utilisation percentage, so the
+    // readout carries video memory in use against the driver's budget, which
+    // is a real measurement rather than an invented one. Omitted entirely when
+    // the device does not report it.
+    char gpu[64] = {};
+    u64 vram_used = 0, vram_budget = 0;
+    if (GPU::GetVideoMemoryUsage(&vram_used, &vram_budget)) {
+        std::snprintf(gpu, sizeof(gpu), " | GPU %llu/%llu MB",
+                      (unsigned long long)(vram_used / (1024 * 1024)),
+                      (unsigned long long)(vram_budget / (1024 * 1024)));
+    }
+
+    char title[320];
     std::snprintf(title, sizeof(title),
-                  "PCSX5 - %s | %.1f fps | %.2f ms | %.0f draws/s | CPU %.0f%% | %.0f MB",
+                  "PCSX5 - %s | %.1f fps | %.2f ms | %.0f draws/s | CPU %.0f%%%s | %.0f MB",
                   g_state.title_id.empty() ? "no title" : g_state.title_id.c_str(),
-                  fps, frame_ms, draws_per_s, cpu_percent, rss_mb);
+                  fps, frame_ms, draws_per_s, cpu_percent, gpu, rss_mb);
     GPU::SetWindowTitle(title);
 }
 

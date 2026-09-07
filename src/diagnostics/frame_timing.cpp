@@ -77,10 +77,21 @@ u64 EndFrame() {
     }
 
     // FPS tracking.
+    //
+    // A guest presents in bursts - several flips close together, then a gap -
+    // so a rate taken from a short window swings wildly with where its edges
+    // fall. Over one PPSA02929 run the same readout reported 1.4, 25 and 123
+    // frames per second while the guest flip rate was steady. The window is a
+    // full second and the result is smoothed, so the number a user reads is
+    // the rate they are actually getting rather than an artifact of when the
+    // window happened to close.
     g_fps_frame_count++;
     const u64 elapsed = now - g_last_fps_time;
-    if (elapsed > 500000) {  // update every 500ms
-        g_fps = static_cast<double>(g_fps_frame_count) / (static_cast<double>(elapsed) / 1000000.0);
+    if (elapsed > 1000000) {  // update once a second
+        const double instant = static_cast<double>(g_fps_frame_count) /
+                               (static_cast<double>(elapsed) / 1000000.0);
+        // First sample seeds the average; later ones ease toward it.
+        g_fps = g_fps > 0.0 ? (g_fps * 0.5 + instant * 0.5) : instant;
         g_fps_frame_count = 0;
         g_last_fps_time = now;
     }

@@ -117,6 +117,8 @@ bool PickDeviceAndQueue(VkContext* ctx) {
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceFeatures);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceQueueFamilyProperties);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceMemoryProperties);
+    VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceMemoryProperties2);
+    VK_LOAD_INSTANCE(ctx, EnumerateDeviceExtensionProperties);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceSurfaceSupportKHR);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceSurfaceCapabilitiesKHR);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceSurfaceFormatsKHR);
@@ -204,14 +206,36 @@ bool CreateLogicalDevice(VkContext* ctx) {
         }
     }
 
-    const char* swapchain_ext = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+    // VK_EXT_memory_budget is what makes a real video-memory figure available:
+    // Vulkan has no portable GPU-utilisation query, but it can report how much
+    // of each heap is in use and what the driver considers the budget. Enabled
+    // only when the device offers it.
+    std::vector<const char*> device_exts;
+    device_exts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    if (ctx->fn.EnumerateDeviceExtensionProperties) {
+        u32 ext_n = 0;
+        ctx->fn.EnumerateDeviceExtensionProperties(ctx->phys, nullptr, &ext_n, nullptr);
+        std::vector<VkExtensionProperties> props(ext_n);
+        if (ext_n) {
+            ctx->fn.EnumerateDeviceExtensionProperties(ctx->phys, nullptr, &ext_n,
+                                                       props.data());
+        }
+        for (const auto& e : props) {
+            if (std::strcmp(e.extensionName, "VK_EXT_memory_budget") == 0) {
+                device_exts.push_back("VK_EXT_memory_budget");
+                ctx->has_memory_budget = true;
+                break;
+            }
+        }
+    }
+
     VkDeviceCreateInfo dci = {};
     dci.pEnabledFeatures = &enabled;
     dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &qci;
-    dci.enabledExtensionCount = 1;
-    dci.ppEnabledExtensionNames = &swapchain_ext;
+    dci.enabledExtensionCount = static_cast<u32>(device_exts.size());
+    dci.ppEnabledExtensionNames = device_exts.data();
 
     const VkResult r = ctx->fn.CreateDevice(ctx->phys, &dci, nullptr, &ctx->device);
     if (r != VK_SUCCESS) {
