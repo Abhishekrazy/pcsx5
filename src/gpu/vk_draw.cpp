@@ -666,12 +666,19 @@ VkRenderPass EnsureRenderPass(VkFormat format) {
     att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     att.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     att.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    att.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    att.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    // Render targets live in GENERAL rather than COLOR_ATTACHMENT_OPTIMAL.
+    // A guest render-to-texture pass draws into a surface and then samples
+    // that same surface in a later draw of the same frame; GENERAL is valid
+    // both as a colour attachment and as a sampled source, so the image needs
+    // no transition between the two roles. The alternative is per-draw
+    // layout bookkeeping inside an active render pass, which Vulkan does not
+    // permit. Costs some driver-side optimisation; correctness first.
+    att.initialLayout = VK_IMAGE_LAYOUT_GENERAL;
+    att.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
 
     VkAttachmentReference ref = {};
     ref.attachment = 0;
-    ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    ref.layout = VK_IMAGE_LAYOUT_GENERAL;
     VkSubpassDescription sub = {};
     sub.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     sub.colorAttachmentCount = 1;
@@ -742,7 +749,7 @@ RenderTargetEntry* EnsureRenderTarget(u64 base, u32 w, u32 h, VkFormat format) {
             src = zeros.data();
         }
         if (WriteHostBuffer(g_ds.staging, off, src, static_cast<size_t>(need))) {
-            StageIntoImage(e.image, w, h, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, off);
+            StageIntoImage(e.image, w, h, VK_IMAGE_LAYOUT_GENERAL, off);
         }
     }
 
@@ -1326,6 +1333,28 @@ bool VkDrawExecute(const VkDrawCall& call) {
     for (u32 i = 0; i < image_count; ++i) {
         const VkDrawTexture& t = call.textures[i];
         TextureEntry* tex = nullptr;
+
+        // A guest address we have already rendered into is a render target,
+        // not CPU-supplied pixels. Uploading it from guest memory returns an
+        // empty image, because the pixels only ever existed in the Vulkan
+        // image we drew into. PPSA02929 renders its scene through two
+        // offscreen surfaces and then samples one for its final full-screen
+        // pass; that pass sampled an all-zero upload, which is what painted
+        // the screen black after the splash.
+        {
+            auto rt_it = g_ds.render_targets.find(t.guest_addr);
+            const bool live = rt_it != g_ds.render_targets.end() &&
+                              rt_it->second.view != VK_NULL_HANDLE;
+            if (VkDrawShouldSampleRenderTarget(t.guest_addr, t.is_storage, live)) {
+                VkSampler sampler = EnsureSampler(t.sampler);
+                if (!sampler) return false;
+                image_infos[i].sampler = sampler;
+                image_infos[i].imageView = rt_it->second.view;
+                image_infos[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+                continue;
+            }
+        }
+
         if (t.guest_addr == 0) {
             tex = EnsureFallbackTexture(t.arrayed_view);
         } else {

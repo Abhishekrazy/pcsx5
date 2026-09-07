@@ -455,6 +455,16 @@ if(BUILD_TESTING)
     target_link_libraries(vk_present_format_tests PRIVATE glfw Vulkan::Headers)
     add_test(NAME vk_present_format COMMAND vk_present_format_tests)
 
+    # Render-target sampling rule (2026-09-07) — header-only predicate, so no
+    # GPU or device is required.
+    add_executable(vk_draw_rt_sampling_tests
+        tests/vk_draw_rt_sampling_tests.cpp
+    )
+    target_include_directories(vk_draw_rt_sampling_tests PRIVATE src)
+    target_compile_options(vk_draw_rt_sampling_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    target_link_libraries(vk_draw_rt_sampling_tests PRIVATE Vulkan::Headers)
+    add_test(NAME vk_draw_rt_sampling COMMAND vk_draw_rt_sampling_tests)
+
     add_executable(loader_validation_tests
         tests/loader_validation.cpp
         src/common/log.cpp

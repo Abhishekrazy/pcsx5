@@ -718,8 +718,9 @@ bool VkPresentFromImage(VkContext* ctx, VkImage src, VkFormat src_format,
         TryGetPresentEncodeImage(ctx, &encode_img);
 
     const bool presented = AcquireRecordPresent(ctx, [&](VkImage target) {
-        // Source render target: COLOR_ATTACHMENT -> TRANSFER_SRC.
-        Barrier(ctx, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        // Source render target: GENERAL -> TRANSFER_SRC. Render targets are
+        // kept in GENERAL so a guest pass can sample the surface it drew into.
+        Barrier(ctx, src, VK_IMAGE_LAYOUT_GENERAL,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -781,7 +782,7 @@ bool VkPresentFromImage(VkContext* ctx, VkImage src, VkFormat src_format,
 
         // Restore the render-target layout for the next guest draw.
         Barrier(ctx, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_IMAGE_LAYOUT_GENERAL,
                 VK_ACCESS_TRANSFER_READ_BIT,
                 VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT,

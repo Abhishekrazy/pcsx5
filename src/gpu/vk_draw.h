@@ -160,6 +160,23 @@ void VkDrawFlush();
 // between draws; the presenter must restore that layout after blitting.
 // `format` (optional) reports the image's VkFormat so the presenter can
 // sRGB-encode linear-float flips (#448).
+// True when a sampled texture binding names a surface the GPU has already
+// rendered into, so the render target's own image must be bound instead of
+// uploading from guest memory.
+//
+// A guest render-to-texture pass draws into a surface and samples it in a
+// later draw. The pixels only ever exist in the Vulkan image; guest memory
+// for that address was never written, so uploading it yields an empty
+// texture. PPSA02929's final full-screen pass sampled exactly such a surface,
+// which is what painted the screen black after its splash.
+//
+// Storage bindings are excluded: those are bound as storage images through
+// their own path and are not sampled.
+inline bool VkDrawShouldSampleRenderTarget(u64 guest_addr, bool is_storage,
+                                           bool is_live_render_target) {
+    return guest_addr != 0 && !is_storage && is_live_render_target;
+}
+
 bool VkDrawLookupRenderTarget(u64 guest_base, VkImage* image,
                               u32* width, u32* height, VkFormat* format);
 
