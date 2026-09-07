@@ -219,26 +219,33 @@ updater packages uploaded by hand (see the packaging item).
   guest genuinely never binds a target (measured: 54 registers set, none of
   them colour-target), so this is latent until a title does.
 
-- [ ] **Untargeted draws with a storage binding are never dispatched.**
-  The AGC draw walker has three routes (`src/hle/libagc.cpp:1398-1435`):
-  targeted, discard, or park in a **single** `pending_targetless` slot for
-  the flip. A draw with no colour target but a writable (storage) texture
-  has no route of its own, so it lands in that one slot and every further
-  draw in the frame evicts it. Measured on PPSA02929: 13 draws per frame,
-  `270 executed, 1302 dropped` - 83% discarded, none of them the
-  "nothing can consume this" kind
-  (`artifacts/runtime/PPSA02929_20260906_054720/run.log`). SharpEmu executes
-  exactly this class of draw against its storage target instead
-  (`AgcExports.cs:8519-8560`), which is the difference between their in-game
-  run and our frozen frame. `is_storage` and the Vulkan storage-image
-  descriptors already exist here (`src/gpu/vk_draw.h:64`, `vk_draw.cpp:451`,
-  `:585`, `:999`), so this is one dispatch decision, not new machinery.
-  Shared GPU machinery, not a title hack.
-  **Done requires**: (a) an instrumentation-only run that counts how many
-  dropped draws carry a storage binding - if few, this task is falsified;
-  (b) the fourth branch, with a test; (c) PPSA02929 re-run and the frame-change
-  ratio compared against the baseline. Audit:
-  `docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md`.
+- [x] **Retained targetless draws are all composited at the flip.** Done
+  2026-09-07 (commit 6d3b6ca). The retained-draw slot held one draw, so a 2D
+  title that builds each frame from many sprite draws -- none of which binds a
+  colour target -- kept only its last sprite per frame. The slot is now a
+  queue composited in submission order. Measured on PPSA02929 over 60 s:
+  draws executed 273 -> 1107, dropped 1338 -> 400 (83% -> 27% discarded),
+  unique frames 5 -> 16; a 25 s run classifies `progressing`. 52/52 ctest.
+  Audit: `docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md`.
+
+- [x] **Storage image bindings are computed.** Done 2026-09-07 (same commit).
+  `is_storage` was never set anywhere in the tree, so every image binding was
+  declared sampled and any shader writing an image was mistranslated -- even
+  though the Vulkan side already implemented storage usage, layout and
+  descriptors. `GcnRequiresStorageImage` supplies it, folded into the shader
+  cache key, with tests in `tests/shader_tests.cpp`.
+
+- [!] **FALSIFIED: untargeted *storage* draws were the cause of PPSA02929's
+  frozen frame.** Measured 2026-09-07: the title has zero storage bindings and
+  its colour-buffer registers are all zero. The discarded draws were ordinary
+  sampled sprite draws. Kept so the storage branch is not re-proposed as this
+  title's fix.
+
+- [ ] **PPSA02929 stops changing about 20 s in.** New earliest divergence for
+  this title after the draw-retention fix: draws continue but the composited
+  frame stops changing, giving a 40.5 s freeze in a 60 s run
+  (`artifacts/runtime/PPSA02929_20260907_055424`). Not the retention path.
+  `UNKNOWN` cause; needs the guest's own state examined at the transition.
 
 - [ ] **`sceVideoOutAddFlipEvent` returns success on every repeat call.**
   PPSA02929 calls it once per frame (571 times in 60 s) against the same

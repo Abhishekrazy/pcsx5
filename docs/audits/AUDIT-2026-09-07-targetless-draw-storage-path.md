@@ -113,3 +113,73 @@ dropped draws carry a storage binding. If the answer is most of them, the
 change is a fourth branch in the AGC draw walker that dispatches such a draw
 against its storage target. If it is few, the pending-slot depth is the wrong
 suspect and this audit's section 3 is falsified in turn.
+
+---
+
+## Outcome (2026-09-07, same day)
+
+### Section 3's hypothesis is FALSIFIED
+
+The storage-binding branch was implemented and instrumented. PPSA02929 has
+**zero** storage bindings: every targetless draw samples one texture and
+writes none. Probe output, run `PPSA02929_20260907_054637`:
+
+```
+PROBE targetless draw: textures=1 storage=0 cb_base=0x0 cb_info=0x0 target_mask=0xF
+PROBE storage dispatch: (0 occurrences)
+```
+
+The colour-buffer registers are all zero, which corroborates the existing
+`TASKS.md` measurement that this guest never binds a colour target at all.
+So the dropped draws were never the storage kind, and SharpEmu's storage
+branch is not what separates their run from ours.
+
+The storage work was kept anyway, because it exposed a real latent defect
+independent of this title: `is_storage` was **never computed anywhere in the
+tree**. Every image binding was declared sampled, so any shader that writes an
+image would have been mistranslated, even though the Vulkan side already
+implemented storage usage, layout and descriptors. `GcnRequiresStorageImage`
+now supplies it, with tests.
+
+### The actual cause
+
+The retained-draw slot held **one** draw. A 2D title builds its frame from
+many sprite draws, none of which binds a colour target, so each frame kept
+only its last sprite and discarded the rest. The slot is now a queue,
+composited in submission order when the flip names the scanout buffer.
+
+The log shows the queue depth directly (`PPSA02929_20260907_055424`):
+
+```
+executing 12 deferred composites -> display buffer ...
+executing 11 deferred composites -> display buffer ...
+executing  9 deferred composites -> display buffer ...
+```
+
+### Measured, 60 s runs, same title and duration
+
+| | baseline (`20260906_054720`) | after (`20260907_055424`) |
+|---|---|---|
+| Draws executed | 273 | 1107 |
+| Draws dropped | 1338 | 400 |
+| Discard rate | 83% | 27% |
+| Unique frames of 29 | 5 | 16 |
+
+A 25 s run (`20260907_055349`) classified **`progressing`** rather than
+`frozen`, 11 unique frames of 12. The 60 s run still classifies `frozen`
+because a 40.5 s stretch late in the run stops changing. `VERIFIED` for the
+draw counts and frame hashes, which reproduce across runs; the late-run stall
+is a separate, still-uncharacterised boundary.
+
+### What did not change
+
+`ctest` is 52 of 52. The eviction *policy* is untouched: a targeted draw still
+discards the retained queue, exactly as it discarded the single slot, so
+titles that do bind colour targets behave as before. Only the queue's depth
+changed.
+
+### Next boundary
+
+The late-run stall: the frame stops changing around 20 s in while draws
+continue. That is now the earliest divergence for this title, and it is not
+the draw-retention path.
