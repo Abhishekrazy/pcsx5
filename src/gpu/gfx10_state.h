@@ -58,6 +58,25 @@ bool DecodeRenderTarget(u32 base_lo, u32 base_hi, u32 info, u32 attrib2,
 
 // (format, number_type) -> attachment format (SharpEmu
 // TryDecodeRenderTargetFormat subset).  Falls back to R8G8B8A8_UNORM.
+// Row stride, in elements, for a linear surface whose descriptor carries no
+// pitch. Rows are padded so that each is a multiple of 256 bytes.
+//
+// Every image descriptor PPSA02929 submits has an empty pitch field, and the
+// fallback used to be the width. That is only right when the width happens to
+// be aligned already: its 320- and 1280-wide textures rendered correctly while
+// its 250- and 980-wide ones came out as diagonal streaks, one row's worth of
+// shear per row - the signature of a stride that is too small. Its title logo
+// was unreadable noise until the padding was accounted for.
+inline u32 LinearPitchTexels(u32 width, u32 bytes_per_element) {
+    if (width == 0 || bytes_per_element == 0) return width;
+    constexpr u32 kRowAlignBytes = 256;
+    const u64 row_bytes = static_cast<u64>(width) * bytes_per_element;
+    const u64 padded =
+        (row_bytes + kRowAlignBytes - 1) / kRowAlignBytes * kRowAlignBytes;
+    const u64 texels = padded / bytes_per_element;
+    return texels >= width ? static_cast<u32>(texels) : width;
+}
+
 VkFormat RenderTargetFormat(u32 format, u32 number_type);
 
 // Gfx10 8-dword image resource descriptor (RDNA2 ISA table 45;

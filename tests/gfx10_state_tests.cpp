@@ -95,6 +95,31 @@ void TestRaster() {
     EXPECT_EQ(both.cull_mode, static_cast<u32>(VK_CULL_MODE_FRONT_AND_BACK), "cull both");
 }
 
+// Linear row stride (2026-09-07). An image descriptor that carries no pitch
+// does not mean the rows are width-tight: hardware pads each row to 256 bytes.
+// Substituting the width sheared every surface whose width was not already
+// aligned - PPSA02929's title logo was unreadable noise until this was fixed,
+// while its 320- and 1280-wide textures had always looked right because those
+// widths are aligned already.
+void TestLinearPitch() {
+    // 4 bytes per texel: rows align to 64 texels.
+    EXPECT_EQ(LinearPitchTexels(1280, 4), 1280u, "1280 is already aligned");
+    EXPECT_EQ(LinearPitchTexels(320, 4), 320u, "320 is already aligned");
+    EXPECT_EQ(LinearPitchTexels(980, 4), 1024u, "980 pads to 1024");
+    EXPECT_EQ(LinearPitchTexels(250, 4), 256u, "250 pads to 256");
+
+    // The alignment is in bytes, so the texel count depends on the format.
+    EXPECT_EQ(LinearPitchTexels(250, 1), 256u, "8-bit: 250 pads to 256");
+    EXPECT_EQ(LinearPitchTexels(250, 2), 256u, "16-bit: 250 pads to 256");
+    EXPECT_EQ(LinearPitchTexels(200, 16), 208u, "128-bit: 200 pads to 208");
+
+    // Never narrower than the surface, and degenerate inputs pass through
+    // rather than producing a zero stride.
+    EXPECT_EQ(LinearPitchTexels(0, 4), 0u, "zero width is returned unchanged");
+    EXPECT_EQ(LinearPitchTexels(64, 0), 64u, "zero element size falls back to width");
+    EXPECT(LinearPitchTexels(981, 4) >= 981u, "padding never narrows a surface");
+}
+
 void TestRenderTarget() {
     // 256-byte-unit address; dims from attrib2 +1; format info[6:2], num
     // info[10:8].  SharpEmu GetRenderTargets.
@@ -160,9 +185,16 @@ void TestImageDescriptor() {
     EXPECT_EQ(d.dst_select, 0xFACu, "image identity swizzle");
     EXPECT_EQ(d.tile_mode, 0u, "image linear tile mode");
 
+    // An absent pitch field is reported as zero, "not specified", rather than
+    // as the width. Substituting the width asserted that rows are tight, which
+    // is only true for widths that are already aligned; PPSA02929's 250- and
+    // 980-wide textures sheared because of it. The consumer pads the width to
+    // the row alignment once it knows the element size.
     w[4] = 0;
     EXPECT(DecodeImageDescriptor(w, d), "128-bit-style pitch decode");
-    EXPECT_EQ(d.pitch, d.width, "pitch falls back to width");
+    EXPECT_EQ(d.pitch, 0u, "an absent pitch field decodes as unspecified");
+    EXPECT_EQ(LinearPitchTexels(d.width, 4), 640u,
+              "the consumer derives an aligned stride from the width");
 
     w[0] = 0; w[1] &= ~0xFFu;
     EXPECT(!DecodeImageDescriptor(w, d), "null image rejected");
@@ -621,6 +653,7 @@ int main() {
     TestTopology();
     TestBlend();
     TestRaster();
+    TestLinearPitch();
     TestRenderTarget();
     TestImageDescriptor();
     TestSamplerAndSwizzle();

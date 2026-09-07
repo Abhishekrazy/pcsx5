@@ -172,10 +172,14 @@ bool DecodeImageDescriptor(const u32 w[8], ImageDesc& out) {
     out.tile_mode      = (w[3] >> 20) & 0x1Fu;
     out.type           = (w[3] >> 28) & 0xFu;
     out.dst_select     = w[3] & 0xFFFu;
-    // 256-bit descriptors carry a pitch field; 128-bit ones are width-pitched.
+    // 256-bit descriptors carry a pitch field. When they do not, the row
+    // stride is NOT the width: hardware pads linear rows, and substituting the
+    // width sheared every surface whose width was not already aligned. Zero
+    // means "not specified"; the consumer derives the padded stride once it
+    // knows the element size (Gfx10::LinearPitchTexels).
     out.pitch = (out.type == 8 || out.type == 9 || out.type == 14) && w[4] != 0
                     ? (w[4] & 0x3FFFu) + 1
-                    : out.width;
+                    : 0;
     // Array/3D/cube resources carry the layer count in word4[12:0]
     // (DEPTH/LAST_SLICE + 1); plain 1D/2D resources are single-layer.
     out.depth = (out.type >= 10 && out.type <= 13) || out.type == 15

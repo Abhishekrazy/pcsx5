@@ -276,6 +276,28 @@ updater packages uploaded by hand (see the packaging item).
   `PPSA02929_20260907_123027`. Audit:
   `docs/audits/AUDIT-2026-09-07-render-target-sampling.md`.
 
+- [x] **RESOLVED: linear textures were read with the wrong row stride.**
+  Done 2026-09-07. Every image descriptor this title submits has an empty
+  pitch field, and the decoder substituted the surface width - which asserts
+  that rows are tight. Hardware pads each linear row to 256 bytes, so widths
+  already aligned (1280, 320) rendered correctly while unaligned ones (980,
+  250) sheared by one rows worth per row. The title logo dumped as noise
+  before and reads as "Dreaming Sarah" after. An absent pitch now decodes as
+  unspecified and the upload derives the padded stride where the element size
+  is known. 6 of 6 runs progressing with every frame unique; 54/54 ctest. One
+  existing assertion pinned the defect and was corrected. Audit:
+  `docs/audits/AUDIT-2026-09-07-linear-texture-row-stride.md`.
+
+- [ ] **PPSA02929 title logo is still distorted on screen** although its
+  source texture is now correct: warped and doubled after a three-stage
+  post-process chain. This game aesthetic includes a deliberate dream wobble,
+  so it may be intended. `UNKNOWN` without a reference capture.
+
+- [ ] **No Vulkan validation layer runs in this configuration.** Zero
+  validation output appears in any run log, so all GPU evidence to date is
+  behavioural. Running once under the validation layers and classifying what
+  they report is worthwhile and not yet done.
+
 - [ ] **PPSA02929's scene renders but is not correct.** Colours and some
   geometry are wrong and the image shows banding and stepped edges
   (`PPSA02929_20260907_123027`). The title is not playable. Next after the

@@ -546,7 +546,10 @@ bool UploadTexture(TextureEntry& e, const VkDrawTexture& t,
     } else {
         // Linear fast path: tightly repack rows (guest pitch may exceed
         // width).  BC pitch counts texels; convert to blocks per row.
-        const u32 pitch = t.pitch ? t.pitch : t.width;
+        // A zero pitch means the descriptor did not carry one; the real row
+        // stride is the width padded to the hardware's row alignment.
+        const u32 pitch = t.pitch ? t.pitch
+                                  : Gfx10::LinearPitchTexels(t.width, bpe);
         const u32 pitch_elems = plan.block_compressed ? (pitch + 3) / 4 : pitch;
         const VkDeviceSize need = static_cast<VkDeviceSize>(pitch_elems) *
                                   elem_h * bpe;
