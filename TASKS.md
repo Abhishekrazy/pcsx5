@@ -261,19 +261,31 @@ updater packages uploaded by hand (see the packaging item).
   order in its fixture and so agreed with the wrong decode; fixture corrected
   and two runtime-observed cases added.
 
-- [ ] **PPSA02929's submission rate collapses 15x after the splash.**
-  Command buffers walked per 30 s: 655 then 43 (`PPSA02929_20260907_101945`).
-  `FALSIFIED`: it stops drawing - it slows and continues.
-  `CORRECTED` 2026-09-07: an earlier reading here said the guest builds
-  synchronisation packets that never reach the walker. That mixed two builds -
-  the call counts came from a pre-fix run, the packet probes from the fixed
-  one. On the current build the title calls `sceAgcDcbWaitRegMem`,
-  `sceAgcDcbDmaData` and `sceAgcCbReleaseMem` **zero** times, and uses 27
-  `libSceAgc` entry points where it used 32. The submit descriptor carrying
-  exactly one buffer, matching the reference, still stands - it rests on code,
-  not on a run. The collapse itself is unexplained. `UNKNOWN`; next step is
-  following the guest's own branch, not another packet census. Audit:
-  `docs/audits/AUDIT-2026-09-07-submission-rate-collapse.md`.
+- [x] **RESOLVED: the post-splash black screen.** Done 2026-09-07 (commit
+  99fedde). A draw sampling a guest address was always satisfied by uploading
+  that address from guest memory, but when the guest renders into a surface
+  the pixels exist only in the Vulkan image - guest memory there is never
+  written. PPSA02929's post-splash scene is a render-to-texture chain whose
+  final full-screen pass samples such a surface, so it painted black over a
+  frame we had otherwise drawn correctly. A sampled binding naming a live
+  render target now binds that target's image; render targets sit in
+  `VK_IMAGE_LAYOUT_GENERAL`, valid both as attachment and sampled source,
+  because Vulkan forbids a transition inside an active render pass.
+  60 s: status `frozen` -> **`progressing`**, unique frames 5 -> **29 of 29**,
+  longest freeze 38.3 s -> 6.1 s; 53/53 ctest. Baseline updated from
+  `PPSA02929_20260907_123027`. Audit:
+  `docs/audits/AUDIT-2026-09-07-render-target-sampling.md`.
+
+- [ ] **PPSA02929's scene renders but is not correct.** Colours and some
+  geometry are wrong and the image shows banding and stepped edges
+  (`PPSA02929_20260907_123027`). The title is not playable. Next after the
+  TLS crash below, which caps run length.
+
+- [!] **FALSIFIED: the submission-rate collapse explains the black screen.**
+  The 15x drop (655 then 43 command buffers per 30 s) is real and was measured
+  on the fixed build, but the black screen had a different cause entirely -
+  the render-target sampling defect above. Whether the collapse itself still
+  occurs now that the scene renders has not been re-measured.
 
 - [ ] **`RELEASE_MEM` packets have no consumer in the walker.**
   `sceAgcCbReleaseMem` emits the packet; nothing writes the fence value it
