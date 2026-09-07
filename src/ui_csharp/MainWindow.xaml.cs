@@ -1421,6 +1421,15 @@ namespace Pcsx5Ui
             // Show boot overlay
             ShowBootOverlay(game, BootPhase.Initializing, "Initializing emulator core...");
 
+            // The game runs in its own process with its own core, and the HID
+            // device opens shared, so two readers would interleave and the game
+            // would see only part of the input stream. Hand the pad over for the
+            // duration of the game; OnGameStopped takes it back.
+            StopControllerVizPolling();
+            _controllerTimer?.Stop();
+            try { CoreBridge.pcsx5_pad_reader_suspend(); }
+            catch (Exception ex) { LogConsole("Pad handover failed: " + ex.Message); }
+
             // Launch via IPC (out-of-process core).
             _session.Reset();
             // Point the core at the same config the Settings screen writes.
@@ -1536,6 +1545,12 @@ namespace Pcsx5Ui
 
         private void OnGameStopped(int exitCode)
         {
+            // The game process has released the pad; take it back so the shell
+            // is navigable again.
+            try { CoreBridge.pcsx5_pad_reader_resume(); }
+            catch (Exception ex) { LogConsole("Pad handback failed: " + ex.Message); }
+            _controllerTimer?.Start();
+
             HideBootOverlay();
             HidePauseMenu();
             HideWatchdogToast();

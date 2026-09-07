@@ -132,6 +132,16 @@ namespace Pcsx5Ui
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int pcsx5_pad_count();
 
+        // Hand the DualSense to a running game and take it back afterwards.
+        // The shell and the game are separate processes with separate cores;
+        // the HID device opens shared, so two readers interleave and the game
+        // sees only part of the input stream.
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_pad_reader_suspend();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void pcsx5_pad_reader_resume();
+
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int pcsx5_pad_get_state(int index, ref PadState outState);
 

@@ -794,6 +794,14 @@ PCSX5_API int pcsx5_pad_count(void) {
     return GPU::DualSense::Count();
 }
 
+PCSX5_API void pcsx5_pad_reader_suspend(void) {
+    GPU::DualSense::Shutdown();
+}
+
+PCSX5_API void pcsx5_pad_reader_resume(void) {
+    GPU::DualSense::EnsureStarted();
+}
+
 PCSX5_API int pcsx5_pad_get_state(int index, pcsx5_pad_state* out) {
     if (!out || out->struct_size != sizeof(pcsx5_pad_state)) return -2;
     if (index < 0 || index >= GPU::DualSense::kMaxPads) return -1;

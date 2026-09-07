@@ -159,6 +159,19 @@ typedef struct pcsx5_pad_firmware {
 // lands.  Starts the reader if it is not running.
 PCSX5_API int  pcsx5_pad_count(void);
 
+// Release the DualSense reader so another process can own the device, and
+// take it back afterwards.
+//
+// The desktop shell and a running game are separate processes, and each has
+// its own core. The HID device is opened shared, so both readers succeed and
+// then interleave: input reports go to whichever handle reads first, so the
+// game sees only part of the stream. The shell suspends its reader while a
+// game is running and resumes when the game exits.
+//
+// Both are idempotent and safe to call when no reader is running.
+PCSX5_API void pcsx5_pad_reader_suspend(void);
+PCSX5_API void pcsx5_pad_reader_resume(void);
+
 // Latest state for controller `index`.  Returns 0 and fills `out` on success,
 // -1 for an index the core is not streaming, -2 if `out` is NULL or its
 // struct_size does not match the core's.  `out->struct_size` must be set by

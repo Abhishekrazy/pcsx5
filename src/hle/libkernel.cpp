@@ -2237,11 +2237,27 @@ namespace HLE {
             if (fd >= 0) {
                 const u64 n = static_cast<u64>(KernelReadCore(fd, buf, size * count));
                 const u64 items = (size > 0) ? (n / size) : 0;
-                LOG_ERROR(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, count: %llu) -> read bytes: %llu, returning items: %llu", buf, size, count, n, items);
+                // A completed read is not an error. Logging it as one produced
+                // 10,469 error lines in a single 45-second run and buried the
+                // failures worth finding. A short read still is one.
+                if (n < size * count) {
+                    LOG_WARN(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, "
+                             "count: %llu) -> short read: %llu of %llu bytes",
+                             buf, size, count, n, size * count);
+                } else {
+                    LOG_DEBUG(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, "
+                              "count: %llu) -> %llu items", buf, size, count, items);
+                }
                 return items;
             }
             u64 n = fread(reinterpret_cast<void*>(buf), size, count, reinterpret_cast<FILE*>(f));
-            LOG_ERROR(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, count: %llu) -> read items: %llu", buf, size, count, n);
+            if (n < count) {
+                LOG_WARN(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, "
+                         "count: %llu) -> short read: %llu items", buf, size, count, n);
+            } else {
+                LOG_DEBUG(HLE, "libkernel::fread(buf: 0x%llx, size: %llu, "
+                          "count: %llu) -> %llu items", buf, size, count, n);
+            }
             return n;
         });
 
@@ -2253,11 +2269,11 @@ namespace HLE {
             const int fd = FakeFileFd(f);
             if (fd >= 0) {
                 const s64 r = _lseeki64(fd, offset, whence);
-                LOG_ERROR(HLE, "libkernel::fseek(0x%llx, %lld, %d) -> %lld", f, offset, whence, r);
+                LOG_DEBUG(HLE, "libkernel::fseek(0x%llx, %lld, %d) -> %lld", f, offset, whence, r);
                 return r < 0 ? ~0ull : 0;
             }
             int r = f ? fseek(reinterpret_cast<FILE*>(f), (long)offset, whence) : -1;
-            LOG_ERROR(HLE, "libkernel::fseek(%p, %lld, %d) -> %d", reinterpret_cast<void*>(f), offset, whence, r);
+            LOG_DEBUG(HLE, "libkernel::fseek(%p, %lld, %d) -> %d", reinterpret_cast<void*>(f), offset, whence, r);
             return (u64)(s64)r;
         });
 
@@ -2267,11 +2283,11 @@ namespace HLE {
             const int fd = FakeFileFd(f);
             if (fd >= 0) {
                 const s64 r = _lseeki64(fd, 0, SEEK_CUR);
-                LOG_ERROR(HLE, "libkernel::ftell(0x%llx) -> %lld", f, r);
+                LOG_DEBUG(HLE, "libkernel::ftell(0x%llx) -> %lld", f, r);
                 return static_cast<u64>(r);
             }
             long r = f ? ftell(reinterpret_cast<FILE*>(f)) : -1;
-            LOG_ERROR(HLE, "libkernel::ftell(%p) -> %ld", reinterpret_cast<void*>(f), r);
+            LOG_DEBUG(HLE, "libkernel::ftell(%p) -> %ld", reinterpret_cast<void*>(f), r);
             return (u64)(s64)r;
         });
 
