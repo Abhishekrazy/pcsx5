@@ -341,11 +341,41 @@ updater packages uploaded by hand (see the packaging item).
   pursued; no production code changed. Audit:
   `docs/audits/AUDIT-2026-09-07-artifact-localization.md`.
 
-- [ ] **NEXT: read what pixel shader `0x215795900` is asked to do.** Dump its
-  guest bytecode and the SPIR-V we generate, and compare. This is a
-  self-contained comparison against the guest program, so it needs no
-  reference capture - which is what makes it the right next step for both
-  artifacts. Do not start by editing the translator.
+- [x] **AUDITED: guest shader `0x215795900` is faithfully translated.**
+  Done 2026-09-07, read-only, no production code changed. The guest program is
+  238 instructions, 1208 bytes, zero unknown opcodes; the generated SPIR-V is
+  74 KB and passes `spirv-val --target-env vulkan1.2`. Every arithmetic class
+  balances exactly: 33 cosines, 7 sines, 43 fused multiply-adds, 35 adds, 16
+  subtracts, 4 reciprocals, 2 half-packs and 1 texture sample all map
+  one-to-one. The only count that differed, 122 multiplies against 82 in the
+  guest, is explained precisely by the 40 turns-to-radians conversions the
+  trig lowering requires - and that conversion is present and correct, which
+  is the obvious way this would have gone wrong. **Case A: semantic
+  equivalence established.** Do not modify the translator on this evidence.
+  Audit: `docs/audits/AUDIT-2026-09-07-shader-215795900-audit.md`.
+
+- [!] **FALSIFIED: the logo doubling comes from combining multiple displaced
+  samples.** The shader takes exactly **one** tap. Doubling cannot come from
+  multi-sampling here. A large-amplitude single-tap displacement can map two
+  screen regions onto overlapping source areas, which reads as doubling.
+
+- [ ] **NEXT: dump the 18 uniform constants this pass loads.** A wrong
+  constant produces a wrong warp from a perfectly correct shader, and the
+  shader is now known correct. Check they are finite, stable frame to frame,
+  and varying with time as an animated warp requires. Read-only; needs no
+  reference capture.
+
+- [ ] **Audit the sampler addressing mode for the single sample in
+  `0x215795900`.** Out-of-range coordinates are the leading remaining
+  candidate for the intermittent blocks, and a large displacement can push the
+  coordinate outside [0,1] where behaviour depends on the addressing mode.
+  Not audited yet.
+
+- [ ] **Two translator rounding nuances, neither demonstrated to matter.**
+  `VRcpF32` lowers to an exact `OpFDiv` where hardware is approximate (ours is
+  more accurate, not less); `VCvtPkrtzF16F32` specifies round-toward-zero
+  while `PackHalf2x16` rounds to nearest-even. Candidate discrepancies,
+  recorded so they are not rediscovered.
 
 - [ ] **A strip of blocky artifacts along the top edge of the frame**
   (`PPSA02929_20260907_180248` frame 18, roughly the first 45 rows). Does not
