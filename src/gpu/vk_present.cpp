@@ -28,7 +28,13 @@ struct PresentState {
     VkCommandPool   cmd_pool = VK_NULL_HANDLE;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
     VkSemaphore     acquire_sem = VK_NULL_HANDLE;
-    VkSemaphore     done_sem = VK_NULL_HANDLE;
+    // One "render done" semaphore per swapchain image, not one shared.
+    // A present waits on this semaphore and nothing signals when that wait
+    // finishes, so a single semaphore could be re-signalled while a previous
+    // present still had a wait pending. Re-acquiring image i proves the
+    // presentation engine released it, which is what makes done_sems[i] safe
+    // to signal again.
+    std::vector<VkSemaphore> done_sems;
     VkFence         fence = VK_NULL_HANDLE;
 
     // Guest-FB upload resources (recreated when the FB size changes).
@@ -111,6 +117,18 @@ void ClearBlack(VkContext* ctx, VkImage target) {
     range.layerCount = 1;
     ctx->fn.CmdClearColorImage(g_ps.cmd, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                &black, 1, &range);
+}
+
+// Global memory dependency, for ordering two transfer writes to one image
+// where no layout change is involved.
+void MemoryBarrier(VkContext* ctx, VkAccessFlags src_access, VkAccessFlags dst_access,
+                   VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage) {
+    VkMemoryBarrier mb = {};
+    mb.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    mb.srcAccessMask = src_access;
+    mb.dstAccessMask = dst_access;
+    ctx->fn.CmdPipelineBarrier(g_ps.cmd, src_stage, dst_stage, 0, 1, &mb, 0, nullptr,
+                               0, nullptr);
 }
 
 void Barrier(VkContext* ctx, VkImage image, VkImageLayout from, VkImageLayout to,
@@ -268,10 +286,16 @@ bool CreateSyncAndCommands(VkContext* ctx) {
     fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     if (ctx->fn.CreateSemaphore(ctx->device, &sci, nullptr, &g_ps.acquire_sem) != VK_SUCCESS ||
-        ctx->fn.CreateSemaphore(ctx->device, &sci, nullptr, &g_ps.done_sem) != VK_SUCCESS ||
         ctx->fn.CreateFence(ctx->device, &fci, nullptr, &g_ps.fence) != VK_SUCCESS) {
         LOG_ERROR(GPU, "Vulkan present: sync object creation failed.");
         return false;
+    }
+    g_ps.done_sems.assign(g_ps.images.size(), VK_NULL_HANDLE);
+    for (VkSemaphore& sem : g_ps.done_sems) {
+        if (ctx->fn.CreateSemaphore(ctx->device, &sci, nullptr, &sem) != VK_SUCCESS) {
+            LOG_ERROR(GPU, "Vulkan present: per-image semaphore creation failed.");
+            return false;
+        }
     }
     return true;
 }
@@ -438,6 +462,13 @@ void DestroyPresentEncodeImage(VkContext* ctx) {
 // failure (caller may fall back to GDI for this frame).
 template <typename F>
 bool AcquireRecordPresent(VkContext* ctx, F&& record) {
+    // The previous submit is the one that waits on acquire_sem. Draining it
+    // before acquiring again is what makes the semaphore free of pending
+    // operations, which vkAcquireNextImageKHR requires. Acquiring first and
+    // waiting afterwards - the previous order - re-signalled a semaphore whose
+    // wait was still outstanding.
+    ctx->fn.WaitForFences(ctx->device, 1, &g_ps.fence, VK_TRUE, UINT64_MAX);
+
     u32 index = 0;
     const VkResult acq = ctx->fn.AcquireNextImageKHR(ctx->device, g_ps.swapchain, UINT64_MAX,
                                                      g_ps.acquire_sem, VK_NULL_HANDLE, &index);
@@ -449,7 +480,8 @@ bool AcquireRecordPresent(VkContext* ctx, F&& record) {
         return false;
     }
 
-    ctx->fn.WaitForFences(ctx->device, 1, &g_ps.fence, VK_TRUE, UINT64_MAX);
+    // Reset only once the acquire has succeeded: an early return above leaves
+    // the fence signalled, which is the state the next frame expects.
     ctx->fn.ResetFences(ctx->device, 1, &g_ps.fence);
     ctx->fn.ResetCommandBuffer(g_ps.cmd, 0);
 
@@ -469,7 +501,8 @@ bool AcquireRecordPresent(VkContext* ctx, F&& record) {
     si.commandBufferCount = 1;
     si.pCommandBuffers = &g_ps.cmd;
     si.signalSemaphoreCount = 1;
-    si.pSignalSemaphores = &g_ps.done_sem;
+    VkSemaphore done_sem = g_ps.done_sems[index];
+    si.pSignalSemaphores = &done_sem;
     if (ctx->fn.QueueSubmit(ctx->queue, 1, &si, g_ps.fence) != VK_SUCCESS) {
         LOG_WARN(GPU, "Vulkan present: vkQueueSubmit failed.");
         return false;
@@ -478,7 +511,7 @@ bool AcquireRecordPresent(VkContext* ctx, F&& record) {
     VkPresentInfoKHR pi = {};
     pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     pi.waitSemaphoreCount = 1;
-    pi.pWaitSemaphores = &g_ps.done_sem;
+    pi.pWaitSemaphores = &done_sem;
     pi.swapchainCount = 1;
     pi.pSwapchains = &g_ps.swapchain;
     pi.pImageIndices = &index;
@@ -630,7 +663,10 @@ void VkPresentShutdown(VkContext* ctx) {
     if (g_ps.tex) ctx->fn.DestroyImage(ctx->device, g_ps.tex, nullptr);
     if (g_ps.tex_mem) ctx->fn.FreeMemory(ctx->device, g_ps.tex_mem, nullptr);
     if (g_ps.acquire_sem) ctx->fn.DestroySemaphore(ctx->device, g_ps.acquire_sem, nullptr);
-    if (g_ps.done_sem) ctx->fn.DestroySemaphore(ctx->device, g_ps.done_sem, nullptr);
+    for (VkSemaphore sem : g_ps.done_sems) {
+        if (sem) ctx->fn.DestroySemaphore(ctx->device, sem, nullptr);
+    }
+    g_ps.done_sems.clear();
     if (g_ps.fence) ctx->fn.DestroyFence(ctx->device, g_ps.fence, nullptr);
     if (g_ps.cmd_pool) ctx->fn.DestroyCommandPool(ctx->device, g_ps.cmd_pool, nullptr);
     if (g_ps.rb_buf) ctx->fn.DestroyBuffer(ctx->device, g_ps.rb_buf, nullptr);
@@ -675,9 +711,14 @@ bool VkPresentFrame(VkContext* ctx, const void* bgra_pixels, u32 fb_w, u32 fb_h)
         }
 
         // Swapchain image: UNDEFINED -> TRANSFER_DST, blit scaled, -> PRESENT_SRC.
+        // This transition writes the swapchain image that the presentation
+        // engine has just been reading. The dependency on the acquire is
+        // carried by the semaphore wait, and the barrier has to chain with it:
+        // srcStageMask covers all earlier queue work rather than one stage, so
+        // the transition cannot be ordered ahead of the wait.
         Barrier(ctx, target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         VkImageBlit blit = {};
         blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.srcSubresource.layerCount = 1;
@@ -734,7 +775,7 @@ bool VkPresentFromImage(VkContext* ctx, VkImage src, VkFormat src_format,
         // Swapchain image: UNDEFINED -> TRANSFER_DST, blit scaled, -> PRESENT_SRC.
         Barrier(ctx, target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         // When encoding, the sRGB intermediate is the blit destination; the
         // copy below lands the encoded bytes in the swapchain image.
         const VkImage blit_dst = encode_for_present ? encode_img : target;
@@ -754,6 +795,11 @@ bool VkPresentFromImage(VkContext* ctx, VkImage src, VkFormat src_format,
         blit.dstOffsets[0] = { fit[0], fit[1], 0 };
         blit.dstOffsets[1] = { fit[2], fit[3], 1 };
         ClearBlack(ctx, blit_dst);
+        // The clear and the blit both write blit_dst; without a dependency
+        // between them the blit is a write-after-write hazard on the letterbox
+        // region they share.
+        MemoryBarrier(ctx, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                      VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         ctx->fn.CmdBlitImage(g_ps.cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                              blit_dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
                              VK_FILTER_LINEAR);
@@ -802,7 +848,7 @@ bool VkPresentClearColor(VkContext* ctx, float r, float g, float b, float a) {
     const bool presented = AcquireRecordPresent(ctx, [&](VkImage target) {
         Barrier(ctx, target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
         VkClearColorValue color = {};
         color.float32[0] = r;
         color.float32[1] = g;

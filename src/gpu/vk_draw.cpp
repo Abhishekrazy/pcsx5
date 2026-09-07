@@ -182,12 +182,15 @@ bool BeginBatch() {
     VkContext* ctx = g_ds.ctx;
     if (g_ds.in_flight) {
         ctx->fn.WaitForFences(ctx->device, 1, &g_ds.fence, VK_TRUE, UINT64_MAX);
-        ctx->fn.ResetFences(ctx->device, 1, &g_ds.fence);
         g_ds.in_flight = false;
         for (auto& b : g_ds.retired) DestroyHostBuffer(b);
         g_ds.retired.clear();
         ctx->fn.ResetDescriptorPool(ctx->device, g_ds.desc_pool, 0);
     }
+    // Reset unconditionally, not only when a batch was in flight. The fence is
+    // created signalled, so the very first submit handed vkQueueSubmit a
+    // signalled fence, which the spec forbids.
+    ctx->fn.ResetFences(ctx->device, 1, &g_ds.fence);
     g_ds.draw_slot = 0;
     g_ds.staging_off = 0;
     g_ds.index_off = 0;

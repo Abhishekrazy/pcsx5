@@ -301,18 +301,32 @@ updater packages uploaded by hand (see the packaging item).
   render path. 54/54 ctest, 6/6 runs progressing with 22/22 unique frames.
   Audit: `docs/audits/AUDIT-2026-09-07-vulkan-validation.md`.
 
-- [ ] **Presentation-loop synchronization cluster (5 validation findings).**
-  All name swapchain objects: a blit writing an image previously written by a
-  clear, a barrier writing an image previously read by `vkAcquireNextImageKHR`,
-  and semaphores plus a fence reused before the prior work completed
-  (`SYNC-HAZARD-WRITE-AFTER-WRITE` x10, `SYNC-HAZARD-WRITE-AFTER-READ` x10,
-  `VUID-vkAcquireNextImageKHR-semaphore-01779` x10,
-  `VUID-vkQueueSubmit-pSignalSemaphores-00067` x2,
-  `VUID-vkQueueSubmit-fence-00063` x1). Not demonstrated unrelated to the
-  on-screen result: a present race can cause tearing or ghosting, and ghosting
-  is not obviously distinct from the doubling seen around the title logo. One
-  coherent defect; fix it alone so the measurement stays attributable.
-  **Recommended next.**
+- [x] **RESOLVED: presentation-loop synchronization.** Done 2026-09-07. Four
+  distinct defects, all verified against the validation layers: the acquire
+  ran before the fence wait so the acquire semaphore was reused with a wait
+  still pending; one shared done semaphore was re-signalled while a present
+  could still be waiting on it (now one per swapchain image, since
+  re-acquiring image i proves its wait completed); the letterbox clear and the
+  blit both wrote the swapchain image with no dependency between them; and the
+  acquire layout barrier used TOP_OF_PIPE while the semaphore is waited at
+  TRANSFER, in all three present paths. Separately the draw fence was reset
+  only when a batch was in flight, so the first submit passed a signalled
+  fence. Validation findings 33 to **0**, no new ones; 54/54 ctest.
+  Audit: `docs/audits/AUDIT-2026-09-07-presentation-synchronization.md`.
+
+- [ ] **Progression classification on this machine is noisy.** Measured back
+  to back in one session: pre-fix 2/6 runs `progressing`, post-fix 9/12. The
+  earlier 6/6 baselines were taken in a more favourable machine state, so
+  batch-to-batch comparisons across sessions are unreliable. Either widen the
+  sample or make the classifier robust before using progression rate as
+  evidence again.
+
+- [ ] **The presentation loop has no isolated test.** Its state machine needs
+  a live device and swapchain, and the extractable parts are too trivial to
+  test meaningfully. The regression mechanism is a validation run:
+  `VK_LOADER_LAYERS_ENABLE=VK_LAYER_KHRONOS_validation VK_LAYER_VALIDATE_SYNC=1`
+  with zero `Validation Error` lines as the pass condition. Worth wiring into
+  the runner so it is checked rather than remembered.
 
 - [ ] **A strip of blocky artifacts along the top edge of the frame**
   (`PPSA02929_20260907_180248` frame 18, roughly the first 45 rows). Does not
