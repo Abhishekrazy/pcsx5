@@ -89,3 +89,53 @@ code; it is recorded in `TASKS.md` instead with the layout already recovered
 (control at +8 with the data selection in bits 16-23, destination at +12/+16,
 data at +20/+24; selection 1 writes 32 bits, 2 writes 64, 3 writes a clock
 sample).
+
+---
+
+## 7. CORRECTION: the 247-call family belongs to the old build
+
+Section 2 above is wrong, and the error is worth recording precisely because
+it is the kind this project's evidence rules exist to prevent: it mixed
+evidence from two different builds.
+
+The `247 calls each` figures were read from the import report of run
+`PPSA02929_20260907_055927`, which predates the register-group identifier fix.
+The packet probes that found zero occurrences were run afterwards, against the
+fixed build. Two different binaries, presented as one observation.
+
+Measured properly, on the current build (run `PPSA02929_20260907_112018`, with
+unsampled probes on the builders themselves):
+
+| | before the fix | after the fix |
+|---|---|---|
+| `libSceAgc` entry points the title calls | 32 | 27 |
+| `sceAgcDcbWaitRegMem` calls | 247 | **0** |
+| `sceAgcDcbDmaData` calls | 247 | **0** |
+| `sceAgcCbReleaseMem` calls | 247 | **0** |
+
+`VERIFIED`: those three, plus `sceAgcCbNop` and the patch-address stubs, are
+absent from the current build's import report entirely, and direct logging in
+the builders themselves records zero calls across a full 60 s run.
+
+So section 2's conclusion - that the guest builds synchronisation packets that
+never reach the walker - does not describe the emulator as it stands. On the
+current build the guest never builds them at all.
+
+### What that means
+
+Restoring the register-group identifiers changed which AGC paths the title
+exercises: it now drives the GPU through five fewer entry points. That is
+consistent with the engine taking a different setup path once its register
+groups are identifiable, but it is `UNKNOWN` whether the old path was
+abandoned because it is genuinely unnecessary or because the guest now fails
+earlier and never reaches that code. Establishing which needs the guest's own
+branch followed, not another packet census.
+
+The submission-rate collapse itself stands as measured - run
+`PPSA02929_20260907_101945` was on the fixed build - and remains unexplained.
+Section 3's finding (one buffer per submit descriptor, matching the reference)
+also stands, since it rests on code rather than on a run.
+
+Sections 5 and 6 are unaffected in substance: no `RELEASE_MEM` consumer exists
+in the walker, and the patch-address entry points remain stubs. Both are now
+further from being exercised than section 6 implied, not closer.
