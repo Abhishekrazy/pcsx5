@@ -92,3 +92,65 @@ Find where an AGC draw names its render destination when the raw
 Until one of these is established the black screen must stay `UNKNOWN` rather
 than be worked around; substituting a guessed destination would be exactly the
 kind of speculative fix that makes later observations uninterpretable.
+
+---
+
+## 6. Candidate 2 investigated: indirect register lists (2026-09-07)
+
+Section 5 named `sceAgcSetCxRegIndirectPatchAddRegisters` as the most likely
+place a colour target could arrive without appearing in the register shadow.
+It was probed and **does not explain the black screen**.
+
+### What the indirect lists contain
+
+Probing every indirect register packet (`PROBE indirect`, run
+`PPSA02929_20260907_092431`) shows two shapes reaching the same opcode:
+
+```
+reg=12 count=19  [0]000001B1=00000000 [1]000001C3=00000004 [2]000001C2=00000001 ...
+reg=12 count=35  [0]FFFFFFFF=FFFFFFFF [1]00000191=00000000 [2]00000192=00000001 ...
+reg=12 count=134 [0]FFFFFFFF=02113A00 [1]FFFFFFFF=FC001FFF [2]FFFFFFFF=EBFAA0AB ...
+```
+
+Most lists carry real context-register offsets (`0x1B1`, `0x1C3`, `0x191`…).
+One carries `0xFFFFFFFF` in the offset slot of every entry. A raw dword dump
+confirms the 8-byte stride is correct and the pattern is a strict alternation
+of `FFFFFFFF` and a value, so this is not a stride error:
+
+```
+FFFFFFFF 02113A00 FFFFFFFF FC001FFF FFFFFFFF EBFAA0AB FFFFFFFF FFFE0FFF ...
+```
+
+The first value, `0x02113A00`, is the display buffer address `0x2113A0000`
+shifted right by 8 - the encoding `CB_COLOR0_BASE` uses. That is what made
+this list look promising.
+
+### Why it is not the answer
+
+SharpEmu parses this packet identically: 8-byte `{offset, value}` pairs
+written straight into the register shadow with no filtering of `0xFFFFFFFF`
+(`AgcExports.cs:7878-7893`, including an explicit comment that offset zero is
+a real register and not a terminator). Both emulators therefore scatter the
+same 134 entries into the same meaningless shadow slot, and SharpEmu still
+reaches gameplay. The behaviour is identical on both sides, so it cannot be
+the difference. `FALSIFIED` as the cause.
+
+The value matching the display buffer address is most likely a leftover: the
+list lives in GPU scratch memory at `0x21139f000` that previously held it.
+`INFERRED`; establishing it properly would need the buffer's history.
+
+### A small real defect, recorded not fixed
+
+Entries whose offset is `0xFFFFFFFF` are written into the register shadow at
+key `0xFFFFFFFF`. A context register index is under `0x400`, so this is never
+a register. It is harmless today because nothing reads that key, but it is
+134 junk writes per call across 26,435 calls in a 60 s run. Filtering it is a
+separate change and was deliberately not made mid-investigation.
+
+### Where this leaves the boundary
+
+Sections 3 and 4 stand: the scene's textures are empty because they are
+GPU-produced and our upload reads guest memory. The remaining candidates from
+section 5 are untested - other colour slots (`CB_COLOR1..7`) and a
+depth/resolve target standing in for the colour target. The question is still
+where an untargeted draw names its destination, and it is still `UNKNOWN`.

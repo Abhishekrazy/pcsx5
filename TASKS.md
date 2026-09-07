@@ -260,6 +260,17 @@ updater packages uploaded by hand (see the packaging item).
   60 s), or a depth/resolve target - then render into it. Do not substitute a
   guessed destination. Audit:
   `docs/audits/AUDIT-2026-09-07-black-screen-after-splash.md`.
+  Indirect registers were investigated on 2026-09-07 and ruled out: the
+  reference emulator parses that packet identically, so it cannot be the
+  difference. Remaining candidates are the other colour slots and a
+  depth/resolve target.
+
+- [ ] **Indirect register entries with offset `0xFFFFFFFF` are written into
+  the register shadow.** A context register index is under `0x400`, so
+  `0xFFFFFFFF` is never one. Harmless today because nothing reads that key,
+  but it is 134 junk map writes per call across 26,435 calls in a 60 s
+  PPSA02929 run (`libagc.cpp` `ApplySubmittedRegisters`). Filter the range,
+  with a test. Found during the black-screen investigation.
 
 - [!] **FALSIFIED: only one of the two display buffers is ever presented.**
   A probe firing every 60th present observed one buffer, but the buffers
