@@ -328,6 +328,25 @@ updater packages uploaded by hand (see the packaging item).
   with zero `Validation Error` lines as the pass condition. Worth wiring into
   the runner so it is checked rather than remembered.
 
+- [x] **LOCALIZED: both remaining title-screen artifacts come from one pass.**
+  Done 2026-09-07. Captured every stage of the chain by presenting each render
+  target in turn. Source texture clean; intermediate 1 clean at two frames
+  (crisp, correctly proportioned logo); **intermediate 2 shows both the warp
+  and the top-region blocks**; intermediates 3 and the display carry them
+  forward unchanged. The pass graph shows `ps 0x215795900` is used exactly
+  once in the whole chain and is the draw that reads intermediate 1 and writes
+  intermediate 2. Every other title-screen pass is a plain textured quad. All
+  stages are 1280x720 R8G8B8A8_UNORM single-sample, so scaling, format
+  conversion and multisample resolve are excluded. Root cause deliberately not
+  pursued; no production code changed. Audit:
+  `docs/audits/AUDIT-2026-09-07-artifact-localization.md`.
+
+- [ ] **NEXT: read what pixel shader `0x215795900` is asked to do.** Dump its
+  guest bytecode and the SPIR-V we generate, and compare. This is a
+  self-contained comparison against the guest program, so it needs no
+  reference capture - which is what makes it the right next step for both
+  artifacts. Do not start by editing the translator.
+
 - [ ] **A strip of blocky artifacts along the top edge of the frame**
   (`PPSA02929_20260907_180248` frame 18, roughly the first 45 rows). Does not
   look stylistic. Newly observed, uninvestigated; cheap to localise with the
