@@ -28,6 +28,8 @@ void InvalidateAll() {}
 u64 TrapCount() { return 0; }
 void NoteTrap() {}
 u64 PatchedCount() { return 0; }
+u32 TestEmitStub(u8*, const AccessInfo&, u64, u32, u64) { return 0; }
+
 } // namespace Kernel::TlsPatch
 
 #else // PCSX5_TLS_PATCH_FULL
@@ -102,16 +104,46 @@ u64 TlsSlotAddress() {
 
 struct StubEmitter {
     u8* p;
+    u32 slot_addr = 0;
+    u64 default_tp = 0;
     void byte(u8 b) { *p++ = b; }
     void u32le(u32 v) { std::memcpy(p, &v, 4); p += 4; }
     void bytes(std::initializer_list<u8> bs) { for (u8 b : bs) byte(b); }
 
-    // mov rax, gs:[slot_addr]  (loads the current thread's guest tp).
-    // Always 64-bit: the guest tp can live above 4 GB, and address
-    // computation uses the full 64-bit base even for 32-bit accesses.
+    // Loads the current thread's guest tp into rax.
+    //
+    //   pushfq
+    //   mov  rax, gs:[slot]
+    //   test rax, rax
+    //   jne  done
+    //   mov  rax, imm64      ; the shared thread pointer
+    // done:
+    //   popfq
+    //
+    // The slot is zero on a host thread that reached guest code without ever
+    // being bound (Kernel::TlsPatch::BindCurrentThread). Without the fallback
+    // the stub returned 0, `mov rax, fs:[0]` produced 0, and the guest's very
+    // next instruction dereferenced a null-based address: PPSA02929 died at
+    // guest RIP 0x80015ff6d, `mov r12, [rax - 0x15b8]`, with RAX = 0.
+    //
+    // The VEH path this stub replaced resolves the same access through a
+    // three-level chain and ends at the shared block, so the two disagreed on
+    // exactly this case. cpu.cpp states they must agree; this makes them.
+    //
+    // pushfq/popfq is what keeps the stub's EFLAGS guarantee: `test` writes
+    // flags, and every other stub is flag-transparent. The pair is balanced
+    // before the caller's own stack work, so the `[rsp]` offsets used by the
+    // non-rax forms are unaffected.
     void emit_load_tp() {
-        bytes({0x65, 0x48, 0x8B, 0x04, 0x25});
-        u32le(static_cast<u32>(TlsSlotAddress()));
+        byte(0x9C);                                    // pushfq
+        bytes({0x65, 0x48, 0x8B, 0x04, 0x25});         // mov rax, gs:[slot]
+        u32le(slot_addr);
+        bytes({0x48, 0x85, 0xC0});                     // test rax, rax
+        bytes({0x75, 0x0A});                           // jne +10 (over the mov)
+        bytes({0x48, 0xB8});                           // mov rax, imm64
+        std::memcpy(p, &default_tp, 8);
+        p += 8;
+        byte(0x9D);                                    // popfq
     }
     // mov rax/eax, [rax + disp32]
     void emit_load_value(bool as64, s32 disp) {
@@ -137,8 +169,12 @@ struct StubEmitter {
 // push/pop/mov/xchg are used) and preserve every register except the access
 // destination (reads) — matching the semantics of the emulated instruction.
 // Returns the stub size in bytes, or 0 when the access form is unsupported.
-u32 EmitStub(u8* out, const AccessInfo& a, u64 return_rip) {
-    StubEmitter e{out};
+u32 EmitStub(u8* out, const AccessInfo& a, u64 return_rip, u32 slot_addr,
+             u64 default_tp) {
+    // Never bake a zero fallback: a stub whose fallback is 0 reintroduces the
+    // null thread pointer it exists to prevent.
+    if (default_tp == 0) return 0;
+    StubEmitter e{out, slot_addr, default_tp};
     
     // Helper to emit the final jump back to the instruction after the patched site.
     auto emit_return_jmp = [&]() {
@@ -330,7 +366,8 @@ bool TryPatchSite(u64 rip, const AccessInfo& access) {
     }
     u8* stub = g_stub_region + offset;
     const u64 return_rip = rip + access.instr_len;
-    const u32 stub_size = EmitStub(stub, access, return_rip);
+    const u32 stub_size = EmitStub(stub, access, return_rip,
+                                   static_cast<u32>(TlsSlotAddress()), g_default_tp);
     if (stub_size == 0) return false;
 
     // Range-check the rel32 jump from this site to the stub.
@@ -441,6 +478,11 @@ void NoteTrap() {
 
 u64 PatchedCount() {
     return g_patched.load();
+}
+
+u32 TestEmitStub(u8* out, const AccessInfo& access, u64 return_rip,
+                 u32 slot_addr, u64 default_tp) {
+    return EmitStub(out, access, return_rip, slot_addr, default_tp);
 }
 
 } // namespace Kernel::TlsPatch

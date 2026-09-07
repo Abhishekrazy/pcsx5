@@ -73,4 +73,11 @@ u64 TrapCount();
 void NoteTrap();
 u64 PatchedCount();
 
+// Test hook: emit one stub into `out` (at least 64 bytes) for the given access
+// with an explicit TLS slot address and fallback thread pointer, so the emitted
+// machine code can be asserted without a live process. Returns the stub size,
+// or 0 when the form is unsupported or the fallback is zero.
+u32 TestEmitStub(u8* out, const AccessInfo& access, u64 return_rip,
+                 u32 slot_addr, u64 default_tp);
+
 } // namespace Kernel::TlsPatch

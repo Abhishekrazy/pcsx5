@@ -313,11 +313,30 @@ updater packages uploaded by hand (see the packaging item).
   fails earlier and never reaches it. Worth settling before trusting the new
   path.
 
-- [ ] **Intermittent emulated-TLS read failure at guest RIP `0x800160378`.**
-  One run in four ends there with `Emulated TLS read failed ... not resuming
-  the guest on a load that did not happen` (`PPSA02929_20260907_101044`).
-  Newly reachable now that the title gets further. Intermittent, so capture
-  several runs before drawing conclusions.
+- [x] **RESOLVED: the intermittent null guest thread pointer.** Done
+  2026-09-07 (commit pending). A patched TLS site loads the guest thread
+  pointer from a host TLS slot and used the value unchecked. That slot is zero
+  on any host thread that reached guest code without being bound, so
+  `mov rax, fs:[0]` produced 0 and the guest dereferenced a null-based
+  address - PPSA02929 died at guest RIP `0x80015ff6d` executing
+  `mov r12, [rax - 0x15b8]` with `RAX = 0`
+  (`PPSA02929_20260907_133921`). The exception-handler path this stub replaced
+  resolves the same access through a three-level chain ending at the shared
+  block, so the two disagreed on exactly this case although `cpu.cpp` states
+  they must agree. The stub now tests for zero and falls back to the same
+  pointer, preserving EFLAGS with `pushfq`/`popfq`, and refuses to emit at all
+  if the fallback would be zero. 12 of 12 clean 45 s runs after, against 11 of
+  12 before; 54/54 ctest. Audit:
+  `docs/audits/AUDIT-2026-09-07-tls-stub-null-thread-pointer.md`.
+
+- [ ] **Some host threads reach guest code without a bound thread pointer.**
+  Exposed by the fix above, which makes them fall back to the shared TLS block
+  rather than crash. A thread that should own private TLS but silently shares
+  the main block is a latent correctness problem: `cpu.cpp` notes that worker
+  threads aliasing the main fs base "corrupted per-thread runtime caches".
+  `UNKNOWN` which threads these are and how they enter. Establishing that
+  needs the bind sites correlated against the host thread ids seen executing
+  guest code.
 
 - [!] **FALSIFIED: only one of the two display buffers is ever presented.**
   A probe firing every 60th present observed one buffer, but the buffers

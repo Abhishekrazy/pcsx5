@@ -465,6 +465,19 @@ if(BUILD_TESTING)
     target_link_libraries(vk_draw_rt_sampling_tests PRIVATE Vulkan::Headers)
     add_test(NAME vk_draw_rt_sampling COMMAND vk_draw_rt_sampling_tests)
 
+    # TLS stub thread-pointer fallback (2026-09-07). Emitted bytes only; the
+    # stub cannot be executed without a live process and a real TLS slot.
+    add_executable(tls_patch_stub_tests
+        tests/tls_patch_stub_tests.cpp
+        src/kernel/tls_patch.cpp
+        src/memory/memory.cpp
+        src/common/log.cpp
+    )
+    target_include_directories(tls_patch_stub_tests PRIVATE src)
+    target_compile_definitions(tls_patch_stub_tests PRIVATE PCSX5_TLS_PATCH_FULL)
+    target_compile_options(tls_patch_stub_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /WX>)
+    add_test(NAME tls_patch_stub COMMAND tls_patch_stub_tests)
+
     add_executable(loader_validation_tests
         tests/loader_validation.cpp
         src/common/log.cpp
