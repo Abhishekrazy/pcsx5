@@ -2634,6 +2634,36 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                 if (!Memory::GuardedRead(&tls_value, tls_address,
                                                          access_size, &tls_read) ||
                                     tls_read != access_size) {
+                                    // This branch has fired twice in the
+                                    // project's history with a thread pointer
+                                    // that matched no allocation we make - all
+                                    // registered thread pointers and the shared
+                                    // block are page-aligned, and the observed
+                                    // values were a page base plus 0x9090. It
+                                    // has not recurred since the stub gained
+                                    // its fallback, and its cause is UNKNOWN.
+                                    //
+                                    // The record below is what a future
+                                    // recurrence needs in order to be
+                                    // diagnosed at all: which of the three
+                                    // resolution sources supplied the pointer,
+                                    // and what the memory subsystem thinks of
+                                    // the address. It costs nothing until the
+                                    // failure happens, because it is inside
+                                    // the failure branch.
+                                    Memory::MemoryInfo mi{};
+                                    const bool have_mi =
+                                        Memory::Query(tls_address, &mi) == Memory::Status::Ok;
+                                    guest_addr_t rec_tls = 0;
+                                    bool have_rec = false;
+                                    {
+                                        std::lock_guard<std::mutex> lock(g_thread_mutex);
+                                        auto rec = g_threads.find(GetCurrentThreadId());
+                                        if (rec != g_threads.end()) {
+                                            rec_tls = rec->second.tls_base;
+                                            have_rec = true;
+                                        }
+                                    }
                                     LOG_ERROR(Kernel,
                                               "Emulated TLS read failed at 0x%llx (%llu of "
                                               "%llu bytes); not resuming the guest on a load "
@@ -2641,6 +2671,32 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
                                               (unsigned long long)tls_address,
                                               (unsigned long long)tls_read,
                                               (unsigned long long)access_size);
+                                    LOG_ERROR(Kernel,
+                                              "  tp=0x%llx disp=%d guest_tid=%llu "
+                                              "host_tid=%lu rip=0x%llx",
+                                              (unsigned long long)tp, displacement,
+                                              (unsigned long long)GetCurrentThreadId(),
+                                              (unsigned long)::GetCurrentThreadId(),
+                                              (unsigned long long)context->Rip);
+                                    LOG_ERROR(Kernel,
+                                              "  sources: cache=0x%llx record=%s0x%llx "
+                                              "shared=0x%llx",
+                                              (unsigned long long)t_tls_base,
+                                              have_rec ? "" : "absent:",
+                                              (unsigned long long)rec_tls,
+                                              (unsigned long long)g_guest_tls.ThreadPointer());
+                                    if (have_mi) {
+                                        LOG_ERROR(Kernel,
+                                                  "  region: base=0x%llx size=0x%llx "
+                                                  "prot=0x%x committed=%d reserved=%d",
+                                                  (unsigned long long)mi.base_address,
+                                                  (unsigned long long)mi.size, mi.protection,
+                                                  mi.is_committed ? 1 : 0,
+                                                  mi.is_reserved ? 1 : 0);
+                                    } else {
+                                        LOG_ERROR(Kernel, "  region: address is not in any "
+                                                  "tracked guest region");
+                                    }
                                     return EXCEPTION_CONTINUE_SEARCH;
                                 }
                                 

@@ -329,6 +329,15 @@ updater packages uploaded by hand (see the packaging item).
   12 before; 54/54 ctest. Audit:
   `docs/audits/AUDIT-2026-09-07-tls-stub-null-thread-pointer.md`.
 
+- [ ] **The `Emulated TLS read failed` variant is still unexplained.**
+  Distinct from the resolved stub crash: those two historical failures came
+  through the exception handler with a thread pointer matching no allocation
+  we make (all registered pointers and the shared block are page-aligned; the
+  observed values were a page base plus `0x9090`). Not seen in 12 post-fix
+  runs, but that is absence, not a diagnosis. The failure branch now records
+  the resolution source, both thread ids, the faulting RIP and the memory
+  region, so a recurrence is diagnosable without re-instrumenting.
+
 - [ ] **Some host threads reach guest code without a bound thread pointer.**
   Exposed by the fix above, which makes them fall back to the shared TLS block
   rather than crash. A thread that should own private TLS but silently shares

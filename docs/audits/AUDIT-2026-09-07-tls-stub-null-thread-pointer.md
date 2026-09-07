@@ -174,5 +174,17 @@ exception handler always would have, but a thread that should own private TLS
 and instead shares the main block is a latent correctness problem in its own
 right. That is recorded as a separate task, not fixed here.
 
+**The `Emulated TLS read failed` variant is unexplained.** The crash this
+audit fixes came through the patched stub. The two historical crashes that
+printed that message came through the exception handler with a thread pointer
+matching no allocation we make, and section 4's H4 remains `UNKNOWN`. It has
+not recurred in 12 post-fix runs, but absence is not a diagnosis.
+
+Rather than speculate, the failure branch now records what a recurrence needs:
+which of the three resolution sources supplied the pointer, the guest and host
+thread ids, the faulting RIP, and what the memory subsystem says about the
+address. It costs nothing until the failure happens, because it sits inside
+the branch that only runs on failure. Committed alongside this audit.
+
 **Next phase**, per the plan: rendering correctness - colour, geometry,
 banding and stepped edges - kept separate so measurements stay attributable.
