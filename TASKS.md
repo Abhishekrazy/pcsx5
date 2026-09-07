@@ -241,56 +241,37 @@ updater packages uploaded by hand (see the packaging item).
   sampled sprite draws. Kept so the storage branch is not re-proposed as this
   title's fix.
 
-- [ ] **Render-to-texture has no path: the guest's own scene textures stay
-  empty.** After the publisher splash (which renders correctly, frame 7 of
-  `PPSA02929_20260907_055927`) the screen goes black while the guest draws
-  *more*. Measured: the composites sample textures that are all zero in guest
-  memory - a 1280x720 surface and a 980x347 one, the shapes of a background
-  and a title graphic - while CPU-supplied textures in the same frame hold
-  real data. Those empty ones are GPU-produced, and our texture upload reads
-  guest memory, so they arrive black. The draws that should fill them carry no
-  decodable colour target, so the walker composites them onto the display
-  buffer instead of into the texture.
-  Ruled out with runtime probes, each cited in the audit: waiting on a pad
-  press, composite draws failing, wrong display buffer, degenerate viewport or
-  scissor, per-frame render-target reseeding, per-draw clears.
-  **Done requires**: establish where an AGC draw names its destination when
-  `CB_COLOR0` is zero - other colour slots, the AGC `RenderTarget` object
-  bound through `sceAgcSetCxRegIndirectPatchAddRegisters` (26,435 calls in
-  60 s), or a depth/resolve target - then render into it. Do not substitute a
-  guessed destination. Audit:
-  `docs/audits/AUDIT-2026-09-07-black-screen-after-splash.md`.
-  Established 2026-09-07: the guest runs a **multi-pass render-to-texture
-  chain**. A composite batch alternates a real sprite with a full-screen quad
-  sampling an offscreen surface, and the batch's last draws are full-screen
-  passes over surfaces that are empty for us - which is what paints the
-  screen black over sprites we drew correctly. Surfaces are ring-allocated,
-  at a new address each frame.
-  Narrowed by an opcode census of the whole graphics stream: the guest emits
-  **no `SET_CONTEXT_REG` (0x69) packets at all**, so every context register
-  arrives through the NOP-wrapped indirect lists, and the destination must be
-  in one of them. `FALSIFIED` on the way: nested command buffers (no
-  `INDIRECT_BUFFER` 0x3F packet is ever emitted) and the patch-list builder
-  (the reference implementation is byte-for-byte equivalent to ours).
-  Stream inspection is now **exhausted** (2026-09-07). Also `FALSIFIED`: the
-  placeholder indirect list names the destination - the address it carries is
-  the surface the pixel shader *samples*, logged immediately before it. Census
-  facts: no `SET_CONTEXT_REG`, no `INDIRECT_BUFFER`, **zero compute
-  dispatches**, **zero DMA operations**, graphics queue only. Nothing in the
-  stream names a destination, and every mechanism compared against the
-  reference is equivalent.
-  **Next step is caller analysis (Rule 04), not more probing**: disassemble the
-  guest code that builds the indirect lists and emits these draws
-  (`tools/dream_tool.py disasm`, `tools/dre_xref.py`; caller addresses are in
-  each run's import report). Three value-pattern inferences have been falsified
-  here, which is the argument for reading the code rather than the data.
+- [x] **The AGC register-group type identifiers are restored.** Done
+  2026-09-07 (commit a25816e). The guest identifies a register-default group
+  by an SDK-supplied 32-bit id; we wrote the register space (always 0) there
+  instead, under a comment calling them "metadata only". Every group looked
+  alike, so the guest never emitted real register offsets for its
+  render-target block - which is why this title appeared never to bind a
+  colour target and why 83% of its draws were discarded by the targetless
+  composite heuristic. Restoring all 149 groups: draws executed 273 -> 1150,
+  dropped 1338 -> **0**, deferred composites 206 -> **0**, unique frames
+  5 -> 17 of 29. Audit:
+  `docs/audits/AUDIT-2026-09-07-black-screen-after-splash.md` section 9.
 
-- [ ] **Indirect register entries with offset `0xFFFFFFFF` are written into
-  the register shadow.** A context register index is under `0x400`, so
-  `0xFFFFFFFF` is never one. Harmless today because nothing reads that key,
-  but it is 134 junk map writes per call across 26,435 calls in a 60 s
-  PPSA02929 run (`libagc.cpp` `ApplySubmittedRegisters`). Filter the range,
-  with a test. Found during the black-screen investigation.
+- [x] **Render-target extent was transposed.** Done 2026-09-07 (same commit).
+  `CB_COLOR0_ATTRIB2` packs height low and width high;
+  `DecodeRenderTarget` had them swapped, so a 1280x720 surface decoded as
+  720x1280. Invisible until targets decoded, because the composite fallback
+  sized itself from the display buffer. The existing test encoded the wrong
+  order in its fixture and so agreed with the wrong decode; fixture corrected
+  and two runtime-observed cases added.
+
+- [ ] **PPSA02929 still goes black after the splash, and stops drawing.**
+  With targets now bound the splash renders correctly and full-screen, but the
+  next scene is black and the window readout shows `0 draws/s` - the guest
+  ceases to submit draws rather than drawing invisibly. New boundary; the
+  earlier render-to-texture reading is superseded.
+
+- [ ] **Intermittent emulated-TLS read failure at guest RIP `0x800160378`.**
+  One run in four ends there with `Emulated TLS read failed ... not resuming
+  the guest on a load that did not happen` (`PPSA02929_20260907_101044`).
+  Newly reachable now that the title gets further. Intermittent, so capture
+  several runs before drawing conclusions.
 
 - [!] **FALSIFIED: only one of the two display buffers is ever presented.**
   A probe firing every 60th present observed one buffer, but the buffers

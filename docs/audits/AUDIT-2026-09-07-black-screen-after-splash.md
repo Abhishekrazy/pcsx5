@@ -321,3 +321,67 @@ and the caller addresses are in each run's import report.
 Until that is done the destination stays `UNKNOWN`. Three separate
 value-pattern inferences have now been falsified in this audit, which is
 itself the argument for reading the code instead of the data.
+
+---
+
+## 9. RESOLVED: the guest was never told which register group it had
+
+Caller analysis (section 8's recommended step) found the cause. It was ours,
+not the guest's.
+
+### The finding
+
+The game imports **32** `libSceAgc` symbols and **none of them binds a render
+target**. It calls `sceAgcGetRegisterDefaults2` exactly once, takes the
+register-default template we hand back, patches its own values in, and submits
+slices of it through the indirect register lists. Disassembling the builder at
+`0x80000d73f` confirms the shape: set the patch address, `memcpy` a block of
+8-byte entries, then add to the count.
+
+Each group in that template carries an SDK-supplied 32-bit identifier - the
+`CB_COLOR0_*` group's is `0x38E92C91`. Our blob builder wrote **the register
+space (always 0) in that field instead**, under a comment declaring the
+identifiers "metadata only". They are not metadata. The guest identifies a
+register group by that value, and with every group reporting the same one it
+never emitted real register offsets for its render-target block. That is the
+origin of the `0xFFFFFFFF` entries chased through sections 6 and 8, and the
+reason this title appeared never to bind a colour target.
+
+`VERIFIED`: restoring the identifiers for all 149 groups (127 primary, 22
+internal) removes the targetless path completely.
+
+| 60 s run | before | after |
+|---|---|---|
+| Draws executed | 273 | 1150 |
+| Draws dropped | 1338 | **0** |
+| Deferred composites | 206 | **0** |
+| Unique frames of 29 | 5 | 17 |
+
+### The defect it exposed
+
+With targets decoding for the first time, the splash rendered cropped.
+`CB_COLOR0_ATTRIB2` packs height in the low 14 bits and width above it, and
+`DecodeRenderTarget` had the two transposed (`gfx10_state.cpp:121`). The
+1280x720 surface decoded as 720x1280 and the 4K display buffer as 2160x3840.
+
+It had been invisible because no target had ever decoded: the composite
+fallback sized itself from the display buffer instead. Confirmed two ways
+independently of the reference - the texture descriptor for the same surface
+reports 1280x720, and a display buffer is 3840x2160.
+
+The existing test encoded the transposed order in its own fixture, so it
+agreed with the wrong decode. The fixture is corrected, its expected 1920x1080
+is unchanged, and two cases built from runtime-observed register values were
+added so the field order is pinned against real data.
+
+With both changes the splash renders correctly and full-screen through the
+real render-target path.
+
+### Still open
+
+The screen is still black after the splash and the run still classifies
+`frozen`, now with the guest ceasing to submit draws entirely at that point
+(the window readout shows `0 draws/s`). One run in four also ended in an
+emulated-TLS read failure at guest RIP `0x800160378`. Both are new boundaries
+beyond this audit's question, which was why no colour target was ever bound.
+That question is answered.
