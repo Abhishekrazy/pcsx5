@@ -3,7 +3,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](#building)
 [![Language](https://img.shields.io/badge/C%2B%2B-20-blue)](#building)
 [![UI](https://img.shields.io/badge/UI-.NET%209%20WPF-512BD4)](#building)
-[![Graphics](https://img.shields.io/badge/graphics-Vulkan%201.3-red)](#building)
+[![Graphics](https://img.shields.io/badge/graphics-Vulkan-red)](#building)
 [![License](https://img.shields.io/badge/license-GPL--2.0-green)](LICENSE)
 
 An experimental PlayStation 5 emulator for Windows x64, written in C++20 with a
@@ -27,9 +27,13 @@ firmware, system libraries or games. You may only use software you legally own.
 **Early development. No game is playable.**
 
 PCSX5 can load unmodified retail PS5 executables, run them through the boot
-pipeline, spawn guest threads, translate shaders and present frames — but every
-title tested so far crashes during boot, most of them within the first twenty
-seconds. Expect crashes, missing rendering and no sound in most cases.
+pipeline, spawn guest threads, translate shaders and present frames. One title,
+Dreaming Sarah, now boots, renders its publisher splash and reaches an animated
+title screen that keeps changing for as long as it is left running. Every other
+title tested still crashes during boot, most within the first twenty seconds.
+
+Reaching a title screen is not playability: no title has been driven into
+gameplay. Expect crashes, missing rendering and no sound in most cases.
 
 What currently works:
 
@@ -40,7 +44,8 @@ What currently works:
   libSceVideoOut and others, backed by a symbol database of over a thousand
   NID-to-name mappings, each one verified by recomputing the hash rather than
   taken on trust
-- GCN→SPIR-V shader translation and a Vulkan 1.3 renderer
+- GCN→SPIR-V shader translation and a Vulkan renderer, validated clean under
+  the Khronos validation layers with synchronization validation enabled
 - ATRAC9 audio decoding
 - DualSense support over USB and Bluetooth (input, rumble, adaptive triggers,
   lightbar, player LEDs)
@@ -66,27 +71,62 @@ The titles below are the ones tracked in development. Their state is recorded in
 runs rather than maintained by hand, and every run is classified by whether the
 process rendered and whether the picture actually changed.
 
-**No title is playable. Every one crashes during boot.** They do so in different
-ways, which is the useful part:
+**No title is playable.** One reaches a rendered title screen; the rest crash
+during boot, in different ways, which is the useful part:
 
-| Title | ID | Crashes after | Failure |
+| Title | ID | State | Detail |
 |---|---|---|---|
-| Dead Cells | PPSA15552 | ~4 s | Access violation inside `libc.prx` initialisation |
-| Super Monkey Ball Banana Mania | PPSA01668 | ~6 s | Indirect call through a null pointer |
-| SILENT HILL: The Short Message | PPSA10112 | ~14 s | Illegal instruction |
-| Poppy Playtime Chapter 1 | PPSA20591 | ~15 s | Access violation; on-screen content was changing |
-| ASTRO BOT | PPSA21564 | ~21 s | Guest engine assertion in its own lock code |
-| Dreaming Sarah | PPSA02929 | ~23 s | Access violation; reached content load and menus |
+| Dreaming Sarah | PPSA02929 | **Title screen** | Boots, renders the publisher splash and an animated title screen; survives 45-second runs with every sampled frame different |
+| Dead Cells | PPSA15552 | Crashes | Stops after one frame |
+| SILENT HILL: The Short Message | PPSA10112 | Crashes | Stops after two frames |
+| Super Monkey Ball Banana Mania | PPSA01668 | Crashes | Stops after three frames |
+| Poppy Playtime Chapter 1 | PPSA20591 | Crashes | Stops after six frames; on-screen content was changing |
+| Jusant | PPSA10264 | Crashes | Stops after eight frames |
 
-Several reach a splash or early screen before stopping. None reaches gameplay.
+Every entry above was re-measured on 2026-09-07 at 30 seconds per title. Each
+one still reaches a first frame at about two seconds, so they all get through
+loading, module linking and GPU initialisation before failing.
 
 ## Screenshots
 
-The desktop shell — game library, controller setup and the boot analyzer:
+All of these are captures from real runs on 2026-09-07, not mock-ups.
 
-> Screenshots live in the project wiki. The shell runs fullscreen, is fully
-> operable from a DualSense or the keyboard, and switches its on-screen prompts
-> to match whichever you last touched.
+### The desktop shell
+
+The library, with cover art, per-game settings and a compatibility badge. The
+shell runs fullscreen, is fully operable from a DualSense or the keyboard, and
+switches its on-screen prompts to match whichever you last touched.
+
+![PCSX5 game library](docs/images/shell-library.png)
+
+Controller setup reads a real DualSense over USB or Bluetooth. The pad is drawn
+as a 3D model that mirrors the physical controller's orientation from its motion
+sensors and lights up as buttons are pressed; the panels show firmware, battery
+and live accelerometer and gyroscope traces.
+
+![Controller testing with a live DualSense](docs/images/shell-controller-test.png)
+
+Every button and axis is rebindable, including the touchpad zones.
+
+![Controller bindings](docs/images/shell-input-bindings.png)
+
+### A game booting
+
+Dreaming Sarah, running from an unmodified retail dump. The publisher splash,
+rendered through the guest's own shaders and command buffers:
+
+![Publisher splash rendered by the emulator](docs/images/game-splash.png)
+
+...and the title screen it reaches afterwards. The game applies a procedural
+distortion to its logo through a three-stage post-process chain; the wobble is a
+single-tap coordinate warp computed by one of its own shaders. Whether it looks
+exactly like this on real hardware is unverified — there is no reference capture
+to compare against.
+
+![Dreaming Sarah title screen](docs/images/game-title-screen.png)
+
+The window title bar in these captures is the emulator's own readout: frame
+rate, frame time, guest draw calls per second, host CPU and memory.
 
 ## Building
 
