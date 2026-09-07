@@ -261,11 +261,35 @@ updater packages uploaded by hand (see the packaging item).
   order in its fixture and so agreed with the wrong decode; fixture corrected
   and two runtime-observed cases added.
 
-- [ ] **PPSA02929 still goes black after the splash, and stops drawing.**
-  With targets now bound the splash renders correctly and full-screen, but the
-  next scene is black and the window readout shows `0 draws/s` - the guest
-  ceases to submit draws rather than drawing invisibly. New boundary; the
-  earlier render-to-texture reading is superseded.
+- [ ] **PPSA02929's submission rate collapses 15x after the splash.**
+  Command buffers walked per 30 s: 655 then 43 (`PPSA02929_20260907_101945`).
+  `FALSIFIED`: it stops drawing - it slows and continues. Established
+  2026-09-07: the guest calls the builders for `WaitRegMem`, `DmaData` and
+  `ReleaseMem` 247 times each, yet **none of those packets ever reaches the
+  walker** (unsampled probe, zero occurrences), and the submit descriptor
+  carries exactly one buffer, same as the reference - so nothing is being
+  ignored. Those packets go into a buffer that is never submitted or is reset
+  first; `sceAgcDcbResetQueue` runs once per frame and our walker treats it as
+  a full shadow clear. `UNKNOWN`; next step is caller analysis of which buffer
+  object those 247 calls target. Audit:
+  `docs/audits/AUDIT-2026-09-07-submission-rate-collapse.md`.
+
+- [ ] **`RELEASE_MEM` packets have no consumer in the walker.**
+  `sceAgcCbReleaseMem` emits the packet; nothing writes the fence value it
+  asks for, so a guest polling that location would wait forever. No current
+  title exercises it (PPSA02929 emits none), so a consumer would be untested
+  code today. Layout already recovered: control at +8 with data selection in
+  bits 16-23, destination at +12/+16, data at +20/+24; selection 1 writes 32
+  bits, 2 writes 64, 3 writes a clock sample. Implement with a focused test
+  when a title needs it.
+
+- [ ] **Three AGC patch-address entry points are unimplemented stubs**
+  (`sceAgcWaitRegMemPatchAddress`, `sceAgcQueueEndOfPipeActionPatchAddress`,
+  `sceAgcDmaDataPatchSetDstAddressOrOffset`), each called 247 times by
+  PPSA02929. They write a real address into a previously emitted packet at an
+  opcode-dependent field offset. Currently harmless only because the packets
+  they patch never reach the walker; they become correctness-critical the
+  moment that changes.
 
 - [ ] **Intermittent emulated-TLS read failure at guest RIP `0x800160378`.**
   One run in four ends there with `Emulated TLS read failed ... not resuming
