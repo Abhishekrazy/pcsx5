@@ -249,3 +249,75 @@ value, and its layout is still `UNKNOWN`.
 Deliberately not done: guessing a base register for that list and applying it.
 Section 6 already shows how a plausible-looking address match can be a
 leftover, and a wrong base would silently corrupt the whole context shadow.
+
+---
+
+## 8. The destination is not expressed anywhere we parse (2026-09-07)
+
+The remaining candidate from section 7 - that the placeholder indirect list
+names the render destination - was tested and **falsified**.
+
+### The scan
+
+Every indirect register list was scanned for values that decode to a GPU
+memory address (`value << 8` landing in `0x210000000..0x220000000`). Two
+shapes appear (run `PPSA02929_20260907_095849`):
+
+```
+count=274  regFFFFFFFF[89]->0x2113a0000   regFFFFFFFF[181]->0x2113a0000
+count=93   regFFFFFFFF[0]->0x21db30000    regFFFFFFFF[18]->0x21da40000
+count=18   regC8[0]->0x2156a1d00          reg8[12]->0x215795900
+```
+
+The offscreen surface addresses *are* present, which looked like the answer.
+
+### Why it is not the answer
+
+The log line immediately preceding that list is the draw's own shader binding:
+
+```
+M3: ps image pc=0x47C ImageSample base=0x21db300 fmt=0x0/0x91B00FAC
+PROBE addrscan count=93: regFFFFFFFF[0]->0x21db30000 ...
+```
+
+`0x21db30000` is the surface the pixel shader **samples**. Its presence in the
+list therefore shows a sampled source, not a render destination. Given the
+list also carries image-descriptor-shaped values, these placeholder lists are
+more likely resource descriptor data passing through the same packet type than
+a register block. `INFERRED`; either way the destination claim does not hold.
+
+### What the graphics stream does and does not contain
+
+Established by census over a 25 s run, all `VERIFIED`:
+
+- No `SET_CONTEXT_REG` (`0x69`) packets at all.
+- No `INDIRECT_BUFFER` (`0x3F`) - nothing is chained away.
+- **Zero compute dispatches** - all 475 walks report `0 dispatches`, and only
+  the `dcb.graphics` queue is ever submitted. The surfaces are not filled by
+  async compute.
+- **Zero DMA operations** - no `dma fill`, no `dma copy`, no skipped
+  `dma_data`. The surfaces are not filled by CP DMA either, and nothing copies
+  the framebuffer.
+
+So the stream is draws, `SET_SH_REG`, index state, events, and indirect lists.
+Nothing in it names a render destination for the passes that should fill the
+offscreen surfaces.
+
+Every mechanism compared against the reference implementation has been
+byte-for-byte equivalent: the indirect list parser, the patch-address setter
+(two arguments, no base register on either side, `AgcExports.cs:14804-14822`)
+and the patch-register adder.
+
+### Conclusion and the one remaining approach
+
+The destination is not expressed in any packet field we currently decode, and
+it cannot be recovered by further inspection of the stream - that avenue is
+now exhausted. The authoritative next step is **caller analysis** (Rule 04):
+disassemble the guest code that builds these lists and emits these draws, and
+read the layout out of the code that writes it, rather than inferring it from
+values. The tooling exists (`tools/dream_tool.py disasm`, `tools/dre_xref.py`)
+and the caller addresses are in each run's import report.
+
+Until that is done the destination stays `UNKNOWN`. Three separate
+value-pattern inferences have now been falsified in this audit, which is
+itself the argument for reading the code instead of the data.

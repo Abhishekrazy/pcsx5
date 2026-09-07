@@ -272,9 +272,18 @@ updater packages uploaded by hand (see the packaging item).
   in one of them. `FALSIFIED` on the way: nested command buffers (no
   `INDIRECT_BUFFER` 0x3F packet is ever emitted) and the patch-list builder
   (the reference implementation is byte-for-byte equivalent to ours).
-  The only remaining candidate is the 134-entry indirect list whose per-entry
-  offsets are all `0xFFFFFFFF`; its layout is `UNKNOWN`. Do not guess a base
-  register for it - a wrong base corrupts the whole context shadow.
+  Stream inspection is now **exhausted** (2026-09-07). Also `FALSIFIED`: the
+  placeholder indirect list names the destination - the address it carries is
+  the surface the pixel shader *samples*, logged immediately before it. Census
+  facts: no `SET_CONTEXT_REG`, no `INDIRECT_BUFFER`, **zero compute
+  dispatches**, **zero DMA operations**, graphics queue only. Nothing in the
+  stream names a destination, and every mechanism compared against the
+  reference is equivalent.
+  **Next step is caller analysis (Rule 04), not more probing**: disassemble the
+  guest code that builds the indirect lists and emits these draws
+  (`tools/dream_tool.py disasm`, `tools/dre_xref.py`; caller addresses are in
+  each run's import report). Three value-pattern inferences have been falsified
+  here, which is the argument for reading the code rather than the data.
 
 - [ ] **Indirect register entries with offset `0xFFFFFFFF` are written into
   the register shadow.** A context register index is under `0x400`, so
