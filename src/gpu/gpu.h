@@ -98,6 +98,12 @@ namespace GPU {
     // presented (IsBootScreenActive() == false) or when no window exists.
     void SetBootStatus(const char* stage, int done = -1, int total = -1);
 
+    // Replaces the window's title bar text.  Used by the CLI's run loop for a
+    // live readout (frame rate, frame time, host load) so a long run visibly
+    // shows whether the guest is still producing frames.  No-op when there is
+    // no window (headless) or when the launcher owns the window chrome.
+    void SetWindowTitle(const char* title);
+
     // True while the boot screen is still displayed.  Flips to false on the
     // first presented guest frame (the game takes over the window).
     bool IsBootScreenActive();

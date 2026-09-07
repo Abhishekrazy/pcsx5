@@ -26,12 +26,14 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <algorithm>
 #include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <psapi.h>
 
 namespace {
 
@@ -493,6 +495,77 @@ static std::atomic<bool> g_paused{false};
 // pcsx5_run — guest worker thread + window/message loop on the calling
 // thread (GLFW was initialized here, so the pump must stay here).
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Window-title readout: frame rate, frame time, host CPU and memory, and the
+// guest draw rate.  Refreshed at 2 Hz from the run loop.
+// ---------------------------------------------------------------------------
+void UpdateWindowTitleReadout() {
+    using clock = std::chrono::steady_clock;
+    static clock::time_point s_last = clock::now();
+    static u64  s_last_draws = 0;
+    static bool s_primed = false;
+#ifdef _WIN32
+    static ULARGE_INTEGER s_last_cpu{};
+    static ULARGE_INTEGER s_last_wall{};
+#endif
+
+    const clock::time_point now = clock::now();
+    const double elapsed_s =
+        std::chrono::duration<double>(now - s_last).count();
+    if (elapsed_s < 0.5) return;
+    s_last = now;
+
+    const double fps      = Diagnostics::GetFps();
+    const double frame_ms = fps > 0.0 ? 1000.0 / fps : 0.0;
+
+    const u64 draws = HLE::AgcGetSubmittedStats(0);
+    const double draws_per_s =
+        s_primed ? static_cast<double>(draws - s_last_draws) / elapsed_s : 0.0;
+    s_last_draws = draws;
+
+    double cpu_percent = 0.0;
+    double rss_mb      = 0.0;
+#ifdef _WIN32
+    FILETIME create{}, exit{}, kernel{}, user{};
+    if (GetProcessTimes(GetCurrentProcess(), &create, &exit, &kernel, &user)) {
+        ULARGE_INTEGER cpu{};
+        cpu.QuadPart =
+            (static_cast<u64>(kernel.dwHighDateTime) << 32 | kernel.dwLowDateTime) +
+            (static_cast<u64>(user.dwHighDateTime) << 32 | user.dwLowDateTime);
+        FILETIME now_ft{};
+        GetSystemTimeAsFileTime(&now_ft);
+        ULARGE_INTEGER wall{};
+        wall.QuadPart =
+            static_cast<u64>(now_ft.dwHighDateTime) << 32 | now_ft.dwLowDateTime;
+        if (s_primed && wall.QuadPart > s_last_wall.QuadPart) {
+            const double cpu_delta =
+                static_cast<double>(cpu.QuadPart - s_last_cpu.QuadPart);
+            const double wall_delta =
+                static_cast<double>(wall.QuadPart - s_last_wall.QuadPart);
+            // Parenthesised: windows.h defines a max() macro in this translation unit.
+            const unsigned cores = (std::max)(1u, std::thread::hardware_concurrency());
+            cpu_percent = 100.0 * cpu_delta / (wall_delta * cores);
+        }
+        s_last_cpu  = cpu;
+        s_last_wall = wall;
+    }
+    PROCESS_MEMORY_COUNTERS pmc{};
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+        rss_mb = static_cast<double>(pmc.WorkingSetSize) / (1024.0 * 1024.0);
+    }
+#endif
+    s_primed = true;
+
+    char title[256];
+    std::snprintf(title, sizeof(title),
+                  "PCSX5 - %s | %.1f fps | %.2f ms | %.0f draws/s | CPU %.0f%% | %.0f MB",
+                  g_state.title_id.empty() ? "no title" : g_state.title_id.c_str(),
+                  fps, frame_ms, draws_per_s, cpu_percent, rss_mb);
+    GPU::SetWindowTitle(title);
+}
+
+
 PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
     if (!g_state.loaded) return -1;
 
@@ -544,6 +617,13 @@ PCSX5_API int pcsx5_run(pcsx5_window_cb window_cb, void* window_user) {
         if (++frame_count % 60 == 0) {
             LOG_INFO(General, "%s", Diagnostics::LogFrameTimingStats().c_str());
         }
+
+        // Live readout in the window title, refreshed twice a second.  A long
+        // run otherwise gives no sign from the window itself whether the guest
+        // is still producing frames, which is exactly what you want to see at
+        // a glance.  Everything here is measured; GPU utilisation has no
+        // portable query and is deliberately absent rather than invented.
+        UpdateWindowTitleReadout();
 
         // Window close → request guest stop.
         if (GPU::HasWindow() && GPU::ShouldCloseWindow()) {

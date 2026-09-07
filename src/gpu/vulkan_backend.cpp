@@ -1122,6 +1122,14 @@ namespace GPU {
         }
     }
 
+    void SetWindowTitle(const char* title) {
+        // Embedded mode: the launcher owns the chrome, and the GLFW window is
+        // reparented with no visible title bar, so this would be invisible
+        // work on every frame.
+        if (!g_window || !title || g_embed_mode) return;
+        glfwSetWindowTitle(g_window, title);
+    }
+
     PadButtonState GetCurrentPadState() {
         std::lock_guard<std::mutex> lock(g_pad_mutex);
         return g_pad_state;
