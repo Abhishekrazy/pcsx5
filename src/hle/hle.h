@@ -280,7 +280,9 @@ namespace HLE {
     // only by base address must produce the same key, because the base is a
     // runtime binding the translation never reads.
     u64 AgcTestLayoutHash(const u64* bases, const u32* scalar_addrs, u64 count,
-                          u64 vs_image_count, u64 ps_image_count);
+                          u64 vs_image_count, u64 ps_image_count,
+                          const bool* image_is_storage = nullptr,
+                          u64 image_count = 0);
 
     // Cooperative guest shutdown ------------------------------------------------
     // The GLFW window lives on the process main thread (which runs the event

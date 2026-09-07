@@ -175,6 +175,18 @@ bool GcnIsScalarConsumed(const GcnConsumedScalarMask& mask, u32 reg);
 // bindings are unchanged.
 bool GcnIsArrayedImageBinding(const GcnInstruction& instruction);
 
+// True when the image instruction at `pc` needs a *storage* image rather than
+// a sampled one.  A store or atomic writes the image, so it must be declared
+// storage.  A plain load is read-only and maps to a sampled fetch -- unless
+// the same descriptor is also written somewhere in this stage, in which case
+// both accesses have to go through one storage-image declaration to stay
+// coherent.  "Same descriptor" is compared by the SGPR pair holding it, which
+// is the strongest identity available at this layer; two distinct descriptors
+// loaded into the same SGPRs at different points would be conflated.
+// INFERRED from the pattern a reference implementation uses; the PS5's own
+// rule for this is UNKNOWN.
+bool GcnRequiresStorageImage(const GcnProgram& program, u32 pc);
+
 // Appends the per-draw initial-scalar storage-buffer slot to
 // options.buffer_bindings (no instruction pcs — the shader reads it only at
 // start) and points options.initial_scalar_buffer_index at it.  Returns the

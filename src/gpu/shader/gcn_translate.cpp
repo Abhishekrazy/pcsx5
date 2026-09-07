@@ -1939,6 +1939,36 @@ bool GcnIsArrayedImageBinding(const GcnInstruction& instruction) {
          instruction.opcode.rfind("ImageGather4", 0) == 0);
 }
 
+namespace {
+bool GcnOpcodeWritesImage(const std::string& opcode) {
+    return opcode.rfind("ImageStore", 0) == 0 ||
+           opcode.rfind("ImageAtomic", 0) == 0;
+}
+} // namespace
+
+bool GcnRequiresStorageImage(const GcnProgram& program, u32 pc) {
+    const GcnInstruction* self = nullptr;
+    for (const GcnInstruction& ins : program.instructions) {
+        if (ins.pc == pc) { self = &ins; break; }
+    }
+    if (self == nullptr) return false;
+    if (GcnOpcodeWritesImage(self->opcode)) return true;
+    if (self->opcode.rfind("ImageLoad", 0) != 0) return false;
+
+    const auto* self_control = std::get_if<GcnImageControl>(&self->control);
+    if (self_control == nullptr) return false;
+    for (const GcnInstruction& ins : program.instructions) {
+        if (ins.pc == pc) continue;
+        if (!GcnOpcodeWritesImage(ins.opcode)) continue;
+        const auto* control = std::get_if<GcnImageControl>(&ins.control);
+        if (control != nullptr &&
+            control->scalar_resource == self_control->scalar_resource) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int GcnTranslateAddInitialScalarBinding(GcnTranslateOptions& options) {
     // No instruction pcs: the shader reads this slot only in the initial
     // state prologue via initial_scalar_buffer_index.

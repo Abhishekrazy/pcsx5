@@ -812,6 +812,21 @@ static void TestDrawLayoutHashIgnoresBufferBase() {
            "a different vs image count changes the key");
     EXPECT(HLE::AgcTestLayoutHash(frame0, scalars, 2, 1, 2) != h0,
            "a different ps image count changes the key");
+
+    // Storage-ness changes the SPIR-V image declaration and the descriptor
+    // type, so the same shape with a storage binding is a different layout.
+    // Without this the cache handed a module built for sampled images back
+    // for a storage layout.
+    const bool sampled[2]  = {false, false};
+    const bool storage0[2] = {true,  false};
+    const bool storage1[2] = {false, true};
+    const u64 hs = HLE::AgcTestLayoutHash(frame0, scalars, 2, 1, 1, sampled, 2);
+    EXPECT_EQ(hs, h0, "all-sampled flags match the flagless key");
+    EXPECT(HLE::AgcTestLayoutHash(frame0, scalars, 2, 1, 1, storage0, 2) != h0,
+           "a storage binding changes the key");
+    EXPECT(HLE::AgcTestLayoutHash(frame0, scalars, 2, 1, 1, storage1, 2) !=
+           HLE::AgcTestLayoutHash(frame0, scalars, 2, 1, 1, storage0, 2),
+           "which binding is storage changes the key");
 }
 
 int main() {

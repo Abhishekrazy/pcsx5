@@ -814,6 +814,71 @@ int SpirvFirstImageArrayed(const std::vector<u32>& words) {
     return -1;
 }
 
+// Storage-image rule: a draw that writes an image must declare that binding
+// as a storage image, and a read of the same descriptor in the same stage has
+// to go through the same declaration.  Before this rule existed every binding
+// was declared sampled and untargeted writing draws had nowhere to go, so all
+// but the last one per frame were discarded
+// (docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md).
+void TestRequiresStorageImage() {
+    // MIMG opcode sits in bits [24:18]: 0x20 sample, 0x08 store, 0x00 load.
+    // Word 1 carries srsrc in bits [20:16] (<<2): 0x02 -> s[8], 0x03 -> s[12].
+    constexpr u32 kSample     = 0xF0800F08;
+    constexpr u32 kStore      = 0xF0200F08;
+    constexpr u32 kLoad       = 0xF0000F08;
+    constexpr u32 kOperandsS8 = 0x00620605;
+    constexpr u32 kOperandsS12= 0x00630605;
+
+    auto pc_of = [](const GcnProgram& program, const char* opcode, u32& pc) {
+        for (const GcnInstruction& ins : program.instructions) {
+            if (ins.opcode == opcode) { pc = ins.pc; return true; }
+        }
+        return false;
+    };
+    auto decode = [](const std::vector<u32>& dwords, GcnProgram& program) {
+        std::string error;
+        return GcnDecodeProgram(dwords.data(), dwords.size(), program, error);
+    };
+
+    {   // A sample alone is read-only: sampled image.
+        GcnProgram program;
+        EXPECT(decode({kSample, kOperandsS8, 0xBF810000}, program),
+               "sample-only program decodes");
+        u32 pc = 0;
+        EXPECT(pc_of(program, "ImageSample", pc), "sample present");
+        EXPECT(!GcnRequiresStorageImage(program, pc),
+               "a sample does not need a storage image");
+    }
+    {   // A store writes: storage image.
+        GcnProgram program;
+        EXPECT(decode({kStore, kOperandsS8, 0xBF810000}, program),
+               "store-only program decodes");
+        u32 pc = 0;
+        EXPECT(pc_of(program, "ImageStore", pc), "store present");
+        EXPECT(GcnRequiresStorageImage(program, pc),
+               "a store needs a storage image");
+    }
+    {   // Load + store on the same descriptor: both are storage, so the two
+        // accesses stay coherent through one declaration.
+        GcnProgram program;
+        EXPECT(decode({kLoad, kOperandsS8, kStore, kOperandsS8, 0xBF810000},
+                      program), "load+store program decodes");
+        u32 pc = 0;
+        EXPECT(pc_of(program, "ImageLoad", pc), "load present");
+        EXPECT(GcnRequiresStorageImage(program, pc),
+               "a load sharing its descriptor with a store needs storage");
+    }
+    {   // Load and store on different descriptors: the load stays sampled.
+        GcnProgram program;
+        EXPECT(decode({kLoad, kOperandsS12, kStore, kOperandsS8, 0xBF810000},
+                      program), "split-descriptor program decodes");
+        u32 pc = 0;
+        EXPECT(pc_of(program, "ImageLoad", pc), "load present");
+        EXPECT(!GcnRequiresStorageImage(program, pc),
+               "a load of a different descriptor stays sampled");
+    }
+}
+
 // Arrayed image sample (SharpEmu #471): an ImageSample whose MIMG DIM
 // names an array declares an arrayed image and samples (u, v, slice).
 void TestTranslateArrayedImageSample() {
@@ -1379,6 +1444,7 @@ void TestCacheWarmup() {
 } // namespace
 
 int main() {
+    TestRequiresStorageImage();
     TestSop2();
     TestSop2Literal();
     TestSop1();

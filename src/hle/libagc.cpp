@@ -503,10 +503,20 @@ struct AgcSubmitShadow {
     // retained until the RFlip that names its scanout target (SharpEmu's
     // PendingTargetlessDraw).  The SPIR-V words are owned copies so the
     // stashed call never dangles into the program cache.
-    bool has_pending_targetless = false;
-    GPU::VkDrawCall pending_targetless;
-    std::vector<u32> pending_vs_words;
-    std::vector<u32> pending_ps_words;
+    // One retained draw: the call plus owned copies of its SPIR-V words, so
+    // the stashed call never dangles into the program cache.
+    struct PendingDraw {
+        GPU::VkDrawCall  call;
+        std::vector<u32> vs_words;
+        std::vector<u32> ps_words;
+    };
+    // A 2D title builds its frame from many sprite draws, none of which binds
+    // a colour target; they are all retained and composited in submission
+    // order at the flip.  This was one slot, so every frame kept only its
+    // last sprite and the other twelve were counted dropped -- 3039 of 3443
+    // draws in a 120 s PPSA02929 run
+    // (docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md).
+    std::vector<PendingDraw> pending_targetless;
 };
 
 std::mutex g_agc_submit_mutex;
@@ -844,6 +854,14 @@ std::vector<u32> AgcDrawImagePcs(const GPU::Shader::GcnProgram& program) {
 // arrayed image (SharpEmu Gen5ShaderTranslator.IsArrayedImageBinding,
 // #471).  The SPIR-V translator and the texture upload/view path share
 // this one rule so the declared image type and the bound view agree.
+// True when the image instruction at `pc` must be declared as a storage
+// image (it writes the image, or shares its descriptor with one that does).
+// The SPIR-V declaration, the descriptor type and the image layout all follow
+// this one answer, so it is asked once here and carried on the binding.
+bool AgcIsStorageImageAtPc(const GPU::Shader::GcnProgram& program, u32 pc) {
+    return GPU::Shader::GcnRequiresStorageImage(program, pc);
+}
+
 bool AgcIsArrayedImageAtPc(const GPU::Shader::GcnProgram& program, u32 pc) {
     for (const GPU::Shader::GcnInstruction& ins : program.instructions) {
         if (ins.pc == pc) {
@@ -867,7 +885,8 @@ struct AgcGlobalBuffer {
 // evaluated buffer list (both stages) + image pc counts.  Sprites batching
 // under one shader pair keeps this stable, so translations are reused.
 u64 AgcDrawLayoutHash(const std::vector<AgcGlobalBuffer>& buffers,
-                      size_t vs_image_count, size_t ps_image_count) {
+                      size_t vs_image_count, size_t ps_image_count,
+                      const std::vector<bool>& image_is_storage) {
     u64 h = 0xCBF29CE484222325ull;
     h = AgcHashU64(h, buffers.size());
     for (const auto& b : buffers) {
@@ -888,6 +907,15 @@ u64 AgcDrawLayoutHash(const std::vector<AgcGlobalBuffer>& buffers,
     }
     h = AgcHashU64(h, vs_image_count);
     h = AgcHashU64(h, ps_image_count);
+    // Storage-ness changes the SPIR-V image declaration and the descriptor
+    // type, so a module translated for sampled images must not be reused for
+    // a storage layout of the same shape.  Only the *positions* of storage
+    // bindings are folded in, so an all-sampled layout -- by far the common
+    // case -- keeps the key it had before this rule existed and its cached
+    // modules stay valid.
+    for (size_t i = 0; i < image_is_storage.size(); ++i) {
+        if (image_is_storage[i]) h = AgcHashU64(h, 0x57A6E000ull + i);
+    }
     return h;
 }
 
@@ -1038,12 +1066,14 @@ bool AgcBuildDrawProgram(
             GcnSpirvImageBinding binding;
             binding.pc = pixel ? kForeignPc : pc;
             binding.is_arrayed = AgcIsArrayedImageAtPc(es_program, pc);
+            binding.is_storage = AgcIsStorageImageAtPc(es_program, pc);
             options.image_bindings.push_back(binding);
         }
         for (const u32 pc : ps_image_pcs) {
             GcnSpirvImageBinding binding;
             binding.pc = pixel ? pc : kForeignPc;
             binding.is_arrayed = AgcIsArrayedImageAtPc(ps_program, pc);
+            binding.is_storage = AgcIsStorageImageAtPc(ps_program, pc);
             options.image_bindings.push_back(binding);
         }
         if (pixel) {
@@ -1236,8 +1266,17 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
         es != 0 ? AgcDrawImagePcs(es_program) : std::vector<u32>{};
     const std::vector<u32> ps_image_pcs =
         ps != 0 ? AgcDrawImagePcs(ps_program) : std::vector<u32>{};
+    std::vector<bool> image_is_storage;
+    image_is_storage.reserve(vs_image_pcs.size() + ps_image_pcs.size());
+    for (const u32 pc : vs_image_pcs) {
+        image_is_storage.push_back(AgcIsStorageImageAtPc(es_program, pc));
+    }
+    for (const u32 pc : ps_image_pcs) {
+        image_is_storage.push_back(AgcIsStorageImageAtPc(ps_program, pc));
+    }
     const u64 layout_hash =
-        AgcDrawLayoutHash(buffers, vs_image_pcs.size(), ps_image_pcs.size());
+        AgcDrawLayoutHash(buffers, vs_image_pcs.size(), ps_image_pcs.size(),
+                          image_is_storage);
 
     // Translated modules (cached by pair + layout).
     AgcDrawProgram program;
@@ -1327,6 +1366,7 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
             // descriptor) so even a fallback view matches the image type
             // the module declares (SharpEmu #471).
             tex.arrayed_view = AgcIsArrayedImageAtPc(prog, pc);
+            tex.is_storage   = AgcIsStorageImageAtPc(prog, pc);
             const GcnEvalImageBinding* found = nullptr;
             if (eval) {
                 for (const auto& ib : eval->image_bindings) {
@@ -1397,13 +1437,41 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
 
     if (has_target) {
         // A real targeted draw supersedes any stale deferred composite.
-        if (st.has_pending_targetless) ++st.total_draws_dropped;
-        st.has_pending_targetless = false;
+        // Unchanged policy: only the queue's depth changed, not when it is
+        // discarded, so titles that do bind targets behave as before.
+        st.total_draws_dropped += st.pending_targetless.size();
+        st.pending_targetless.clear();
         AgcNoteFirstDraw();
         ++st.total_draws_executed;
         GPU::VkDrawExecute(call);
         return;
     }
+    // Targetless draw that *writes* an image: the storage binding is the
+    // draw's destination, so it is dispatched now against that image rather
+    // than parked.  Without this route such draws fell into the single
+    // pending-composite slot below and all but the last one per frame were
+    // discarded -- 1302 of 1572 draws in a 60 s PPSA02929 run
+    // (docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md).
+    // The colour attachment is sized from the storage image and is not what
+    // the shader writes; the write goes through the storage descriptor, which
+    // vk_draw.cpp already binds in VK_IMAGE_LAYOUT_GENERAL.
+    for (const GPU::VkDrawTexture& t : call.textures) {
+        if (!t.is_storage || t.guest_addr == 0 || t.width == 0 || t.height == 0) {
+            continue;
+        }
+        st.total_draws_dropped += st.pending_targetless.size();
+        st.pending_targetless.clear();
+        call.rt_base        = t.guest_addr;
+        call.rt_width       = t.width;
+        call.rt_height      = t.height;
+        call.rt_format      = t.data_format;
+        call.rt_number_type = t.number_format;
+        AgcNoteFirstDraw();
+        ++st.total_draws_executed;
+        GPU::VkDrawExecute(call);
+        return;
+    }
+
     // Targetless draws: retain the composite until the RFlip names its
     // scanout target (SharpEmu PendingTargetlessDraw), provided it samples a
     // texture — a targetless draw with no sampled source can never be
@@ -1414,26 +1482,27 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
                   "(es=0x%llx ps=0x%llx)", es, ps);
         return;
     }
+    // A frame that never flips must not grow this without bound.  The cap is
+    // a safety valve, not an expected path: exceeding it is counted as a drop
+    // so the draw accounting stays honest.
+    constexpr size_t kMaxPendingTargetless = 4096;
+    if (st.pending_targetless.size() >= kMaxPendingTargetless) {
+        ++st.total_draws_dropped;
+        LOG_WARN(HLE, "M3: %zu targetless draws retained without a flip; "
+                 "dropping further draws this frame",
+                 st.pending_targetless.size());
+        return;
+    }
+
+    AgcSubmitShadow::PendingDraw pending;
     if (call.vs_words && call.vs_word_count) {
-        st.pending_vs_words.assign(call.vs_words, call.vs_words + call.vs_word_count);
-    } else {
-        st.pending_vs_words.clear();
+        pending.vs_words.assign(call.vs_words, call.vs_words + call.vs_word_count);
     }
     if (call.ps_words && call.ps_word_count) {
-        st.pending_ps_words.assign(call.ps_words, call.ps_words + call.ps_word_count);
-    } else {
-        st.pending_ps_words.clear();
+        pending.ps_words.assign(call.ps_words, call.ps_words + call.ps_word_count);
     }
-    if (st.has_pending_targetless) {
-        // The slot already held a draw for this frame; it is now lost.
-        ++st.total_draws_dropped;
-    }
-    st.pending_targetless = call;
-    st.pending_targetless.vs_words = st.pending_vs_words.empty() ? nullptr
-                                                                 : st.pending_vs_words.data();
-    st.pending_targetless.ps_words = st.pending_ps_words.empty() ? nullptr
-                                                                 : st.pending_ps_words.data();
-    st.has_pending_targetless = true;
+    pending.call = call;
+    st.pending_targetless.push_back(std::move(pending));
     LOG_DEBUG(HLE, "M3: targetless draw stashed pending flip (es=0x%llx ps=0x%llx)",
               es, ps);
 }
@@ -1443,28 +1512,37 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
 // flip time against the known render target for that buffer).  Display
 // buffers are 8_8_8_8 UNORM.
 void AgcFlushPendingTargetlessDraw(AgcSubmitShadow& st, u32 handle, s32 buffer_index) {
-    if (!st.has_pending_targetless) return;
-    st.has_pending_targetless = false;
+    if (st.pending_targetless.empty()) return;
+    std::vector<AgcSubmitShadow::PendingDraw> pending;
+    pending.swap(st.pending_targetless);
+
     guest_addr_t addr = 0;
     u32 width = 0, height = 0;
     if (!VideoOutGetDisplayBufferInfo(handle, buffer_index, &addr, &width, &height)) {
-        LOG_DEBUG(HLE, "M3: deferred composite dropped — display buffer %d unknown",
-                  buffer_index);
+        st.total_draws_dropped += pending.size();
+        LOG_DEBUG(HLE, "M3: %zu deferred composites dropped — display buffer %d "
+                  "unknown", pending.size(), buffer_index);
         return;
     }
-    // Copies the vectors; the shader word pointers keep referencing
-    // st.pending_*_words, which outlive this call.
-    GPU::VkDrawCall call = st.pending_targetless;
-    call.rt_base        = addr;
-    call.rt_width       = width;
-    call.rt_height      = height;
-    call.rt_format      = 10; // 8_8_8_8
-    call.rt_number_type = 0;  // UNORM
-    LOG_INFO(HLE, "M3: executing deferred composite -> display buffer 0x%llx %ux%u",
-             addr, width, height);
-    AgcNoteFirstDraw();
-    ++st.total_draws_executed;
-    GPU::VkDrawExecute(call);
+    LOG_INFO(HLE, "M3: executing %zu deferred composites -> display buffer "
+             "0x%llx %ux%u", pending.size(), addr, width, height);
+    for (AgcSubmitShadow::PendingDraw& p : pending) {
+        GPU::VkDrawCall call = p.call;
+        // Re-point at this entry's owned words: p.call's pointers still refer
+        // to the program cache, which may have been rebuilt since.
+        call.vs_words      = p.vs_words.empty() ? nullptr : p.vs_words.data();
+        call.vs_word_count = p.vs_words.size();
+        call.ps_words      = p.ps_words.empty() ? nullptr : p.ps_words.data();
+        call.ps_word_count = p.ps_words.size();
+        call.rt_base        = addr;
+        call.rt_width       = width;
+        call.rt_height      = height;
+        call.rt_format      = 10; // 8_8_8_8
+        call.rt_number_type = 0;  // UNORM
+        AgcNoteFirstDraw();
+        ++st.total_draws_executed;
+        GPU::VkDrawExecute(call);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1574,7 +1652,7 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
             st.index_addr = 0; st.index_count = 0; st.index_size = 0;
             st.index_offset = 0;
             st.instances = 1; st.indirect_args = 0;
-            st.has_pending_targetless = false;
+            st.pending_targetless.clear();
         }
 
         ApplySubmittedRegisters(st, packet, length, op, reg);
@@ -1702,7 +1780,8 @@ void WalkCommandBuffer(guest_addr_t addr, u32 dword_count,
 // Test/introspection hooks (declared in hle.h).
 // ---------------------------------------------------------------------------
 u64 AgcTestLayoutHash(const u64* bases, const u32* scalar_addrs, u64 count,
-                      u64 vs_image_count, u64 ps_image_count) {
+                      u64 vs_image_count, u64 ps_image_count,
+                      const bool* image_is_storage, u64 image_count) {
     std::vector<AgcGlobalBuffer> buffers;
     buffers.reserve(static_cast<size_t>(count));
     for (u64 i = 0; i < count; ++i) {
@@ -1712,8 +1791,13 @@ u64 AgcTestLayoutHash(const u64* bases, const u32* scalar_addrs, u64 count,
         b.scalar_address = scalar_addrs ? scalar_addrs[i] : 0;
         buffers.push_back(b);
     }
+    std::vector<bool> storage;
+    storage.reserve(static_cast<size_t>(image_count));
+    for (u64 i = 0; i < image_count; ++i) {
+        storage.push_back(image_is_storage ? image_is_storage[i] : false);
+    }
     return AgcDrawLayoutHash(buffers, static_cast<size_t>(vs_image_count),
-                             static_cast<size_t>(ps_image_count));
+                             static_cast<size_t>(ps_image_count), storage);
 }
 
 u64 AgcGetSubmittedStats(u32 which) {
