@@ -152,176 +152,180 @@ std::unordered_map<u64, u64> g_agc_shaders_by_code;
 // values; hashes dropped, they are metadata only).
 // ---------------------------------------------------------------------------
 struct AgcRegDefault { u32 offset; u32 value; };
-struct AgcRegDefaultGroup { u32 space; u32 index; std::vector<AgcRegDefault> regs; };
+// `type` is the SDK's per-group identifier. A previous change dropped these
+// as "metadata only" and wrote the register space in their place, so every
+// group looked alike to the guest and it never emitted real register offsets
+// for its render-target block. Restored: the guest identifies a group by this.
+struct AgcRegDefaultGroup { u32 space; u32 index; u32 type; std::vector<AgcRegDefault> regs; };
 
 const std::vector<AgcRegDefaultGroup>& PrimaryRegisterDefaults() {
     static const std::vector<AgcRegDefaultGroup> kGroups = {
         // context register groups
-        {0u, 0u, {{0x202u, 0x00CC0010u}}}, // CB_COLOR_CONTROL
-        {0u, 1u, {{0x109u, 0x00000000u}}}, // CB_DCC_CONTROL
-        {0u, 2u, {{0x104u, 0x00000000u}}}, // CB_RMI_GL2_CACHE_CONTROL
-        {0u, 3u, {{0x08Fu, 0x00000000u}}}, // CB_SHADER_MASK
-        {0u, 4u, {{0x08Eu, 0x0000000Fu}}}, // CB_TARGET_MASK
-        {0u, 5u, {{0x2DCu, 0x0000AA00u}}}, // DB_ALPHA_TO_MASK
-        {0u, 6u, {{0x001u, 0x00000000u}}}, // DB_COUNT_CONTROL
-        {0u, 7u, {{0x200u, 0x00000000u}}}, // DB_DEPTH_CONTROL
-        {0u, 8u, {{0x201u, 0x00000000u}}}, // DB_EQAA
-        {0u, 9u, {{0x000u, 0x00000000u}}}, // DB_RENDER_CONTROL
-        {0u, 10u, {{0x006u, 0x00000000u}}}, // PS_SHADER_SAMPLE_EXCLUSION_MASK
-        {0u, 11u, {{0x01Fu, 0x00000000u}}}, // DB_RMI_L2_CACHE_CONTROL
-        {0u, 12u, {{0x203u, 0x00000000u}}}, // DB_SHADER_CONTROL
-        {0u, 13u, {{0x2B0u, 0x00000000u}}}, // DB_SRESULTS_COMPARE_STATE0
-        {0u, 14u, {{0x2B1u, 0x00000000u}}}, // DB_SRESULTS_COMPARE_STATE1
-        {0u, 15u, {{0x10Cu, 0x00000000u}}}, // DB_STENCILREFMASK
-        {0u, 16u, {{0x10Du, 0x00000000u}}}, // DB_STENCILREFMASK_BF
-        {0u, 17u, {{0x10Bu, 0x00000000u}}}, // DB_STENCIL_CONTROL
-        {0u, 18u, {{0x1FFu, 0x00000000u}}}, // GE_MAX_OUTPUT_PER_SUBGROUP
-        {0u, 19u, {{0x204u, 0x00000000u}}}, // PA_CL_CLIP_CNTL
-        {0u, 20u, {{0x20Du, 0x00000000u}}}, // PA_CL_OBJPRIM_ID_CNTL
-        {0u, 21u, {{0x206u, 0x0000043Fu}}}, // PA_CL_VTE_CNTL
-        {0u, 22u, {{0x2F8u, 0x00000000u}}}, // PA_SC_AA_CONFIG
-        {0u, 23u, {{0x083u, 0x0000FFFFu}}}, // PA_SC_CLIPRECT_RULE
-        {0u, 24u, {{0x313u, 0x00000000u}}}, // PA_SC_CONSERVATIVE_RASTERIZATION_CNTL
-        {0u, 25u, {{0x800003FEu, 0x00000000u}}}, // PA_SC_FSR_ENABLE
-        {0u, 26u, {{0x0EAu, 0x00000000u}}}, // PA_SC_HORIZ_GRID
-        {0u, 27u, {{0x0E9u, 0x00000000u}}}, // PA_SC_LEFT_VERT_GRID
-        {0u, 28u, {{0x292u, 0x00000002u}}}, // PA_SC_MODE_CNTL_0
-        {0u, 29u, {{0x293u, 0x00000000u}}}, // PA_SC_MODE_CNTL_1
-        {0u, 30u, {{0x0E8u, 0x00000000u}}}, // PA_SC_RIGHT_VERT_GRID
-        {0u, 31u, {{0x080u, 0x00000000u}}}, // PA_SC_WINDOW_OFFSET
-        {0u, 32u, {{0x211u, 0x00000000u}}}, // PA_STATE_STEREO_X
-        {0u, 33u, {{0x210u, 0x00000000u}}}, // PA_STEREO_CNTL
-        {0u, 34u, {{0x08Du, 0x00000000u}}}, // PA_SU_HARDWARE_SCREEN_OFFSET
-        {0u, 35u, {{0x282u, 0x00000008u}}}, // PA_SU_LINE_CNTL
-        {0u, 36u, {{0x281u, 0xFFFF0000u}}}, // PA_SU_POINT_MINMAX
-        {0u, 37u, {{0x280u, 0x00080008u}}}, // PA_SU_POINT_SIZE
-        {0u, 38u, {{0x2DFu, 0x00000000u}}}, // PA_SU_POLY_OFFSET_CLAMP
-        {0u, 39u, {{0x2DEu, 0x000001E9u}}}, // PA_SU_POLY_OFFSET_DB_FMT_CNTL
-        {0u, 40u, {{0x205u, 0x00000240u}}}, // PA_SU_SC_MODE_CNTL
-        {0u, 41u, {{0x20Cu, 0x00000001u}}}, // PA_SU_SMALL_PRIM_FILTER_CNTL
-        {0u, 42u, {{0x2F9u, 0x0000002Du}}}, // PA_SU_VTX_CNTL
-        {0u, 43u, {{0x1BAu, 0x00000000u}}}, // SPI_TMPRING_SIZE
-        {0u, 44u, {{0x2A6u, 0x00000000u}}}, // VGT_DRAW_PAYLOAD_CNTL
-        {0u, 45u, {{0x2CEu, 0x00000400u}}}, // VGT_GS_MAX_VERT_OUT
-        {0u, 46u, {{0x29Bu, 0x00000002u}}}, // VGT_GS_OUT_PRIM_TYPE
-        {0u, 47u, {{0x2D6u, 0x00000000u}}}, // VGT_LS_HS_CONFIG
-        {0u, 48u, {{0x2A3u, 0xFFFFFFFFu}}}, // VGT_PRIMITIVEID_RESET
-        {0u, 49u, {{0x2A1u, 0x00000000u}}}, // VGT_PRIMITIVEID_EN
-        {0u, 50u, {{0x2ADu, 0x00000000u}}}, // VGT_REUSE_OFF
-        {0u, 51u, {{0x2D5u, 0x00000000u}}}, // VGT_SHADER_STAGES_EN
-        {0u, 52u, {{0x2D4u, 0x88101000u}}}, // VGT_TESS_DISTRIBUTION
-        {0u, 53u, {{0x2DBu, 0x00000000u}}}, // VGT_TF_PARAM
-        {0u, 54u, {{0x2F5u, 0x00000000u}, {0x2F6u, 0x00000000u}}}, // PA_SC_CENTROID_PRIORITY_0/1
-        {0u, 55u, {{0x2FEu, 0x00000000u}}}, // PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0
-        {0u, 56u, {{0x30Eu, 0xFFFFFFFFu}, {0x30Fu, 0xFFFFFFFFu}}}, // PA_SC_AA_MASK_X0Y0_X1Y0 / X0Y1_X1Y1
-        {0u, 57u, {{0x311u, 0x00000002u}, {0x312u, 0x03FF0080u}}}, // PA_SC_BINNER_CNTL_0/1
-        {0u, 58u, {{0x105u, 0x00000000u}, {0x107u, 0x00000000u}, {0x106u, 0x00000000u}, {0x108u, 0x00000000u}}}, // CB_BLEND_RED/BLUE/GREEN/ALPHA
-        {0u, 59u, {{0x1E0u, 0x20010001u}}}, // CB_BLEND0_CONTROL
-        {0u, 60u, {{0x020u, 0x00000000u}, {0x021u, 0x00000000u}}}, // TA_BC_BASE_ADDR/HI
-        {0u, 61u, {{0x084u, 0x00000000u}, {0x085u, 0x20002000u}}}, // PA_SC_CLIPRECT_0_TL/BR
-        {0u, 62u, {{0x800003FFu, 0x00000000u}}}, // CX_NOP
-        {0u, 63u, {{0x008u, 0x00000000u}, {0x009u, 0x00000000u}}}, // DB_DEPTH_BOUNDS_MIN/MAX
-        {0u, 64u, {{0x010u, 0x80000000u}, {0x011u, 0x20000000u}, {0x012u, 0x00000000u}, {0x013u, 0x00000000u},
+        {0u, 0u, 0xE24F806Du, {{0x202u, 0x00CC0010u}}}, // CB_COLOR_CONTROL
+        {0u, 1u, 0xF6C28182u, {{0x109u, 0x00000000u}}}, // CB_DCC_CONTROL
+        {0u, 2u, 0x6F6E55A5u, {{0x104u, 0x00000000u}}}, // CB_RMI_GL2_CACHE_CONTROL
+        {0u, 3u, 0x0BC65DA4u, {{0x08Fu, 0x00000000u}}}, // CB_SHADER_MASK
+        {0u, 4u, 0x9E5AD592u, {{0x08Eu, 0x0000000Fu}}}, // CB_TARGET_MASK
+        {0u, 5u, 0xBB513B98u, {{0x2DCu, 0x0000AA00u}}}, // DB_ALPHA_TO_MASK
+        {0u, 6u, 0xAB64B23Bu, {{0x001u, 0x00000000u}}}, // DB_COUNT_CONTROL
+        {0u, 7u, 0x53C39964u, {{0x200u, 0x00000000u}}}, // DB_DEPTH_CONTROL
+        {0u, 8u, 0x01396B11u, {{0x201u, 0x00000000u}}}, // DB_EQAA
+        {0u, 9u, 0x7D42019Au, {{0x000u, 0x00000000u}}}, // DB_RENDER_CONTROL
+        {0u, 10u, 0x3548F523u, {{0x006u, 0x00000000u}}}, // PS_SHADER_SAMPLE_EXCLUSION_MASK
+        {0u, 11u, 0xF43AD28Au, {{0x01Fu, 0x00000000u}}}, // DB_RMI_L2_CACHE_CONTROL
+        {0u, 12u, 0x6DE4C312u, {{0x203u, 0x00000000u}}}, // DB_SHADER_CONTROL
+        {0u, 13u, 0x00A77AE0u, {{0x2B0u, 0x00000000u}}}, // DB_SRESULTS_COMPARE_STATE0
+        {0u, 14u, 0x00A779B7u, {{0x2B1u, 0x00000000u}}}, // DB_SRESULTS_COMPARE_STATE1
+        {0u, 15u, 0x5100100Cu, {{0x10Cu, 0x00000000u}}}, // DB_STENCILREFMASK
+        {0u, 16u, 0x59958BBAu, {{0x10Du, 0x00000000u}}}, // DB_STENCILREFMASK_BF
+        {0u, 17u, 0x0C06F17Cu, {{0x10Bu, 0x00000000u}}}, // DB_STENCIL_CONTROL
+        {0u, 18u, 0x6F104B72u, {{0x1FFu, 0x00000000u}}}, // GE_MAX_OUTPUT_PER_SUBGROUP
+        {0u, 19u, 0x25C70D9Cu, {{0x204u, 0x00000000u}}}, // PA_CL_CLIP_CNTL
+        {0u, 20u, 0x3881201Eu, {{0x20Du, 0x00000000u}}}, // PA_CL_OBJPRIM_ID_CNTL
+        {0u, 21u, 0x09AFDDAFu, {{0x206u, 0x0000043Fu}}}, // PA_CL_VTE_CNTL
+        {0u, 22u, 0x367D63CFu, {{0x2F8u, 0x00000000u}}}, // PA_SC_AA_CONFIG
+        {0u, 23u, 0x43707DB8u, {{0x083u, 0x0000FFFFu}}}, // PA_SC_CLIPRECT_RULE
+        {0u, 24u, 0xF6AE26BAu, {{0x313u, 0x00000000u}}}, // PA_SC_CONSERVATIVE_RASTERIZATION_CNTL
+        {0u, 25u, 0x1B917652u, {{0x800003FEu, 0x00000000u}}}, // PA_SC_FSR_ENABLE
+        {0u, 26u, 0x94B1E4F7u, {{0x0EAu, 0x00000000u}}}, // PA_SC_HORIZ_GRID
+        {0u, 27u, 0xE3661B6Cu, {{0x0E9u, 0x00000000u}}}, // PA_SC_LEFT_VERT_GRID
+        {0u, 28u, 0x1EB8D73Au, {{0x292u, 0x00000002u}}}, // PA_SC_MODE_CNTL_0
+        {0u, 29u, 0x15051FA3u, {{0x293u, 0x00000000u}}}, // PA_SC_MODE_CNTL_1
+        {0u, 30u, 0x9C51A7F1u, {{0x0E8u, 0x00000000u}}}, // PA_SC_RIGHT_VERT_GRID
+        {0u, 31u, 0xA20EFC70u, {{0x080u, 0x00000000u}}}, // PA_SC_WINDOW_OFFSET
+        {0u, 32u, 0x0EC09F6Eu, {{0x211u, 0x00000000u}}}, // PA_STATE_STEREO_X
+        {0u, 33u, 0x34A7D6D3u, {{0x210u, 0x00000000u}}}, // PA_STEREO_CNTL
+        {0u, 34u, 0xCE831B94u, {{0x08Du, 0x00000000u}}}, // PA_SU_HARDWARE_SCREEN_OFFSET
+        {0u, 35u, 0x5CC72A74u, {{0x282u, 0x00000008u}}}, // PA_SU_LINE_CNTL
+        {0u, 36u, 0x3B77713Cu, {{0x281u, 0xFFFF0000u}}}, // PA_SU_POINT_MINMAX
+        {0u, 37u, 0x40F64410u, {{0x280u, 0x00080008u}}}, // PA_SU_POINT_SIZE
+        {0u, 38u, 0x69441268u, {{0x2DFu, 0x00000000u}}}, // PA_SU_POLY_OFFSET_CLAMP
+        {0u, 39u, 0x2E418B83u, {{0x2DEu, 0x000001E9u}}}, // PA_SU_POLY_OFFSET_DB_FMT_CNTL
+        {0u, 40u, 0xA00D0C8Du, {{0x205u, 0x00000240u}}}, // PA_SU_SC_MODE_CNTL
+        {0u, 41u, 0xB1289FB3u, {{0x20Cu, 0x00000001u}}}, // PA_SU_SMALL_PRIM_FILTER_CNTL
+        {0u, 42u, 0x144832FBu, {{0x2F9u, 0x0000002Du}}}, // PA_SU_VTX_CNTL
+        {0u, 43u, 0x9890D9FAu, {{0x1BAu, 0x00000000u}}}, // SPI_TMPRING_SIZE
+        {0u, 44u, 0x9016FAF1u, {{0x2A6u, 0x00000000u}}}, // VGT_DRAW_PAYLOAD_CNTL
+        {0u, 45u, 0x4B73CE27u, {{0x2CEu, 0x00000400u}}}, // VGT_GS_MAX_VERT_OUT
+        {0u, 46u, 0x5F5A3E7Bu, {{0x29Bu, 0x00000002u}}}, // VGT_GS_OUT_PRIM_TYPE
+        {0u, 47u, 0xD4AF3A51u, {{0x2D6u, 0x00000000u}}}, // VGT_LS_HS_CONFIG
+        {0u, 48u, 0x6CF4F543u, {{0x2A3u, 0xFFFFFFFFu}}}, // VGT_PRIMITIVEID_RESET
+        {0u, 49u, 0x5FB86CCBu, {{0x2A1u, 0x00000000u}}}, // VGT_PRIMITIVEID_EN
+        {0u, 50u, 0xEDEFA188u, {{0x2ADu, 0x00000000u}}}, // VGT_REUSE_OFF
+        {0u, 51u, 0xD0DE9EE6u, {{0x2D5u, 0x00000000u}}}, // VGT_SHADER_STAGES_EN
+        {0u, 52u, 0xC5831803u, {{0x2D4u, 0x88101000u}}}, // VGT_TESS_DISTRIBUTION
+        {0u, 53u, 0x8E6DE84Bu, {{0x2DBu, 0x00000000u}}}, // VGT_TF_PARAM
+        {0u, 54u, 0xD0771662u, {{0x2F5u, 0x00000000u}, {0x2F6u, 0x00000000u}}}, // PA_SC_CENTROID_PRIORITY_0/1
+        {0u, 55u, 0x569F7444u, {{0x2FEu, 0x00000000u}}}, // PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0
+        {0u, 56u, 0x5C6637CDu, {{0x30Eu, 0xFFFFFFFFu}, {0x30Fu, 0xFFFFFFFFu}}}, // PA_SC_AA_MASK_X0Y0_X1Y0 / X0Y1_X1Y1
+        {0u, 57u, 0xCAE3E690u, {{0x311u, 0x00000002u}, {0x312u, 0x03FF0080u}}}, // PA_SC_BINNER_CNTL_0/1
+        {0u, 58u, 0x43FBD769u, {{0x105u, 0x00000000u}, {0x107u, 0x00000000u}, {0x106u, 0x00000000u}, {0x108u, 0x00000000u}}}, // CB_BLEND_RED/BLUE/GREEN/ALPHA
+        {0u, 59u, 0xEF550356u, {{0x1E0u, 0x20010001u}}}, // CB_BLEND0_CONTROL
+        {0u, 60u, 0x8F52E279u, {{0x020u, 0x00000000u}, {0x021u, 0x00000000u}}}, // TA_BC_BASE_ADDR/HI
+        {0u, 61u, 0x1F2D8149u, {{0x084u, 0x00000000u}, {0x085u, 0x20002000u}}}, // PA_SC_CLIPRECT_0_TL/BR
+        {0u, 62u, 0x853D0614u, {{0x800003FFu, 0x00000000u}}}, // CX_NOP
+        {0u, 63u, 0x4413C6F9u, {{0x008u, 0x00000000u}, {0x009u, 0x00000000u}}}, // DB_DEPTH_BOUNDS_MIN/MAX
+        {0u, 64u, 0x67096014u, {{0x010u, 0x80000000u}, {0x011u, 0x20000000u}, {0x012u, 0x00000000u}, {0x013u, 0x00000000u},
                    {0x014u, 0x00000000u}, {0x015u, 0x00000000u}, {0x01Au, 0x00000000u}, {0x01Bu, 0x00000000u},
                    {0x01Cu, 0x00000000u}, {0x01Du, 0x00000000u}, {0x01Eu, 0x00000000u}, {0x002u, 0x00000000u},
                    {0x005u, 0x00000000u}, {0x007u, 0x00000000u}, {0x00Bu, 0x00000000u}, {0x00Au, 0x00000000u}}}, // DB_Z_INFO..DB_STENCIL_CLEAR
-        {0u, 65u, {{0x0EBu, 0xFF00FF00u}, {0x0ECu, 0x00000000u}}}, // PA_SC_FOV_WINDOW_LR/TB
-        {0u, 66u, {{0x800003FCu, 0x00000000u}, {0x800003FDu, 0x00000000u}}}, // FSR_RECURSIONS0/1
-        {0u, 67u, {{0x090u, 0x80000000u}, {0x091u, 0x40004000u}}}, // PA_SC_GENERIC_SCISSOR_TL/BR
-        {0u, 68u, {{0x2FAu, 0x4E7E0000u}, {0x2FBu, 0x4E7E0000u}, {0x2FCu, 0x4E7E0000u}, {0x2FDu, 0x4E7E0000u}}}, // PA_CL_GB_*_ADJ
-        {0u, 69u, {{0x2E2u, 0x00000000u}, {0x2E3u, 0x00000000u}}}, // PA_SU_POLY_OFFSET_BACK_*
-        {0u, 70u, {{0x2E0u, 0x00000000u}, {0x2E1u, 0x00000000u}}}, // PA_SU_POLY_OFFSET_FRONT_*
-        {0u, 71u, {{0x003u, 0x00000000u}, {0x004u, 0x00000000u}}}, // DB_RENDER_OVERRIDE/2
-        {0u, 72u, {{0x318u, 0x00000000u}, {0x31Bu, 0x00000000u}, {0x31Cu, 0x00000000u}, {0x31Du, 0x00000000u},
+        {0u, 65u, 0x88F5E915u, {{0x0EBu, 0xFF00FF00u}, {0x0ECu, 0x00000000u}}}, // PA_SC_FOV_WINDOW_LR/TB
+        {0u, 66u, 0x033F1EFFu, {{0x800003FCu, 0x00000000u}, {0x800003FDu, 0x00000000u}}}, // FSR_RECURSIONS0/1
+        {0u, 67u, 0x918106BBu, {{0x090u, 0x80000000u}, {0x091u, 0x40004000u}}}, // PA_SC_GENERIC_SCISSOR_TL/BR
+        {0u, 68u, 0x95F0E7ACu, {{0x2FAu, 0x4E7E0000u}, {0x2FBu, 0x4E7E0000u}, {0x2FCu, 0x4E7E0000u}, {0x2FDu, 0x4E7E0000u}}}, // PA_CL_GB_*_ADJ
+        {0u, 69u, 0xB48CBAB2u, {{0x2E2u, 0x00000000u}, {0x2E3u, 0x00000000u}}}, // PA_SU_POLY_OFFSET_BACK_*
+        {0u, 70u, 0x05BB3BC6u, {{0x2E0u, 0x00000000u}, {0x2E1u, 0x00000000u}}}, // PA_SU_POLY_OFFSET_FRONT_*
+        {0u, 71u, 0x94FABA07u, {{0x003u, 0x00000000u}, {0x004u, 0x00000000u}}}, // DB_RENDER_OVERRIDE/2
+        {0u, 72u, 0x38E92C91u, {{0x318u, 0x00000000u}, {0x31Bu, 0x00000000u}, {0x31Cu, 0x00000000u}, {0x31Du, 0x00000000u},
                    {0x31Eu, 0x00000048u}, {0x31Fu, 0x00000000u}, {0x321u, 0x00000000u}, {0x323u, 0x00000000u},
                    {0x324u, 0x00000000u}, {0x325u, 0x00000000u}, {0x390u, 0x00000000u}, {0x398u, 0x00000000u},
                    {0x3A0u, 0x00000000u}, {0x3A8u, 0x00000000u}, {0x3B0u, 0x00000000u}, {0x3B8u, 0x0006C000u}}}, // CB_COLOR0_*
-        {0u, 73u, {{0x00Cu, 0x00000000u}, {0x00Du, 0x40004000u}}}, // PA_SC_SCREEN_SCISSOR_TL/BR
-        {0u, 74u, {{0x191u, 0x00000000u}}}, // SPI_PS_INPUT_CNTL_0
-        {0u, 75u, {{0x16Fu, 0x00000000u}, {0x170u, 0x00000000u}, {0x171u, 0x00000000u}, {0x172u, 0x00000000u}}}, // PA_CL_UCP_0_*
-        {0u, 76u, {{0x10Fu, 0x4E7E0000u}, {0x111u, 0x4E7E0000u}, {0x113u, 0x4E7E0000u}, {0x110u, 0x00000000u},
+        {0u, 73u, 0x0B177B43u, {{0x00Cu, 0x00000000u}, {0x00Du, 0x40004000u}}}, // PA_SC_SCREEN_SCISSOR_TL/BR
+        {0u, 74u, 0x48531062u, {{0x191u, 0x00000000u}}}, // SPI_PS_INPUT_CNTL_0
+        {0u, 75u, 0xAAA964B9u, {{0x16Fu, 0x00000000u}, {0x170u, 0x00000000u}, {0x171u, 0x00000000u}, {0x172u, 0x00000000u}}}, // PA_CL_UCP_0_*
+        {0u, 76u, 0x7690AF6Fu, {{0x10Fu, 0x4E7E0000u}, {0x111u, 0x4E7E0000u}, {0x113u, 0x4E7E0000u}, {0x110u, 0x00000000u},
                    {0x112u, 0x00000000u}, {0x114u, 0x00000000u}, {0x094u, 0x80000000u}, {0x095u, 0x40004000u},
                    {0x0B4u, 0x00000000u}, {0x0B5u, 0x00000000u}}}, // PA_CL_VPORT_* / PA_SC_VPORT_*
-        {0u, 77u, {{0x081u, 0x80000000u}, {0x082u, 0x40004000u}}}, // PA_SC_WINDOW_SCISSOR_TL/BR
+        {0u, 77u, 0x078D7060u, {{0x081u, 0x80000000u}, {0x082u, 0x40004000u}}}, // PA_SC_WINDOW_SCISSOR_TL/BR
         // shader register groups
-        {1u, 0u, {{0x212u, 0x00000000u}}}, // COMPUTE_PGM_RSRC1
-        {1u, 1u, {{0x213u, 0x00000000u}}}, // COMPUTE_PGM_RSRC2
-        {1u, 2u, {{0x228u, 0x00000000u}}}, // COMPUTE_PGM_RSRC3
-        {1u, 3u, {{0x215u, 0x00000000u}}}, // COMPUTE_RESOURCE_LIMITS
-        {1u, 4u, {{0x218u, 0x00000000u}}}, // COMPUTE_TMPRING_SIZE
-        {1u, 5u, {{0x08Au, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC1_GS
-        {1u, 6u, {{0x10Au, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC1_HS
-        {1u, 7u, {{0x00Au, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC1_PS
-        {1u, 8u, {{0x08Bu, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC2_GS
-        {1u, 9u, {{0x10Bu, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC2_HS
-        {1u, 10u, {{0x00Bu, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC2_PS
-        {1u, 11u, {{0x224u, 0x00000000u}}}, // COMPUTE_USER_ACCUM_0
-        {1u, 12u, {{0x107u, 0x00000000u}, {0x087u, 0x00000000u}, {0x007u, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC3_HS/GS/PS
-        {1u, 13u, {{0x20Cu, 0x00000000u}, {0x20Du, 0x00000000u}}}, // COMPUTE_PGM_LO/HI
-        {1u, 14u, {{0x0C8u, 0x00000000u}, {0x0C9u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_ES
-        {1u, 15u, {{0x088u, 0x00000000u}, {0x089u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_GS
-        {1u, 16u, {{0x108u, 0x00000000u}, {0x109u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_HS
-        {1u, 17u, {{0x148u, 0x00000000u}, {0x149u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_LS
-        {1u, 18u, {{0x008u, 0x00000000u}, {0x009u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_PS
-        {1u, 19u, {{0x800002FFu, 0x00000000u}}}, // SH_NOP
-        {1u, 20u, {{0x0B2u, 0x00000000u}}}, // SPI_SHADER_USER_ACCUM_ESGS_0
-        {1u, 21u, {{0x132u, 0x00000000u}}}, // SPI_SHADER_USER_ACCUM_LSHS_0
-        {1u, 22u, {{0x032u, 0x00000000u}}}, // SPI_SHADER_USER_ACCUM_PS_0
-        {1u, 23u, {{0x082u, 0x00000000u}, {0x083u, 0x00000000u}}}, // SPI_SHADER_USER_DATA_ADDR_LO/HI_GS
-        {1u, 24u, {{0x102u, 0x00000000u}, {0x103u, 0x00000000u}}}, // SPI_SHADER_USER_DATA_ADDR_LO/HI_HS
-        {1u, 25u, {{0x240u, 0x00000000u}}}, // COMPUTE_USER_DATA_0
-        {1u, 26u, {{0x08Cu, 0x00000000u}}}, // SPI_SHADER_USER_DATA_GS_0
-        {1u, 27u, {{0x10Cu, 0x00000000u}}}, // SPI_SHADER_USER_DATA_HS_0
-        {1u, 28u, {{0x00Cu, 0x00000000u}}}, // SPI_SHADER_USER_DATA_PS_0
+        {1u, 0u, 0x5D6E3EC7u, {{0x212u, 0x00000000u}}}, // COMPUTE_PGM_RSRC1
+        {1u, 1u, 0x57E7079Au, {{0x213u, 0x00000000u}}}, // COMPUTE_PGM_RSRC2
+        {1u, 2u, 0x7467FAFDu, {{0x228u, 0x00000000u}}}, // COMPUTE_PGM_RSRC3
+        {1u, 3u, 0x9E826B50u, {{0x215u, 0x00000000u}}}, // COMPUTE_RESOURCE_LIMITS
+        {1u, 4u, 0xDC484F18u, {{0x218u, 0x00000000u}}}, // COMPUTE_TMPRING_SIZE
+        {1u, 5u, 0x5DA8BCA3u, {{0x08Au, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC1_GS
+        {1u, 6u, 0x5CA726D8u, {{0x10Au, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC1_HS
+        {1u, 7u, 0x5DD28360u, {{0x00Au, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC1_PS
+        {1u, 8u, 0x57EFA0BEu, {{0x08Bu, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC2_GS
+        {1u, 9u, 0x502363D5u, {{0x10Bu, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC2_HS
+        {1u, 10u, 0x506D14BDu, {{0x00Bu, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC2_PS
+        {1u, 11u, 0xB2609506u, {{0x224u, 0x00000000u}}}, // COMPUTE_USER_ACCUM_0
+        {1u, 12u, 0x9E5CFB8Au, {{0x107u, 0x00000000u}, {0x087u, 0x00000000u}, {0x007u, 0x00000000u}}}, // SPI_SHADER_PGM_RSRC3_HS/GS/PS
+        {1u, 13u, 0xC918DF3Eu, {{0x20Cu, 0x00000000u}, {0x20Du, 0x00000000u}}}, // COMPUTE_PGM_LO/HI
+        {1u, 14u, 0xC9751C9Cu, {{0x0C8u, 0x00000000u}, {0x0C9u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_ES
+        {1u, 15u, 0xC97EF77Au, {{0x088u, 0x00000000u}, {0x089u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_GS
+        {1u, 16u, 0xC927C6B9u, {{0x108u, 0x00000000u}, {0x109u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_HS
+        {1u, 17u, 0xC92A1EC5u, {{0x148u, 0x00000000u}, {0x149u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_LS
+        {1u, 18u, 0xC9E01B31u, {{0x008u, 0x00000000u}, {0x009u, 0x00000000u}}}, // SPI_SHADER_PGM_LO/HI_PS
+        {1u, 19u, 0x50685F29u, {{0x800002FFu, 0x00000000u}}}, // SH_NOP
+        {1u, 20u, 0xB26219CAu, {{0x0B2u, 0x00000000u}}}, // SPI_SHADER_USER_ACCUM_ESGS_0
+        {1u, 21u, 0xB25B6CF9u, {{0x132u, 0x00000000u}}}, // SPI_SHADER_USER_ACCUM_LSHS_0
+        {1u, 22u, 0xB2F86101u, {{0x032u, 0x00000000u}}}, // SPI_SHADER_USER_ACCUM_PS_0
+        {1u, 23u, 0x07E3B155u, {{0x082u, 0x00000000u}, {0x083u, 0x00000000u}}}, // SPI_SHADER_USER_DATA_ADDR_LO/HI_GS
+        {1u, 24u, 0x07E383C6u, {{0x102u, 0x00000000u}, {0x103u, 0x00000000u}}}, // SPI_SHADER_USER_DATA_ADDR_LO/HI_HS
+        {1u, 25u, 0xBDA98653u, {{0x240u, 0x00000000u}}}, // COMPUTE_USER_DATA_0
+        {1u, 26u, 0xBDBD1D0Fu, {{0x08Cu, 0x00000000u}}}, // SPI_SHADER_USER_DATA_GS_0
+        {1u, 27u, 0xBD946FD4u, {{0x10Cu, 0x00000000u}}}, // SPI_SHADER_USER_DATA_HS_0
+        {1u, 28u, 0xBDF02A4Cu, {{0x00Cu, 0x00000000u}}}, // SPI_SHADER_USER_DATA_PS_0
         // uconfig register groups
-        {2u, 0u, {{0x41Fu, 0x00000000u}}}, // GDS_OA_ADDRESS
-        {2u, 1u, {{0x41Du, 0x00000000u}}}, // GDS_OA_CNTL
-        {2u, 2u, {{0x41Eu, 0x00000000u}}}, // GDS_OA_COUNTER
-        {2u, 3u, {{0x25Bu, 0x00000000u}}}, // GE_CNTL
-        {2u, 4u, {{0x24Au, 0x00000000u}}}, // GE_INDX_OFFSET
-        {2u, 5u, {{0x24Bu, 0x00000000u}}}, // GE_MULTI_PRIM_IB_RESET_EN
-        {2u, 6u, {{0x25Fu, 0x00000000u}}}, // GE_STEREO_CNTL
-        {2u, 7u, {{0x262u, 0x00000000u}}}, // GE_USER_VGPR_EN
-        {2u, 8u, {{0x80003FF4u, 0x00000000u}}}, // FSR_EXTEND_SUBPIXEL_ROUNDING
-        {2u, 9u, {{0x80003FFDu, 0x00000000u}}}, // TEXTURE_GRADIENT_CONTROL
-        {2u, 10u, {{0x382u, 0x40000040u}}}, // TEXTURE_GRADIENT_FACTORS
-        {2u, 11u, {{0x248u, 0x00000000u}}}, // VGT_OBJECT_ID
-        {2u, 12u, {{0x242u, 0x00000000u}}}, // VGT_PRIMITIVE_TYPE
-        {2u, 13u, {{0x380u, 0x00000000u}, {0x381u, 0x00000000u}}}, // TA_CS_BC_BASE_ADDR/HI
-        {2u, 14u, {{0x80003FF5u, 0x00000000u}, {0x80003FF6u, 0x00000000u}}}, // FSR_ALPHA_VALUE0/1
-        {2u, 15u, {{0x80003FF7u, 0x00000000u}, {0x80003FF8u, 0x00000000u}, {0x80003FF9u, 0x00000000u}, {0x80003FFAu, 0x00000000u}}}, // FSR_CONTROL_POINT0-3
-        {2u, 16u, {{0x80003FFBu, 0x00000000u}, {0x80003FFCu, 0x00000000u}}}, // FSR_WINDOW0/1
-        {2u, 17u, {{0x80003FFEu, 0x00000000u}}}, // MEMORY_MAPPING_MASK
-        {2u, 18u, {{0x80003FFFu, 0x00000000u}}}, // UC_NOP
-        {2u, 19u, {{0x25Cu, 0x00000000u}}}, // GE_USER_VGPR1
+        {2u, 0u, 0x19E93E85u, {{0x41Fu, 0x00000000u}}}, // GDS_OA_ADDRESS
+        {2u, 1u, 0x3B5C2AF3u, {{0x41Du, 0x00000000u}}}, // GDS_OA_CNTL
+        {2u, 2u, 0x47974A35u, {{0x41Eu, 0x00000000u}}}, // GDS_OA_COUNTER
+        {2u, 3u, 0x105971C2u, {{0x25Bu, 0x00000000u}}}, // GE_CNTL
+        {2u, 4u, 0x7D137765u, {{0x24Au, 0x00000000u}}}, // GE_INDX_OFFSET
+        {2u, 5u, 0xD187FEBCu, {{0x24Bu, 0x00000000u}}}, // GE_MULTI_PRIM_IB_RESET_EN
+        {2u, 6u, 0x12F854ACu, {{0x25Fu, 0x00000000u}}}, // GE_STEREO_CNTL
+        {2u, 7u, 0x40D49AD1u, {{0x262u, 0x00000000u}}}, // GE_USER_VGPR_EN
+        {2u, 8u, 0x8C0923DAu, {{0x80003FF4u, 0x00000000u}}}, // FSR_EXTEND_SUBPIXEL_ROUNDING
+        {2u, 9u, 0xBB8DF494u, {{0x80003FFDu, 0x00000000u}}}, // TEXTURE_GRADIENT_CONTROL
+        {2u, 10u, 0xF6D8A76Eu, {{0x382u, 0x40000040u}}}, // TEXTURE_GRADIENT_FACTORS
+        {2u, 11u, 0x7620F1E9u, {{0x248u, 0x00000000u}}}, // VGT_OBJECT_ID
+        {2u, 12u, 0x9EBFAB10u, {{0x242u, 0x00000000u}}}, // VGT_PRIMITIVE_TYPE
+        {2u, 13u, 0x98A09D0Eu, {{0x380u, 0x00000000u}, {0x381u, 0x00000000u}}}, // TA_CS_BC_BASE_ADDR/HI
+        {2u, 14u, 0x195D37D2u, {{0x80003FF5u, 0x00000000u}, {0x80003FF6u, 0x00000000u}}}, // FSR_ALPHA_VALUE0/1
+        {2u, 15u, 0xF9EC4F85u, {{0x80003FF7u, 0x00000000u}, {0x80003FF8u, 0x00000000u}, {0x80003FF9u, 0x00000000u}, {0x80003FFAu, 0x00000000u}}}, // FSR_CONTROL_POINT0-3
+        {2u, 16u, 0x4626B750u, {{0x80003FFBu, 0x00000000u}, {0x80003FFCu, 0x00000000u}}}, // FSR_WINDOW0/1
+        {2u, 17u, 0x4CC673A0u, {{0x80003FFEu, 0x00000000u}}}, // MEMORY_MAPPING_MASK
+        {2u, 18u, 0xDE5B3431u, {{0x80003FFFu, 0x00000000u}}}, // UC_NOP
+        {2u, 19u, 0x036AC8A6u, {{0x25Cu, 0x00000000u}}}, // GE_USER_VGPR1
     };
     return kGroups;
 }
 
 const std::vector<AgcRegDefaultGroup>& InternalRegisterDefaults() {
     static const std::vector<AgcRegDefaultGroup> kGroups = {
-        {0u, 0u, {{0x00Eu, 0u}}},
-        {0u, 1u, {{0x2AFu, 0u}}},
-        {0u, 2u, {{0x314u, 0u}}},
-        {0u, 3u, {{0x1B5u, 0u}}},
-        {1u, 0u, {{0x216u, 0u}}},
-        {1u, 1u, {{0x217u, 0u}}},
-        {1u, 2u, {{0x219u, 0u}}},
-        {1u, 3u, {{0x21Au, 0u}}},
-        {1u, 4u, {{0x27Du, 0u}}},
-        {1u, 5u, {{0x22Au, 0u}}},
-        {1u, 6u, {{0x204u, 0u}}},
-        {1u, 7u, {{0x205u, 0u}}},
-        {1u, 8u, {{0x206u, 0u}}},
-        {1u, 9u, {{0x080u, 0u}}},
-        {1u, 10u, {{0x100u, 0u}}},
-        {1u, 11u, {{0x006u, 0u}}},
-        {1u, 12u, {{0x081u, 0u}}},
-        {1u, 13u, {{0x101u, 0u}}},
-        {1u, 14u, {{0x001u, 0u}}},
-        {2u, 0u, {{0x24Fu, 0u}}},
-        {2u, 1u, {{0x80003FFFu, 0u}}},
-        {2u, 2u, {{0x250u, 0u}}},
+        {0u, 0u, 0x8FB4EDB5u, {{0x00Eu, 0u}}},
+        {0u, 1u, 0xB994AD29u, {{0x2AFu, 0u}}},
+        {0u, 2u, 0xD427322Fu, {{0x314u, 0u}}},
+        {0u, 3u, 0xF58FEA31u, {{0x1B5u, 0u}}},
+        {1u, 0u, 0x6AC156EFu, {{0x216u, 0u}}},
+        {1u, 1u, 0x6AC15610u, {{0x217u, 0u}}},
+        {1u, 2u, 0x6AC15009u, {{0x219u, 0u}}},
+        {1u, 3u, 0x6AC153BAu, {{0x21Au, 0u}}},
+        {1u, 4u, 0xBE7DCD73u, {{0x27Du, 0u}}},
+        {1u, 5u, 0x0C4B1438u, {{0x22Au, 0u}}},
+        {1u, 6u, 0xDB00D71Au, {{0x204u, 0u}}},
+        {1u, 7u, 0xDB00D249u, {{0x205u, 0u}}},
+        {1u, 8u, 0xDB00EC60u, {{0x206u, 0u}}},
+        {1u, 9u, 0x0C4D6FE4u, {{0x080u, 0u}}},
+        {1u, 10u, 0x0C4A80EFu, {{0x100u, 0u}}},
+        {1u, 11u, 0x0DD283E7u, {{0x006u, 0u}}},
+        {1u, 12u, 0xC620E68Cu, {{0x081u, 0u}}},
+        {1u, 13u, 0xC67EFACFu, {{0x101u, 0u}}},
+        {1u, 14u, 0xD9E6D9F7u, {{0x001u, 0u}}},
+        {2u, 0u, 0x31F34B9Fu, {{0x24Fu, 0u}}},
+        {2u, 1u, 0xAC0F9E76u, {{0x80003FFFu, 0u}}},
+        {2u, 2u, 0x929FD95Du, {{0x250u, 0u}}},
     };
     return kGroups;
 }
@@ -365,7 +369,7 @@ guest_addr_t BuildRegisterDefaultsBlob(const std::vector<AgcRegDefaultGroup>& gr
         const u32 block_off = blocks_off + static_cast<u32>(gi) * kBlockSize;
         w64(table_off + g.index * 8, base + block_off);
         const u32 type_off = types_off + static_cast<u32>(gi) * 12;
-        w32(type_off, g.space);                 // type
+        w32(type_off, g.type);                  // SDK group identifier
         w32(type_off + 4, g.index * 4 + g.space); // encoded index
         for (size_t ri = 0; ri < g.regs.size() && ri < 16; ++ri) {
             w32(block_off + static_cast<u32>(ri) * 8, g.regs[ri].offset);

@@ -105,13 +105,33 @@ void TestRenderTarget() {
     EXPECT_EQ(rt.format, 10u, "rt format field");
     EXPECT_EQ(rt.width, 1u, "rt width attrib2+1");
 
-    const u32 attrib2 = (1919u) | ((1079u) << 14);
+    // ATTRIB2 packs height in the low 14 bits and width above it. This
+    // fixture previously encoded the two the other way round, which matched
+    // the implementation rather than the hardware and so agreed with a
+    // transposed decode. The expected 1920x1080 is unchanged; only the
+    // encoding of the input register is corrected.
+    const u32 attrib2 = (1079u) | ((1919u) << 14);
     EXPECT(DecodeRenderTarget(0x1000, 0x12, (10u << 2) | (1u << 8), attrib2, rt),
            "rt 1080p decode");
     EXPECT_EQ(rt.address, (0x12ull << 40) | (0x1000ull << 8), "rt hi/lo address");
     EXPECT_EQ(rt.width, 1920u, "rt width 1920");
     EXPECT_EQ(rt.height, 1080u, "rt height 1080");
     EXPECT_EQ(rt.number_type, 1u, "rt number type");
+
+    // Values observed on PPSA02929 (run PPSA02929_20260907_101408). The
+    // surface at 0x21dae0000 is independently reported as 1280x720 by its own
+    // texture descriptor, so this pins the field order against real data
+    // rather than against our own encoding.
+    EXPECT(DecodeRenderTarget(0x21dae00u, 0, 0x00008028u, 0x013FC2CFu, rt),
+           "observed offscreen target decodes");
+    EXPECT_EQ(rt.width, 1280u, "observed rt width 1280");
+    EXPECT_EQ(rt.height, 720u, "observed rt height 720");
+
+    // The display buffer from the same run: 4K, not 2160 wide by 3840 high.
+    EXPECT(DecodeRenderTarget(0x2113a00u, 0, 0x00008028u, 0x03BFC86Fu, rt),
+           "observed display buffer decodes");
+    EXPECT_EQ(rt.width, 3840u, "observed display width 3840");
+    EXPECT_EQ(rt.height, 2160u, "observed display height 2160");
 
     EXPECT(!DecodeRenderTarget(0, 0, 0, attrib2, rt), "null rt rejected");
 

@@ -118,8 +118,16 @@ bool DecodeRenderTarget(u32 base_lo, u32 base_hi, u32 info, u32 attrib2,
                         RenderTargetDesc& out) {
     out.address     = (static_cast<u64>(base_hi & 0xFFu) << 40) |
                       (static_cast<u64>(base_lo) << 8);
-    out.width       = (attrib2 & 0x3FFFu) + 1;
-    out.height      = ((attrib2 >> 14) & 0x3FFFu) + 1;
+    // CB_COLOR0_ATTRIB2 packs the height in the low 14 bits and the width
+    // above it, not the other way round. The fields were transposed here,
+    // which stayed invisible for as long as no title bound a colour target:
+    // the composite fallback sized itself from the display buffer instead.
+    // With targets decoding, PPSA02929's 1280x720 surface came out 720x1280
+    // and its output was cropped. Cross-checked two ways: the texture
+    // descriptor for the same surface independently reports 1280x720, and
+    // the display buffer decodes to 3840x2160 rather than 2160x3840.
+    out.width       = ((attrib2 >> 14) & 0x3FFFu) + 1;
+    out.height      = (attrib2 & 0x3FFFu) + 1;
     out.format      = (info >> 2) & 0x1Fu;
     out.number_type = (info >> 8) & 0x7u;
     return out.address != 0;
