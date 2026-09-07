@@ -383,7 +383,17 @@ void StageIntoImage(VkImage image, u32 w, u32 h, VkImageLayout final_layout,
         dst_access = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         dst_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     } else if (final_layout == VK_IMAGE_LAYOUT_GENERAL) {
-        dst_access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        // GENERAL covers two roles here. A render target sits in GENERAL so a
+        // guest pass can sample the surface it drew into, which means the
+        // image is read as a colour attachment when the next render pass
+        // begins with loadOp LOAD. Naming only the shader stages left that
+        // read unsynchronised against this transition, and synchronization
+        // validation reported it as a READ_AFTER_WRITE hazard at
+        // vkCmdBeginRenderPass. Both roles must be in scope.
+        dst_access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                     VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+                     VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dst_stage |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     }
     ImageBarrier(image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, final_layout,
                  VK_ACCESS_TRANSFER_WRITE_BIT, dst_access,

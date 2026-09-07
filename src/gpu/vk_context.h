@@ -26,6 +26,7 @@ struct VkFunctions {
     PFN_vkDestroyInstance                           DestroyInstance = nullptr;
     PFN_vkEnumeratePhysicalDevices                  EnumeratePhysicalDevices = nullptr;
     PFN_vkGetPhysicalDeviceProperties               GetPhysicalDeviceProperties = nullptr;
+    PFN_vkGetPhysicalDeviceFeatures                 GetPhysicalDeviceFeatures = nullptr;
     PFN_vkGetPhysicalDeviceQueueFamilyProperties    GetPhysicalDeviceQueueFamilyProperties = nullptr;
     PFN_vkGetPhysicalDeviceMemoryProperties         GetPhysicalDeviceMemoryProperties = nullptr;
     PFN_vkGetPhysicalDeviceSurfaceSupportKHR        GetPhysicalDeviceSurfaceSupportKHR = nullptr;

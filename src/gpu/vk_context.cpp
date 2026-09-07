@@ -69,7 +69,14 @@ bool CreateInstanceForWindow(VkContext* ctx) {
     app.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
     app.pEngineName = "pcsx5";
     app.engineVersion = VK_MAKE_VERSION(0, 1, 0);
-    app.apiVersion = VK_API_VERSION_1_1;
+    // The shader translator emits SPIR-V 1.5. Vulkan 1.1 only accepts modules
+    // up to SPIR-V 1.3, so every shader module we created was invalid per spec
+    // even though drivers ran it (VUID-VkShaderModuleCreateInfo-pCode-08737,
+    // "Invalid SPIR-V binary version 1.5 for target environment SPIR-V 1.3").
+    // 1.2 is the version that accepts what we already emit. A loader or driver
+    // that cannot provide it falls back to 1.1, which is exactly today's
+    // behaviour.
+    app.apiVersion = VK_API_VERSION_1_2;
 
     VkInstanceCreateInfo ci = {};
     ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -77,7 +84,13 @@ bool CreateInstanceForWindow(VkContext* ctx) {
     ci.enabledExtensionCount = ext_count;
     ci.ppEnabledExtensionNames = extensions;
 
-    const VkResult r = ctx->fn.CreateInstance(&ci, nullptr, &ctx->instance);
+    VkResult r = ctx->fn.CreateInstance(&ci, nullptr, &ctx->instance);
+    if (r == VK_ERROR_INCOMPATIBLE_DRIVER) {
+        LOG_WARN(GPU, "Vulkan: 1.2 unavailable; falling back to 1.1. Shader "
+                      "modules will be reported as invalid SPIR-V versions.");
+        app.apiVersion = VK_API_VERSION_1_1;
+        r = ctx->fn.CreateInstance(&ci, nullptr, &ctx->instance);
+    }
     if (r != VK_SUCCESS) {
         LOG_ERROR(GPU, "Vulkan: vkCreateInstance failed (%d).", static_cast<int>(r));
         return false;
@@ -101,6 +114,7 @@ bool CreateSurfaceForWindow(VkContext* ctx, GLFWwindow* window) {
 bool PickDeviceAndQueue(VkContext* ctx) {
     VK_LOAD_INSTANCE(ctx, EnumeratePhysicalDevices);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceProperties);
+    VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceFeatures);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceQueueFamilyProperties);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceMemoryProperties);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceSurfaceSupportKHR);
@@ -153,8 +167,46 @@ bool CreateLogicalDevice(VkContext* ctx) {
     qci.queueCount = 1;
     qci.pQueuePriorities = &priority;
 
+    // Features the translated guest shaders actually require. None were being
+    // requested, so every pipeline we created was invalid per spec even though
+    // the driver ran it:
+    //
+    //   fragmentStoresAndAtomics / vertexPipelineStoresAndAtomics
+    //       guest shaders bind guest memory as storage buffers in both stages.
+    //       Without the feature the spec demands a NonWritable decoration our
+    //       generated SPIR-V does not carry
+    //       (VUID-RuntimeSpirv-NonWritable-06340 and -06341).
+    //   shaderInt64
+    //       the translator emits the Int64 capability for 64-bit address
+    //       arithmetic (VUID-VkShaderModuleCreateInfo-pCode-08740).
+    //
+    // Each is requested only when the device advertises it, so a device
+    // without one behaves exactly as before and says so once.
+    VkPhysicalDeviceFeatures supported = {};
+    VkPhysicalDeviceFeatures enabled = {};
+    if (ctx->fn.GetPhysicalDeviceFeatures) {
+        ctx->fn.GetPhysicalDeviceFeatures(ctx->phys, &supported);
+        struct { VkBool32 have; VkBool32* want; const char* name; } wanted[] = {
+            { supported.fragmentStoresAndAtomics,
+              &enabled.fragmentStoresAndAtomics, "fragmentStoresAndAtomics" },
+            { supported.vertexPipelineStoresAndAtomics,
+              &enabled.vertexPipelineStoresAndAtomics,
+              "vertexPipelineStoresAndAtomics" },
+            { supported.shaderInt64, &enabled.shaderInt64, "shaderInt64" },
+        };
+        for (const auto& f : wanted) {
+            if (f.have) {
+                *f.want = VK_TRUE;
+            } else {
+                LOG_WARN(GPU, "Vulkan: %s unsupported; guest shaders needing it "
+                              "remain invalid per spec on this device.", f.name);
+            }
+        }
+    }
+
     const char* swapchain_ext = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
     VkDeviceCreateInfo dci = {};
+    dci.pEnabledFeatures = &enabled;
     dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &qci;

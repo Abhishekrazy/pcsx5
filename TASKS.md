@@ -288,6 +288,45 @@ updater packages uploaded by hand (see the packaging item).
   existing assertion pinned the defect and was corrected. Audit:
   `docs/audits/AUDIT-2026-09-07-linear-texture-row-stride.md`.
 
+- [x] **Vulkan validation runs, and three render-path violations are fixed.**
+  Done 2026-09-07. The Khronos layer was force-enabled through the loader with
+  synchronization validation. Fixed: a read-after-write hazard at
+  `vkCmdBeginRenderPass` (self-inflicted - moving render targets to GENERAL so
+  a pass can sample what it drew left the seeding barrier naming only shader
+  stages); storage buffers without NonWritable in both stages (the shaders
+  really can write, so `fragmentStoresAndAtomics` and
+  `vertexPipelineStoresAndAtomics` are now requested when supported); and
+  SPIR-V 1.5 emitted against a Vulkan 1.1 target environment (the instance now
+  requests 1.2, falling back to 1.1). 26 validation errors cleared to 0 on the
+  render path. 54/54 ctest, 6/6 runs progressing with 22/22 unique frames.
+  Audit: `docs/audits/AUDIT-2026-09-07-vulkan-validation.md`.
+
+- [ ] **Presentation-loop synchronization cluster (5 validation findings).**
+  All name swapchain objects: a blit writing an image previously written by a
+  clear, a barrier writing an image previously read by `vkAcquireNextImageKHR`,
+  and semaphores plus a fence reused before the prior work completed
+  (`SYNC-HAZARD-WRITE-AFTER-WRITE` x10, `SYNC-HAZARD-WRITE-AFTER-READ` x10,
+  `VUID-vkAcquireNextImageKHR-semaphore-01779` x10,
+  `VUID-vkQueueSubmit-pSignalSemaphores-00067` x2,
+  `VUID-vkQueueSubmit-fence-00063` x1). Not demonstrated unrelated to the
+  on-screen result: a present race can cause tearing or ghosting, and ghosting
+  is not obviously distinct from the doubling seen around the title logo. One
+  coherent defect; fix it alone so the measurement stays attributable.
+  **Recommended next.**
+
+- [ ] **A strip of blocky artifacts along the top edge of the frame**
+  (`PPSA02929_20260907_180248` frame 18, roughly the first 45 rows). Does not
+  look stylistic. Newly observed, uninvestigated; cheap to localise with the
+  render-target capture technique.
+
+- [!] **UNCLASSIFIED: the title logo distortion.** The source texture is
+  provably correct and the words are legible on screen, but warped. There is
+  no reference capture of this title PS5 title screen and a web screenshot of
+  another build is not a sound basis for pixel comparison. The warp is smooth,
+  continuous and animated, which is consistent with the deliberate dream
+  effect this game uses but does not prove it. No pipeline change was made on
+  the strength of it looking unusual.
+
 - [ ] **PPSA02929 title logo is still distorted on screen** although its
   source texture is now correct: warped and doubled after a three-stage
   post-process chain. This game aesthetic includes a deliberate dream wobble,
