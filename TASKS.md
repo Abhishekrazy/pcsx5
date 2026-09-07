@@ -263,15 +263,16 @@ updater packages uploaded by hand (see the packaging item).
 
 - [ ] **PPSA02929's submission rate collapses 15x after the splash.**
   Command buffers walked per 30 s: 655 then 43 (`PPSA02929_20260907_101945`).
-  `FALSIFIED`: it stops drawing - it slows and continues. Established
-  2026-09-07: the guest calls the builders for `WaitRegMem`, `DmaData` and
-  `ReleaseMem` 247 times each, yet **none of those packets ever reaches the
-  walker** (unsampled probe, zero occurrences), and the submit descriptor
-  carries exactly one buffer, same as the reference - so nothing is being
-  ignored. Those packets go into a buffer that is never submitted or is reset
-  first; `sceAgcDcbResetQueue` runs once per frame and our walker treats it as
-  a full shadow clear. `UNKNOWN`; next step is caller analysis of which buffer
-  object those 247 calls target. Audit:
+  `FALSIFIED`: it stops drawing - it slows and continues.
+  `CORRECTED` 2026-09-07: an earlier reading here said the guest builds
+  synchronisation packets that never reach the walker. That mixed two builds -
+  the call counts came from a pre-fix run, the packet probes from the fixed
+  one. On the current build the title calls `sceAgcDcbWaitRegMem`,
+  `sceAgcDcbDmaData` and `sceAgcCbReleaseMem` **zero** times, and uses 27
+  `libSceAgc` entry points where it used 32. The submit descriptor carrying
+  exactly one buffer, matching the reference, still stands - it rests on code,
+  not on a run. The collapse itself is unexplained. `UNKNOWN`; next step is
+  following the guest's own branch, not another packet census. Audit:
   `docs/audits/AUDIT-2026-09-07-submission-rate-collapse.md`.
 
 - [ ] **`RELEASE_MEM` packets have no consumer in the walker.**
@@ -285,11 +286,20 @@ updater packages uploaded by hand (see the packaging item).
 
 - [ ] **Three AGC patch-address entry points are unimplemented stubs**
   (`sceAgcWaitRegMemPatchAddress`, `sceAgcQueueEndOfPipeActionPatchAddress`,
-  `sceAgcDmaDataPatchSetDstAddressOrOffset`), each called 247 times by
-  PPSA02929. They write a real address into a previously emitted packet at an
-  opcode-dependent field offset. Currently harmless only because the packets
-  they patch never reach the walker; they become correctness-critical the
-  moment that changes.
+  `sceAgcDmaDataPatchSetDstAddressOrOffset`). They write a real address into a
+  previously emitted packet at an opcode-dependent field offset. PPSA02929
+  called them before the register-group fix and no longer calls them at all,
+  so nothing exercises them today; they become correctness-critical for any
+  title that does.
+
+- [ ] **Five AGC entry points stopped being exercised after the register-group
+  fix** (`sceAgcDcbWaitRegMem`, `sceAgcDcbDmaData`, `sceAgcCbReleaseMem`,
+  `sceAgcCbNop` and the patch-address family): PPSA02929 used 32 `libSceAgc`
+  imports before the fix and 27 after. Consistent with the engine taking a
+  different setup path once its register groups are identifiable, but
+  `UNKNOWN` whether the old path is genuinely unnecessary or the guest now
+  fails earlier and never reaches it. Worth settling before trusting the new
+  path.
 
 - [ ] **Intermittent emulated-TLS read failure at guest RIP `0x800160378`.**
   One run in four ends there with `Emulated TLS read failed ... not resuming
