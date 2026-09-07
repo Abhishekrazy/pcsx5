@@ -154,3 +154,98 @@ GPU-produced and our upload reads guest memory. The remaining candidates from
 section 5 are untested - other colour slots (`CB_COLOR1..7`) and a
 depth/resolve target standing in for the colour target. The question is still
 where an untargeted draw names its destination, and it is still `UNKNOWN`.
+
+---
+
+## 7. The guest does multi-pass render-to-texture (2026-09-07)
+
+### First, a correction to section 3's evidence
+
+Section 3 concluded the scene textures were empty from a 4 KB sample. That
+sample is smaller than a single row of a 1280-wide texture, so a surface with
+a transparent top edge would have read as empty. The claim was re-tested by
+sampling 16 points spread across each texture's full extent:
+
+```
+PROBE texscan addr=0x215ed0000 1280x720 bytes=3686400 samples=16 nonzero=16
+PROBE texscan addr=0x21b9a0000 1280x720 bytes=3686400 samples=16 nonzero=0
+PROBE texscan addr=0x21beb0000  320x512 bytes=655360  samples=16 nonzero=10
+PROBE texscan addr=0x21cc60000  250x250 bytes=250000  samples=16 nonzero=16
+```
+
+The conclusion survives: one full-screen 3.6 MB surface is zero at every
+sample point while the others carry data. `VERIFIED`, run
+`PPSA02929_20260907_093317`.
+
+### What the composite batch actually contains
+
+Logging the order and source of every draw in one flush
+(`PPSA02929_20260907_093451`):
+
+```
+0:0x21bf00000(320x512,nz5/8)   1:0x21daf0000(1280x720,nz0/8)
+2:0x21bf00000(320x512,nz5/8)   3:0x21daf0000(1280x720,nz0/8)
+4:0x21c280000(980x347,nz5/8)   5:0x21daf0000(1280x720,nz0/8)
+6:0x21daf0000(1280x720,nz0/8)  7:0x21c280000(980x347,nz5/8)
+8:0x21daf0000(1280x720,nz0/8)  9:0x21ccb0000(250x250,nz8/8)
+10:0x21d280000(1280x720,nz0/8) 11:0x21b9f0000(1280x720,nz0/8)
+```
+
+The guest alternates a real sprite with a **full-screen quad sampling an
+offscreen surface**, and the last two draws of the batch are both full-screen
+passes over empty surfaces. That is a multi-pass render-to-texture chain, and
+it explains the black screen exactly: we draw the real sprites correctly onto
+the display buffer, and then the guest's final full-screen passes paint an
+empty surface over the top of them. `VERIFIED`.
+
+Those surfaces sit at different addresses every frame (`0x21daf0000`,
+`0x21d280000`, `0x21b9f0000`, `0x21b9a0000`), consistent with ring-allocated
+intermediate targets.
+
+### Opcode census of the graphics stream
+
+Every type-3 packet in a 25 s run, by opcode:
+
+| Opcode | Meaning | Count |
+|---|---|---|
+| `0x10` | NOP (carries the indirect-register and flip sub-opcodes) | 9542 |
+| `0x76` | SET_SH_REG | 1996 |
+| `0x46` | EVENT_WRITE | 849 |
+| `0x13` | INDEX_BUFFER_SIZE | 715 |
+| `0x26` | INDEX_BASE | 715 |
+| `0x2A` | INDEX_TYPE | 714 |
+| `0x35` | DRAW_INDEX_OFFSET_2 | 470 |
+
+Two absences matter:
+
+- **`0x69` SET_CONTEXT_REG never appears.** The guest sets no context register
+  through the direct packet at all; every context register it uses arrives
+  through the NOP-wrapped indirect lists. This is why the colour-target
+  registers are absent from the shadow, and it narrows the search: whatever
+  names the destination must be inside those lists.
+- **`0x3F` INDIRECT_BUFFER never appears.** `FALSIFIED`: the destination is not
+  hidden in a chained command buffer we fail to follow. SharpEmu handles that
+  opcode and we do not, which made it a live suspect; this title never emits
+  one.
+
+### Also falsified
+
+The AGC patch-list builder was compared against the reference:
+`AddIndirectPatchRegisters` there does exactly what ours does - read the count
+at `cmd+4`, add, write it back, and nothing else
+(`AgcExports.cs:14880-14898`). Neither implementation writes register offsets
+into the list. So the `0xFFFFFFFF` offsets are not something the reference
+fills in and we miss.
+
+### Where this leaves it
+
+Every mechanism examined so far is identical between the two emulators, yet
+the reference renders this scene. The open question is unchanged and now
+sharply bounded: **within the indirect register lists, which entry names an
+untargeted draw's destination?** The 134-entry list whose offsets are all
+`0xFFFFFFFF` is the only candidate left that carries a display-buffer-shaped
+value, and its layout is still `UNKNOWN`.
+
+Deliberately not done: guessing a base register for that list and applying it.
+Section 6 already shows how a plausible-looking address match can be a
+leftover, and a wrong base would silently corrupt the whole context shadow.

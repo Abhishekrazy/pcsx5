@@ -260,10 +260,21 @@ updater packages uploaded by hand (see the packaging item).
   60 s), or a depth/resolve target - then render into it. Do not substitute a
   guessed destination. Audit:
   `docs/audits/AUDIT-2026-09-07-black-screen-after-splash.md`.
-  Indirect registers were investigated on 2026-09-07 and ruled out: the
-  reference emulator parses that packet identically, so it cannot be the
-  difference. Remaining candidates are the other colour slots and a
-  depth/resolve target.
+  Established 2026-09-07: the guest runs a **multi-pass render-to-texture
+  chain**. A composite batch alternates a real sprite with a full-screen quad
+  sampling an offscreen surface, and the batch's last draws are full-screen
+  passes over surfaces that are empty for us - which is what paints the
+  screen black over sprites we drew correctly. Surfaces are ring-allocated,
+  at a new address each frame.
+  Narrowed by an opcode census of the whole graphics stream: the guest emits
+  **no `SET_CONTEXT_REG` (0x69) packets at all**, so every context register
+  arrives through the NOP-wrapped indirect lists, and the destination must be
+  in one of them. `FALSIFIED` on the way: nested command buffers (no
+  `INDIRECT_BUFFER` 0x3F packet is ever emitted) and the patch-list builder
+  (the reference implementation is byte-for-byte equivalent to ours).
+  The only remaining candidate is the 134-entry indirect list whose per-entry
+  offsets are all `0xFFFFFFFF`; its layout is `UNKNOWN`. Do not guess a base
+  register for it - a wrong base corrupts the whole context shadow.
 
 - [ ] **Indirect register entries with offset `0xFFFFFFFF` are written into
   the register shadow.** A context register index is under `0x400`, so
