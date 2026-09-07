@@ -29,6 +29,7 @@ u64 TrapCount() { return 0; }
 void NoteTrap() {}
 u64 PatchedCount() { return 0; }
 u32 TestEmitStub(u8*, const AccessInfo&, u64, u32, u64) { return 0; }
+u32 ReadInstruction(u64, u8*, u32) { return 0; }
 
 } // namespace Kernel::TlsPatch
 
@@ -483,6 +484,21 @@ u64 PatchedCount() {
 u32 TestEmitStub(u8* out, const AccessInfo& access, u64 return_rip,
                  u32 slot_addr, u64 default_tp) {
     return EmitStub(out, access, return_rip, slot_addr, default_tp);
+}
+
+u32 ReadInstruction(u64 rip, u8* out, u32 max) {
+    if (!out || max == 0) return 0;
+    if (rip < kGuestCodeLo || rip >= kGuestCodeHi) return 0;
+    // Clamp to the module window so the copy cannot walk off the end of it.
+    const u64 avail = kGuestCodeHi - rip;
+    const u32 want = static_cast<u32>(avail < max ? avail : max);
+    std::lock_guard<std::mutex> lock(PatchMutex());
+    SIZE_T got = 0;
+    if (!ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void*>(rip),
+                           out, want, &got)) {
+        return 0;
+    }
+    return static_cast<u32>(got);
 }
 
 } // namespace Kernel::TlsPatch

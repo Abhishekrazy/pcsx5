@@ -329,14 +329,18 @@ updater packages uploaded by hand (see the packaging item).
   12 before; 54/54 ctest. Audit:
   `docs/audits/AUDIT-2026-09-07-tls-stub-null-thread-pointer.md`.
 
-- [ ] **The `Emulated TLS read failed` variant is still unexplained.**
-  Distinct from the resolved stub crash: those two historical failures came
-  through the exception handler with a thread pointer matching no allocation
-  we make (all registered pointers and the shared block are page-aligned; the
-  observed values were a page base plus `0x9090`). Not seen in 12 post-fix
-  runs, but that is absence, not a diagnosis. The failure branch now records
-  the resolution source, both thread ids, the faulting RIP and the memory
-  region, so a recurrence is diagnosable without re-instrumenting.
+- [x] **RESOLVED: the `Emulated TLS read failed` variant was a decode race.**
+  Done 2026-09-07. The diagnostic added for this caught it on the next run:
+  the thread pointer was fine and page-aligned, but the decoded displacement
+  was `0x90909090` - four NOP bytes - where the instruction
+  (`mov rax, fs:[0]` at `0x800160378`) has zero
+  (`PPSA02929_20260907_145600`). The handler decoded the faulting instruction
+  byte-at-a-time from live memory while another thread was rewriting that same
+  site as a call plus NOP padding, so it read an original opcode with an
+  already-overwritten displacement field. `TlsPatch::ReadInstruction` now
+  snapshots the instruction under the patch lock and the handler decodes that.
+  6 of 6 clean 45 s runs; 54/54 ctest. Audit:
+  `docs/audits/AUDIT-2026-09-07-tls-stub-null-thread-pointer.md` section 10.
 
 - [ ] **Some host threads reach guest code without a bound thread pointer.**
   Exposed by the fix above, which makes them fall back to the shared TLS block

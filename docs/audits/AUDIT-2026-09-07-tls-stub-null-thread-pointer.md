@@ -188,3 +188,89 @@ the branch that only runs on failure. Committed alongside this audit.
 
 **Next phase**, per the plan: rendering correctness - colour, geometry,
 banding and stepped edges - kept separate so measurements stay attributable.
+
+---
+
+## 10. RESOLVED: the `Emulated TLS read failed` variant was a decode race
+
+Section 9 left this variant unexplained and added a diagnostic to the failure
+branch. It fired on the very next run.
+
+### The evidence
+
+Run `PPSA02929_20260907_145600`:
+
+```
+Emulated TLS read failed at 0x22a5fab9090 (0 of 8 bytes)
+  tp=0x22acf1b0000 disp=-1869574000 guest_tid=25 host_tid=44484 rip=0x800160378
+```
+
+The thread pointer is fine - page-aligned, a real allocation. The
+**displacement** is the problem: `-1869574000` is `0x90909090` as an unsigned
+32-bit value, which is four `NOP` bytes. And `0x22acf1b0000 - 1869574000`
+is exactly the failing address, so the arithmetic confirms the field.
+
+The instruction at that site is `mov rax, fs:[0]`, whose displacement is
+zero:
+
+```
+0x800160378  66 66 66 64 48 8B 04 25 00 00 00 00
+```
+
+`VERIFIED`: the decoder read `90 90 90 90` where the instruction has
+`00 00 00 00`.
+
+### Root cause
+
+`TryPatchSite` rewrites a patched site as a 5-byte `call rel32` followed by
+`NOP` padding. The exception handler decoded the faulting instruction by
+reading it **one byte at a time from live memory**. Those two can interleave:
+one thread faults at a site and begins decoding while another thread patches
+the same site. The decoder then reads the original prefixes, REX, opcode,
+ModRM and SIB - already consumed before the rewrite reached them - together
+with a displacement field that has already become NOP padding.
+
+The result is a wild TLS address, and the handler correctly refuses to resume
+the guest on a load that did not happen. The refusal was right; the decode
+was wrong.
+
+This explains every property of the variant: it needs two threads at one site,
+so it is intermittent; the site is the hottest `fs:[0]` in the title, reached
+by many threads; and both historical addresses ended in `9090`, which was the
+padding all along.
+
+### Implementation
+
+`Kernel::TlsPatch::ReadInstruction` copies up to 24 bytes from the faulting
+address while holding the patch lock, so the copy is either wholly pre-patch
+or wholly post-patch. The handler decodes that snapshot instead of live
+memory. Twenty-four bytes covers any x86-64 instruction, whose architectural
+maximum is fifteen.
+
+Addresses outside the patched module range are declined and the caller reads
+the live bytes as before. Nothing rewrites those, so they cannot race, and
+declining keeps non-guest faults working unchanged.
+
+Decoding a snapshot taken just before a patch lands is correct: the handler
+emulates the instruction that was there, and the site runs patched next time.
+
+### Regression test
+
+Added to `tests/tls_patch_stub_tests.cpp`: out-of-range, null and zero-length
+requests are declined; an in-range page is copied verbatim; and the
+displacement field of the exact instruction form reads zero rather than NOP
+padding.
+
+**Not covered**: the interleaving itself. Proving the lock excludes a
+concurrent patch needs two threads against a live patched site.
+
+### Validation
+
+| | before | after |
+|---|---|---|
+| Test suite | 54 of 54 | **54 of 54** (the stub test gained cases) |
+| 45 s runs | variant seen in run 1 of 1 after the diagnostic landed | **6 of 6 `progressing`, zero occurrences** |
+| Render-to-texture fix | passing | passing, every run reaches the scene |
+
+Combined with the twelve runs after the null-pointer fix, both TLS crash
+variants now have a verified cause and a fix, and neither has recurred.

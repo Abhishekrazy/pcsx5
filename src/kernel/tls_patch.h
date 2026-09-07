@@ -73,6 +73,20 @@ u64 TrapCount();
 void NoteTrap();
 u64 PatchedCount();
 
+// Copies up to `max` instruction bytes from `rip` into `out`, holding the
+// patch lock for the copy so the caller decodes a consistent instruction.
+//
+// A site is rewritten as a 5-byte call plus NOP padding. A decoder reading the
+// live bytes one at a time can interleave with that rewrite and read an
+// original opcode with an already-overwritten displacement field; PPSA02929
+// decoded a displacement of 0x90909090 - four NOPs - and computed a wild TLS
+// address from it.
+//
+// Returns the number of bytes copied, or 0 when `rip` is outside the guest
+// module range this module patches, in which case the caller should read the
+// bytes itself; nothing rewrites those, so they cannot race.
+u32 ReadInstruction(u64 rip, u8* out, u32 max);
+
 // Test hook: emit one stub into `out` (at least 64 bytes) for the given access
 // with an explicit TLS slot address and fallback thread pointer, so the emitted
 // machine code can be asserted without a live process. Returns the stub size,

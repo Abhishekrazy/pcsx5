@@ -2496,7 +2496,23 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         if (exception_record->ExceptionCode == STATUS_ACCESS_VIOLATION || exception_record->ExceptionCode == 0xC0000005) {
             LOG_DEBUG(Kernel, "Parsing instruction for TLS emulation at RIP=0x%llx", context->Rip);
             TlsPatch::NoteTrap();
-            u8* rip = reinterpret_cast<u8*>(context->Rip);
+            // Decode a snapshot, not the live bytes. The TLS patcher rewrites a
+            // site as a call plus NOP padding, and a byte-at-a-time decode can
+            // interleave with that rewrite: PPSA02929 read an original opcode
+            // with an already-overwritten displacement field and computed a TLS
+            // address from a displacement of 0x90909090, four NOPs
+            // (run PPSA02929_20260907_145600). The snapshot is taken under the
+            // patch lock, so it is either wholly pre-patch or wholly post-patch.
+            //
+            // 24 bytes covers any x86-64 instruction (15 is the architectural
+            // maximum) with room for the decoder to look ahead. Outside the
+            // patched module range the helper declines and the live bytes are
+            // used, which is safe because nothing rewrites those.
+            u8 snapshot[24] = {};
+            const u32 snapshot_len =
+                TlsPatch::ReadInstruction(context->Rip, snapshot, sizeof(snapshot));
+            u8* rip = snapshot_len != 0 ? snapshot
+                                        : reinterpret_cast<u8*>(context->Rip);
             u8* instr = rip;
             u8 b = 0;
             
