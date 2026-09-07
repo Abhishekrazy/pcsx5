@@ -241,11 +241,30 @@ updater packages uploaded by hand (see the packaging item).
   sampled sprite draws. Kept so the storage branch is not re-proposed as this
   title's fix.
 
-- [ ] **PPSA02929 stops changing about 20 s in.** New earliest divergence for
-  this title after the draw-retention fix: draws continue but the composited
-  frame stops changing, giving a 40.5 s freeze in a 60 s run
-  (`artifacts/runtime/PPSA02929_20260907_055424`). Not the retention path.
-  `UNKNOWN` cause; needs the guest's own state examined at the transition.
+- [ ] **Render-to-texture has no path: the guest's own scene textures stay
+  empty.** After the publisher splash (which renders correctly, frame 7 of
+  `PPSA02929_20260907_055927`) the screen goes black while the guest draws
+  *more*. Measured: the composites sample textures that are all zero in guest
+  memory - a 1280x720 surface and a 980x347 one, the shapes of a background
+  and a title graphic - while CPU-supplied textures in the same frame hold
+  real data. Those empty ones are GPU-produced, and our texture upload reads
+  guest memory, so they arrive black. The draws that should fill them carry no
+  decodable colour target, so the walker composites them onto the display
+  buffer instead of into the texture.
+  Ruled out with runtime probes, each cited in the audit: waiting on a pad
+  press, composite draws failing, wrong display buffer, degenerate viewport or
+  scissor, per-frame render-target reseeding, per-draw clears.
+  **Done requires**: establish where an AGC draw names its destination when
+  `CB_COLOR0` is zero - other colour slots, the AGC `RenderTarget` object
+  bound through `sceAgcSetCxRegIndirectPatchAddRegisters` (26,435 calls in
+  60 s), or a depth/resolve target - then render into it. Do not substitute a
+  guessed destination. Audit:
+  `docs/audits/AUDIT-2026-09-07-black-screen-after-splash.md`.
+
+- [!] **FALSIFIED: only one of the two display buffers is ever presented.**
+  A probe firing every 60th present observed one buffer, but the buffers
+  strictly alternate, so it only ever saw one parity. Flips are even at 235
+  and 234. Kept because the probe artifact is easy to reproduce.
 
 - [ ] **`sceVideoOutAddFlipEvent` returns success on every repeat call.**
   PPSA02929 calls it once per frame (571 times in 60 s) against the same
