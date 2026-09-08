@@ -2,17 +2,17 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: COMPLETE within the offscreen acceptance scope below. Phase 5 — Reference interpreter: IN PROGRESS.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: COMPLETE within the offscreen acceptance scope below. Phase 5 — Reference interpreter: COMPLETE within the scalar acceptance scope below. Phase 6 — Direct-x64 containment: NEXT.**
 
 ## Phase 5 acceptance tasks
 
-Phase 5 is IN PROGRESS. Scope: scalar x86-64 subset and full modeled-state trace
+Phase 5 is COMPLETE. Scope: scalar x86-64 subset and full modeled-state trace
 oracle as specified in ARCHITECTURE.md; not complete ISA or PS5 compatibility.
 
 - [x] P5.1 Canonical CPU/stop/trace contract and independent conformance fixtures.
 - [x] P5.2 Portable byte decoder/interpreter, precise stops and memory integration.
 - [x] P5.3 Versioned deterministic instruction traces, replay and mutation tests.
-- [ ] P5.4 Windows/Linux Debug/Release gates, sanitizer checks and acceptance audit.
+- [x] P5.4 Windows/Linux Debug/Release gates, sanitizer checks and acceptance audit.
 
 VERIFIED reconnaissance: execution was an INTERFACE-only CMake target, with no
 interpreter implementation or consumers. Core guest_memory provides bounded
@@ -52,7 +52,62 @@ VERIFIED: trace tests now mutate every wire byte/bit and require exact round-tri
 for accepted records or unchanged output on rejection. Populated trace-capacity
 exhaustion stops before the next instruction. Trace tests pass ASan/UBSan with
 NDEBUG. Final cross-host trace comparison, repetitions and graphics regressions
-remain before closure; no hosted run is inferred from these local results.
+remained before closure; final evidence follows. No hosted run is inferred from
+these local results. Oracle hardening commit: `3b45e0b`.
+
+### Phase 5 acceptance audit and closure
+
+VERIFIED on 2026-09-09 for implementation `7dc8482` plus hardening `3b45e0b`:
+
+| Requirement | Executed evidence |
+|---|---|
+| P5.1 State and contract | Canonical CPU/stop/trace types; independent bit-serial flags oracle; 45,494 conformance checks active in Release; documented supported encodings and unknown state |
+| P5.2 Interpreter | Real guest-byte fetch/decode; 32/64-bit scalar operations, REX/registers/addressing, all Jcc conditions, stack/call/return; truncated fetch, unknown flags, permissions, partial backing failure and no-mutation boundary tests |
+| P5.3 Trace oracle | Real runtime-backed synthetic program; all 19 records match hand-calculated full modeled state and writes; fresh owners, bounded resume and trace-capacity stop; fixed 362-byte little-endian codec with independent golden and every-byte/bit mutation checks |
+| P5.4 Acceptance | Eight local preset gates below, native arithmetic comparison, repeated tests, cross-host complete trace comparison, ASan/UBSan and independent implementation/test review |
+
+| Local host/configuration | Base preset | Graphics-enabled preset |
+|---|---|---|
+| Windows x64 MSVC Debug | 62/62 passed | 66/66 passed |
+| Windows x64 MSVC Release | 62/62 passed | 66/66 passed |
+| WSL Ubuntu x64 GCC Debug | 63/63 passed | 67/67 passed |
+| WSL Ubuntu x64 GCC Release | 63/63 passed | 67/67 passed |
+
+All eight saved JUnit reports contain zero failures and zero disabled tests.
+The one additional Linux test is the native x64 oracle: 17,080 cases and 136,641
+checks in each configuration. The observed WSL host reports Intel Core Ultra 9
+285K, 48-bit virtual addresses; this is not a PS5 CPU or AMD hardware comparison.
+Only architecturally defined arithmetic flags are compared to native execution;
+logic AF is explicitly unknown. Static assembly is confined to the test target.
+
+All execution-labeled Debug tests passed five repetitions per host (20 Windows
+and 25 Linux executions). Complete emitted instruction traces from the four base
+builds were directly compared equal: 19 records, 6,878 wire bytes, represented as
+13,761 characters including the PXI1 transcript prefix. This is actual modeled
+state/write trace equality, not merely equality of success summaries. Conformance
+and trace tests separately passed GCC ASan/UBSan with NDEBUG. Review found no
+remaining blocking issue after trace validation and boundary-test improvements.
+
+Limits and next boundary:
+
+- VERIFIED: the interpreter is an oracle only for its documented scalar subset
+  and defined modeled state. SIMD/x87, byte/word operations, omitted encodings,
+  paging/NX, guest exceptions, syscalls/ABI, scheduling and full architectural
+  state are not implemented. Unsupported is a stop, never successful emulation.
+- VERIFIED: breakpoint/syscall results are pre-execution handoffs, not hardware
+  trap delivery. Backing write failure can leave memory uncertain despite unchanged
+  CPU state. No rollback or retry safety is inferred for such a failure.
+- UNKNOWN: PS5/game accuracy, full ISA compatibility, AMD-specific behavior and
+  ARM64/Apple/Android acceptance. Source portability and x64 tests do not establish
+  support for those hosts. No performance or full hardware differential claim.
+- VERIFIED: no new dependency, legacy implementation change, proprietary fixture,
+  executable guest-memory capability or remote push. Existing CI will discover
+  the new tests through CMake, but no hosted execution was observed this turn.
+
+Next: Phase 6 direct-x64 containment and complete modeled exit/fault preservation.
+Before applying the oracle to instructions or state outside this subset, extend
+the state contract and conformance corpus; do not silently assume extended state
+is preserved. ARM64 JIT work remains gated on differential tests.
 
 ## Phase 4 acceptance tasks
 

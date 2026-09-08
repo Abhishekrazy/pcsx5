@@ -192,7 +192,7 @@ is approved by this decision. Bootstrap must not silently download tools.
 | 2 (complete) | Owned data memory, fault observation/forwarding, host workers and monotonic timing; Windows leaf implementations and UI-free contract tests. Closure evidence and exclusions in REBUILD_STATUS.md |
 | 3 (complete) | Portable core and Linux runtime; equivalent headless tests on both hosts. Requirement-by-requirement evidence and limits in REBUILD_STATUS.md |
 | 4 (complete) | Graphics HAL and Vulkan; isolated synthetic rendering/replay tests. Offscreen acceptance evidence and platform limits in REBUILD_STATUS.md |
-| 5 | Reference interpreter and deterministic state/trace oracle |
+| 5 (complete within scalar scope) | Reference interpreter and deterministic state/trace oracle; supported encodings above, acceptance evidence and exclusions in REBUILD_STATUS.md |
 | 6 | Direct-x64 containment, complete exit/fault state tests; measured optional x64 JIT decision |
 | 7 | ARM64 JIT; interpreter differential tests and W^X/cache experiments |
 | 8 | macOS/Apple Silicon runtime plus MoltenVK acceptance |
