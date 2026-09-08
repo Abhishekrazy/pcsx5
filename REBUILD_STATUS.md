@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Runtime contracts and Windows leaf implementation: NEXT, not started.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Runtime contracts and Windows leaf implementation: IN PROGRESS.**
 
 ## Phase 1 task checkpoints
 
@@ -196,7 +196,7 @@ merges, releases and semantic legacy fixes remain unapproved.
 
 - [x] P2.1 Portable host geometry and reservation-relative page-range validation;
   exhaustive synthetic arithmetic tests and four local preset checks.
-- [ ] P2.2 Specify owned reservation lifetime, capability, state-transition and
+- [x] P2.2 Specify owned reservation lifetime, capability, state-transition and
   failure contracts; implement a Windows leaf with real reserve/commit/protect/
   decommit/release tests. Revalidate ranges against owned state on every operation.
 - [ ] P2.3 Exercise failure cleanup and ownership isolation, including requests
@@ -208,7 +208,37 @@ small-domain inputs, with additional overflow and compile-time geometry checks.
 Independent source review found no blocking issue. Hosted Phase 2 CI is UNKNOWN;
 this branch has not been pushed. No legacy source or dependency was changed.
 
-Next: P2.2. No native memory provider exists yet.
+### P2.2 owned Windows data memory
+
+VERIFIED on 2026-09-09:
+
+- The shared `memory.h` contract contains only portable types. A separate
+  `pcsx5_runtime_windows` target implements anonymous data reservations using
+  Windows APIs; core has no new include or link dependency.
+- The lifecycle test first compiled but failed to link on the two missing
+  provider functions, then passed with the real provider connected. No success
+  stub or new testing dependency was introduced.
+- Real native queries verify reserve/commit/protect/decommit state and normalized
+  permissions. Synthetic tests cover zero initialization, cross-page copy,
+  no partial copy on denied access, mixed-state rejection without mutation,
+  invalid enums/ranges, overflow-sized reservation rejection, zero-on-recommit,
+  independent owners, explicit repeated release and closed-object rejection.
+- Windows MSVC Debug and Release each build and pass **44/44 CTests**; Linux WSL
+  GCC Debug and Release each build the shared interface and pass **43/43 CTests**.
+  Linux does not link or execute a memory provider. No compiler warnings observed.
+- Windows Debug lifecycle test additionally passes ten consecutive repetitions.
+  Independent read-only implementation/test review found no blocking issue.
+- No legacy implementation or project dependency changed. Diff whitespace checks
+  pass. This checkpoint is local only; no push, merge or release was performed.
+
+UNKNOWN/pending P2.3: injected native allocation/protection/release failures,
+direct native observation of automatic cleanup, destructor failure subprocess
+coverage and hosted CI. The current destructor release path is exercised but
+its native cleanup effect is not independently observed. The API requires external
+serialization and valid copy buffers; it does not catch host faults or isolate
+untrusted execution. No emulator-supported-platform claim follows.
+
+Next: P2.3 failure cleanup and ownership-isolation evidence.
 Fault routing, threads, timing and cross-host runtime acceptance remain subsequent
 Phase 2 work, not completed by this arithmetic contract.
 

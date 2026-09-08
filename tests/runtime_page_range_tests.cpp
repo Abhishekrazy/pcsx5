@@ -1,4 +1,5 @@
 #include <pcsx5/runtime/page_range.h>
+#include <pcsx5/runtime/memory.h>
 
 #include <cstdint>
 #include <cstdio>

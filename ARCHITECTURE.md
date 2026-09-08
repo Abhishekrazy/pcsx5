@@ -137,9 +137,25 @@ each request against its own live reservation and geometry, then check native
 integer representability and current page state. Passing arithmetic checks does
 not authorize access to arbitrary host memory. Core has no runtime dependency.
 
-The next increment must specify an owned reservation's release/failure semantics
-before implementing a Windows leaf. Native pointers, guest mappings, executable
-permissions, fault handling and concurrency are deliberately absent here.
+The owned reservation contract is `runtime/include/pcsx5/runtime/memory.h`.
+Runtime owns the provider; current consumers are synthetic lifecycle tests,
+with future execution adapters requiring a separately reviewed extension.
+All consumers share the C++ build; breaking changes require updating this header,
+provider and tests together. The project owner approves architectural expansion.
+Reservations are uniquely owned and accept offsets, never host addresses.
+Data-only permissions are none/read-only/read-write, with no executable capability.
+Commit requires reserved pages; protect/decommit require committed pages. Full
+validation precedes mutation or copy. Queries inspect real host state, not a
+parallel bookkeeping model. Explicit release is idempotent and retains ownership
+on failure; destruction attempts release and terminates on failure rather than
+silently losing a live mapping. Callers must externally serialize operations and
+provide valid copy buffers. This is neither a fault handler nor process isolation.
+Windows allocation/protection APIs stay in the leaf implementation. Native failure
+does not promise rollback: inspect actual state before retry. No native pointer
+escape, fixed-address mapping, executable permissions or concurrency is provided.
+References: [VirtualAlloc](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc),
+[VirtualFree](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualfree),
+[VirtualProtect](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect).
 Legacy reserve/commit tests inform lifecycle coverage, not the new ownership API.
 
 ### Phase 1 build/CI contract
