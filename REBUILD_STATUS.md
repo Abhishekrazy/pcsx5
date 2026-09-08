@@ -8,9 +8,9 @@
 
 - [x] Make the regular-commit rule explicit in `AGENTS.md`: commit verified task boundaries and buildable increments, review exact staged paths, and report checkpoint hashes. VERIFIED: documentation diff reviewed; no runtime change.
 - [x] P1.1 Implement clean Windows/Linux x64 Debug/Release CI and strict headless presets; local checks below passed. Hosted execution is separately gated by P1.5.
-- [ ] P1.2 Verify fresh-worktree entry points and finish local Codex setup.
+- [x] P1.2 Verify fresh-worktree entry points and finish local Codex setup (saved configuration and manual command execution; automatic app-triggered execution remains unobserved).
   - [x] Fresh Windows/Linux Debug/Release configure, build and test entry points.
-  - [ ] Save and review the Windows-only Codex setup override; leave cleanup empty.
+  - [x] Save and review the Windows-only Codex setup override; leave cleanup empty.
 - [ ] P1.3 Enforce core include/link boundaries with positive and negative tests.
 - [ ] P1.4 Extend portable core tests beyond the scaffold smoke test.
 - [ ] P1.5 Record actual hosted CI matrix results before phase closure.
@@ -28,7 +28,7 @@ Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundatio
 - Historical P1.1 limit: Ubuntu initially lacked CMake/Ninja, so Linux preset execution was UNKNOWN at that checkpoint. P1.2 below supersedes this local limitation. Hosted Windows/Linux workflow results remain UNKNOWN; nothing has been pushed or dispatched.
 - VERIFIED: local diff/whitespace review passed. Commit rule checkpoint: `63a7969`. The unfinished `.codex/` environment file remains excluded.
 
-### P1.2 fresh-worktree verification (Codex configuration pending)
+### P1.2 fresh-worktree verification and saved Codex configuration
 
 VERIFIED on 2026-09-08:
 
@@ -40,7 +40,9 @@ VERIFIED on 2026-09-08:
 - All four JUnit reports record two tests and zero failures. Compile-command inspection finds only `core/src/version.cpp` and `tests/core_smoke.cpp`; caches point to the fresh source root and their intended compiler/build type. The fresh worktree has no tracked or untracked changes visible to `git status --short`.
 - Build logs remain under the ignored `out/verification/p1-2 fresh/out/build/<preset>/` directories. The verification worktree is retained locally; no user source was deleted.
 
-Pending: the environment editor currently saves `cmd /d /c bootstrap-windows.cmd` in both default setup and cleanup, with no Windows override. This would apply a Windows-only command across hosts and unnecessarily rebuild during cleanup. The generated file is excluded from the checkpoint until corrected through the editor. Automatic setup triggered by Codex worktree creation remains UNKNOWN; manual execution of the command is verified. No hosted CI or emulator-platform support claim follows from these scaffold tests.
+VERIFIED: the user corrected and saved `.codex/environments/environment.toml` through the environment editor. Standard-library TOML parsing confirms an empty default setup, `setup.win32.script` equal to `cmd /d /c bootstrap-windows.cmd`, and no cleanup, actions or secret values. The Windows command was rerun manually from the verification worktree and passed **2/2 CTests**. The reviewed environment configuration is included in this checkpoint; the earlier build-evidence checkpoint is `e44034d`.
+
+Remaining limits: automatic setup triggered by Codex worktree creation remains UNKNOWN; saved configuration and manual execution of its command are verified. Non-Windows automatic setup is intentionally unconfigured; Linux configure/build/test entry points are verified above. No hosted CI or emulator-platform support claim follows from these scaffold tests.
 
 ## Phase 0 closure record
 
@@ -146,11 +148,11 @@ These findings disqualify mechanical copying of the legacy runtime. They neither
 
 - VERIFIED: fresh Windows MSVC and WSL Ubuntu GCC Debug/Release builds pass the smoke and preset-contract tests; see P1.2 above.
 - VERIFIED: native process launch previously stalled in the sandbox; approved outside-sandbox characterization works. The runner rejects negative and positive failure codes.
-- VERIFIED: the local generated environment contains a default Windows command and the same cleanup command; it remains uncommitted pending correction. Configure only Windows setup as `cmd /d /c bootstrap-windows.cmd`, with default setup and cleanup empty, through the Codex environment editor.
+- VERIFIED: the editor-generated environment now configures only Windows setup as `cmd /d /c bootstrap-windows.cmd`, with default setup empty and no cleanup command. TOML structure and manual execution passed; see P1.2 above.
 - VERIFIED: `.github/workflows/ci.yml` has been replaced locally with clean build-and-test jobs. The remote workflow is unchanged until an authorized push; do not treat remote legacy packaging as rebuild release evidence.
 - UNKNOWN: hosted Windows/Linux CI results and automatic Codex worktree setup. New worktrees must include the Phase 1 commits; the local WSL builds do not establish hosted runner success.
 
-Next: finish the P1.2 Codex editor configuration, then P1.3 include/link boundary enforcement, useful portable core tests and actual hosted CI evidence. The approved Ubuntu tool installation is complete; additional dependency installations and remote pushes still require user approval. No semantic legacy fix is approved by this handoff.
+Next: P1.3 include/link boundary enforcement, followed by useful portable core tests and actual hosted CI evidence. The approved Ubuntu tool installation is complete; additional dependency installations and remote pushes still require user approval. No semantic legacy fix is approved by this handoff.
 
 ## Phase 0 integrated verification (before Phase 1)
 
