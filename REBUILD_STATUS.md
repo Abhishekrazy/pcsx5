@@ -189,7 +189,28 @@ These findings disqualify mechanical copying of the legacy runtime. They neither
 - VERIFIED: the clean workflow is published on `codex/phase-1-build-foundation` and its corrected hosted matrix passed. This branch has not been merged into `main`; no package or release was published.
 - UNKNOWN: automatic Codex worktree setup. New worktrees must include the Phase 1 commits. Hosted runner evidence is recorded separately from local WSL results above.
 
-Next: Phase 2, beginning with narrow host-memory ownership/capability/failure contracts and synthetic contract tests, then a Windows leaf implementation. No Phase 2 implementation has started. Additional dependencies, merges, releases and semantic legacy fixes remain unapproved.
+Phase 2 has started on `codex/phase-2-memory-runtime`. Additional dependencies,
+merges, releases and semantic legacy fixes remain unapproved.
+
+### Phase 2 memory milestone tasks
+
+- [x] P2.1 Portable host geometry and reservation-relative page-range validation;
+  exhaustive synthetic arithmetic tests and four local preset checks.
+- [ ] P2.2 Specify owned reservation lifetime, capability, state-transition and
+  failure contracts; implement a Windows leaf with real reserve/commit/protect/
+  decommit/release tests. Revalidate ranges against owned state on every operation.
+- [ ] P2.3 Exercise failure cleanup and ownership isolation, including requests
+  outside owned reservations. Record hosted CI evidence before closing milestone.
+
+VERIFIED on 2026-09-08: all four local Windows MSVC/Linux WSL GCC Debug/Release
+presets build and pass 43/43 tests each. The new runtime test enumerates 443,784
+small-domain inputs, with additional overflow and compile-time geometry checks.
+Independent source review found no blocking issue. Hosted Phase 2 CI is UNKNOWN;
+this branch has not been pushed. No legacy source or dependency was changed.
+
+Next: P2.2. No native memory provider exists yet.
+Fault routing, threads, timing and cross-host runtime acceptance remain subsequent
+Phase 2 work, not completed by this arithmetic contract.
 
 ## Phase 0 integrated verification (before Phase 1)
 

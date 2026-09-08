@@ -45,3 +45,9 @@ add_test(NAME pcsx5_guest_range_repeatability COMMAND "${CMAKE_COMMAND}"
     "-DRANGE_TEST=$<TARGET_FILE:pcsx5_guest_address_range>"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/guest_range_repeatability.cmake")
 set_tests_properties(pcsx5_guest_range_repeatability PROPERTIES TIMEOUT 30 LABELS core)
+
+add_executable(pcsx5_runtime_page_range runtime_page_range_tests.cpp)
+target_link_libraries(pcsx5_runtime_page_range PRIVATE pcsx5_runtime)
+pcsx5_enable_warnings(pcsx5_runtime_page_range)
+add_test(NAME pcsx5_runtime_page_range COMMAND pcsx5_runtime_page_range)
+set_tests_properties(pcsx5_runtime_page_range PROPERTIES TIMEOUT 30 LABELS runtime)

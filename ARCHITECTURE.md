@@ -121,6 +121,27 @@ Phase 1 task order (complete; hosted closure evidence and limits in `REBUILD_STA
 4. Add useful portable core tests beyond the current architecture-name smoke test. Require no-tests-as-error and reproducible CTest output.
 5. Record real CI results before calling the build matrix verified. Runtime/platform support still requires the later acceptance gates.
 
+### Phase 2 memory boundary (first increment)
+
+Decision: host page geometry and reservation-relative page ranges live in the
+runtime public headers, not in core. `memory_geometry` accepts nonzero page size
+and a nonzero reservation alignment divisible by that size. No power-of-two or
+4 KiB assumption is required. A provider must obtain actual host geometry; these
+values do not establish guest page size or host support.
+
+`page_range` validates a nonempty, page-aligned offset and count inside a nonempty,
+page-aligned reservation byte count. Invalid input returns an empty optional;
+validation neither rounds nor allocates. Subtraction-based containment avoids
+overflow. This value is NOT an ownership token: a future provider must revalidate
+each request against its own live reservation and geometry, then check native
+integer representability and current page state. Passing arithmetic checks does
+not authorize access to arbitrary host memory. Core has no runtime dependency.
+
+The next increment must specify an owned reservation's release/failure semantics
+before implementing a Windows leaf. Native pointers, guest mappings, executable
+permissions, fault handling and concurrency are deliberately absent here.
+Legacy reserve/commit tests inform lifecycle coverage, not the new ownership API.
+
 ### Phase 1 build/CI contract
 
 - Four Ninja presets isolate Windows x64 MSVC and Linux x64 GCC Debug/Release outputs. Configuration is selected at configure time, not by passing multiple configurations to a single-config build.
