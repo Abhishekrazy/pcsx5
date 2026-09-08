@@ -1,6 +1,7 @@
 #include <pcsx5/runtime/memory.h>
 
 #include "windows_memory_api.h"
+#include "windows_fault.h"
 
 #include <cstring>
 #include <exception>
@@ -153,6 +154,28 @@ public:
 
     [[nodiscard]] memory_result<void> release() noexcept override { return close(); }
 
+    [[nodiscard]] fault_observation observe(const EXCEPTION_RECORD& record) const noexcept {
+        if (base_ == nullptr) return {fault_route::unowned, {}};
+        const bool in_page = record.ExceptionCode == EXCEPTION_IN_PAGE_ERROR;
+        if ((!in_page && record.ExceptionCode != EXCEPTION_ACCESS_VIOLATION) ||
+            record.NumberParameters < (in_page ? 3u : 2u) ||
+            record.NumberParameters > EXCEPTION_MAXIMUM_PARAMETERS)
+            return {fault_route::unsupported, {}};
+        fault_access access{};
+        switch (record.ExceptionInformation[0]) {
+        case 0: access = fault_access::read; break;
+        case 1: access = fault_access::write; break;
+        case 8: access = fault_access::execute; break;
+        default: return {fault_route::unsupported, {}};
+        }
+        const auto address_value = record.ExceptionInformation[1];
+        const auto base_value = reinterpret_cast<ULONG_PTR>(base_);
+        if (address_value < base_value || address_value - base_value >= size_)
+            return {fault_route::unowned, {}};
+        return {fault_route::owned_memory, make_fault_record(size_, address_value - base_value,
+            access, in_page ? fault_cause::backing_store_error : fault_cause::access_violation)};
+    }
+
 private:
     [[nodiscard]] std::byte* address(std::uint64_t offset) const noexcept {
         // Factory bounds the entire reservation to SIZE_T and ptrdiff_t.
@@ -214,6 +237,19 @@ private:
 };
 
 } // namespace
+
+fault_observation detail::observe_windows_fault(const memory_reservation& owner,
+    const EXCEPTION_RECORD& record) noexcept {
+    const auto* native_owner = dynamic_cast<const windows_reservation*>(&owner);
+    if (native_owner == nullptr) return {fault_route::unsupported, {}};
+    return native_owner->observe(record);
+}
+
+LONG detail::windows_fault_filter(const memory_reservation& owner,
+    const EXCEPTION_RECORD& record, fault_observation& output) noexcept {
+    output = observe_windows_fault(owner, record);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 
 memory_result<memory_geometry> windows_memory_geometry() noexcept {
     SYSTEM_INFO information{};

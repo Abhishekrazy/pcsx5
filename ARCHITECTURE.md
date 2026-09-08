@@ -168,6 +168,47 @@ failure evidence proves adapter response, not reproduction of actual OS resource
 exhaustion. A subprocess must distinguish the specified destructor termination
 path from arbitrary crashes. Public ownership semantics remain unchanged.
 
+### Phase 2 fault observation contract
+
+`fault.h` carries region-relative offset, read/write/execute access and normalized
+memory-fault cause. Only a live Windows reservation establishes ownership; native
+address conversion stays in its private adapter. Closed/unrelated reservations
+are unowned. Unknown exception kinds and malformed native records are unsupported.
+The private SEH filter records the observation and always continues host search;
+it never commits, resumes, installs process-global handlers, changes native context
+or invokes guest code. Callers keep the reservation alive and exclude mutation
+during observation. The current consumer is the synthetic Windows test; later
+execution adapters must add their own reviewed lifetime and recovery contract.
+
+Breakpoint/syscall recognition, guest instruction location, automatic demand
+commit and guest recovery are NOT inferred from a host address or exception code.
+They remain execution/guest policy work. Real read/write faults are caught only
+by an outer test-owned SEH handler, verifying that the production filter leaves
+both owned and unrelated faults unhandled. Synthetic records cover execute and
+backing-store errors without running generated code or inducing storage failures.
+References: [Windows exception records](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record)
+and [SEH filter dispositions](https://learn.microsoft.com/en-us/cpp/cpp/try-except-statement).
+
+### Phase 2 worker and timing contracts
+
+`worker.h` defines a uniquely owned host worker. Start rejects null callbacks;
+join publishes callback completion, distinguishes returned/throwing callbacks,
+rejects self-join, and is idempotent. Destruction joins or terminates on failure;
+no detach, cancellation, guest TLS or native thread IDs are exposed. Operations
+and destruction are externally serialized; callback context outlives completion.
+The Windows leaf uses the existing C++ standard library thread facility. Private
+per-owner launch/join seams provide deterministic failure tests, not a mock-only
+production path. Throwing C++ callbacks are normalized; native faults are not.
+
+`timing.h` defines ticks, checked nonzero frequency and elapsed nanoseconds.
+Conversion is exact integer floor with reversed intervals and overflow rejected;
+full uint64 frequencies are supported without overflowing intermediate products.
+The Windows leaf reads QueryPerformanceCounter/Frequency and rejects failure or
+invalid signed values. Stamps must come from the same source/boot; these are host
+measurements, not wall time or guest timing accuracy. Synthetic conversion tests
+are independent of real clock tests, which require nondecreasing observations
+without minimum elapsed-time or resolution assumptions. No native types are public.
+
 ### Phase 1 build/CI contract
 
 - Four Ninja presets isolate Windows x64 MSVC and Linux x64 GCC Debug/Release outputs. Configuration is selected at configure time, not by passing multiple configurations to a single-config build.
