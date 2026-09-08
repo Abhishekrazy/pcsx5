@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phases 0–6: COMPLETE within their documented acceptance scopes and exclusions below. Phase 7 — ARM64 translation and code-cache bring-up: IN PROGRESS. No PS5/game or general supported-platform claim.**
+**Phases 0–7: COMPLETE within their documented acceptance scopes and exclusions below. Phase 8 — macOS/Apple Silicon runtime and MoltenVK: BLOCKED on hardware/toolchain access. No PS5/game or general supported-platform claim.**
 
 ## Phase 7 acceptance tasks
 
@@ -27,19 +27,45 @@ Reproduce with `tools/test-android-arm64.ps1 -NdkRoot <existing Windows NDK>
 requires no installation, and reports its unique retained device test directory.
 It builds Release-active tests and fails on each build/transfer/execution error.
 
-Remaining before phase closure: Release regression results, sanitizer and final
-repeatability/scope checks. No Apple, Windows ARM64, Android application-sandbox,
-persistent-code-cache, SIMD or complete emulator support is established.
+VERIFIED closure: Windows Debug/Release each pass 72/72 and WSL Linux
+Debug/Release each pass 73/73. GCC ASan/UBSan with NDEBUG passes all 5,183 portable
+code-generator checks with no diagnostics. The final physical ARM64 suite passes
+three additional consecutive runs, including the ABI corruption control and
+hybrid/failure boundaries. Implementation checkpoint: `1d670ba`.
+No Apple, Windows ARM64, Android application-sandbox, persistent-code-cache, SIMD
+or complete emulator support is established. Graphics-enabled presets were not
+rerun for this execution-only checkpoint; prior graphics evidence is historical.
+Native allocation/protection/release failure injection and Android 16-KiB pages
+remain untested. The trusted-code API does not catch native crashes or sandbox
+hostile code. Phase 7 is bounded scalar bring-up, not a full x86-64 recompiler.
 
-- [ ] P7.1 Portable scalar lowering contract and bounded ARM64 code generation;
+- [x] P7.1 Portable scalar lowering contract and bounded ARM64 code generation;
   unsupported guest instructions remain explicit interpreter work, never native no-ops.
-- [ ] P7.2 Owned immutable W^X code cache, host page-size/cache synchronization,
+- [x] P7.2 Owned immutable W^X code cache, host page-size/cache synchronization,
   and physical ARM64 execution experiment without exposing executable host pointers.
-- [ ] P7.3 Physical ARM64 full modeled-state differential tests for compiled
+- [x] P7.3 Physical ARM64 full modeled-state differential tests for compiled
   instructions, explicit unsupported/fallback boundaries and malformed codegen tests.
-- [ ] P7.4 Repeatability, cleanup/ABI checks, Windows/Linux portable regression
+- [x] P7.4 Repeatability, cleanup/ABI checks, Windows/Linux portable regression
   matrix and scope/limitations audit. Apple/Windows ARM64 acceptance is not inferred
   from Android hardware results.
+
+## Phase 8 acceptance tasks — hardware access blocked
+
+- [ ] P8.1 Establish an authorized Apple Silicon build/test host, existing Apple
+  toolchain and approved MoltenVK dependency; record OS/SDK/device versions.
+- [ ] P8.2 Implement Darwin runtime leaves behind the portable contracts and run
+  actual memory/worker/timing/cleanup tests. Linux personality APIs are not Darwin.
+- [ ] P8.3 Establish the actual Apple executable-memory/JIT policy and run the
+  scalar differential/ABI corpus there, with explicit capability rejection.
+- [ ] P8.4 Run synthetic graphics acceptance through MoltenVK and measure gaps;
+  do not infer a native Metal requirement from compilation or vendor branding.
+- [ ] P8.5 Record combined runtime/execution/graphics results and remaining limits.
+
+UNKNOWN: Apple execution and graphics behavior in this project. The user reports
+only an Android ARM64 device; this workspace has no authorized Apple host.
+No new SDK/dependency installation, cloud purchase or remote access is assumed.
+Phase 9 Android application/runtime work remains separate from the Phase 7 shell
+experiment; it can proceed out of order if the user chooses to defer Phase 8.
 
 ## Phase 6 acceptance tasks
 
