@@ -17,5 +17,7 @@ cmake --build "$build" --parallel 2
 # Local ad-hoc development signature only; not notarization or distribution.
 codesign --force --sign - --options runtime --entitlements tools/macos-jit.entitlements \
     "$build/tests/pcsx5_arm64_execution"
+codesign --force --sign - --options runtime --entitlements tools/macos-jit.entitlements \
+    "$build/frontend/pcsx5"
 ctest --test-dir "$build" --output-on-failure --no-tests=error \
     --output-junit junit.xml --parallel 2

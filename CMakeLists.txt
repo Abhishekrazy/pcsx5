@@ -5,6 +5,9 @@ project(pcsx5_clean_rebuild VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+if(ANDROID)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 
 include(CTest)
 
@@ -35,3 +38,12 @@ add_custom_target(pcsx5_core_boundary_check
         -P "${CMAKE_SOURCE_DIR}/cmake/CheckCoreIncludes.cmake"
     VERBATIM)
 add_dependencies(pcsx5_core pcsx5_core_boundary_check)
+
+if(NOT ANDROID)
+    install(FILES LICENSE ARCHITECTURE.md REBUILD_STATUS.md DESTINATION share/pcsx5)
+    set(CPACK_GENERATOR ZIP)
+    set(CPACK_PACKAGE_NAME pcsx5-experimental)
+    set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+    set(CPACK_PACKAGE_FILE_NAME "pcsx5-experimental-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+    include(CPack)
+endif()

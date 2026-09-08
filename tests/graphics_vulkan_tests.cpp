@@ -49,7 +49,7 @@ void corpus(gfx::renderer& renderer) {
     check(caps.max_width >= 16 && caps.max_height >= 12 && caps.max_triangles >= 4,
           "synthetic corpus capabilities");
     image_is(renderer.render({extent, clear, {}}), extent,
-             [](auto, auto) { return clear; });
+             [clear](auto, auto) { return clear; });
     // Two opposite-winding triangles cover an integer-aligned rectangle. This
     // oracle uses rectangle membership, not the implementation's raster math.
     const std::array<gfx::triangle, 4> rectangles{{
@@ -98,7 +98,7 @@ void corpus(gfx::renderer& renderer) {
     }
     // Changed extent and clear prove there is no previous-frame pixel leakage.
     image_is(renderer.render({{3, 5}, second, {}}), {3, 5},
-             [](auto, auto) { return second; });
+             [second](auto, auto) { return second; });
     check(renderer.render({{0, 12}, clear, {}}) ==
           std::unexpected(gfx::graphics_error::invalid_extent), "zero extent rejected");
     const gfx::triangle invalid{{{{-1, 0}, {3, 0}, {0, 3}}}, first};
@@ -108,7 +108,7 @@ void corpus(gfx::renderer& renderer) {
     check(renderer.render({extent, clear, {&degenerate, 1}}) ==
           std::unexpected(gfx::graphics_error::invalid_command), "zero area rejected");
     image_is(renderer.render({extent, clear, {}}), extent,
-             [](auto, auto) { return clear; });
+             [clear](auto, auto) { return clear; });
     check(renderer.validation_errors() == 0, "no validation errors during rendering");
 }
 } // namespace
@@ -124,13 +124,17 @@ int main(int argc, char** argv) {
         return 0;
     }
     std::uint32_t device_index{};
+    bool require_validation=true;
     if (argc > 2) return 2;
     if (argc == 2) {
         const std::string_view argument{argv[1]};
-        const auto parsed = std::from_chars(argument.data(), argument.data() + argument.size(), device_index);
-        if (parsed.ec != std::errc{} || parsed.ptr != argument.data() + argument.size()) return 2;
+        if (argument=="--without-validation") require_validation=false;
+        else {
+            const auto parsed = std::from_chars(argument.data(), argument.data() + argument.size(), device_index);
+            if (parsed.ec != std::errc{} || parsed.ptr != argument.data() + argument.size()) return 2;
+        }
     }
-    auto unavailable = gfx::make_vulkan_renderer({true, std::numeric_limits<std::uint32_t>::max()});
+    auto unavailable = gfx::make_vulkan_renderer({require_validation, std::numeric_limits<std::uint32_t>::max()});
     check(unavailable == std::unexpected(gfx::graphics_error::unavailable),
           "invalid device index rejected as unavailable");
     {
@@ -141,15 +145,15 @@ int main(int argc, char** argv) {
         if (production) {
             constexpr gfx::rgba8 clear{23, 71, 149, 203};
             image_is((*production)->render({{5, 3}, clear, {}}), {5, 3},
-                     [](auto, auto) { return clear; });
+                     [clear](auto, auto) { return clear; });
             check((*production)->close().has_value(), "production default close");
         }
     }
     // Each fresh owner runs the corpus twice: independently initialized replay
     // and reuse must satisfy the same oracle, not merely equal each other.
     for (unsigned fresh = 0; fresh < 2; ++fresh) {
-        auto created = gfx::make_vulkan_renderer({true, device_index});
-        check(created.has_value(), "validation-required Vulkan creation");
+        auto created = gfx::make_vulkan_renderer({require_validation, device_index});
+        check(created.has_value(), "requested Vulkan mode creation");
         if (!created) {
             std::cerr << "factory error=" << static_cast<int>(created.error()) << '\n';
             continue;
@@ -165,6 +169,10 @@ int main(int argc, char** argv) {
     }
     // Only asserted semantic facts are emitted, never device names or raw handles.
     if (failures == 0) {
+        if (!require_validation) {
+            std::cout << "graphics-device-corpus fresh=2 repetitions=2 validation=DISABLED checks=" << checks << '\n';
+            return 0;
+        }
         std::cout << "graphics-replay-v1 default-factory=verified fresh=2 repetitions=2 clear=verified "
                      "rectangle=verified origin=verified shared-edge=verified draw-order=verified invalid=verified "
                      "close=verified validation-errors=0 checks=" << checks << '\n';

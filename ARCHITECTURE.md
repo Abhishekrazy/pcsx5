@@ -126,6 +126,33 @@ emission/execution, and image release does not unmap the arena. It uses the macO
 allow-jit / pthread_jit_write_protect_np policy, not the callback allowlist policy.
 Mac compilation, actual W^X behavior and the hardware corpus remain UNVERIFIED.
 
+The initial frontend is a bounded developer surface, not an ELF/game product:
+`frontend/session.h` owns one synthetic 4096-byte guest image and a maximum
+1,000,000-instruction run. It exposes scalar results, typed stops and the actual
+translated/interpreted retirement counts. The CLI supports help, version,
+self-test and authored raw-byte inputs. The Android Java shell calls the same
+session through JNI on an owned executor and ignores UI completion after activity
+destruction. No network/storage permissions, automatic guest host syscalls or
+firmware/game import are enabled. Mobile lifecycle/native crashes still need
+physical app tests; the bounded runner is not a security sandbox claim.
+
+Developer packaging includes the project license; Android also includes installed
+NDK notices for its statically linked runtime. These artifacts remain local, with
+no release approval, redistribution/license certification, store submission,
+production signing or notarization. Android uses a disposable per-build signing
+identity: a prior installation with another certificate cannot be upgraded using
+`adb install -r`; do not automatically uninstall or delete its data to work around
+that restriction. Desktop packages currently require their host runtime libraries.
+
+### Phase 10 Metal decision record
+
+Decision: DEFER native Metal, retaining Vulkan/MoltenVK. Evidence is absent, not
+evidence of a performance or correctness gap. Revisit only after Apple runtime,
+scalar and graphics corpus results are collected, then measure relevant failures
+or bottlenecks with OS/GPU/SDK versions and identical authored workloads. The
+decision gate remains incomplete until those measurements exist. No native Metal
+backend or blanket graphics-capability equivalence is asserted.
+
 ### Phase 7 ARM64 bring-up contract
 
 `execution/arm64_jit.h` defines a bounded register-only scalar lowering IR and

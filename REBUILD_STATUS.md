@@ -88,19 +88,50 @@ running Mac tests later. This does not establish Apple acceptance.
 
 ## Remaining task list (defined before implementation)
 
-- [ ] P9.1 Android runtime memory/worker/timing and root CMake cross-build.
+- [x] P9.1 Android runtime memory/worker/timing and root CMake cross-build.
 - [ ] P9.2 Synthetic application-sandbox execution and lifecycle shell; explicit
   JIT capability/failure reporting, no retail code or blanket device permissions.
 - [ ] P9.3 Physical-device runtime/graphics/app lifecycle acceptance and cleanup.
 - [ ] P10.1 Record measured native Metal go/no-go. DEFERRED without Mac data;
   native Metal is not implemented solely to fill the phase checkbox.
-- [ ] P11.1 Frontend-facing bounded synthetic execution entry point and tests.
-- [ ] P11.2 Developer CLI/Android shell and reproducible experimental packaging.
+- [x] P11.1 Frontend-facing bounded synthetic execution entry point and tests.
+- [x] P11.2 Developer CLI/Android shell and reproducible experimental packaging.
 - [ ] P11.3 Platform acceptance report, packaging checks and release exclusions.
 
 The existing roadmap ends at Phase 11. No invented later phases or game-support
 claims are implied by this task list. Production UI, signing/notarization and
 release compatibility cannot be certified by developer-shell checks.
+
+### Remaining-platform delivery checkpoint (2026-09-09)
+
+VERIFIED: runtime preparation committed in `80629c3`. Android root CMake build
+and standalone memory/services/code-cache/ARM64/Vulkan test builds succeed using
+the installed NDK. The graphics cross-build found four missing explicit captures
+in existing test lambdas; these are corrected. Its optional diagnostics-disabled
+mode is separately labelled and is NOT validation-layer acceptance.
+
+VERIFIED: frontend bounds, instruction budget, typed syscall stop and provider
+failure tests pass, including ASan/UBSan. Windows Release passes 76/76; Linux
+Vulkan Release passes 83/83. After the final test capture/mode change, Linux's
+five graphics tests pass again, plus the 4,787-check diagnostics-disabled corpus.
+The installed Windows compiler changed during work (Community reported incomplete;
+Build Tools became the selected complete instance). Reconfiguration and the final
+76/76 run succeeded; no installer or reboot was initiated by this task.
+
+VERIFIED: Windows/Linux developer ZIPs build, contain only the CLI, project
+license and authoritative project documents, and their freshly extracted CLI
+self-tests pass. Android Java/JNI APK builds using installed SDK build-tools
+36.0.0, SDK platform 37.0 and JDK 21.0.11, targets API 36/minimum 26/arm64-v8a,
+and passes v2/v3 signature verification. It includes project/NDK notices and
+requests no device permissions. It is development-signed and NOT installed.
+Native runtime/device execution is NOT inferred from APK packaging.
+
+Pending: Apple C++ compile/run/signing/MoltenVK corpus; reconnect Android for the
+new runtime/graphics corpus and app launch/rotation/background/repeat tests;
+physical 16-KiB-page device coverage; measured Metal decision; complete product
+frontends, game/ELF support and production release gates. The simple app is an
+experimental diagnostic frontend, not completion of the original product scope.
+Phases 8, 9, 10 and 11 therefore remain incomplete rather than being relabelled.
 
 ## Phase 6 acceptance tasks
 
