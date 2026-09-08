@@ -16,50 +16,12 @@ updater packages uploaded by hand (see the packaging item).
 
 ---
 
+Completed and partially completed entries live in
+[docs/COMPLETED_TASKS.md](docs/COMPLETED_TASKS.md). Falsified entries stay
+here on purpose: they record what was disproved and are what stops a future
+session re-running a dead end (Rule 13).
+
 ## Open - shell and launcher
-
-- [x] **Release zip was 345 MB; now 78 MB** (2026-09-06). Two causes: the
-  zip step packed `dist\*` wholesale, and running the app from dist had left
-  88 MB of decoded-audio cache, a 55 MB stray rar, crash dumps, logs, .work
-  and the user's own config/favourites/recent-plays in it (a privacy leak as
-  much as a size problem); and the self-contained single-file exe was
-  published uncompressed (186 MB). Now: `EnableCompressionInSingleFile`
-  (exe 78 MB) and the zip is built from an allowlist staged into
-  `.work/release_stage` (exe, CLI, core DLL, bink2, README, VERSION, plugins,
-  tools, assets, lang; *.log/*.pdb/*.dmp stripped). v0.1.1's asset replaced.
-  Remaining bulk is the .NET 9 + WPF runtime, and WinForms assemblies pulled
-  in by NAudio (~23 MB raw) - a framework-dependent build would be ~10 MB but
-  needs the runtime installed; not changed.
-
-- [x] **Update prompt and manual check** (2026-09-06, user request). At
-  startup and from System Information > Check for updates: an overlay
-  "PCSX5 X is available, you have Y" with Download & install (Squirrel
-  installs: download + apply with a progress bar, then Restart now), or Open
-  download page (zip copies, via the GitHub releases API), Skip this version
-  (ui.skipped_update_version; only a newer release asks again) and Later.
-  `UpdateChecker.cs` owns the checks (Rule 11); pad: Cross/Square/Circle with
-  hints.update; 14 keys in eleven locales. Seen:
-  artifacts/runtime/SHELL_20260906_232913/frames/frame_0001.png.
-
-- [x] **2D controller art removed** (2026-09-06, user request): the 3D pad
-  is the only visualizer, so the VSCView/Gamepad-Asset-Pack sprites, layout
-  code (~370 lines of InputTabView), `ControllerVisualizer.xaml` and the
-  csproj content are gone; credits now name the 3D model's author
-  (AHarmlessPotato, CC-BY-4.0) in the README and the in-app credits string.
-
-- [~] **Release packaging: Squirrel assets are built by hand; make it a
-  script.** `Squirrel.exe pack` from the NuGet cache
-  (clowd.squirrel/2.11.1/tools) with `--allowUnaware` produces RELEASES, the
-  full and delta nupkgs and pcsx5Setup.exe from the release stage; the
-  previous full nupkg must be in the release dir for the delta. Done for
-  v0.1.2 by hand (this session); a `-Squirrel` switch in build_release.ps1
-  is the remaining step. CI (ci.yml) builds the zip and the Inno installer on
-  a tag push; its v0.1.1 run failed on a red doc_links test at that commit. v0.1.0 shipped `pcsx5-0.1.0-full.nupkg` and a
-  Setup.exe that the in-app `Squirrel.UpdateManager` (MainWindow.xaml.cs:395)
-  reads; nothing in the repo produces them (build_and_package.ps1 only knows
-  Inno Setup, which is not installed here). Done means: a scripted, repeatable
-  way to build the Squirrel release assets, run for v0.1.1, and the release
-  updated.
 
 - [ ] **Input ownership while a game is embedded - decision needed.** The
   shell's pad tick keeps reading the DualSense through its in-process core
@@ -146,17 +108,6 @@ updater packages uploaded by hand (see the packaging item).
   strings and controls without `AutomationProperties.Name`. The rule is that
   no change adds to it; paying it down is a separate pass.
 
-- [x] **3D pad renderer swapped to Helix Toolkit (D3D11) for the normal map**
-  (2026-09-07, user decision; ADR-004). WPF's Viewport3D has no shader stage,
-  so the model's normal and roughness maps were unusable; the pad now renders
-  through HelixToolkit.SharpDX.Core.Wpf 2.27.3 (MIT, pinned) with base colour
-  + normal map and a plastic specular. Found on the way: Helix's PBR material
-  did not sample this model's albedo map (Phong path used instead), and Helix
-  drifts when a Transform3D is mutated in place (fresh MatrixTransform3D per
-  update). Textures now shipped unbaked plus *_normal and
-  *_metallicRoughness at 1024. Seen: artifacts/runtime/SHELL_20260907_023417
-  frames/frame_0002.png (embossed PS logo, speaker holes, creases).
-
 - [ ] **The stick deadzone setting reaches the shell but not the guest.**
   `input.deadzone` is now applied by the shell to its own stick use (radial,
   rescaled: navigation and the colour picker; 2026-09-07, user's pad drifts).
@@ -219,100 +170,11 @@ updater packages uploaded by hand (see the packaging item).
   guest genuinely never binds a target (measured: 54 registers set, none of
   them colour-target), so this is latent until a title does.
 
-- [x] **Retained targetless draws are all composited at the flip.** Done
-  2026-09-07 (commit 6d3b6ca). The retained-draw slot held one draw, so a 2D
-  title that builds each frame from many sprite draws -- none of which binds a
-  colour target -- kept only its last sprite per frame. The slot is now a
-  queue composited in submission order. Measured on PPSA02929 over 60 s:
-  draws executed 273 -> 1107, dropped 1338 -> 400 (83% -> 27% discarded),
-  unique frames 5 -> 16; a 25 s run classifies `progressing`. 52/52 ctest.
-  Audit: `docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md`.
-
-- [x] **Storage image bindings are computed.** Done 2026-09-07 (same commit).
-  `is_storage` was never set anywhere in the tree, so every image binding was
-  declared sampled and any shader writing an image was mistranslated -- even
-  though the Vulkan side already implemented storage usage, layout and
-  descriptors. `GcnRequiresStorageImage` supplies it, folded into the shader
-  cache key, with tests in `tests/shader_tests.cpp`.
-
 - [!] **FALSIFIED: untargeted *storage* draws were the cause of PPSA02929's
   frozen frame.** Measured 2026-09-07: the title has zero storage bindings and
   its colour-buffer registers are all zero. The discarded draws were ordinary
   sampled sprite draws. Kept so the storage branch is not re-proposed as this
   title's fix.
-
-- [x] **The AGC register-group type identifiers are restored.** Done
-  2026-09-07 (commit a25816e). The guest identifies a register-default group
-  by an SDK-supplied 32-bit id; we wrote the register space (always 0) there
-  instead, under a comment calling them "metadata only". Every group looked
-  alike, so the guest never emitted real register offsets for its
-  render-target block - which is why this title appeared never to bind a
-  colour target and why 83% of its draws were discarded by the targetless
-  composite heuristic. Restoring all 149 groups: draws executed 273 -> 1150,
-  dropped 1338 -> **0**, deferred composites 206 -> **0**, unique frames
-  5 -> 17 of 29. Audit:
-  `docs/audits/AUDIT-2026-09-07-black-screen-after-splash.md` section 9.
-
-- [x] **Render-target extent was transposed.** Done 2026-09-07 (same commit).
-  `CB_COLOR0_ATTRIB2` packs height low and width high;
-  `DecodeRenderTarget` had them swapped, so a 1280x720 surface decoded as
-  720x1280. Invisible until targets decoded, because the composite fallback
-  sized itself from the display buffer. The existing test encoded the wrong
-  order in its fixture and so agreed with the wrong decode; fixture corrected
-  and two runtime-observed cases added.
-
-- [x] **RESOLVED: the post-splash black screen.** Done 2026-09-07 (commit
-  99fedde). A draw sampling a guest address was always satisfied by uploading
-  that address from guest memory, but when the guest renders into a surface
-  the pixels exist only in the Vulkan image - guest memory there is never
-  written. PPSA02929's post-splash scene is a render-to-texture chain whose
-  final full-screen pass samples such a surface, so it painted black over a
-  frame we had otherwise drawn correctly. A sampled binding naming a live
-  render target now binds that target's image; render targets sit in
-  `VK_IMAGE_LAYOUT_GENERAL`, valid both as attachment and sampled source,
-  because Vulkan forbids a transition inside an active render pass.
-  60 s: status `frozen` -> **`progressing`**, unique frames 5 -> **29 of 29**,
-  longest freeze 38.3 s -> 6.1 s; 53/53 ctest. Baseline updated from
-  `PPSA02929_20260907_123027`. Audit:
-  `docs/audits/AUDIT-2026-09-07-render-target-sampling.md`.
-
-- [x] **RESOLVED: linear textures were read with the wrong row stride.**
-  Done 2026-09-07. Every image descriptor this title submits has an empty
-  pitch field, and the decoder substituted the surface width - which asserts
-  that rows are tight. Hardware pads each linear row to 256 bytes, so widths
-  already aligned (1280, 320) rendered correctly while unaligned ones (980,
-  250) sheared by one rows worth per row. The title logo dumped as noise
-  before and reads as "Dreaming Sarah" after. An absent pitch now decodes as
-  unspecified and the upload derives the padded stride where the element size
-  is known. 6 of 6 runs progressing with every frame unique; 54/54 ctest. One
-  existing assertion pinned the defect and was corrected. Audit:
-  `docs/audits/AUDIT-2026-09-07-linear-texture-row-stride.md`.
-
-- [x] **Vulkan validation runs, and three render-path violations are fixed.**
-  Done 2026-09-07. The Khronos layer was force-enabled through the loader with
-  synchronization validation. Fixed: a read-after-write hazard at
-  `vkCmdBeginRenderPass` (self-inflicted - moving render targets to GENERAL so
-  a pass can sample what it drew left the seeding barrier naming only shader
-  stages); storage buffers without NonWritable in both stages (the shaders
-  really can write, so `fragmentStoresAndAtomics` and
-  `vertexPipelineStoresAndAtomics` are now requested when supported); and
-  SPIR-V 1.5 emitted against a Vulkan 1.1 target environment (the instance now
-  requests 1.2, falling back to 1.1). 26 validation errors cleared to 0 on the
-  render path. 54/54 ctest, 6/6 runs progressing with 22/22 unique frames.
-  Audit: `docs/audits/AUDIT-2026-09-07-vulkan-validation.md`.
-
-- [x] **RESOLVED: presentation-loop synchronization.** Done 2026-09-07. Four
-  distinct defects, all verified against the validation layers: the acquire
-  ran before the fence wait so the acquire semaphore was reused with a wait
-  still pending; one shared done semaphore was re-signalled while a present
-  could still be waiting on it (now one per swapchain image, since
-  re-acquiring image i proves its wait completed); the letterbox clear and the
-  blit both wrote the swapchain image with no dependency between them; and the
-  acquire layout barrier used TOP_OF_PIPE while the semaphore is waited at
-  TRANSFER, in all three present paths. Separately the draw fence was reset
-  only when a batch was in flight, so the first submit passed a signalled
-  fence. Validation findings 33 to **0**, no new ones; 54/54 ctest.
-  Audit: `docs/audits/AUDIT-2026-09-07-presentation-synchronization.md`.
 
 - [ ] **Progression classification on this machine is noisy.** Measured back
   to back in one session: pre-fix 2/6 runs `progressing`, post-fix 9/12. The
@@ -328,42 +190,429 @@ updater packages uploaded by hand (see the packaging item).
   with zero `Validation Error` lines as the pass condition. Worth wiring into
   the runner so it is checked rather than remembered.
 
-- [x] **LOCALIZED: both remaining title-screen artifacts come from one pass.**
-  Done 2026-09-07. Captured every stage of the chain by presenting each render
-  target in turn. Source texture clean; intermediate 1 clean at two frames
-  (crisp, correctly proportioned logo); **intermediate 2 shows both the warp
-  and the top-region blocks**; intermediates 3 and the display carry them
-  forward unchanged. The pass graph shows `ps 0x215795900` is used exactly
-  once in the whole chain and is the draw that reads intermediate 1 and writes
-  intermediate 2. Every other title-screen pass is a plain textured quad. All
-  stages are 1280x720 R8G8B8A8_UNORM single-sample, so scaling, format
-  conversion and multisample resolve are excluded. Root cause deliberately not
-  pursued; no production code changed. Audit:
-  `docs/audits/AUDIT-2026-09-07-artifact-localization.md`.
-
-- [x] **AUDITED: guest shader `0x215795900` is faithfully translated.**
-  Done 2026-09-07, read-only, no production code changed. The guest program is
-  238 instructions, 1208 bytes, zero unknown opcodes; the generated SPIR-V is
-  74 KB and passes `spirv-val --target-env vulkan1.2`. Every arithmetic class
-  balances exactly: 33 cosines, 7 sines, 43 fused multiply-adds, 35 adds, 16
-  subtracts, 4 reciprocals, 2 half-packs and 1 texture sample all map
-  one-to-one. The only count that differed, 122 multiplies against 82 in the
-  guest, is explained precisely by the 40 turns-to-radians conversions the
-  trig lowering requires - and that conversion is present and correct, which
-  is the obvious way this would have gone wrong. **Case A: semantic
-  equivalence established.** Do not modify the translator on this evidence.
-  Audit: `docs/audits/AUDIT-2026-09-07-shader-215795900-audit.md`.
-
 - [!] **FALSIFIED: the logo doubling comes from combining multiple displaced
   samples.** The shader takes exactly **one** tap. Doubling cannot come from
   multi-sampling here. A large-amplitude single-tap displacement can map two
   screen regions onto overlapping source areas, which reads as doubling.
 
-- [ ] **NEXT: dump the 18 uniform constants this pass loads.** A wrong
-  constant produces a wrong warp from a perfectly correct shader, and the
-  shader is now known correct. Check they are finite, stable frame to frame,
-  and varying with time as an animated warp requires. Read-only; needs no
-  reference capture.
+- [!] **FALSIFIED: the warp is frozen because its time input never advances.**
+  Block B index 12 advances monotonically, so the animation input is live.
+  The earlier reading that "all eighteen constants are identical at frames
+  0, 1, 2, 3 and 60" sampled only Block A, which is genuinely static because
+  it is not a displacement table.
+
+- [ ] **Block A is a perspective projection matrix, not displacement
+  constants.** `2.4142` is cot(22.5 deg), the standard y-scale for a 45-degree
+  vertical field of view; `1.358` is `2.4142 / (16/9)`, the matching x-scale
+  for a 16:9 aspect; `-1.002` and `-2.002` are the near/far depth terms of a
+  standard projection. `INFERRED` from the numerical identities, not from
+  guest source. If correct, `ps 0x215795900` is a projected pass rather than a
+  screen-space displacement, and the visible "warp" is a perspective effect
+  the game intends. This materially weakens the case that the warp is a
+  defect. Confirm or refute by checking whether the pass's vertex shader
+  consumes Block A as a matrix.
+
+- [ ] **ROOT CAUSE FOUND: the frame-rate collapse is per-draw re-copying of
+  guest storage ranges.** The emulator copies every bound storage range out of
+  guest memory on every draw. At about 14 s into a run of PPSA02929 the mean
+  bound range grows about 5x, from 105 KB to roughly 530 KB, with the largest
+  range going from 256 KB to 1,048,560 bytes; the `FPS:` series starts falling
+  at exactly that moment and settles near 1 fps. That is roughly 53 MB/s of
+  copying through `Memory::GuardedRead`, which runs at about 150 MB/s in this
+  path. The storage-buffer upload phase is about 85% of all GPU-side draw time
+  (22.8 s of 26.9 s over 800 draws). Presentation is not implicated: flip
+  submission is 0.3 ms and the present stage averages 0.23 ms. Classified
+  `SOFT BOUNDARY`. Audit:
+  `docs/audits/AUDIT-2026-09-08-frame-rate-collapse.md`.
+  Done requires PPSA02929 to hold a frame rate within an order of magnitude of
+  60 for a full 60 s run, measured on the `FPS:` line.
+
+- [!] **CORRECTION: the storage ranges do not rotate addresses.** An earlier
+  entry said the guest rebuilds its buffers at a fresh address every frame and
+  used that to explain why an address-keyed cache cannot hit. That observation
+  came from the AGC constant block in `libagc.cpp` and does not describe the
+  storage bindings: only **155 distinct bases** appear across a 60 s run.
+
+- [ ] **DEFECT: a guarded write into a write-tracked range is silently
+  discarded.** `Memory::TrackGuestWrites` arms a range with `PAGE_READONLY` and
+  relies on the hardware fault to disarm it. The guarded primitives instead
+  pre-check `IsWritable` on the host side, see the armed page as unwritable,
+  and drop the write - `CommitOnFault` returns early for an already-committed
+  page and never recovers an armed one. Six call sites in `memory.cpp` behave
+  this way. Evidence: tracking the storage ranges produced 5161 dropped writes
+  per range in one run (`PPSA02929_20260908_014553`), against zero in every
+  untracked run. This is **not** specific to that experiment - the texture
+  ranges are tracked today, and the only reason it has not bitten is that
+  nothing writes to them through the guarded path. A fix was written and
+  measured (a `ReleaseTrackedWriteAt` helper called at all six sites, taking
+  dropped writes to 0) but reverted with the experiment, because with tracking
+  removed it is unexercised. Done requires the fix plus a test in
+  `tests/guest_memory_access_tests.cpp` that writes into a tracked range and
+  asserts the bytes land and the generation advances.
+
+- [!] **FALSIFIED: intra-batch reuse captures the redundant copying.**
+  Implemented and measured: reusing a buffer already uploaded within the same
+  batch gave about 1.4 fps against a 1.0 fps baseline. The redundancy is
+  overwhelmingly across frames, not within one, so only a cross-frame cache can
+  capture it. This also corrects the 98%-duplicate measurement, whose counter
+  was never cleared per batch and therefore measured the whole run.
+
+- [!] **FALSIFIED: write-tracking the storage ranges is a usable fix.**
+  Adding `TrackGuestWrites` to the storage path took PPSA02929 from 0.9 fps to
+  a flat ~100 fps for a full 60 s run - about 110x, with the collapse entirely
+  gone - and broke the title. With the dropped-write defect above also fixed,
+  the frame rate rose to a flat 127 fps and the title still froze on the
+  Ratalaika splash for 48.6 s while drawing at 125 draws/s. `INFERRED` cause:
+  the mechanism was built for a handful of texture ranges and does not survive
+  155 large, mutually overlapping, actively rewritten ones - ranges are keyed
+  by base so overlapping ones arm and disarm each other's pages, and
+  `DisarmWriteRangeLocked` restores `PAGE_READWRITE` rather than the range's
+  original protection. Reverted.
+
+- [ ] **RISK carried by the import: no invalidation hook.** An imported window
+  is validated once, on first import. If guest memory is released while a
+  buffer is still bound to it, the device would read freed address space. Not
+  observed in any run, but nothing prevents it. Done requires either a release
+  notification from the memory subsystem that retires affected windows, or a
+  cheap validity check that does not walk pages (the per-bind `IsReadable` walk
+  was measured to cost more than the copy it replaced).
+
+- [!] **FALSIFIED: SharpEmu shadow-compare helps us.** SharpEmu skips a storage
+  upload when the guest bytes equal a shadow copy. Implemented and measured at
+  **2.4 fps against 4.6** - worse. With the import already carrying 84% of
+  binds the copy path runs rarely, so the extra staging copy, compare and
+  shadow assignment cost more than the device writes they avoid. Right
+  technique for SharpEmu, wrong for us once the import changed which path is
+  hot. Reverted.
+
+- [ ] **Runs classify `frozen` about half the time, 20-22 of 29 unique
+  frames.** Appeared alongside the dispatch fix, but the classifier itself
+  reports the status was not stable across baseline samples, and the title now
+  reaches its title screen where before it did not. `UNKNOWN` whether this is
+  the game sitting on a static screen or a real stall. Settle it before reading
+  it either way - do not report it as either a regression or progress until
+  measured.
+
+- [!] **CORRECTION: the "157 microseconds per HLE dispatch" figure was a
+  measurement artifact.** The timer incremented two shared atomics inside every
+  call, so on a path taken 2.26 million times a minute across several threads it
+  largely measured its own contention - re-running it on the fixed build still
+  reported 137-220 microseconds. The dispatch fix stands on the end-to-end frame
+  rate (2.9-4.7 wide, to 4.3-4.7 tight); the absolute per-call cost is
+  `UNKNOWN`. Measuring it needs per-thread counters aggregated at exit.
+
+- [!] **FALSIFIED: something accumulates over a run and causes the frame drop.**
+  Tested directly. GPU pool sizes over a 120 s run are flat and small (retired 0,
+  imported 14-16, guest buffers 21-39, textures 4-5), and the frame rate peaks at
+  109, drops once, then holds 4.2-4.6 for the rest of the run with no progressive
+  decay. The drop is the already-characterised transition where the guest bound
+  ranges grow about 5x. The remaining cost is a steady state, not a leak.
+
+- [!] **FALSIFIED: draw-call count is the bottleneck.** The title issues only
+  **14-18 draw calls per frame** in a command buffer of about 1000 dwords. The
+  count is trivial; the cost is per draw - about **5.3 ms each** inside the
+  command-buffer walk.
+
+- [ ] **NEXT: texture upload costs about 2.6 ms per draw** (3.17 s over 1200
+  draws), now the largest GPU-side item and roughly half the per-draw cost. The
+  texture path already has a write-generation skip and its ranges *are* tracked
+  via `TrackGuestWrites`, so establish first why it is not skipping - either the
+  generation genuinely moves every frame, or the skip is not reached. Do not
+  assume; measure the hit rate before changing anything.
+
+- [ ] **Attribute the 63% of frame time spent outside the command-buffer walk.**
+  Per-frame split with both fixes in place: 260 ms wall, 95 ms walk. Needs a
+  non-contending instrument (see the correction above).
+
+- [!] **RPCS3 text rendering does not apply here.** RPCS3 text rendering is its
+  own overlay UI - trophy popups, home menu, on-screen keyboard - drawn on top of
+  the game. PCSX5 does not render this title's text at all: the words are a guest
+  texture sampled and displaced by the guest's own pixel shader `0x215795900`,
+  and the artifacts are in that pass's output. There is no text-rendering code
+  here to replace. RPCS3 is GPL-2.0 so it is licence-compatible if something else
+  there proves useful.
+
+- [!] **FALSIFIED: scalar evaluation can be memoized on the user-data bank.**
+  Shader scalar evaluation is **75% of remaining draw time** - over 2400 draws:
+  decode 62 ms, evaluation **7,621 ms**, descriptor setup 54 ms, Vulkan execute
+  2,452 ms, i.e. 3.2 ms per draw and rising. Memoizing it on (shader address,
+  user SGPR bank) raised the frame rate 4.6 to 6.9 fps **and cost unique frames,
+  20 down to 16** - isolated by disabling only the cache lookup and re-running.
+  The guest rewrites its descriptor table *in place*, so the table contents
+  change while the user data pointing at it does not: the key never moves and
+  the cache serves stale bindings. Reverted rather than trade correctness for
+  frame rate.
+
+- [ ] **NEXT: split scalar evaluation into locate and read.** The largest
+  remaining measured cost (3.2 ms per draw, 75% of draw time). The part that
+  *locates* descriptors is a pure function of the shader and the user-data bank
+  and can be cached; the part that *reads* their current values must run per
+  draw. That requires a change inside `GcnEvaluateScalarState` and is its own
+  iteration. Done requires the frame rate to improve with unique-frame count
+  held at or above the current 20 of 29.
+
+- [ ] **Five of the six titles under `Games/` crash during boot**, with four
+  distinct signatures, so there is no single foundational fix:
+  PPSA10264 `0xC0000005` at RIP `0x802e850c0`; PPSA20591 `0xC0000005` at
+  `0x801399fa0`; PPSA15552 `0xC0000005` at `0x81000b87f`; PPSA10112
+  **`0xC000001D` (illegal instruction)** at `0x800a2bd0c`; PPSA01668 jumps to
+  **RIP 0** with `libkernel::Q3VBxCXhUHs#T#T` (`memcpy`) as the last HLE call.
+  Each needs its own investigation. Break out per title before starting.
+
+- [!] **FALSIFIED: module relocation explains the other titles' crashes.** All
+  five relocate (`MODULE_RELOCATE preferred=0x800000000 allocated=0x810000000
+  reason=collision`), which looks like a shared cause - but **PPSA02929
+  relocates identically and works**. Relocation is normal for these PIE
+  modules: the eboot maps at `0x800000000` and dependent modules then collide.
+  Recorded so the obvious conclusion is not re-drawn.
+
+- [!] **FALSIFIED: the scalar evaluator symbolic path walk is expensive.**
+  Instrumented: **1 path and about 62 instruction visits per evaluation**, 0%
+  skipped. 62 instructions cannot cost 3.2 ms; the cost was the per-dword memory
+  guard above.
+
+- [!] **FALSIFIED: the per-binding `LOG_INFO` dumps in `AgcEvaluateDrawShader`
+  are the cost.** Made one-shot per shader; log volume stayed at 27-28k lines and
+  the frame rate stayed inside run-to-run variance. Reverted.
+
+- [ ] **`Memory::IsWritable` has the same structure as `IsReadable`** - per-page
+  `Query`, so a `VirtualQuery` syscall plus the global region lock per page - and
+  was **not** changed. It sits on every guarded write path. Measure it before
+  assuming it matters, but the structure is identical to a defect that measured
+  at 95 microseconds per call.
+
+- [ ] **The "top-region blocky artifact" is a displaced second copy of the logo,
+  not noise.** At 9.3 fps the title screen shows the logo twice: centred, and
+  again in the upper band where the blocks were recorded. `OBSERVED`
+  (`PPSA02929_20260908_104239` frame 28). This merges two tracked artifacts into
+  one: the blocks and the warp are the same phenomenon, consistent with the
+  shader audit prediction that a large-amplitude single-tap displacement can map
+  two screen regions onto overlapping source areas. The remaining visual question
+  is the displacement amplitude in `ps 0x215795900`.
+
+- [ ] **`Query` reports pool memory as writable regardless of real page
+  protection.** For addresses inside the direct-mapped pool, `Query` answers
+  from the region table and never consults `VirtualQuery`, so an armed
+  (PAGE_READONLY) page still reads as writable. Not wrong by design - the
+  region table is documented as the sole authority for pool allocations - but
+  page protection and reported protection can disagree there, and it is why
+  `TestGuardedWriteIntoTrackedRange` must set `PCSX5_DISABLE_POOL=1` to
+  reproduce the defect it guards. Decide whether this divergence is intended.
+
+- [ ] **A ghost of the title logo persists over the gameplay background.**
+  Stale render-target content not cleared between scenes; visible as a faint
+  "Dreaming Sarah" behind the playable scene. This is the mission brief's
+  "motion blur" item, now with a specific characterization. `OBSERVED`.
+
+- [!] **FALSIFIED: missing fog / transparency artifacts are caused by blending
+  being disabled.** Measured the actual `CB_BLEND0_CONTROL` values reaching the
+  pipeline: seven distinct states, six with `enable=1` and correct
+  `SRC_ALPHA`/`ONE_MINUS_SRC_ALPHA` factors (`0x65040504`, `0x65000500`,
+  `0x61010101`, ...). The decode also matches the GFX10 register layout field
+  for field. Blending is not disabled.
+
+- [!] **FALSIFIED: missing fog is caused by draws being rejected.** Instrumented
+  every `VkDrawExecute` outcome over a 90 s run: **zero** draws dropped. Nothing
+  is being refused by the backend, so the fog layer is either never submitted by
+  the guest or is submitted and renders invisibly.
+
+- [!] **FALSIFIED: texture filtering is wrong.** The guest requests point
+  filtering (`XY_MAG/MIN_FILTER` = 0 in sampler word 2) and the decode produces
+  `VK_FILTER_NEAREST`, which is correct for this title's pixel art. The smearing
+  on the glyphs is therefore not a filtering choice.
+
+- [ ] **DEFECT: the sampler cache key omits word 3.** `EnsureSampler` hashes
+  `w[0]`, `w[1]` and `w[2]` but not `w[3]`, so two samplers differing only in the
+  final descriptor word collide and the first one wins. Not demonstrated to
+  affect this title - both observed samplers differ in earlier words - but it is
+  a real cache-correctness bug. Done requires `w[3]` in the hash and a test.
+
+## Requested features, not yet started
+
+- [!] **HARD BOUNDARY: Android is not reachable from this architecture.**
+  Asked 2026-09-08. The blocker is the CPU, not the UI, and no amount of
+  Avalonia work moves it.
+
+  PCSX5 runs guest code by **direct execution**: the PS5 is x86-64 and so is the
+  host, so guest instructions are executed natively and there is no translation
+  layer at all (`src/cpu/cpu.h`: "we use direct execution - guest code runs
+  natively without translation... No JIT compiler is needed"). Verified: a
+  search for any recompiler, dynarec or block-translation code in `src/cpu/`
+  returns **nothing**.
+
+  Android is overwhelmingly ARM64. Running an x86-64 guest there requires a
+  full x86-64 to ARM64 recompiler - the single largest subsystem in an emulator
+  of this kind, and one this project has never needed and does not have. That is
+  a `HARD BOUNDARY` under Rule 09: it is not a bounded porting task, it is a new
+  core.
+
+  Secondary blockers, all of which would also have to be solved even on an
+  x86-64 Android device: 127 Win32 API call sites, 40 `__try` blocks, 7 public
+  headers including `<windows.h>`, and `src/hle/dispatcher.asm` - hand-written
+  x86-64 assembly using the **Windows** x64 calling convention. Only the GPU
+  path is portable: Vulkan is already the backend and Android speaks Vulkan.
+
+  **Why the PCSX2 comparison does not transfer** (asked 2026-09-08). The PS2's
+  Emotion Engine is a **MIPS** CPU. A MIPS guest cannot run natively on any host
+  PCSX2 targets, so PCSX2 has needed a recompiler since its first release -
+  MIPS to x86 - and that recompiler is core infrastructure, not an add-on.
+  Reaching ARM64 therefore meant writing a **new code-generation backend for a
+  recompiler that already existed**: substantial, but bounded, and built on
+  machinery that was there from day one. The same is true of any emulator whose
+  guest architecture differs from its host.
+
+  PCSX5 has the opposite shape. The guest is x86-64 and so is the host, so there
+  is no translation layer to add a backend to - there is no translation layer at
+  all. Going to ARM means building the whole thing from nothing, which is a new
+  core rather than a port.
+
+  This is a family trait of PS4/PS5 emulators, not a PCSX5 shortcut. Verified
+  against the two reference clones on this machine:
+
+  - **Kyty**: the only component named "recompiler" sits under its graphics
+    shader tree and is a **GCN shader to SPIR-V** recompiler. There is no CPU
+    recompiler anywhere in that project.
+  - **SharpEmu**: its entire CPU layer is `Cpu/Native/DirectExecutionBackend.*`,
+    including a file literally named `DirectExecutionBackend.Amd64Compat.cs`.
+    There is no interpreter and no dynarec; a search for `Interpreter` under
+    `Cpu/` returns nothing.
+
+  So all three PS4/PS5 emulators examined - PCSX5, Kyty and SharpEmu - execute
+  guest code directly on an x86-64 host, and none of them can reach ARM without
+  the recompiler none of them has.
+
+  Recorded so it is not re-proposed as a UI or packaging task. Revisit only if a
+  guest recompiler is ever specified as its own multi-quarter project.
+
+- [ ] **Avalonia port will not by itself produce a multi-platform release.**
+  Worth stating next to the port task because the two are easy to conflate. The
+  cross-platform audit already found that "the core is the gate, not the shell -
+  a portable shell on top of a Windows-only core ships nothing"
+  (`docs/audits/AUDIT-2026-09-07-cross-platform-feasibility.md`). Avalonia
+  replaces WPF, which removes the *shell's* Windows dependency; the core keeps
+  every one of the couplings listed above. Doing the shell first is defensible
+  as de-risking, but it must not be scheduled as "ship Linux/macOS".
+
+  The audit's step 1 - removing `<windows.h>` from the 7 public headers behind a
+  small platform header - is low risk, changes no behaviour, and unblocks
+  everything after it. That is the cheapest real progress toward a portable core
+  and is independent of the UI work, so the two can proceed in parallel.
+
+- [ ] **UI debt has grown past what Rule 12 records.** `MainWindow.xaml.cs` is
+  now **6,773 lines** (the rule documents ~4,700) and `MainWindow.xaml` is
+  **2,405** (documented ~1,900), across 48 C# files and 4 XAML files with no
+  MVVM layer. This matters for the Avalonia port specifically: the port cost is
+  roughly proportional to the code-behind, and `System.Windows*` is imported in
+  well over a hundred places. Extracting focused classes out of the code-behind
+  before the port would make the port smaller, and is useful even if the port
+  never happens. Update the measured figures in Rule 12 when this is addressed.
+
+
+
+Recorded together because they arrived as one request; each is its own change.
+
+- [ ] **Double-click the output window to toggle fullscreen.** The mechanism
+  exists (`ToggleFullscreen`); this needs a GLFW mouse-button callback with
+  double-click detection. Small.
+
+- [ ] **In-game overlay: frame graph and performance matrix on a hotkey.**
+  `Diagnostics::RenderTimingOverlay` already exists, with a timing waterfall and
+  rolling FPS graph written - but it is **never called** and is compiled out
+  behind `#ifdef IMGUI_VERSION`. ImGui is fetched by CMake and then **never
+  compiled or linked into any target**; there is no `imgui_impl_vulkan` or
+  `imgui_impl_glfw` anywhere. So this needs real integration: compiling ImGui,
+  adding the GLFW and Vulkan backends, a descriptor pool, and a render-pass
+  hook. The window-title readout is the current stand-in and is invisible in
+  fullscreen, which is exactly why the overlay matters. Largest item here.
+
+- [ ] **Input profiles: configurable keyboard mapping, switchable.** The
+  keyboard mapping is currently a hardcoded `switch` in
+  `src/gpu/vulkan_backend.cpp`. Needs a profile model in config, a UI, and the
+  mapping moved out of the switch.
+
+- [ ] **Multiple controllers / up to 8 players with a tabbed interface.**
+  `scePadOpen` currently serves a single primary handle (`IsPrimaryPadHandle`).
+  Multi-pad support is an HLE contract change (per-handle state, per-user ids)
+  plus a UI. Recover the contract before implementing (Rule 04).
+
+- [ ] **Autosave not working.** Not yet investigated. Establish first whether
+  the guest calls the savedata API at all and what it receives - `libSceSaveData`
+  and `libSceSaveDataDialog` both resolve to HLE stubs today
+  (`ModuleGraph: 20 missing dependencies`).
+
+- [ ] **CLI run shows no logo on the taskbar.** The GLFW window has no icon set;
+  needs `glfwSetWindowIcon` with the app icon. Small.
+
+- [ ] **Fog layer missing versus a reference capture.** A reference screenshot of
+  another emulator running the same scene shows a fog overlay that our render
+  does not draw. Blending and draw rejection are both excluded above, so the
+  next step is to compare the draw list for that scene against what the guest
+  submits, not to change the blend path.
+
+- [ ] **NEXT BOUNDARY: re-take the FRAMECOST split.** After the
+  import, GPU-side draw work is about 3.4 s of a 60 s run (texture 3.17 s,
+  storage 0.20 s, pipeline 0.036 s, recording 0.030 s) - roughly 6% of wall
+  clock. The other 94% is unattributed. Profile the command-buffer walk and the
+  guest side before touching the GPU again. Texture upload is now the largest
+  GPU-side item and the obvious candidate for the same treatment.
+
+- [ ] **Adopt Kyty page-granular dirty tracking for the ranges that cannot be
+  imported.** 16% of binds and 28% of bytes still copy. Kyty refcounts read and
+  write watchers per 4 KiB page behind a vectored exception handler and uploads
+  only dirty sub-ranges, with a guest-address-keyed cache, LRU and a GC; it also
+  flushes GPU-written ranges back to guest memory on a read fault. That is the
+  mature form of the mechanism whose immature form broke the title (see the
+  falsified write-tracking entry above). Neither Kyty nor SharpEmu imports host
+  memory, so this is the technique both rely on. Larger than one iteration;
+  break down before starting.
+
+- [ ] **Checkerboard artifact on the title text.** A one-pixel checkerboard
+  across the "Dreaming Sarah" glyphs, in the same pass already localized as the
+  source of the warp (`ps 0x215795900`). Two untested candidates: the sampler
+  addressing mode, which `AUDIT-2026-09-07-artifact-localization.md` named as
+  the leading unaudited suspect, or a dithered alpha fade that reads as a
+  checkerboard only because the frame rate is low enough to see single frames.
+  `UNKNOWN`. The second is cheap to discriminate: it should visually blend as
+  the frame rate rises.
+
+- [ ] **Subtask: decide how to avoid re-copying unchanged storage ranges.**
+  Two candidates remain, both larger than one iteration. (a) Repair and
+  generalise write tracking as its own change - fixing the dropped-write defect
+  first under test, then settling overlapping-range and protection-restore
+  semantics; the naive version is measured above and does not work. (b) Import
+  guest pages into the device with `VK_EXT_external_memory_host` and bind them
+  directly, removing the copy rather than skipping it. This GPU supports the
+  extension with `minImportedHostPointerAlignment = 0x1000`, and guest memory
+  suits it because `Memory::Translate` is the identity - guest addresses are
+  already page-aligned host addresses. Option (b) needs no memory-subsystem
+  change and is the better first attempt; its open risk is invalidating imports
+  when guest memory is released.
+
+- [!] **FALSIFIED: a write-generation skip for storage buffers fixes the
+  collapse.** Implemented and measured: `TryGetGuestWriteGeneration` returns
+  false for every one of the 4949 binds in a 60 s run because nothing calls
+  `TrackGuestWrites` on these ranges, so the skip never fires and the fps was
+  unchanged. Reverted.
+
+- [!] **FALSIFIED: persistent mapping or a storage ring fixes the collapse.**
+  Both were implemented and measured. Per-bind `vkMapMemory`/`vkUnmapMemory`
+  was replaced with a lifetime mapping, and the 256-entry address-keyed buffer
+  cache - which never hits, because the guest rebuilds its constants at a fresh
+  address every frame, so it fills, retires wholesale and reallocates - was
+  replaced with a bump-allocated ring. Both remove real work and neither
+  changed the frame rate, because neither removes any copying. Reverted; the
+  designs are recorded in the audit if the copy problem is solved and they
+  become worth revisiting.
+
+- [ ] **The guest advances 104 frames in 120 wall seconds (~0.87 fps).**
+  Block B index 12 is a fixed-timestep accumulator: `1.7333 / 0.016666` is
+  exactly 104 ticks of 1/60 s. So the guest's own frame counter reached 104
+  while 120 seconds of wall clock elapsed. This is the same defect already
+  tracked as the submission-rate collapse, now with a direct guest-side
+  measurement rather than a host-side draw count. It is the dominant runtime
+  problem: at under one frame per second every capture is effectively a still,
+  which is why an animated effect reads as a frozen distortion. Done requires
+  the guest frame rate to be within an order of magnitude of 60.
 
 - [ ] **Audit the sampler addressing mode for the single sample in
   `0x215795900`.** Out-of-range coordinates are the leading remaining
@@ -436,35 +685,6 @@ updater packages uploaded by hand (see the packaging item).
   `UNKNOWN` whether the old path is genuinely unnecessary or the guest now
   fails earlier and never reaches it. Worth settling before trusting the new
   path.
-
-- [x] **RESOLVED: the intermittent null guest thread pointer.** Done
-  2026-09-07 (commit pending). A patched TLS site loads the guest thread
-  pointer from a host TLS slot and used the value unchecked. That slot is zero
-  on any host thread that reached guest code without being bound, so
-  `mov rax, fs:[0]` produced 0 and the guest dereferenced a null-based
-  address - PPSA02929 died at guest RIP `0x80015ff6d` executing
-  `mov r12, [rax - 0x15b8]` with `RAX = 0`
-  (`PPSA02929_20260907_133921`). The exception-handler path this stub replaced
-  resolves the same access through a three-level chain ending at the shared
-  block, so the two disagreed on exactly this case although `cpu.cpp` states
-  they must agree. The stub now tests for zero and falls back to the same
-  pointer, preserving EFLAGS with `pushfq`/`popfq`, and refuses to emit at all
-  if the fallback would be zero. 12 of 12 clean 45 s runs after, against 11 of
-  12 before; 54/54 ctest. Audit:
-  `docs/audits/AUDIT-2026-09-07-tls-stub-null-thread-pointer.md`.
-
-- [x] **RESOLVED: the `Emulated TLS read failed` variant was a decode race.**
-  Done 2026-09-07. The diagnostic added for this caught it on the next run:
-  the thread pointer was fine and page-aligned, but the decoded displacement
-  was `0x90909090` - four NOP bytes - where the instruction
-  (`mov rax, fs:[0]` at `0x800160378`) has zero
-  (`PPSA02929_20260907_145600`). The handler decoded the faulting instruction
-  byte-at-a-time from live memory while another thread was rewriting that same
-  site as a call plus NOP padding, so it read an original opcode with an
-  already-overwritten displacement field. `TlsPatch::ReadInstruction` now
-  snapshots the instruction under the patch lock and the handler decodes that.
-  6 of 6 clean 45 s runs; 54/54 ctest. Audit:
-  `docs/audits/AUDIT-2026-09-07-tls-stub-null-thread-pointer.md` section 10.
 
 - [ ] **Some host threads reach guest code without a bound thread pointer.**
   Exposed by the fix above, which makes them fall back to the shared TLS block
@@ -564,62 +784,9 @@ updater packages uploaded by hand (see the packaging item).
 
 ---
 
-## Done (compressed; evidence in git log, docs/audits, docs/walkthroughs)
-
 Shell, 2026-09-06 (v0.1.1):
 
-- [x] Concept "Void console" implemented: theme tokens (ADR-003), dark/light/
-  system, user accent and ground, corner style (rounded/sharp/cut) with
-  content clipping; every screen on tokens.
-- [x] Screens rebuilt to the artboards: Library hero + shelf + footer legend,
-  All games (full-screen grid, search, five-way sort, favourites), Folder
-  picker, Tools hub, Boot analyzer (select/search/analyze), Settings side
-  column, Console, Booting screen (six stages, no spinner), Input tab
-  (bindings-only 6-column grid), Controller testing popup.
-- [x] 3D DualSense (Sketchfab model, CC-BY-4.0, headless Blender pipeline,
-  20 parts, WPF Viewport3D): gravity tilt, trigger hinges, every button
-  incl. share/options/mute with press + glow, sticks, touchpad, player LEDs,
-  mute LED, lightbar colour; glyphs painted onto the cap discs.
-- [x] Core: DualSenseWindows swaps accelerometer and gyro fields (0x0F/0x15);
-  undone at the consumption point. Firmware report 0x20 VERIFIED on hardware.
-  D-pad hat decode fixed. Battery >100% clamped (vendored-lib local mod).
-- [x] Pad ABI in CoreBridge (state, firmware, audio levels, speaker/haptics
-  tests, rumble, lightbar, LEDs); the shell's duplicate C# HID reader
-  deleted (4.9); guest never sees the PCSX5-internal mute bit (test).
-- [x] Controller-first navigation: spatial (TV-remote) movement on grids,
-  Settings side-column, focus auto-scroll, Options = View all / restore
-  defaults, crash-overlay mapping, credits popup from the README, pad ignored
-  while the window is inactive, keyboard keeps working with no pad.
-- [x] Tuning as settings rows (active gamepad, lightbar colour with picker,
-  per-game configs, restore defaults), all persisted; lobby music volume
-  setting; music stops on Play.
-- [x] Launcher: IPC frame hook was per-module inline (null in the DLL) and
-  headless never published a frame - fixed; launcher now embeds the core's
-  real window (`--embed`), reparent host created on demand, swapchain
-  recreated on resize, watchdog fed by IPC logs, deliberate stop is not a
-  crash, boot phases from core log markers, game_state RUNNING on first frame.
-- [x] Shell settings reached the core (`--config-dir` absolute); dev-build
-  `pcsx5_cli.exe` lookup; "Add Directory" focus; compat status recorded in
-  both places (tools/compat_report.py) and fetched after a run.
-
 Core and harness, 2026-08/09:
-
-- [x] Guarded-transfer results checked everywhere they were discarded
-  (memcpy class, `WriteBuffer` retired, pad read/write paths, TLS store in
-  the VEH, thunk writes); `.bss` protection fix; condvar signal race; shader
-  cache key without ring address; `feof/fgets/fgetc`; DRAW_INDEX_OFFSET_2
-  first-index; CB_COLOR0 base-ext at 0x390.
-- [x] Harness tells the truth: own-window capture with timeout, refused
-  samples counted, `boot_success` only for `progressing`, classifier locked
-  by a 179-run replay test, baselines need 3 samples, `menu` marker retired,
-  import report flushed every 30 s, guest-smoke tests can fail, clicks are
-  window-relative, unknown keys refused.
-- [x] `--play-input` was accepted and never read - wired; replay drives the
-  harness. Six input backends exist (the "no keyboard path" claim was wrong).
-- [x] Haptics over Bluetooth VERIFIED (report 0x32, init-prime required);
-  audit in docs/audits.
-- [x] Docs: missing directories, templates and `doc_links` CTest; Gemini
-  rulebook citations removed after the owner deleted it.
 
 ---
 

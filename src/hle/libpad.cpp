@@ -209,6 +209,18 @@ namespace HLE {
             ScePadData pad_data;
             FillPadData(&pad_data);
 
+            // Input-delivery diagnostic: log every change in the guest-visible
+            // button mask, so a run shows whether host input actually reached
+            // guest state rather than only that it entered the emulator.
+            {
+                static u32 last_reported = 0;
+                if (pad_data.buttons != last_reported) {
+                    LOG_INFO(HLE, "PAD guest-visible buttons 0x%08X -> 0x%08X",
+                             last_reported, pad_data.buttons);
+                    last_reported = pad_data.buttons;
+                }
+            }
+
             // Report the write, do not assume it.  This used to go through
             // Memory::WriteBuffer, which was guarded but returned void, so a
             // buffer the guest could not be written to left this returning 0

@@ -1,6 +1,7 @@
 // Frame timing ring buffer + ImGui overlay.
 
 #include "frame_timing.h"
+#include <vector>
 
 #include <algorithm>
 #include <atomic>
@@ -107,6 +108,46 @@ const FrameTiming* GetTimingRing(int* out_count) {
 
 double GetFps() {
     return g_fps;
+}
+
+// 1% low frame rate: the mean of the slowest 1% of recent frame intervals,
+// expressed as a frame rate. A mean frame rate hides stutter - a run that
+// averages 60 can still hitch - so this reports the worst end of the
+// distribution, which is what a player actually feels.
+//
+// Intervals come from consecutive frame start timestamps rather than the
+// per-frame total, because the total covers only the stages that are
+// instrumented while the interval covers the whole frame.
+double GetOnePercentLowFps() {
+    const int count = g_count.load(std::memory_order_acquire);
+    if (count < 8) return 0.0;
+
+    std::vector<u64> intervals;
+    intervals.reserve(static_cast<size_t>(count));
+    const int head = g_head.load(std::memory_order_acquire);
+    u64 previous = 0;
+    for (int i = 0; i < count; ++i) {
+        const int index = (head - count + i + kTimingRingCapacity * 2) %
+                          kTimingRingCapacity;
+        const u64 stamp = g_ring[index].timestamp_us;
+        if (previous != 0 && stamp > previous) {
+            intervals.push_back(stamp - previous);
+        }
+        previous = stamp;
+    }
+    if (intervals.empty()) return 0.0;
+
+    std::sort(intervals.begin(), intervals.end());
+    // At least one sample, so a short history still reports the worst frame
+    // rather than silently reporting nothing.
+    size_t worst = intervals.size() / 100;
+    if (worst == 0) worst = 1;
+    u64 sum = 0;
+    for (size_t i = intervals.size() - worst; i < intervals.size(); ++i) {
+        sum += intervals[i];
+    }
+    const double mean_us = static_cast<double>(sum) / static_cast<double>(worst);
+    return mean_us > 0.0 ? 1000000.0 / mean_us : 0.0;
 }
 
 std::string LogFrameTimingStats() {

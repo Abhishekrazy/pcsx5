@@ -53,6 +53,10 @@ const FrameTiming* GetTimingRing(int* out_count);
 // Current instantaneous FPS (smoothed over the last 16 frames).
 double GetFps();
 
+// Mean frame rate of the slowest 1% of recent frames. Reports the stutter a
+// mean frame rate hides. 0 until enough frames have been recorded.
+double GetOnePercentLowFps();
+
 // Return a formatted string with FPS and min/max/avg frame times over the
 // valid entries in the timing ring buffer.  Useful for periodic logging in
 // headless/bot-run mode where the ImGui overlay is not visible.

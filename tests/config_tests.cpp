@@ -90,7 +90,13 @@ void TestDefaults() {
     EXPECT_EQ(d.graphics.height, 720,  "default height");
     EXPECT(!d.graphics.fullscreen, "windowed by default");
     EXPECT_EQ(d.graphics.renderer, 0, "Vulkan by default");
-    EXPECT_EQ(d.audio.backend, 0, "audio off by default");
+    // Changed 2026-09-08 from 0 (Off) to 2 (XAudio2). The old assertion pinned
+    // a defect rather than a decision: a title producing audio correctly was
+    // silent, with only one "backend=silent" line in the log to explain it.
+    // PPSA02929 submits 16,000 buffers in a 90 s run, all of which were
+    // discarded. XAudio2 falls back to WASAPI and then waveOut when it cannot
+    // open, so the default degrades rather than failing.
+    EXPECT_EQ(d.audio.backend, 2, "XAudio2 audio backend by default");
     EXPECT_EQ(d.input.backend, 0, "SDL input by default");
     EXPECT(!d.loaded_from_disk, "defaults are not 'loaded from disk'");
 }

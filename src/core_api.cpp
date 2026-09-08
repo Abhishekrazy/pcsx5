@@ -276,6 +276,19 @@ PCSX5_API int pcsx5_init(const pcsx5_options* options, pcsx5_log_cb log_cb, void
     // Hand the audio output settings to libSceAudioOut (0 = Off / silent-paced).
     HLE::SetAudioOutConfig(cfg.audio.backend, cfg.audio.volume);
 
+    // graphics.fullscreen was parsed by the config loader and then never read,
+    // so the option existed in the file and in the UI without doing anything.
+    // A --fullscreen command line flag sets the same field before this runs.
+    bool want_fullscreen = cfg.graphics.fullscreen;
+    {
+        char buf[8] = {};
+        if (GetEnvironmentVariableA("PCSX5_FULLSCREEN", buf, sizeof(buf)) > 0 &&
+            buf[0] == '1') {
+            want_fullscreen = true;
+        }
+    }
+    GPU::SetStartFullscreen(want_fullscreen);
+
     // R1.3: wire VRR config to Vulkan present mode + videoout vblank pump.
     GPU::SetVrrConfig(cfg.graphics.vsync, cfg.graphics.vrr);
     HLE::VideoOutSetVrrMode(cfg.graphics.vrr);
@@ -557,23 +570,46 @@ void UpdateWindowTitleReadout() {
 #endif
     s_primed = true;
 
+    // Bytes read better in GB once they pass a gigabyte; below that MB is the
+    // more useful precision.
+    auto format_size = [](char* out, size_t out_size, double mb) {
+        if (mb >= 1024.0) {
+            std::snprintf(out, out_size, "%.2f GB", mb / 1024.0);
+        } else {
+            std::snprintf(out, out_size, "%.0f MB", mb);
+        }
+    };
+
     // GPU side: Vulkan exposes no portable utilisation percentage, so the
-    // readout carries video memory in use against the driver's budget, which
-    // is a real measurement rather than an invented one. Omitted entirely when
-    // the device does not report it.
-    char gpu[64] = {};
+    // readout carries video memory in use against the driver budget, which is
+    // a real measurement rather than an invented one.
+    char gpu[96] = {};
     u64 vram_used = 0, vram_budget = 0;
     if (GPU::GetVideoMemoryUsage(&vram_used, &vram_budget)) {
-        std::snprintf(gpu, sizeof(gpu), " | GPU %llu/%llu MB",
-                      (unsigned long long)(vram_used / (1024 * 1024)),
-                      (unsigned long long)(vram_budget / (1024 * 1024)));
+        char used_str[32], budget_str[32];
+        format_size(used_str, sizeof(used_str),
+                    static_cast<double>(vram_used) / (1024.0 * 1024.0));
+        format_size(budget_str, sizeof(budget_str),
+                    static_cast<double>(vram_budget) / (1024.0 * 1024.0));
+        std::snprintf(gpu, sizeof(gpu), " | VRAM %s/%s", used_str, budget_str);
     }
 
-    char title[320];
+    char rss_str[32];
+    format_size(rss_str, sizeof(rss_str), rss_mb);
+
+    // 1% low is omitted rather than shown as zero until there is enough
+    // history to compute it honestly.
+    const double low_fps = Diagnostics::GetOnePercentLowFps();
+    char low[32] = {};
+    if (low_fps > 0.0) {
+        std::snprintf(low, sizeof(low), " (1%% low %.1f)", low_fps);
+    }
+
+    char title[384];
     std::snprintf(title, sizeof(title),
-                  "PCSX5 - %s | %.1f fps | %.2f ms | %.0f draws/s | CPU %.0f%%%s | %.0f MB",
+                  "PCSX5 - %s | %.1f fps%s | %.2f ms | %.0f draws/s | CPU %.0f%%%s | RAM %s",
                   g_state.title_id.empty() ? "no title" : g_state.title_id.c_str(),
-                  fps, frame_ms, draws_per_s, cpu_percent, gpu, rss_mb);
+                  fps, low, frame_ms, draws_per_s, cpu_percent, gpu, rss_str);
     GPU::SetWindowTitle(title);
 }
 

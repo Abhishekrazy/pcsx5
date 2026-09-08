@@ -481,15 +481,20 @@ namespace HLE {
     static void RecordStats(const HleSymbol& sym, const GuestArgs& args, guest_addr_t guest_rip) {
         std::lock_guard<std::mutex> sl(g_stats_mutex);
         auto& s = g_stats[sym.id];
-        s.module_name     = sym.module_name;
-        s.name            = sym.name;
-        if (s.resolved_name.empty()) {
+        // The descriptive fields are properties of the symbol, not of the
+        // call, so they are filled once. Re-assigning two std::strings and
+        // re-resolving the friendly name on every call cost more than
+        // everything else in dispatch put together, under a global lock, at
+        // over two million calls a minute.
+        if (s.call_count == 0) {
+            s.module_name   = sym.module_name;
+            s.name          = sym.name;
             s.resolved_name = ResolveFriendlyName(sym.name);
+            s.thunk_address = sym.thunk_address;
+            s.auto_stubbed  = g_stubbed_ids.count(sym.id) != 0;
         }
-        s.thunk_address   = sym.thunk_address;
         s.call_count     += 1;
         s.last_caller_rip = guest_rip;
-        s.auto_stubbed    = g_stubbed_ids.count(sym.id) != 0;
         // total_caller_samples is currently a count of recorded calls; tracking
         // distinct RIPs would require additional storage and is unnecessary for
         // the Phase-0 deliverable.
@@ -636,7 +641,18 @@ namespace HLE {
     }
 
     std::vector<TraceEntry> GetImportTrace(size_t max_count) {
-        return g_trace.Snapshot(max_count);
+        std::vector<TraceEntry> out = g_trace.Snapshot(max_count);
+        // Dispatch records only the symbol id; the names are attached here so
+        // the hot path does not copy two strings per call.
+        std::shared_lock<std::shared_mutex> lock(g_hle_mutex);
+        for (auto& e : out) {
+            auto it = g_id_index.find(e.symbol_id);
+            if (it != g_id_index.end()) {
+                e.module_name = it->second.module_name;
+                e.name        = it->second.name;
+            }
+        }
+        return out;
     }
 
     void ClearImportTrace() {
@@ -1020,28 +1036,6 @@ namespace HLE {
         // shuts down through the normal teardown path.
         if (StopRequested()) ExitGuestProcess(0);
 
-        HleSymbol target_sym;
-        bool found = false;
-        {
-            std::shared_lock<std::shared_mutex> lock(g_hle_mutex);
-            auto it = g_id_index.find(symbol_id);
-            if (it != g_id_index.end()) {
-                target_sym = it->second;
-                found = true;
-            }
-        }
-
-        if (!found) {
-            LOG_ERROR(HLE, "HleDispatch: Received invalid symbol ID: %llu", symbol_id);
-            return 0;
-        }
-
-        std::string safe_mod = SafeString(target_sym.module_name);
-        std::string safe_name = SafeString(target_sym.name);
-
-        LOG_DEBUG(HLE, "HLE Call: %s::%s from RIP 0x%llx",
-                  safe_mod.c_str(), safe_name.c_str(), guest_rip);
-
         GuestArgs args;
         args.arg1 = rdi;
         args.arg2 = rsi;
@@ -1057,35 +1051,59 @@ namespace HLE {
         args.stack_args = guest_rsp ? guest_rsp + 8 : 0;
         g_current_guest_rip = guest_rip;
 
+        // Copying the whole HleSymbol here used to cost two std::string
+        // allocations and a std::function copy on every dispatch. Only the
+        // handler has to outlive the lock; everything else is read under it.
+        HleHandler handler;
+        guest_addr_t thunk_address = 0;
+        {
+            std::shared_lock<std::shared_mutex> lock(g_hle_mutex);
+            auto it = g_id_index.find(symbol_id);
+            if (it == g_id_index.end()) {
+                lock.unlock();
+                LOG_ERROR(HLE, "HleDispatch: Received invalid symbol ID: %llu", symbol_id);
+                return 0;
+            }
+            const HleSymbol& sym = it->second;
+            thunk_address = sym.thunk_address;
+            handler = sym.handler;
+
+            LOG_DEBUG(HLE, "HLE Call: %s::%s from RIP 0x%llx",
+                      SafeString(sym.module_name).c_str(),
+                      SafeString(sym.name).c_str(), guest_rip);
+
+            RecordStats(sym, args, guest_rip);
+        }
+
         // Push the call into the import-call trace ring.  Done before invoking
         // the handler so the trace reflects what the guest requested, not
         // whether the handler actually returned.
+        // The names are left empty and resolved from `symbol_id` when the
+        // trace is read. Copying them per call was two more allocations on a
+        // path taken millions of times a minute, for a diagnostic that is read
+        // a few hundred entries at a time.
         TraceEntry te;
         te.timestamp_us  = ProcessUptimeMicros();
-        te.module_name   = target_sym.module_name;
-        te.name          = target_sym.name;
-        te.symbol_id     = target_sym.id;
+        te.symbol_id     = symbol_id;
         te.caller_rip    = guest_rip;
-        te.thunk_address = target_sym.thunk_address;
+        te.thunk_address = thunk_address;
         te.arg1 = rdi; te.arg2 = rsi; te.arg3 = rdx;
         te.arg4 = rcx; te.arg5 = r8;  te.arg6 = r9;
         g_trace.Push(te);
 
-        // Record per-symbol statistics (call count, last caller). Failures here
-        // must not affect dispatch, so we wrap defensively.
-        RecordStats(target_sym, args, guest_rip);
-
-        if (!target_sym.handler) {
-            LOG_ERROR(HLE, "HLE handler for %s::%s is null!", safe_mod.c_str(), safe_name.c_str());
+        if (!handler) {
+            LOG_ERROR(HLE, "HLE handler for symbol id %llu is null!",
+                      (unsigned long long)symbol_id);
             return 0;
         }
 
         bool crashed = false;
         DWORD exc_code = 0;
-        u64 result = SafeInvokeHandler(&target_sym.handler, args, &crashed, &exc_code);
+        u64 result = SafeInvokeHandler(&handler, args, &crashed, &exc_code);
         if (crashed) {
-            LOG_ERROR(HLE, "Crash executing HLE handler for %s::%s! Exception Code: 0x%X",
-                      safe_mod.c_str(), safe_name.c_str(), exc_code);
+            LOG_ERROR(HLE, "Crash executing HLE handler for symbol id %llu! "
+                           "Exception Code: 0x%X",
+                      (unsigned long long)symbol_id, exc_code);
         }
         return result;
     }

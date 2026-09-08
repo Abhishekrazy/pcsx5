@@ -127,6 +127,11 @@ namespace GPU {
     // PCSX5_WINDOW_HANDLE=<decimal HWND> right after creation.
     void SetEmbeddedMode(bool enabled);
 
+    // Start in borderless fullscreen. Must be called before Initialize().
+    // The same state F11 toggles at runtime; this only sets the initial value,
+    // so the config option and the key binding cannot disagree.
+    void SetStartFullscreen(bool enabled);
+
     // In-process hosts (core DLL): receive the presentation window's HWND via
     // callback instead of the stdout PCSX5_WINDOW_HANDLE line.  When a
     // callback is registered the stdout print is suppressed.  The callback

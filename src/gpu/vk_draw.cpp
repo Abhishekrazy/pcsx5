@@ -77,6 +77,9 @@ struct DrawState {
     VkDeviceSize staging_off = 0;
     HostBuffer   scalar_ring; // kBatchDraws * 2 slots of 256 dwords
     HostBuffer   index_ring;  // bump-allocated per draw
+    // Guest ranges imported directly as device memory (no copy), keyed by the
+    // page-aligned host base of the import window.
+    std::unordered_map<u64, HostBuffer> imported_windows;
     VkDeviceSize index_off = 0;
 
     // Host buffers replaced mid-batch; destroyed once the fence signals.
@@ -278,6 +281,109 @@ bool IndexAlloc(VkDeviceSize size, VkDeviceSize* offset) {
     g_ds.index_off = aligned + size;
     *offset = aligned;
     return true;
+}
+
+// Storage-buffer descriptor offsets must respect minStorageBufferOffsetAlignment.
+VkDeviceSize StorageAlignment() {
+    static VkDeviceSize align = 0;
+    if (align == 0) {
+        align = 256;  // conservative default if the query is unavailable
+        VkContext* ctx = g_ds.ctx;
+        if (ctx && ctx->fn.GetPhysicalDeviceProperties && ctx->phys) {
+            VkPhysicalDeviceProperties props = {};
+            ctx->fn.GetPhysicalDeviceProperties(ctx->phys, &props);
+            if (props.limits.minStorageBufferOffsetAlignment != 0) {
+                align = props.limits.minStorageBufferOffsetAlignment;
+            }
+        }
+    }
+    return align;
+}
+
+// Backs a VkBuffer directly with guest memory instead of copying it.
+//
+// The guest range is host memory this process already owns - Memory::Translate
+// is the identity - so VK_EXT_external_memory_host can import it and the draw
+// reads it in place. Returns the buffer and the offset within it that
+// corresponds to `addr`, or nullptr when the range cannot be imported, in
+// which case the caller falls back to the staged copy.
+HostBuffer* ImportGuestRange(guest_addr_t addr, u64 size, VkDeviceSize* offset_out) {
+    VkContext* ctx = g_ds.ctx;
+    if (!ctx || !ctx->has_external_memory_host ||
+        !ctx->fn.GetMemoryHostPointerPropertiesEXT) {
+        return nullptr;
+    }
+    const VkDeviceSize align = ctx->imported_host_pointer_alignment;
+    if (align == 0) return nullptr;
+
+    const guest_addr_t base = addr & ~static_cast<guest_addr_t>(align - 1);
+    const VkDeviceSize pad = static_cast<VkDeviceSize>(addr - base);
+
+    // The descriptor offset must satisfy the storage-buffer alignment. The
+    // window base is page-aligned and so already satisfies it; `pad` need not,
+    // and when it does not the range is left to the copy path.
+    if ((pad % StorageAlignment()) != 0) return nullptr;
+
+    const VkDeviceSize window = (pad + size + align - 1) & ~(align - 1);
+
+    auto it = g_ds.imported_windows.find(base);
+    if (it != g_ds.imported_windows.end() && it->second.size >= window) {
+        *offset_out = pad;
+        return &it->second;
+    }
+
+    // Validated once, on the first import of this window rather than on every
+    // bind: IsReadable walks each page under a lock, which for a 1 MB window is
+    // 256 pages, and doing that per bind cost more than the copy it replaces.
+    if (!Memory::IsReadable(base, window)) return nullptr;
+
+    VkMemoryHostPointerPropertiesEXT hp = {};
+    hp.sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT;
+    if (ctx->fn.GetMemoryHostPointerPropertiesEXT(
+            ctx->device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+            reinterpret_cast<void*>(base), &hp) != VK_SUCCESS ||
+        hp.memoryTypeBits == 0) {
+        return nullptr;
+    }
+    u32 type = 0;
+    if (!VkFindMemoryType(ctx, hp.memoryTypeBits,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, &type)) {
+        return nullptr;
+    }
+
+    HostBuffer b;
+    VkExternalMemoryBufferCreateInfo ext_bci = {};
+    ext_bci.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+    ext_bci.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+    VkBufferCreateInfo bci = {};
+    bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bci.pNext = &ext_bci;
+    bci.size = window;
+    bci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (ctx->fn.CreateBuffer(ctx->device, &bci, nullptr, &b.buf) != VK_SUCCESS) {
+        return nullptr;
+    }
+
+    VkImportMemoryHostPointerInfoEXT imp = {};
+    imp.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT;
+    imp.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+    imp.pHostPointer = reinterpret_cast<void*>(base);
+    VkMemoryAllocateInfo mai = {};
+    mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    mai.pNext = &imp;
+    mai.allocationSize = window;
+    mai.memoryTypeIndex = type;
+    if (ctx->fn.AllocateMemory(ctx->device, &mai, nullptr, &b.mem) != VK_SUCCESS ||
+        ctx->fn.BindBufferMemory(ctx->device, b.buf, b.mem, 0) != VK_SUCCESS) {
+        DestroyHostBuffer(b);
+        return nullptr;
+    }
+    b.size = window;
+
+    if (it != g_ds.imported_windows.end()) g_ds.retired.push_back(it->second);
+    *offset_out = pad;
+    return &g_ds.imported_windows.insert_or_assign(base, b).first->second;
 }
 
 void ImageBarrier(VkImage image, VkImageLayout from, VkImageLayout to,
@@ -1247,6 +1353,8 @@ void VkDrawShutdown() {
     for (auto& b : g_ds.retired) DestroyHostBuffer(b);
     DestroyHostBuffer(g_ds.scalar_ring);
     DestroyHostBuffer(g_ds.index_ring);
+    for (auto& [k, b] : g_ds.imported_windows) DestroyHostBuffer(b);
+    g_ds.imported_windows.clear();
     DestroyHostBuffer(g_ds.staging);
     if (g_ds.desc_pool) ctx->fn.DestroyDescriptorPool(ctx->device, g_ds.desc_pool, nullptr);
     if (g_ds.fence) ctx->fn.DestroyFence(ctx->device, g_ds.fence, nullptr);
@@ -1429,6 +1537,23 @@ bool VkDrawExecute(const VkDrawCall& call) {
         u64 size = b.size_bytes ? b.size_bytes : 4;
         size = (size + 3) & ~3ull;
         if (size > 64ull * 1024 * 1024) size = 64ull * 1024 * 1024;
+        // Zero-copy path: back the descriptor with the guest pages directly.
+        // The staged copy below was about 85% of all GPU-side draw time and
+        // dropped this title to about 1 fps once its bound ranges reached 1 MB.
+        // An import reads the same bytes in place, so there is nothing to keep
+        // in sync and no staleness to reason about. Ranges the device cannot
+        // import fall through to the copy.
+        {
+            VkDeviceSize import_off = 0;
+            HostBuffer* imported = ImportGuestRange(b.guest_addr, size, &import_off);
+            if (imported) {
+                buffer_infos[i].buffer = imported->buf;
+                buffer_infos[i].offset = import_off;
+                buffer_infos[i].range = size;
+                continue;
+            }
+        }
+
         HostBuffer* hb = nullptr;
         if (g_ds.uploaded_bases.count(b.guest_addr) != 0) {
             // An earlier draw in this batch already snapshotted this base;

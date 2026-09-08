@@ -456,6 +456,72 @@ void TestConcurrencyStress() {
     Memory::Shutdown();
 }
 
+// Regression: a guarded write into a write-tracked range must land.
+//
+// TrackGuestWrites arms a range with PAGE_READONLY and relies on the hardware
+// fault to disarm it. The guarded primitives pre-check writability in software
+// instead, so before ReleaseTrackedWriteAt existed they saw the armed page as
+// unwritable and silently discarded the write - CommitOnFault returns early for
+// an already-committed page and never recovers an armed one. Observed during
+// gameplay on PPSA02929 as 61 discarded guest writes of 128 bytes in one run.
+void TestGuardedWriteIntoTrackedRange() {
+    std::fprintf(stdout, "[TEST] Guarded Write Into Write-Tracked Range\n");
+    // The defect only exists outside the direct-mapped pool. For pool memory
+    // Query answers from the region table and never consults the real page
+    // protection, so an armed page still reads as writable there and the write
+    // goes through. Force the non-pool path, which is where guarded writes
+    // actually consult VirtualQuery.
+    SetEnvironmentVariableA("PCSX5_DISABLE_POOL", "1");
+    EXPECT(Memory::Initialize(), "Initialize");
+
+    guest_addr_t page = 0;
+    CheckStatus(Memory::Map(0, 4096, Memory::PROT_READ | Memory::PROT_WRITE, &page),
+                Memory::Status::Ok, __FILE__, __LINE__, "Map 4KB RW");
+
+    // Seed, then arm write tracking over the whole page.
+    u8 seed[128];
+    std::memset(seed, 0x11, sizeof(seed));
+    u64 written = 0;
+    EXPECT(Memory::GuardedWrite(page, seed, sizeof(seed), &written), "seed write");
+    EXPECT_EQ(written, sizeof(seed), "seed wrote all bytes");
+
+    Memory::TrackGuestWrites(page, 4096);
+    u64 gen_before = 0;
+    EXPECT(Memory::TryGetGuestWriteGeneration(page, &gen_before),
+           "range is tracked after TrackGuestWrites");
+
+    // The write that used to be discarded.
+    u8 payload[128];
+    std::memset(payload, 0xA5, sizeof(payload));
+    written = 0;
+    EXPECT(Memory::GuardedWrite(page, payload, sizeof(payload), &written),
+           "GuardedWrite into an armed tracked range succeeds");
+    EXPECT_EQ(written, sizeof(payload), "all bytes written into a tracked range");
+
+    // The bytes must actually be there, not merely reported as written.
+    u8 readback[128];
+    std::memset(readback, 0, sizeof(readback));
+    u64 got = 0;
+    EXPECT(Memory::GuardedRead(readback, page, sizeof(readback), &got), "readback");
+    EXPECT_EQ(got, sizeof(readback), "readback length");
+    bool all_match = true;
+    for (size_t i = 0; i < sizeof(readback); ++i) {
+        if (readback[i] != 0xA5) { all_match = false; break; }
+    }
+    EXPECT(all_match, "tracked-range write landed in guest memory");
+
+    // The write must be visible to cache owners as a generation change.
+    u64 gen_after = 0;
+    EXPECT(Memory::TryGetGuestWriteGeneration(page, &gen_after),
+           "range still tracked after the write");
+    EXPECT(gen_after != gen_before, "write generation advanced");
+
+    Memory::UntrackGuestWrites(page);
+    Memory::Unmap(page, 4096);
+    Memory::Shutdown();
+    SetEnvironmentVariableA("PCSX5_DISABLE_POOL", nullptr);
+}
+
 } // namespace
 
 int main() {
@@ -471,6 +537,7 @@ int main() {
     TestProtectionViolation();
     TestOverlappingCopies();
     TestStringPrimitives();
+    TestGuardedWriteIntoTrackedRange();
     TestConcurrencyStress();
 
     std::fprintf(stdout, "============================================================\n");

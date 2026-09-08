@@ -69,7 +69,12 @@ struct GraphicsConfig {
 };
 
 struct AudioConfig {
-    int   backend   = 0;                       // 0=Off, 1=WASAPI, 2=XAudio2
+    // 0=Off, 1=WASAPI, 2=XAudio2. Defaults to XAudio2, which falls back to
+    // WASAPI and then waveOut if it cannot open. The previous default was Off,
+    // which meant a title that produced audio correctly - PPSA02929 submits
+    // 15,619 buffers in a two-minute run - was silent with nothing in the log
+    // to say why beyond one 'backend=silent' line.
+    int   backend   = 2;
     int   buffer_ms = 50;
     float volume    = 1.0f;
 };

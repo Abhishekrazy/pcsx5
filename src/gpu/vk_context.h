@@ -38,6 +38,8 @@ struct VkFunctions {
     PFN_vkDestroySurfaceKHR                         DestroySurfaceKHR = nullptr;
     PFN_vkCreateDevice                              CreateDevice = nullptr;
     PFN_vkGetDeviceProcAddr                         GetDeviceProcAddr = nullptr;
+    PFN_vkGetPhysicalDeviceProperties2              GetPhysicalDeviceProperties2 = nullptr;
+    PFN_vkGetMemoryHostPointerPropertiesEXT         GetMemoryHostPointerPropertiesEXT = nullptr;
 
     // Device-level (valid only after device creation).
     PFN_vkDestroyDevice                 DestroyDevice = nullptr;
@@ -133,6 +135,10 @@ struct VkContext {
     // True when VK_EXT_memory_budget was enabled on the device, so heap usage
     // and budget can be queried for the readout.
     bool has_memory_budget = false;
+    // VK_EXT_external_memory_host: a VkBuffer can be backed by host memory we
+    // already own, so guest ranges can be bound without being copied.
+    bool has_external_memory_host = false;
+    VkDeviceSize imported_host_pointer_alignment = 0;
     VkFunctions             fn = {};
     char                    device_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE] = {};
 };

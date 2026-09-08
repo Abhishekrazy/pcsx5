@@ -41,6 +41,7 @@ void PrintUsage() {
     std::printf("                               as PCSX5_WINDOW_HANDLE=<decimal HWND>).\n");
     std::printf("  --ipc-map=<name>             Shared memory file mapping name (IPC mode).\n");
     std::printf("  --ipc-pipe=<name>            Named pipe name (IPC mode).\n");
+    std::printf("  --fullscreen                 Start in borderless fullscreen (F11 toggles at runtime).\n");
     std::printf("  --play-input=<path>          Play back a recorded input replay (JSON).\n");
     std::printf("  --record-input=<path>        Record controller input to file (JSON).\n");
 }
@@ -88,6 +89,7 @@ int main(int argc, char* argv[]) {
     std::string ipc_map_name;
     std::string ipc_pipe_name;
     int headless_mode = 0;
+    int fullscreen_mode = 0;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--extract-pkg") {
@@ -129,6 +131,8 @@ int main(int argc, char* argv[]) {
             options.embed = 1;
         } else if (a == "--headless") {
             headless_mode = 1;
+        } else if (a == "--fullscreen") {
+            fullscreen_mode = 1;
         } else if (a.rfind("--ipc-map=", 0) == 0) {
             ipc_map_name = a.substr(10);
         } else if (a.rfind("--ipc-pipe=", 0) == 0) {
@@ -155,6 +159,11 @@ int main(int argc, char* argv[]) {
     // --headless overrides the config via env var (GPU::Initialize checks this).
     if (headless_mode) {
         ::_putenv("PCSX5_HEADLESS=1");
+    }
+    // --fullscreen overrides graphics.fullscreen for this launch. Set before
+    // pcsx5_load reads the config, so the flag wins over the file.
+    if (fullscreen_mode) {
+        ::_putenv("PCSX5_FULLSCREEN=1");
     }
 
     // PKG-extraction mode: run standalone and exit (no emulator startup).

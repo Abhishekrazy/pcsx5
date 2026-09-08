@@ -280,6 +280,22 @@ void UntrackGuestWrites(guest_addr_t address);
 
 // Returns the monotonic first-write generation for a tracked range; false
 // when the range is untracked (caller must treat content as always stale).
+// Releases write tracking for the range covering `address`, bumping its
+// generation, and reports whether a range was actually released.
+//
+// Write tracking arms a range with PAGE_READONLY and relies on the resulting
+// hardware fault to disarm it and bump the generation. That works for a native
+// guest store. It does not work for the guarded primitives below, which
+// pre-check writability in software, see an armed page as unwritable, and drop
+// the write - CommitOnFault returns early for an already-committed page and so
+// never recovers an armed one. Observed during gameplay on PPSA02929: 61 guest
+// writes of 128 bytes each discarded in a single run.
+//
+// A write to an armed range is a tracked write, not a fault. The guarded write
+// paths call this and retry, which is the software equivalent of the hardware
+// fault path.
+bool ReleaseTrackedWriteAt(guest_addr_t address);
+
 bool TryGetGuestWriteGeneration(guest_addr_t address, u64* generation_out);
 
 // Re-arms write protection after the owner finished reading the guest

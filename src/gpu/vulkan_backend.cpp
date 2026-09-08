@@ -61,6 +61,9 @@ namespace GPU {
 
     void SetEmbeddedMode(bool enabled) { g_embed_mode = enabled; }
 
+    static bool g_start_fullscreen = false;
+    void SetStartFullscreen(bool enabled) { g_start_fullscreen = enabled; }
+
     // In-process window-handle callback (see gpu.h).  When set, the HWND is
     // delivered through the callback and the stdout line is suppressed.
     static WindowCreatedCallback g_window_created_cb = nullptr;
@@ -565,6 +568,11 @@ namespace GPU {
         }
 
         g_window = glfwCreateWindow(g_width, g_height, "pcsx5 - PlayStation 5 Emulator", nullptr, nullptr);
+        // Applied after creation through the same path F11 uses, so there is
+        // one implementation of "go fullscreen" rather than two.
+        if (g_window && g_start_fullscreen && !g_embed_mode) {
+            ToggleFullscreen();
+        }
         if (!g_window) {
             LOG_ERROR(GPU, "Failed to create GLFW window — falling back to headless mode.");
             glfwTerminate();

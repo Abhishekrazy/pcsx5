@@ -14,6 +14,16 @@
     Create a release zip archive after staging
 .PARAMETER Version
     Version string embedded in the zip name (e.g. "0.1.0")
+.PARAMETER Squirrel
+    Build the Squirrel update assets (RELEASES, full + delta nupkg, Setup.exe)
+    from the staged release into -ReleaseDir. Requires -Version.
+.PARAMETER ReleaseDir
+    Directory holding the Squirrel release assets (default: releases\).
+    An existing full nupkg for the previous version must be present here for a
+    delta to be produced; without one Squirrel emits a full package only.
+.PARAMETER SquirrelExe
+    Path to Squirrel.exe. Defaults to the newest clowd.squirrel in the NuGet
+    package cache.
 #>
 param(
     [string] $OutputDir  = "dist",
@@ -22,6 +32,9 @@ param(
     [switch] $SkipDotnet,
     [switch] $Zip,
     [string] $Version    = "",
+    [switch] $Squirrel,
+    [string] $ReleaseDir = "releases",
+    [string] $SquirrelExe = "",
     [string] $Generator  = ""    # empty = auto-detect VS; set to "Ninja" for Ninja
 )
 
@@ -322,17 +335,15 @@ if ($missing.Count -gt 0) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 5 - Zip archive (optional)
+# Shared release staging
+#
+# Pack an allowlist, never dist\* wholesale: running the app from dist leaves
+# decoded-audio caches, crash dumps, logs, .work and the user's own
+# config/favourites/recent-plays there. v0.1.1's first zip shipped 345 MB of
+# exactly that. Only what the build produced is staged, and both the zip and
+# the Squirrel package are built from the same staging, so they cannot drift.
 # ---------------------------------------------------------------------------
-if ($Zip) {
-    $verSuffix = if ($Version) { "_$Version" } else { "" }
-    $zipName = "PCSX5${verSuffix}_Release.zip"
-    $zipPath = Join-Path $repoRoot $zipName
-    Log "=== Step 5: Creating $zipName ==="
-    # Pack an allowlist, never dist\* wholesale: running the app from dist
-    # leaves decoded-audio caches, crash dumps, logs, .work and the user's own
-    # config/favourites/recent-plays there. v0.1.1's first zip shipped 345 MB
-    # of exactly that. Only what the build produced goes into the archive.
+function New-ReleaseStage {
     $ship = @("pcsx5.exe", "pcsx5_cli.exe", "pcsx5_core.dll", "bink2w64.dll",
               "README.md", "VERSION",
               "plugins", "tools", "assets", "lang")
@@ -345,7 +356,37 @@ if ($Zip) {
         Copy-Item -Recurse -Force $src (Join-Path $stage $rel)
     }
     # Nothing from a run may ride along even inside the staged folders.
-    Get-ChildItem -Path $stage -Recurse -Include "*.log","*.pdb","*.dmp" | Remove-Item -Force
+    Get-ChildItem -Path $stage -Recurse -Include "*.log","*.pdb","*.dmp" |
+        Remove-Item -Force
+    return $stage
+}
+
+# Newest Squirrel.exe in the NuGet package cache, or "" if none is installed.
+function Find-SquirrelExe {
+    if ($SquirrelExe) {
+        if (Test-Path $SquirrelExe) { return $SquirrelExe }
+        Fatal "-SquirrelExe '$SquirrelExe' does not exist."
+    }
+    $cache = Join-Path $env:USERPROFILE ".nuget\packages\clowd.squirrel"
+    if (-not (Test-Path $cache)) { return "" }
+    $found = Get-ChildItem $cache -Directory -ErrorAction SilentlyContinue |
+             Sort-Object Name -Descending |
+             ForEach-Object { Join-Path $_.FullName "tools\Squirrel.exe" } |
+             Where-Object { Test-Path $_ } |
+             Select-Object -First 1
+    if ($found) { return $found }
+    return ""
+}
+
+# ---------------------------------------------------------------------------
+# Step 5 - Zip archive (optional)
+# ---------------------------------------------------------------------------
+if ($Zip) {
+    $verSuffix = if ($Version) { "_$Version" } else { "" }
+    $zipName = "PCSX5${verSuffix}_Release.zip"
+    $zipPath = Join-Path $repoRoot $zipName
+    Log "=== Step 5: Creating $zipName ==="
+    $stage = New-ReleaseStage
     if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
     Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zipPath -Force
     Remove-Item -Recurse -Force $stage
@@ -353,6 +394,87 @@ if ($Zip) {
     Log "Created $zipPath ($zipMb MB)"
 }
 
+# ---------------------------------------------------------------------------
+# Step 6 - Squirrel update assets (optional)
+#
+# Produces RELEASES, pcsx5-<version>-full.nupkg, a delta against the previous
+# full package when one is present in -ReleaseDir, and pcsx5Setup.exe. These are
+# what the in-app Squirrel.UpdateManager reads; before this switch existed they
+# were built by hand from the NuGet cache, which is why v0.1.0 shipped assets
+# that nothing in the repo could reproduce.
+# ---------------------------------------------------------------------------
+if ($Squirrel) {
+    Log "=== Step 6: Squirrel release assets ==="
+    if (-not $Version) {
+        Fatal "-Squirrel requires -Version (e.g. -Version 0.1.2). The version is
+       the package version and drives the update comparison, so it cannot be
+       guessed from the build."
+    }
+    $squirrelPath = Find-SquirrelExe
+    if (-not $squirrelPath) {
+        Fatal "Squirrel.exe not found. Install it with:
+       dotnet tool install --global csq --version 2.11.1
+       or restore the clowd.squirrel NuGet package, or pass -SquirrelExe <path>."
+    }
+    Log "Squirrel: $squirrelPath"
+
+    $releasePath = if ([System.IO.Path]::IsPathRooted($ReleaseDir)) { $ReleaseDir }
+                   else { Join-Path $repoRoot $ReleaseDir }
+    New-Item -ItemType Directory $releasePath -Force -ErrorAction SilentlyContinue | Out-Null
+
+    # A delta needs the previous full package to diff against. Say so rather
+    # than silently shipping full-only, which is what happened by hand.
+    $priorFull = Get-ChildItem $releasePath -Filter "*-full.nupkg" -ErrorAction SilentlyContinue
+    if (-not $priorFull) {
+        Warn "No previous *-full.nupkg in $releasePath; Squirrel will produce a"
+        Warn "full package only (no delta). That is expected for a first release."
+    } else {
+        Log "Previous full package(s) present: $($priorFull.Name -join ', ')"
+    }
+
+    $stage = New-ReleaseStage
+    # --allowUnaware: the WPF exe is not built against Squirrel's awareness
+    # manifest, and Squirrel refuses to pack an unaware app without this.
+    $sqArgs = @(
+        "pack",
+        "--packId",        "pcsx5",
+        "--packVersion",   $Version,
+        "--packDirectory", $stage,
+        "--releaseDir",    $releasePath,
+        "--packTitle",     "PCSX5",
+        "--allowUnaware"
+    )
+    $icon = Join-Path $repoRoot "assets\icons\pcsx5.ico"
+    if (Test-Path $icon) { $sqArgs += @("--icon", $icon) }
+
+    Log "Running: Squirrel.exe $($sqArgs -join ' ')"
+    & $squirrelPath @sqArgs
+    $sqExit = $LASTEXITCODE
+    Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+    if ($sqExit -ne 0) { Fatal "Squirrel pack failed (exit $sqExit)." }
+
+    # Report what was actually produced rather than assuming it worked.
+    $expected = @("RELEASES", "pcsx5-$Version-full.nupkg")
+    $missingSq = @()
+    foreach ($f in $expected) {
+        if (-not (Test-Path (Join-Path $releasePath $f))) { $missingSq += $f }
+    }
+    $setup = Get-ChildItem $releasePath -Filter "*Setup.exe" -ErrorAction SilentlyContinue
+    if (-not $setup) { $missingSq += "*Setup.exe" }
+    if ($missingSq.Count -gt 0) {
+        Fatal "Squirrel reported success but these are missing from ${releasePath}: $($missingSq -join ', ')"
+    }
+    $delta = Join-Path $releasePath "pcsx5-$Version-delta.nupkg"
+    Log "Squirrel assets in ${releasePath}:"
+    foreach ($f in (Get-ChildItem $releasePath | Sort-Object Name)) {
+        Log ("  {0}  ({1} MB)" -f $f.Name, [math]::Round($f.Length / 1MB, 1))
+    }
+    if (-not (Test-Path $delta)) {
+        Warn "No delta package was produced (expected when there is no prior release)."
+    }
+}
+
 Log "=== BUILD COMPLETE ==="
 Log "Output: $distDir"
 if ($Zip) { Log "Archive: $zipPath" }
+if ($Squirrel) { Log "Squirrel: $releasePath" }

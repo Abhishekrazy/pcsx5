@@ -114,6 +114,7 @@ bool CreateSurfaceForWindow(VkContext* ctx, GLFWwindow* window) {
 bool PickDeviceAndQueue(VkContext* ctx) {
     VK_LOAD_INSTANCE(ctx, EnumeratePhysicalDevices);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceProperties);
+    VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceProperties2);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceFeatures);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceQueueFamilyProperties);
     VK_LOAD_INSTANCE(ctx, GetPhysicalDeviceMemoryProperties);
@@ -224,7 +225,17 @@ bool CreateLogicalDevice(VkContext* ctx) {
             if (std::strcmp(e.extensionName, "VK_EXT_memory_budget") == 0) {
                 device_exts.push_back("VK_EXT_memory_budget");
                 ctx->has_memory_budget = true;
-                break;
+            }
+            // VK_EXT_external_memory_host lets a VkBuffer be backed directly
+            // by host memory we already own. Guest memory qualifies: guest
+            // addresses are host addresses (Memory::Translate is the
+            // identity) and guest pages are page-aligned. Importing a range
+            // removes the per-draw copy into a staging buffer entirely,
+            // rather than trying to prove the copy unnecessary.
+            if (std::strcmp(e.extensionName,
+                            VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME) == 0) {
+                device_exts.push_back(VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+                ctx->has_external_memory_host = true;
             }
         }
     }
@@ -241,6 +252,35 @@ bool CreateLogicalDevice(VkContext* ctx) {
     if (r != VK_SUCCESS) {
         LOG_ERROR(GPU, "Vulkan: vkCreateDevice failed (%d).", static_cast<int>(r));
         return false;
+    }
+
+    if (ctx->has_external_memory_host) {
+        ctx->fn.GetMemoryHostPointerPropertiesEXT =
+            reinterpret_cast<PFN_vkGetMemoryHostPointerPropertiesEXT>(
+                ctx->fn.GetDeviceProcAddr(ctx->device,
+                                          "vkGetMemoryHostPointerPropertiesEXT"));
+        VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_props = {};
+        host_props.sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT;
+        VkPhysicalDeviceProperties2 props2 = {};
+        props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        props2.pNext = &host_props;
+        if (ctx->fn.GetPhysicalDeviceProperties2) {
+            ctx->fn.GetPhysicalDeviceProperties2(ctx->phys, &props2);
+            ctx->imported_host_pointer_alignment =
+                host_props.minImportedHostPointerAlignment;
+        }
+        if (!ctx->fn.GetMemoryHostPointerPropertiesEXT ||
+            ctx->imported_host_pointer_alignment == 0) {
+            LOG_WARN(GPU, "Vulkan: VK_EXT_external_memory_host present but "
+                          "unusable; falling back to staged uploads.");
+            ctx->has_external_memory_host = false;
+        } else {
+            LOG_INFO(GPU, "Vulkan: host-pointer import available "
+                          "(alignment %llu bytes).",
+                     static_cast<unsigned long long>(
+                         ctx->imported_host_pointer_alignment));
+        }
     }
 
     VK_LOAD_DEVICE(ctx, DestroyDevice);
