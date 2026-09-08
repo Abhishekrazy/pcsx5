@@ -98,6 +98,48 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 
 ## Delivery sequence and Phase 1 handoff
 
+### Phase 4 offscreen graphics contract
+
+Decision: `graphics/include/pcsx5/graphics/renderer.h` is the canonical typed HAL
+for the first headless graphics consumer, the newly authored synthetic replay
+corpus. Graphics owns API-neutral extent/color/triangle commands and returned
+pixel storage. The Vulkan leaf alone owns native resources and SDK types; core
+does not acquire a graphics link dependency. All consumers share the C++ build.
+The project owner approves broader capability or dependency changes.
+
+The synchronous renderer accepts a bounded complete frame: clear plus ordered
+solid-color triangles. Pixel origin is upper-left; rasterization has no blend,
+depth, culling, multisampling or sRGB. Readback is tightly packed RGBA8 UNORM.
+Invalid dimensions/vertices/degenerate triangles reject before device work; failure
+does not return a successful partial image. Inputs are borrowed for the call only.
+The renderer owns native lifetime, requires external serialization and closes
+idempotently. Capabilities describe this implementation, not PS5 GPU features.
+Validation-required creation must fail if its layer/debug support is unavailable.
+It also requires and explicitly enables synchronization validation. Pixel tests
+check asymmetric orientation, overwrite ordering and shared-edge single coverage;
+they do not prescribe which neighbor owns an exact edge sample. This follows
+[Vulkan polygon coverage](https://docs.vulkan.org/spec/latest/chapters/primsrast.html#primsrast-polygons).
+Readback uses a transfer-to-host barrier, fence wait and whole-allocation invalidate
+as specified by [Khronos](https://docs.vulkan.org/refpages/latest/refpages/source/vkInvalidateMappedMemoryRanges.html).
+The private failure seam injects errors before allocation/submission after earlier
+resources exist; it does not simulate completed GPU work or prove recovery from
+actual hardware loss. A private post-destruction observer verifies zero validation
+errors through native device teardown. No callback enters the public HAL.
+
+Phase 4 acceptance includes actual Vulkan draw/readback (not only clear/copy),
+independent synthetic pixel expectations, replay on fresh and reused renderers,
+invalid inputs, unavailable devices, cleanup and validation-layer error checks,
+plus Windows/Linux Debug/Release gates. Cross-vendor floating-point raster edges
+are not a bit-identical guest GPU oracle. No legacy shaders or assets are imported.
+Guest shader translation, guest command decoding, presentation and full PS5 graphics
+semantics require separate contracts; this phase does not claim those capabilities.
+
+Dependency approval: on 2026-09-09 the user explicitly approved using installed
+Windows Vulkan SDK 1.4.357.0 and installing Linux Vulkan development/validation and
+GLSL/SPIR-V tools with required supporting packages. SDK/loader links remain in
+the graphics leaf; no source vendoring, package redistribution or other dependency
+is approved by this decision. Bootstrap must not silently download tools.
+
 | Phase | Deliverable / exit gate |
 |---|---|
 | 0 (characterization complete) | Inventory, provenance dispositions, bounded memory/TLS/register/syscall/trap/exit matrix and evidence review; known failed invariants retained, not accepted |

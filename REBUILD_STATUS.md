@@ -2,7 +2,66 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: NEXT.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: IN PROGRESS.**
+
+## Phase 4 acceptance tasks
+
+Phase 4 is IN PROGRESS; no graphics gate is complete yet.
+
+- [x] P4.1 Approve/verify Vulkan tools and record exact dependency use.
+- [x] P4.2 API-neutral offscreen HAL and validation contract with unit tests.
+- [ ] P4.3 Real Vulkan draw/readback, bounded resources, errors and cleanup.
+- [ ] P4.4 Synthetic replay with independent pixel expectations and validation.
+- [ ] P4.5 Windows/Linux Debug/Release acceptance, repeatability, review and commits.
+
+P4.1 environment evidence (2026-09-09): user approved the Vulkan dependency set.
+VERIFIED: installed five Linux packages with no upgrades/removals: libvulkan-dev
+1.4.341.0-1, vulkan-tools 1.4.341.0+dfsg1-1, vulkan-validationlayers 1.4.341.0-1,
+glslang-tools 16.2.0-2 and required spirv-tools 2026.1-1. Existing Linux loader is
+1.4.341.0-1 and Mesa Vulkan driver is 26.0.3-1ubuntu1. Windows uses the pre-existing
+SDK 1.4.357.0, glslang 16.4.0 and SPIRV-Tools v2026.3.rc1.
+
+VERIFIED: vulkaninfo reports Linux llvmpipe (software Vulkan, LLVM 21.1.8), Windows
+NVIDIA RTX 5070 Ti (616.56) and Intel Graphics (101.5869). Khronos validation layer
+is present on both hosts. Enumeration is not rendering acceptance. Windows loader
+also reports installed overlay hooks and ReShade load errors; acceptance processes
+will disable implicit layers only, not alter installations or disable explicit
+Khronos validation. Linux loader emits display-extension warnings; no surface is
+required by this offscreen implementation.
+
+Header notice observation: installed Windows vulkan.h/vk_platform.h/vulkan_core.h
+declare Apache-2.0 OR MIT; Linux vulkan.h declares Apache-2.0. No headers or SDK
+binaries are copied into the repository. This is build-time dependency evidence,
+not a combined-work redistribution/license compatibility certification. Packaging
+and distribution obligations require a later review; the root license stays intact.
+
+### Phase 4 implementation checkpoint
+
+- VERIFIED: HAL unit tests observed missing `validate_frame` linkage before
+  implementation, then pass 750 checks including exhaustive small-coordinate
+  winding/degeneracy cases and signed-coordinate limits. Core remains unchanged.
+- VERIFIED: four opt-in `*-x64-graphics-*` presets require installed SDK/tools;
+  the four original presets retain no Vulkan dependency. Shader sources are newly
+  authored GLSL, built and validated as Vulkan 1.1 SPIR-V and embedded privately.
+  No shader binary or legacy asset was imported. The preset-policy test covers
+  all eight configurations and standalone CMake policy baselines.
+- VERIFIED: Windows and WSL Linux graphics Debug each pass 62/62 CTests. Actual
+  draw/readback, default factory, synchronization validation, missing-layer failure,
+  replay on fresh/reused owners, synthetic resource failures, retry and implicit
+  destructor observation all pass. Base Debug builds passed 58/58 on both hosts.
+- The first native run exposed a Vulkan 1.0 instance versus 1.1 shader mismatch;
+  instance and device requirements were corrected to 1.1. Adding private failure
+  tests exposed directory-scoped imported CMake targets; tests now discover their
+  private SDK target explicitly. The replay matcher was updated alongside the
+  stronger asserted transcript; no failed test was skipped to obtain a pass.
+- Independent review prompted asymmetric geometry to detect vertical flips,
+  contrasting shared edges to detect holes/double coverage, a real default factory
+  check, explicit synchronization validation and observable destructor cleanup.
+  Native lifetime/synchronization review found no remaining blocking defect.
+
+Remaining before closure: Release graphics matrix, repeated/cross-device replay,
+final diff and acceptance audit. Injected errors occur before native operations;
+actual hardware loss, memory exhaustion and all-vendor support remain UNKNOWN.
 
 ## Phase 3 acceptance tasks
 

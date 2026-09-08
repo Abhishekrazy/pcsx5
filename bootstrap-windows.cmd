@@ -3,8 +3,8 @@ setlocal
 
 set "PCSX5_PRESET=%~1"
 if not defined PCSX5_PRESET set "PCSX5_PRESET=windows-x64-debug"
-if not "%PCSX5_PRESET%"=="windows-x64-debug" if not "%PCSX5_PRESET%"=="windows-x64-release" (
-    echo Expected windows-x64-debug or windows-x64-release.
+if not "%PCSX5_PRESET%"=="windows-x64-debug" if not "%PCSX5_PRESET%"=="windows-x64-release" if not "%PCSX5_PRESET%"=="windows-x64-graphics-debug" if not "%PCSX5_PRESET%"=="windows-x64-graphics-release" (
+    echo Expected windows-x64-debug, windows-x64-release, windows-x64-graphics-debug or windows-x64-graphics-release.
     exit /b 1
 )
 

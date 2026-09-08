@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-# Dependency-free policy check for the four clean-build presets. CMake itself
+# Dependency-free policy check for the eight clean-build presets. CMake itself
 # validates preset schema/expansion; this verifies project-specific invariants.
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../CMakePresets.json" presets)
 
@@ -21,13 +21,34 @@ expect(ON configurePresets 0 cacheVariables BUILD_TESTING)
 foreach(section configurePresets buildPresets testPresets)
     string(JSON count LENGTH "${presets}" ${section})
     if(section STREQUAL "configurePresets")
-        set(expected_count 5)
+        set(expected_count 9)
     else()
-        set(expected_count 4)
+        set(expected_count 8)
     endif()
     if(NOT count EQUAL expected_count)
         message(FATAL_ERROR "Unexpected ${section} count: ${count}")
     endif()
+endforeach()
+# Graphics opt-in presets inherit each host's toolchain, but keep isolated output.
+set(index 4)
+foreach(platform windows linux)
+    foreach(config debug release)
+        set(name "${platform}-x64-graphics-${config}")
+        math(EXPR configure_index "${index} + 1")
+        expect("${name}" configurePresets ${configure_index} name)
+        expect("${platform}-x64-${config}" configurePresets ${configure_index} inherits)
+        expect(ON configurePresets ${configure_index} cacheVariables PCSX5_BUILD_VULKAN)
+        foreach(section buildPresets testPresets)
+            expect("${name}" ${section} ${index} name)
+            expect("${name}" ${section} ${index} configurePreset)
+        endforeach()
+        expect(error testPresets ${index} execution noTestsAction)
+        expect(30 testPresets ${index} execution timeout)
+        expect(ON testPresets ${index} output outputOnFailure)
+        expect("\${sourceDir}/out/build/\${presetName}/ctest.log" testPresets ${index} output outputLogFile)
+        expect("\${sourceDir}/out/build/\${presetName}/junit.xml" testPresets ${index} output outputJUnitFile)
+        math(EXPR index "${index} + 1")
+    endforeach()
 endforeach()
 
 set(index 0)
@@ -70,9 +91,11 @@ endforeach()
 # CMake 4 can mask missing declarations that still fail on supported CMake 3.
 foreach(script IN ITEMS
         ../cmake/CheckCoreIncludes.cmake
+        ../cmake/EmbedFrameShaders.cmake
         boundary/run_case.cmake
         guest_range_repeatability.cmake
         guest_memory_repeatability.cmake
+        graphics_repeatability.cmake
         runtime_memory_termination.cmake
         runtime_worker_termination.cmake)
     file(READ "${CMAKE_CURRENT_LIST_DIR}/${script}" source)
@@ -80,4 +103,4 @@ foreach(script IN ITEMS
         message(FATAL_ERROR "Standalone script lacks the 3.25 policy baseline: ${script}")
     endif()
 endforeach()
-message(STATUS "Four isolated presets and standalone policy baselines match the clean-build contract")
+message(STATUS "Eight isolated presets and standalone policy baselines match the clean-build contract")

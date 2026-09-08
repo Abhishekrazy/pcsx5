@@ -1,4 +1,35 @@
 add_executable(pcsx5_core_smoke core_smoke.cpp)
+add_executable(pcsx5_graphics_frame graphics_frame_tests.cpp)
+target_link_libraries(pcsx5_graphics_frame PRIVATE pcsx5_graphics)
+pcsx5_enable_warnings(pcsx5_graphics_frame)
+add_test(NAME pcsx5_graphics_frame COMMAND pcsx5_graphics_frame)
+set_tests_properties(pcsx5_graphics_frame PROPERTIES TIMEOUT 30 LABELS graphics)
+
+if(PCSX5_BUILD_VULKAN)
+    # Imported SDK targets are directory-scoped; only private-backend tests use it.
+    find_package(Vulkan 1.1 REQUIRED)
+    add_executable(pcsx5_graphics_vulkan_tests graphics_vulkan_tests.cpp)
+    target_link_libraries(pcsx5_graphics_vulkan_tests PRIVATE pcsx5_graphics_vulkan)
+    pcsx5_enable_warnings(pcsx5_graphics_vulkan_tests)
+    add_test(NAME pcsx5_graphics_vulkan COMMAND pcsx5_graphics_vulkan_tests)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/empty-vulkan-layers")
+    add_test(NAME pcsx5_graphics_missing_validation COMMAND pcsx5_graphics_vulkan_tests --expect-no-validation)
+    set_tests_properties(pcsx5_graphics_missing_validation PROPERTIES TIMEOUT 30 LABELS "graphics;vulkan"
+        ENVIRONMENT "VK_LAYER_PATH=${CMAKE_CURRENT_BINARY_DIR}/empty-vulkan-layers;VK_ADD_LAYER_PATH=;VK_LOADER_LAYERS_DISABLE=~implicit~;VK_LOADER_LAYERS_ENABLE=;VK_INSTANCE_LAYERS=")
+    set_tests_properties(pcsx5_graphics_vulkan PROPERTIES TIMEOUT 30 LABELS "graphics;vulkan"
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_LOADER_LAYERS_ENABLE=;VK_INSTANCE_LAYERS=")
+    add_executable(pcsx5_graphics_vulkan_failures graphics_vulkan_failure_tests.cpp)
+    target_link_libraries(pcsx5_graphics_vulkan_failures PRIVATE pcsx5_graphics_vulkan Vulkan::Vulkan)
+    target_include_directories(pcsx5_graphics_vulkan_failures PRIVATE "${CMAKE_SOURCE_DIR}/graphics/src")
+    pcsx5_enable_warnings(pcsx5_graphics_vulkan_failures)
+    add_test(NAME pcsx5_graphics_vulkan_failures COMMAND pcsx5_graphics_vulkan_failures)
+    add_test(NAME pcsx5_graphics_repeatability COMMAND "${CMAKE_COMMAND}"
+        "-DGRAPHICS_TEST=$<TARGET_FILE:pcsx5_graphics_vulkan_tests>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/graphics_repeatability.cmake")
+    set_tests_properties(pcsx5_graphics_vulkan_failures pcsx5_graphics_repeatability
+        PROPERTIES TIMEOUT 30 LABELS "graphics;vulkan"
+        ENVIRONMENT "VK_LOADER_LAYERS_DISABLE=~implicit~;VK_LOADER_LAYERS_ENABLE=;VK_INSTANCE_LAYERS=")
+endif()
 target_link_libraries(pcsx5_core_smoke PRIVATE pcsx5_core)
 pcsx5_enable_warnings(pcsx5_core_smoke)
 
