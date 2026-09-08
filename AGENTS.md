@@ -42,7 +42,15 @@ The current implementation is a legacy reference, not the target architecture. D
 4. Implement one bounded change.
 5. Run focused tests, then the applicable acceptance gate.
 6. Update `REBUILD_STATUS.md` with evidence and the next boundary.
-7. Commit completed, verified task boundaries regularly using descriptive Conventional Commit messages. Stage only reviewed task-related changes; leave unfinished or unrelated work untouched. Record remaining risks rather than calling characterization failures fixed. Do not push remotely unless the user requests it.
+7. Follow the commit checkpoints below before moving to another task or handing off completed work.
+
+## Commit checkpoints
+
+- Commit after each completed, verified task, not only at the end of a phase. During longer tasks, commit independently buildable and tested increments when available.
+- Before committing, review the diff, run the relevant checks, and update `REBUILD_STATUS.md` with evidence and remaining risks. Never label a failed or unverified gate complete merely to make a checkpoint.
+- Use descriptive Conventional Commit messages on a `codex/` branch. Stage only reviewed task-related paths; leave unfinished, unrelated, generated and secret material out.
+- Before switching tasks or finishing a turn with completed changes, create the checkpoint and report its hash. If a commit cannot safely be made, report why and what remains uncommitted.
+- Do not push remotely or rewrite existing history unless the user requests it.
 
 ## Source layout target
 

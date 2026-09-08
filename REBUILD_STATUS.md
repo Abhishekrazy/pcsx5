@@ -2,7 +2,18 @@
 
 ## Current phase
 
-**Phase 0 — Characterization and rebuild preparation: COMPLETE within the scope below. Phase 1 is next, not implemented.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: ACTIVE.**
+
+## Phase 1 task checkpoints
+
+- [x] Make the regular-commit rule explicit in `AGENTS.md`: commit verified task boundaries and buildable increments, review exact staged paths, and report checkpoint hashes. VERIFIED: documentation diff reviewed; no runtime change.
+- [ ] P1.1 Replace legacy CI with clean Windows/Linux x64 Debug/Release jobs and strict headless tests (current task).
+- [ ] P1.2 Verify fresh-worktree entry points and finish local Codex setup.
+- [ ] P1.3 Enforce core include/link boundaries with positive and negative tests.
+- [ ] P1.4 Extend portable core tests beyond the scaffold smoke test.
+- [ ] P1.5 Record actual hosted CI matrix results before phase closure.
+
+Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundation`. No remote push is authorized; hosted results remain UNKNOWN until the committed workflow is run.
 
 Closure decision, 2026-09-08: the RT-01–RT-08 Windows characterization matrix now exercises the real selected boundaries, including syscall traps, guest-stack exit/fault attempts and cleanup hooks. Failed legacy invariants are recorded as failures, not converted into accepted runtime behavior. Phase 0 establishes evidence for redesign; it does not require preserving defects in the new implementation or prove platform support.
 
