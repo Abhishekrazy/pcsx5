@@ -15,7 +15,7 @@
 - [x] P1.4 Extend portable core tests beyond the scaffold smoke test.
 - [ ] P1.5 Record actual hosted CI matrix results before phase closure.
 
-Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundation`. No remote push is authorized; hosted results remain UNKNOWN until the committed workflow is run.
+Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundation`. The user authorized pushing this branch and verifying hosted CI. Initial hosted execution exposed the script-policy issue below; Phase 1 remains open until the corrected matrix passes.
 
 ### P1.1 implementation and local verification
 
@@ -60,6 +60,13 @@ Remaining limits: automatic setup triggered by Codex worktree creation remains U
 - VERIFIED: integrated Windows MSVC and WSL Ubuntu GCC Debug/Release builds each pass **42/42 CTests**. The range suite also passed GCC AddressSanitizer + UndefinedBehaviorSanitizer with `-DNDEBUG` and strict warnings; no diagnostics were emitted. No sanitizer package or test framework was installed.
 - Independent review found no blocking arithmetic, invariant or Release-test issue; its suggested additional near-maximum rejection matrix was included and verified. Tests use only newly authored synthetic values; no legacy or proprietary fixtures were imported.
 - P1.3 checkpoint: `b3b0971`. P1.4 is a separate implementation/test checkpoint. ARM64, Apple, Android, full emulator execution and hosted CI remain unverified.
+
+### P1.5 hosted execution and script-policy correction
+
+- VERIFIED: authorized push of `e1aee343e1c263333e301d3e380c862bfb9af5ee` created [run 34260363762](https://github.com/Abhishekrazy/pcsx5/actions/runs/34260363762). Both Windows jobs passed; both Ubuntu jobs failed during the build-time boundary scan before tests ran.
+- VERIFIED: hosted Ubuntu CMake 3.31.6 reported unset policy CMP0057 and rejected `IN_LIST` in the standalone `-P` process. Root configure succeeded because its policy version was already declared; that policy does not carry into a separate script process. Local CMake 4 runs had masked the omission.
+- Correction: all three clean standalone script entry points now declare the same CMake 3.25 baseline as the root. The existing preset-contract test checks those declarations and was observed failing before the correction. No boundary enforcement was removed and no toolchain dependency was changed. Hosted success remains pending the corrected commit's run.
+- VERIFIED after correction: local Windows and WSL Linux Debug builds each passed **42/42 CTests**, including the new policy-baseline assertion and build-time scan. CMake 3 execution will be verified by the hosted rerun, not inferred from these CMake 4 checks.
 
 ## Phase 0 closure record
 
@@ -169,7 +176,7 @@ These findings disqualify mechanical copying of the legacy runtime. They neither
 - VERIFIED: `.github/workflows/ci.yml` has been replaced locally with clean build-and-test jobs. The remote workflow is unchanged until an authorized push; do not treat remote legacy packaging as rebuild release evidence.
 - UNKNOWN: hosted Windows/Linux CI results and automatic Codex worktree setup. New worktrees must include the Phase 1 commits; the local WSL builds do not establish hosted runner success.
 
-Next: P1.5 actual hosted CI evidence. A read-only `gh run list` for `codex/phase-1-build-foundation` returned no runs during this session. Local P1.1-P1.4 work is complete, but Phase 1 remains open until the hosted gate passes. Pushing the current branch to run the workflow requires user approval; no remote write has been made. After Phase 1 closure, the next phase is narrow runtime contracts and the Windows leaf implementation. Additional dependencies and semantic legacy fixes remain unapproved.
+Next: verify the corrected P1.5 hosted matrix following the authorized branch push. Local P1.1-P1.4 work is complete, but Phase 1 remains open until the hosted gate passes. After Phase 1 closure, the next phase is narrow runtime contracts and the Windows leaf implementation. Additional dependencies, merges, releases and semantic legacy fixes remain unapproved.
 
 ## Phase 0 integrated verification (before Phase 1)
 

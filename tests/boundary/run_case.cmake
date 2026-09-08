@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.25)
+
 if(NOT DEFINED CASE OR NOT DEFINED EXPECTED OR NOT DEFINED TEST_BINARY_ROOT)
     message(FATAL_ERROR "Missing boundary fixture arguments")
 endif()

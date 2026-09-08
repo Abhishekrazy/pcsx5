@@ -66,4 +66,15 @@ foreach(platform windows linux)
         math(EXPR index "${index} + 1")
     endforeach()
 endforeach()
-message(STATUS "Four isolated Debug/Release presets match the clean-build contract")
+# A standalone -P process does not inherit the root project's policy version.
+# CMake 4 can mask missing declarations that still fail on supported CMake 3.
+foreach(script IN ITEMS
+        ../cmake/CheckCoreIncludes.cmake
+        boundary/run_case.cmake
+        guest_range_repeatability.cmake)
+    file(READ "${CMAKE_CURRENT_LIST_DIR}/${script}" source)
+    if(NOT source MATCHES "^cmake_minimum_required\\(VERSION 3\\.25\\)")
+        message(FATAL_ERROR "Standalone script lacks the 3.25 policy baseline: ${script}")
+    endif()
+endforeach()
+message(STATUS "Four isolated presets and standalone policy baselines match the clean-build contract")

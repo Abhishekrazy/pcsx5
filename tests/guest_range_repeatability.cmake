@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.25)
+
 if(NOT DEFINED RANGE_TEST OR NOT EXISTS "${RANGE_TEST}")
     message(FATAL_ERROR "Missing guest range test executable")
 endif()

@@ -125,6 +125,7 @@ Phase 1 task order (active; completion evidence in `REBUILD_STATUS.md`):
 
 - Four Ninja presets isolate Windows x64 MSVC and Linux x64 GCC Debug/Release outputs. Configuration is selected at configure time, not by passing multiple configurations to a single-config build.
 - Each test preset fails if no tests are selected, applies a bounded default timeout, and writes CTest/JUnit logs. CI builds only the clean root; no legacy characterization, submodule restore, package creation or release publishing is part of this workflow.
+- Every clean standalone CMake `-P` entry point declares the root's 3.25 minimum/policy baseline explicitly; a subprocess does not inherit the root configure policy scope. The preset-contract test checks this to prevent local CMake 4 from masking older supported CMake behavior.
 - CI uses read-only repository permissions, does not persist checkout credentials, and retains only the already-used checkout, MSVC initialization and log-upload actions, pinned to verified upstream commit IDs. Runner images are version-labeled but their installed tool versions may change; logs identify the actual tools used.
 - Workflow and preset validation is local evidence only. Hosted matrix success requires an actual GitHub Actions run; local GCC compilation without Linux CMake/Ninja is not Linux preset verification.
 
