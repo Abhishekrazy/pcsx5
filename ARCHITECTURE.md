@@ -102,7 +102,7 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 |---|---|
 | 0 (characterization complete) | Inventory, provenance dispositions, bounded memory/TLS/register/syscall/trap/exit matrix and evidence review; known failed invariants retained, not accepted |
 | 1 | Build and boundary foundation: Windows x64 MSVC and Linux x64 GCC Debug/Release CI, headless CTest, zero-test failure, no legacy linking or release packaging |
-| 2 | Narrow runtime contracts and Windows leaf implementation; contract tests without UI |
+| 2 (complete) | Owned data memory, fault observation/forwarding, host workers and monotonic timing; Windows leaf implementations and UI-free contract tests. Closure evidence and exclusions in REBUILD_STATUS.md |
 | 3 | Portable core and Linux runtime; equivalent headless tests on both hosts |
 | 4 | Graphics HAL and Vulkan; isolated synthetic rendering/replay tests |
 | 5 | Reference interpreter and deterministic state/trace oracle |

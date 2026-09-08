@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Runtime contracts and Windows leaf implementation: IN PROGRESS.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: NEXT.**
 
 ## Phase 1 task checkpoints
 
@@ -204,7 +204,7 @@ Remaining phase acceptance tasks (defined before implementation):
   handling and deterministic lifecycle tests, without host TLS layout assumptions.
 - [x] P2.6 Monotonic host timing: checked tick conversion, Windows counter source,
   synthetic arithmetic and real source tests; no guest timing accuracy claim.
-- [ ] P2.7 Integrated Windows/Linux Debug/Release checks and independent review;
+- [x] P2.7 Integrated Windows/Linux Debug/Release checks and independent review;
   evidence-backed phase closure with remaining later-phase work explicit.
 
 P2.4 VERIFIED locally: Windows Debug real owned read/write and unrelated read
@@ -320,11 +320,27 @@ No CI fix or rerun was needed. P2.1-P2.3 are complete within the documented
 data-memory scope and limitations. No merge, release or platform-support claim
 was made. Linux still validates portable contracts only, not a memory provider.
 
-Next Phase 2 boundary: define normalized fault records and ownership-filtered
-routing, first as portable synthetic tests, then a Windows adapter. Thread and
-timing contracts and their acceptance gates remain pending. Native fault recovery
-must not copy the characterized unsafe legacy stack/longjmp behavior. Phase 2 as
-a whole remains IN PROGRESS; Linux runtime implementation remains Phase 3.
+### P2.7 phase closure
+
+VERIFIED on 2026-09-09: [hosted run 34268583215](https://github.com/Abhishekrazy/pcsx5/actions/runs/34268583215)
+passed all four jobs at `43a29cdcea3fc6c8519a4653feeaa04987970483`.
+Windows Debug/Release each pass **52/52** tests; Linux Debug/Release each pass
+**45/45**. The same totals passed locally. Fault, worker and timing source reviews
+found no blocking issue within their documented preconditions. New implementation
+checkpoints are `b6098ce` (fault observation), `b5c2152` (worker lifetime) and
+`43a29cd` (timing). No dependencies, legacy changes, merge or release were made.
+
+Phase 2 acceptance is complete for owned data memory, ownership-filtered fault
+observation, owned host workers and monotonic host timing. This is not a complete
+emulator runtime: no executable memory, automatic demand commit, guest syscall/
+breakpoint handling, guest scheduler/TLS, stack recovery, storage/audio/input or
+frontend integration is claimed. Faults are observed and forwarded, never consumed.
+Windows-only implementation coverage is separate from portable Linux contracts.
+The known legacy failed invariants remain recorded, not reclassified as fixed.
+
+Next: Phase 3 portable-core integration and Linux runtime, beginning with a Linux
+owned-memory provider using the same contracts and reusable lifecycle corpus.
+Later execution recovery must not copy the unsafe legacy stack/longjmp strategy.
 
 ## Phase 0 integrated verification (before Phase 1)
 
