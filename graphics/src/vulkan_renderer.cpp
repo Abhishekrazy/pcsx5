@@ -139,9 +139,18 @@ private:
 
 void vulkan_renderer::initialize(vulkan_options options) {
     constexpr const char* layer_name = "VK_LAYER_KHRONOS_validation";
-    constexpr std::array<const char*, 2> extension_names{
-        VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME};
+    std::vector<const char*> extension_names;
+    std::uint32_t available_count{};
+    checked(vkEnumerateInstanceExtensionProperties(nullptr, &available_count, nullptr));
+    std::vector<VkExtensionProperties> available(available_count);
+    checked(vkEnumerateInstanceExtensionProperties(nullptr, &available_count, available.data()));
+    const bool portability = std::any_of(available.begin(), available.begin() + available_count,
+        [](const auto& entry) { return std::strcmp(entry.extensionName,
+            VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0; });
+    if (portability) extension_names.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
     if (options.require_validation) {
+        extension_names.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        extension_names.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
         std::uint32_t count{};
         checked(vkEnumerateInstanceLayerProperties(&count, nullptr));
         if (!count) throw backend_failure{graphics_error::unsupported};
@@ -182,6 +191,9 @@ void vulkan_renderer::initialize(vulkan_options options) {
     app.apiVersion = VK_API_VERSION_1_1;
     auto create = info<VkInstanceCreateInfo>(VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO);
     create.pApplicationInfo = &app;
+    create.flags = portability ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0;
+    create.enabledExtensionCount = static_cast<std::uint32_t>(extension_names.size());
+    create.ppEnabledExtensionNames = extension_names.data();
     if (options.require_validation) {
         create.enabledLayerCount = 1;
         create.ppEnabledLayerNames = &layer_name;
@@ -234,6 +246,16 @@ void vulkan_renderer::initialize(vulkan_options options) {
     queue.queueFamilyIndex = family_; queue.queueCount = 1; queue.pQueuePriorities = &priority;
     auto device = info<VkDeviceCreateInfo>(VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
     device.queueCreateInfoCount = 1; device.pQueueCreateInfos = &queue;
+    checked(vkEnumerateDeviceExtensionProperties(physical_, nullptr, &count, nullptr));
+    std::vector<VkExtensionProperties> device_extensions(count);
+    checked(vkEnumerateDeviceExtensionProperties(physical_, nullptr, &count, device_extensions.data()));
+    // The extension name is used without enabling beta feature structures.
+    constexpr const char* subset = "VK_KHR_portability_subset";
+    if (std::any_of(device_extensions.begin(), device_extensions.begin() + count,
+        [](const auto& entry) { return std::strcmp(entry.extensionName, "VK_KHR_portability_subset") == 0; })) {
+        device.enabledExtensionCount = 1;
+        device.ppEnabledExtensionNames = &subset;
+    }
     checked(vkCreateDevice(physical_, &device, nullptr, &device_));
     vkGetDeviceQueue(device_, family_, 0, &queue_);
     if (validation_errors()) throw backend_failure{graphics_error::validation_failure};

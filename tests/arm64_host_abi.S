@@ -1,8 +1,14 @@
 // Test-only AAPCS64 probe. Preserve caller state, seed callee-saved registers,
 // snapshot before/after the callback, then restore the original caller state.
 .text
+#ifdef __APPLE__
+#define pcsx5_arm64_abi_probe _pcsx5_arm64_abi_probe
+#define pcsx5_arm64_abi_corrupt _pcsx5_arm64_abi_corrupt
+#endif
 .global pcsx5_arm64_abi_probe
+#ifndef __APPLE__
 .type pcsx5_arm64_abi_probe,%function
+#endif
 .macro snapshot
     stp x19,x20,[x9,#0]
     stp x21,x22,[x9,#16]
@@ -74,12 +80,18 @@ pcsx5_arm64_abi_probe:
     ldp x29,x30,[sp,#80]
     add sp,sp,#208
     ret
+#ifndef __APPLE__
 .size pcsx5_arm64_abi_probe,.-pcsx5_arm64_abi_probe
+#endif
 .global pcsx5_arm64_abi_corrupt
+#ifndef __APPLE__
 .type pcsx5_arm64_abi_corrupt,%function
+#endif
 pcsx5_arm64_abi_corrupt:
     mov x19,#99
     fmov d8,x19
     ret
+#ifndef __APPLE__
 .size pcsx5_arm64_abi_corrupt,.-pcsx5_arm64_abi_corrupt
 .section .note.GNU-stack,"",%progbits
+#endif

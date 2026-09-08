@@ -18,13 +18,16 @@ try {
         '-Wall','-Wextra','-Wpedantic','-Wconversion','-static-libstdc++',
         '-Iruntime/include','-Iexecution/include','-Icore/include')
     $cases = @{
+        'memory' = @('-DPCSX5_TEST_POSIX=1','tests/runtime_memory_tests.cpp','runtime/src/portable_posix_memory.cpp')
+        'services' = @('tests/posix_services_tests.cpp','runtime/src/posix_services.cpp',
+            'runtime/src/linux_worker.cpp','runtime/src/linux_timing.cpp')
         'code-cache' = @('tests/executable_code_tests.cpp','runtime/src/posix_executable_code.cpp')
         'execution' = @('tests/arm64_execution_tests.cpp','execution/src/arm64_step.cpp',
             'tests/arm64_host_abi.S',
             'execution/src/arm64_jit.cpp','execution/src/interpreter.cpp',
             'core/src/guest_memory.cpp','runtime/src/posix_executable_code.cpp')
     }
-    foreach ($name in @('code-cache','execution')) {
+    foreach ($name in @('memory','services','code-cache','execution')) {
         $output = "out/android-arm64/$name"
         & $compiler @common @($cases[$name]) -o $output
         if ($LASTEXITCODE -ne 0) { throw "Build failed: $name" }

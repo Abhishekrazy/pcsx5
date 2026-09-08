@@ -31,4 +31,11 @@ protected:
     std::span<const std::byte>,code_isa) noexcept;
 [[nodiscard]] code_result<std::unique_ptr<executable_code>> create_windows_code(
     std::span<const std::byte>,code_isa) noexcept;
+// Apple Silicon: one process-owned MAP_JIT arena, at most one live image.
+// Trusted serialized emission uses per-thread W^X; the arena is retained until
+// process shutdown. Requires the allow-jit entitlement for hardened executables;
+// do not combine with jit-write-allowlist (a different callback-based policy).
+// No physical Mac verification has been recorded yet.
+[[nodiscard]] code_result<std::unique_ptr<executable_code>> create_darwin_code(
+    std::span<const std::byte>,code_isa) noexcept;
 } // namespace pcsx5::runtime

@@ -14,6 +14,8 @@ extern "C" void pcsx5_arm64_abi_probe(void(*)(void*),void*,std::uint64_t*,std::u
 extern "C" void pcsx5_arm64_abi_corrupt(void*);
 #if defined(_WIN32)
 constexpr auto create_code=rt::create_windows_code;
+#elif defined(__APPLE__)
+constexpr auto create_code=rt::create_darwin_code;
 #else
 constexpr auto create_code=rt::create_posix_code;
 #endif

@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phases 0–7: COMPLETE within their documented acceptance scopes and exclusions below. Phase 8 — macOS/Apple Silicon runtime and MoltenVK: BLOCKED on hardware/toolchain access. No PS5/game or general supported-platform claim.**
+**Phases 0–7: COMPLETE within their documented acceptance scopes and exclusions below. Phases 8–11: implementation in progress; Apple acceptance deferred by the user. No PS5/game or general supported-platform claim.**
 
 ## Phase 7 acceptance tasks
 
@@ -49,7 +49,26 @@ hostile code. Phase 7 is bounded scalar bring-up, not a full x86-64 recompiler.
   matrix and scope/limitations audit. Apple/Windows ARM64 acceptance is not inferred
   from Android hardware results.
 
-## Phase 8 acceptance tasks — hardware access blocked
+## Phase 8 acceptance tasks — implementation prepared, Apple testing deferred
+
+VERIFIED locally: portability-aware Vulkan initialization passes Windows Vulkan
+Release 76/76 tests. The new shared POSIX data-memory/worker/timing path passes
+Linux Debug 75/75 tests and the reused memory lifecycle corpus under ASan/UBSan.
+Android memory/services executables cross-compile with the installed NDK. They
+have NOT run on the device: ADB currently reports no connected devices.
+
+INFERRED / UNVERIFIED on Apple: the Darwin code provider uses one process-owned
+MAP_JIT arena, one live immutable image, serialized emission/invocation, explicit
+per-thread write protection and instruction-cache invalidation. Release retires
+the image; the arena remains owned until process shutdown. The existing generic
+code-cache contract's immediate-unmapping claim does not apply to this provider.
+The development runner uses allow-jit only, not the incompatible callback-allowlist
+policy. Neither this leaf nor its signing/SDK integration is Mac-compiled yet.
+Use `sh tools/test-macos.sh`, then `sh tools/test-macos.sh --graphics` on the Mac
+with an already installed, approved Vulkan SDK. These gates fail on errors.
+
+References: [Apple JIT requirements](https://developer.apple.com/documentation/apple-silicon/porting-just-in-time-compilers-to-apple-silicon),
+[Vulkan portability requirements](https://docs.vulkan.org/refpages/latest/refpages/source/VK_KHR_portability_enumeration.html).
 
 - [ ] P8.1 Establish an authorized Apple Silicon build/test host, existing Apple
   toolchain and approved MoltenVK dependency; record OS/SDK/device versions.
@@ -64,8 +83,24 @@ hostile code. Phase 7 is bounded scalar bring-up, not a full x86-64 recompiler.
 UNKNOWN: Apple execution and graphics behavior in this project. The user reports
 only an Android ARM64 device; this workspace has no authorized Apple host.
 No new SDK/dependency installation, cloud purchase or remote access is assumed.
-Phase 9 Android application/runtime work remains separate from the Phase 7 shell
-experiment; it can proceed out of order if the user chooses to defer Phase 8.
+The user has now authorized preparing remaining platforms out of order and
+running Mac tests later. This does not establish Apple acceptance.
+
+## Remaining task list (defined before implementation)
+
+- [ ] P9.1 Android runtime memory/worker/timing and root CMake cross-build.
+- [ ] P9.2 Synthetic application-sandbox execution and lifecycle shell; explicit
+  JIT capability/failure reporting, no retail code or blanket device permissions.
+- [ ] P9.3 Physical-device runtime/graphics/app lifecycle acceptance and cleanup.
+- [ ] P10.1 Record measured native Metal go/no-go. DEFERRED without Mac data;
+  native Metal is not implemented solely to fill the phase checkbox.
+- [ ] P11.1 Frontend-facing bounded synthetic execution entry point and tests.
+- [ ] P11.2 Developer CLI/Android shell and reproducible experimental packaging.
+- [ ] P11.3 Platform acceptance report, packaging checks and release exclusions.
+
+The existing roadmap ends at Phase 11. No invented later phases or game-support
+claims are implied by this task list. Production UI, signing/notarization and
+release compatibility cannot be certified by developer-shell checks.
 
 ## Phase 6 acceptance tasks
 

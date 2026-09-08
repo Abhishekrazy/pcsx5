@@ -98,6 +98,34 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 
 ## Delivery sequence and Phase 1 handoff
 
+### Remaining-platform implementation order (2026-09-09)
+
+The user authorized preparing Apple code now and deferring physical Mac tests,
+then continuing Android, the Metal decision and product delivery. This changes
+execution order, not acceptance criteria. No Phase 12 is currently defined.
+Portable interfaces remain authoritative. Android/Darwin data-memory leaves must
+preserve the existing zero-on-recommit and uncertain-state contracts; desktop
+Linux-only personality/fault code must not accidentally become a Darwin dependency.
+MoltenVK discovery requires advertised portability enumeration at instance level
+and the portability-subset device extension when advertised. This is backend
+initialization, not evidence that the rendering corpus passed on Apple hardware.
+
+Phase 10 is a measured go/no-go decision, not an obligation to write Metal.
+Without physical MoltenVK gap measurements its outcome is DEFERRED, with no
+native Metal implementation authorized by absent evidence. Product packaging
+must label the scalar developer build experimental and must not claim game
+compatibility, release signing or app-store readiness from a synthetic self-test.
+
+The shared POSIX data-memory implementation explicitly zeroes on commit rather
+than depending on Linux/Darwin discard differences. Decommit is logical access
+revocation; pages may remain resident until release. Protection failure marks
+the affected pages uncertain. This favors correctness over reclamation speed.
+The Darwin JIT leaf specializes the code-cache lifetime: a single 32-KiB-or-larger
+page-rounded MAP_JIT arena is process-owned; at most one live image, no overlapping
+emission/execution, and image release does not unmap the arena. It uses the macOS
+allow-jit / pthread_jit_write_protect_np policy, not the callback allowlist policy.
+Mac compilation, actual W^X behavior and the hardware corpus remain UNVERIFIED.
+
 ### Phase 7 ARM64 bring-up contract
 
 `execution/arm64_jit.h` defines a bounded register-only scalar lowering IR and
