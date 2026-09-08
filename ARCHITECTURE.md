@@ -158,6 +158,16 @@ References: [VirtualAlloc](https://learn.microsoft.com/en-us/windows/win32/api/m
 [VirtualProtect](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect).
 Legacy reserve/commit tests inform lifecycle coverage, not the new ownership API.
 
+P2.3 verification seam: `runtime/src/windows_memory_api.h` is private to the
+Windows leaf and its tests. Each owner copies its callback table; the test
+context outlives the owner. There is no process-global override or public pointer
+escape. Production supplies real Win32 calls through the same implementation.
+Tests forward successful operations to Win32, selectively inject native failures,
+and inspect captured test-owned addresses without publishing them. Injected
+failure evidence proves adapter response, not reproduction of actual OS resource
+exhaustion. A subprocess must distinguish the specified destructor termination
+path from arbitrary crashes. Public ownership semantics remain unchanged.
+
 ### Phase 1 build/CI contract
 
 - Four Ninja presets isolate Windows x64 MSVC and Linux x64 GCC Debug/Release outputs. Configuration is selected at configure time, not by passing multiple configurations to a single-config build.

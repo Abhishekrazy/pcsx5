@@ -58,4 +58,13 @@ if(WIN32)
     pcsx5_enable_warnings(pcsx5_runtime_memory)
     add_test(NAME pcsx5_runtime_memory COMMAND pcsx5_runtime_memory)
     set_tests_properties(pcsx5_runtime_memory PROPERTIES TIMEOUT 30 LABELS runtime)
+    add_executable(pcsx5_runtime_memory_failures runtime_memory_failure_tests.cpp)
+    target_link_libraries(pcsx5_runtime_memory_failures PRIVATE pcsx5_runtime_windows)
+    pcsx5_enable_warnings(pcsx5_runtime_memory_failures)
+    add_test(NAME pcsx5_runtime_memory_failures COMMAND pcsx5_runtime_memory_failures)
+    add_test(NAME pcsx5_runtime_memory_termination COMMAND "${CMAKE_COMMAND}"
+        "-DMEMORY_TEST=$<TARGET_FILE:pcsx5_runtime_memory_failures>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_memory_termination.cmake")
+    set_tests_properties(pcsx5_runtime_memory_failures pcsx5_runtime_memory_termination
+        PROPERTIES TIMEOUT 30 LABELS runtime)
 endif()

@@ -1,8 +1,6 @@
 #include <pcsx5/runtime/memory.h>
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <Windows.h>
+#include "windows_memory_api.h"
 
 #include <cstring>
 #include <exception>
@@ -12,6 +10,25 @@
 
 namespace pcsx5::runtime {
 namespace {
+
+void* native_allocate(void*, void* address, SIZE_T size, DWORD type,
+                      DWORD protection) noexcept {
+    return VirtualAlloc(address, size, type, protection);
+}
+
+BOOL native_free(void*, void* address, SIZE_T size, DWORD type) noexcept {
+    return VirtualFree(address, size, type);
+}
+
+BOOL native_protect(void*, void* address, SIZE_T size, DWORD protection,
+                    DWORD* previous) noexcept {
+    return VirtualProtect(address, size, protection, previous);
+}
+
+SIZE_T native_query(void*, const void* address, MEMORY_BASIC_INFORMATION* information,
+                    SIZE_T size) noexcept {
+    return VirtualQuery(address, information, size);
+}
 
 [[nodiscard]] memory_error native_error() noexcept {
     const auto error = GetLastError();
@@ -33,8 +50,9 @@ namespace {
 
 class windows_reservation final : public memory_reservation {
 public:
-    windows_reservation(memory_geometry geometry, std::uint64_t size) noexcept
-        : geometry_(geometry), size_(size) {}
+    windows_reservation(memory_geometry geometry, std::uint64_t size,
+                        detail::windows_memory_api api) noexcept
+        : geometry_(geometry), size_(size), api_(api) {}
     ~windows_reservation() override {
         if (!close()) {
             std::terminate();
@@ -46,7 +64,7 @@ public:
     windows_reservation& operator=(windows_reservation&&) = delete;
 
     [[nodiscard]] memory_result<void> initialize() noexcept {
-        base_ = static_cast<std::byte*>(VirtualAlloc(nullptr,
+        base_ = static_cast<std::byte*>(api_.allocate(api_.context, nullptr,
             static_cast<SIZE_T>(size_), MEM_RESERVE, PAGE_NOACCESS));
         if (base_ == nullptr) {
             return std::unexpected(native_error());
@@ -63,7 +81,7 @@ public:
         if (!valid) return valid;
         const auto protection = native_protection(access);
         if (!protection) return std::unexpected(protection.error());
-        if (VirtualAlloc(address(offset), static_cast<SIZE_T>(count), MEM_COMMIT,
+        if (api_.allocate(api_.context, address(offset), static_cast<SIZE_T>(count), MEM_COMMIT,
                          *protection) == nullptr) {
             return std::unexpected(native_error());
         }
@@ -77,7 +95,7 @@ public:
         const auto protection = native_protection(access);
         if (!protection) return std::unexpected(protection.error());
         DWORD previous{};
-        if (!VirtualProtect(address(offset), static_cast<SIZE_T>(count),
+        if (!api_.protect(api_.context, address(offset), static_cast<SIZE_T>(count),
                             *protection, &previous)) {
             return std::unexpected(native_error());
         }
@@ -88,7 +106,7 @@ public:
         std::uint64_t count) noexcept override {
         const auto valid = validate_pages(offset, count, page_state::committed);
         if (!valid) return valid;
-        if (!VirtualFree(address(offset), static_cast<SIZE_T>(count), MEM_DECOMMIT)) {
+        if (!api_.free(api_.context, address(offset), static_cast<SIZE_T>(count), MEM_DECOMMIT)) {
             return std::unexpected(native_error());
         }
         return {};
@@ -98,7 +116,7 @@ public:
         if (base_ == nullptr) return std::unexpected(memory_error::invalid_state);
         if (offset >= size_) return std::unexpected(memory_error::invalid_range);
         MEMORY_BASIC_INFORMATION information{};
-        if (VirtualQuery(address(offset), &information, sizeof(information)) !=
+        if (api_.query(api_.context, address(offset), &information, sizeof(information)) !=
                 sizeof(information) || information.AllocationBase != base_ ||
             information.Type != MEM_PRIVATE) {
             return std::unexpected(memory_error::host_failure);
@@ -182,7 +200,7 @@ private:
 
     [[nodiscard]] memory_result<void> close() noexcept {
         if (base_ == nullptr) return {};
-        if (!VirtualFree(base_, 0, MEM_RELEASE)) {
+        if (!api_.free(api_.context, base_, 0, MEM_RELEASE)) {
             return std::unexpected(native_error());
         }
         base_ = nullptr;
@@ -191,6 +209,7 @@ private:
 
     memory_geometry geometry_;
     std::uint64_t size_;
+    detail::windows_memory_api api_;
     std::byte* base_{}; // Exclusively owned Windows reservation; never exposed.
 };
 
@@ -207,6 +226,17 @@ memory_result<memory_geometry> windows_memory_geometry() noexcept {
 
 memory_result<std::unique_ptr<memory_reservation>>
 reserve_windows_memory(std::uint64_t size) noexcept {
+    return detail::reserve_windows_memory_with_api(size,
+        {nullptr, native_allocate, native_free, native_protect, native_query});
+}
+
+memory_result<std::unique_ptr<memory_reservation>>
+detail::reserve_windows_memory_with_api(std::uint64_t size,
+                                       windows_memory_api api) noexcept {
+    if (api.allocate == nullptr || api.free == nullptr || api.protect == nullptr ||
+        api.query == nullptr) {
+        return std::unexpected(memory_error::unsupported);
+    }
     const auto geometry = windows_memory_geometry();
     if (!geometry) return std::unexpected(geometry.error());
     if (!page_range::make(*geometry, size, 0, size) ||
@@ -216,7 +246,7 @@ reserve_windows_memory(std::uint64_t size) noexcept {
     }
     try {
         // Allocate the owner before acquiring the native mapping.
-        auto owner = std::make_unique<windows_reservation>(*geometry, size);
+        auto owner = std::make_unique<windows_reservation>(*geometry, size, api);
         const auto initialized = owner->initialize();
         if (!initialized) return std::unexpected(initialized.error());
         return std::unique_ptr<memory_reservation>(std::move(owner));

@@ -201,6 +201,8 @@ merges, releases and semantic legacy fixes remain unapproved.
   decommit/release tests. Revalidate ranges against owned state on every operation.
 - [ ] P2.3 Exercise failure cleanup and ownership isolation, including requests
   outside owned reservations. Record hosted CI evidence before closing milestone.
+  - [x] P2.3a Local injected native failure, cleanup and isolation tests.
+  - [ ] P2.3b Hosted CI evidence (requires authorization to push this branch).
 
 VERIFIED on 2026-09-08: all four local Windows MSVC/Linux WSL GCC Debug/Release
 presets build and pass 43/43 tests each. The new runtime test enumerates 443,784
@@ -231,14 +233,41 @@ VERIFIED on 2026-09-09:
 - No legacy implementation or project dependency changed. Diff whitespace checks
   pass. This checkpoint is local only; no push, merge or release was performed.
 
-UNKNOWN/pending P2.3: injected native allocation/protection/release failures,
+Historical P2.2 limits (local native checks superseded by P2.3a below): injected native allocation/protection/release failures,
 direct native observation of automatic cleanup, destructor failure subprocess
 coverage and hosted CI. The current destructor release path is exercised but
 its native cleanup effect is not independently observed. The API requires external
 serialization and valid copy buffers; it does not catch host faults or isolate
 untrusted execution. No emulator-supported-platform claim follows.
 
-Next: P2.3 failure cleanup and ownership-isolation evidence.
+### P2.3a local failure cleanup and ownership evidence
+
+VERIFIED on 2026-09-09:
+
+- Private per-owner Win32 callback tables exercise the same reservation class as
+  production. Public runtime headers and core dependencies are unchanged.
+- Synthetic reserve failures cover all three mapped out-of-memory codes and a
+  generic native error. Commit/protect/decommit failures preserve the observed
+  state when the injected callback deliberately performs no native mutation.
+- Failed/foreign-allocation queries prevent mutation and copying; out-of-range
+  requests do not even reach native query. Simultaneously live owners with
+  separate contexts retain independent failure and release behavior.
+- Failed explicit release retains usable memory; destructor retries successfully.
+  Successful automatic and explicit cleanup are independently observed as native
+  `MEM_FREE`, with release counts proving no duplicate release after closure.
+- A child-process test requires the injected-release marker, termination-handler
+  marker and exact status 73. Normal return, unrelated crash or timeout fails.
+  It proves the destructor invokes termination, not default CRT crash behavior.
+- Windows Debug/Release each pass **46/46 CTests**; Linux Debug/Release each pass
+  **43/43** portable tests. Both new Windows Debug tests pass ten repetitions each.
+  No compiler warnings observed. Independent review prompted simultaneous-owner
+  and release-route checks; both are included in final passing tests.
+- No dependencies or legacy changes. These are injected-failure response tests,
+  not OS exhaustion experiments. C++ owner-allocation `bad_alloc`, concurrency,
+  partial native mutation and arbitrary host faults remain untested.
+
+Next: P2.3b hosted CI; the local branch has not been pushed. P2.3 and Phase 2
+remain open until their respective remaining gates pass.
 Fault routing, threads, timing and cross-host runtime acceptance remain subsequent
 Phase 2 work, not completed by this arithmetic contract.
 

@@ -71,7 +71,8 @@ endforeach()
 foreach(script IN ITEMS
         ../cmake/CheckCoreIncludes.cmake
         boundary/run_case.cmake
-        guest_range_repeatability.cmake)
+        guest_range_repeatability.cmake
+        runtime_memory_termination.cmake)
     file(READ "${CMAKE_CURRENT_LIST_DIR}/${script}" source)
     if(NOT source MATCHES "^cmake_minimum_required\\(VERSION 3\\.25\\)")
         message(FATAL_ERROR "Standalone script lacks the 3.25 policy baseline: ${script}")
