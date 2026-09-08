@@ -12,7 +12,7 @@
   - [x] Fresh Windows/Linux Debug/Release configure, build and test entry points.
   - [x] Save and review the Windows-only Codex setup override; leave cleanup empty.
 - [x] P1.3 Enforce core include/link boundaries with positive and negative tests.
-- [ ] P1.4 Extend portable core tests beyond the scaffold smoke test.
+- [x] P1.4 Extend portable core tests beyond the scaffold smoke test.
 - [ ] P1.5 Record actual hosted CI matrix results before phase closure.
 
 Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundation`. No remote push is authorized; hosted results remain UNKNOWN until the committed workflow is run.
@@ -51,6 +51,15 @@ Remaining limits: automatic setup triggered by Codex worktree creation remains U
 - Independent review reproduced and then verified fixes for false-valued library names (`OFF`), strings concealing includes during comment removal, tight import syntax, includes of skipped CMake files and child-directory-local compiler flags. These cases now have regressions. The checker remains conservative rather than a full C++ parser or security sandbox; its toolchain and semantic limits are recorded in `ARCHITECTURE.md`.
 - VERIFIED: Windows MSVC and WSL Ubuntu GCC Debug/Release configure/build/test runs each passed **40/40 CTests** (38 boundary cases plus the two existing scaffold tests). Linux Debug was run by the implementation agent; the main agent ran Windows Debug/Release and Linux Release. No project dependency, legacy behavior change or remote write was made.
 - The portable range API contract is defined for P1.4; its implementation/tests are a separate checkpoint, not part of the P1.3 executable gate.
+
+### P1.4 portable guest-address range
+
+- VERIFIED: newly authored `guest_address_range` implements the documented nonempty, checked 64-bit byte-range contract without OS headers, host pointers, allocations or link dependencies. It does not validate PS5 addresses, own mappings or grant memory access.
+- Test-first evidence: the new test initially failed compilation because the contract header was absent. The implementation then passed the independent occupied-byte oracle, explicit edge cases and 288 near-maximum factory cases. Each executable run reports **158,880 checks, zero failures**; checks remain active with `NDEBUG`, and compile-time assertions check construction invariants and maximum-address behavior.
+- VERIFIED: the CTest repeatability harness runs the executable twice, requires successful exits and valid success summaries, and compares normalized stdout. CTest timing/JUnit timestamps are not claimed deterministic. Existing no-tests-as-error presets remain enforced by the preset-contract test.
+- VERIFIED: integrated Windows MSVC and WSL Ubuntu GCC Debug/Release builds each pass **42/42 CTests**. The range suite also passed GCC AddressSanitizer + UndefinedBehaviorSanitizer with `-DNDEBUG` and strict warnings; no diagnostics were emitted. No sanitizer package or test framework was installed.
+- Independent review found no blocking arithmetic, invariant or Release-test issue; its suggested additional near-maximum rejection matrix was included and verified. Tests use only newly authored synthetic values; no legacy or proprietary fixtures were imported.
+- P1.3 checkpoint: `b3b0971`. P1.4 is a separate implementation/test checkpoint. ARM64, Apple, Android, full emulator execution and hosted CI remain unverified.
 
 ## Phase 0 closure record
 
@@ -160,7 +169,7 @@ These findings disqualify mechanical copying of the legacy runtime. They neither
 - VERIFIED: `.github/workflows/ci.yml` has been replaced locally with clean build-and-test jobs. The remote workflow is unchanged until an authorized push; do not treat remote legacy packaging as rebuild release evidence.
 - UNKNOWN: hosted Windows/Linux CI results and automatic Codex worktree setup. New worktrees must include the Phase 1 commits; the local WSL builds do not establish hosted runner success.
 
-Next: P1.4 portable range tests, followed by P1.5 actual hosted CI evidence. A read-only `gh run list` for `codex/phase-1-build-foundation` returned no runs during this session. The approved Ubuntu tool installation is complete; additional dependency installations and remote pushes still require user approval. No semantic legacy fix is approved by this handoff.
+Next: P1.5 actual hosted CI evidence. A read-only `gh run list` for `codex/phase-1-build-foundation` returned no runs during this session. Local P1.1-P1.4 work is complete, but Phase 1 remains open until the hosted gate passes. Pushing the current branch to run the workflow requires user approval; no remote write has been made. After Phase 1 closure, the next phase is narrow runtime contracts and the Windows leaf implementation. Additional dependencies and semantic legacy fixes remain unapproved.
 
 ## Phase 0 integrated verification (before Phase 1)
 

@@ -34,3 +34,14 @@ foreach(entry IN LISTS boundary_cases)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/boundary/run_case.cmake")
     set_tests_properties("pcsx5_boundary_${case}" PROPERTIES TIMEOUT 30 LABELS boundary)
 endforeach()
+
+add_executable(pcsx5_guest_address_range guest_address_range_tests.cpp)
+target_link_libraries(pcsx5_guest_address_range PRIVATE pcsx5_core)
+pcsx5_enable_warnings(pcsx5_guest_address_range)
+add_test(NAME pcsx5_guest_address_range COMMAND pcsx5_guest_address_range)
+set_tests_properties(pcsx5_guest_address_range PROPERTIES TIMEOUT 30 LABELS core)
+
+add_test(NAME pcsx5_guest_range_repeatability COMMAND "${CMAKE_COMMAND}"
+    "-DRANGE_TEST=$<TARGET_FILE:pcsx5_guest_address_range>"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/guest_range_repeatability.cmake")
+set_tests_properties(pcsx5_guest_range_repeatability PROPERTIES TIMEOUT 30 LABELS core)
