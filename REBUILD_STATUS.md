@@ -199,16 +199,17 @@ merges, releases and semantic legacy fixes remain unapproved.
 - [x] P2.2 Specify owned reservation lifetime, capability, state-transition and
   failure contracts; implement a Windows leaf with real reserve/commit/protect/
   decommit/release tests. Revalidate ranges against owned state on every operation.
-- [ ] P2.3 Exercise failure cleanup and ownership isolation, including requests
+- [x] P2.3 Exercise failure cleanup and ownership isolation, including requests
   outside owned reservations. Record hosted CI evidence before closing milestone.
   - [x] P2.3a Local injected native failure, cleanup and isolation tests.
-  - [ ] P2.3b Hosted CI evidence (requires authorization to push this branch).
+  - [x] P2.3b Hosted CI evidence (user authorized the branch push).
 
 VERIFIED on 2026-09-08: all four local Windows MSVC/Linux WSL GCC Debug/Release
 presets build and pass 43/43 tests each. The new runtime test enumerates 443,784
 small-domain inputs, with additional overflow and compile-time geometry checks.
-Independent source review found no blocking issue. Hosted Phase 2 CI is UNKNOWN;
-this branch has not been pushed. No legacy source or dependency was changed.
+Independent source review found no blocking issue. At P2.1, hosted Phase 2 CI
+was UNKNOWN and the branch was not pushed; P2.3b below supersedes that limit.
+No legacy source or dependency was changed.
 
 ### P2.2 owned Windows data memory
 
@@ -266,10 +267,25 @@ VERIFIED on 2026-09-09:
   not OS exhaustion experiments. C++ owner-allocation `bad_alloc`, concurrency,
   partial native mutation and arbitrary host faults remain untested.
 
-Next: P2.3b hosted CI; the local branch has not been pushed. P2.3 and Phase 2
-remain open until their respective remaining gates pass.
-Fault routing, threads, timing and cross-host runtime acceptance remain subsequent
-Phase 2 work, not completed by this arithmetic contract.
+### P2.3b hosted closure: memory milestone COMPLETE
+
+VERIFIED on 2026-09-09 (local date): the user authorized pushing
+`codex/phase-2-memory-runtime`. [Hosted run 34266380223](https://github.com/Abhishekrazy/pcsx5/actions/runs/34266380223)
+passed all four jobs at implementation commit
+`8ce78a9cffd3c14fe9572055e209781d917d9ff3`:
+
+- Windows x64 Debug and Release: **46/46 tests each**.
+- Linux x64 Debug and Release: **43/43 tests each**.
+
+No CI fix or rerun was needed. P2.1-P2.3 are complete within the documented
+data-memory scope and limitations. No merge, release or platform-support claim
+was made. Linux still validates portable contracts only, not a memory provider.
+
+Next Phase 2 boundary: define normalized fault records and ownership-filtered
+routing, first as portable synthetic tests, then a Windows adapter. Thread and
+timing contracts and their acceptance gates remain pending. Native fault recovery
+must not copy the characterized unsafe legacy stack/longjmp behavior. Phase 2 as
+a whole remains IN PROGRESS; Linux runtime implementation remains Phase 3.
 
 ## Phase 0 integrated verification (before Phase 1)
 
