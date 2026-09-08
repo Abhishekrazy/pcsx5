@@ -98,6 +98,51 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 
 ## Delivery sequence and Phase 1 handoff
 
+### Phase 5 scalar interpreter contract
+
+Decision: the first reference oracle is a bounded scalar x86-64 long-mode subset,
+not a complete ISA or PS5 CPU. `execution/include/pcsx5/execution/interpreter.h`
+is the canonical shared type contract. Execution owns the provider; synthetic
+conformance/replay tests are the first consumer, with later backends required to
+match supported defined state. Contract expansion requires corresponding tests.
+
+Model: 16 64-bit GPRs in architectural encoding order, RIP, RFLAGS and a mask of
+known arithmetic flags (CF/PF/AF/ZF/SF/OF). Other state is not modeled. Scalar
+32-bit destinations zero-extend; arithmetic wraps at operand width. Logic makes
+AF unknown instead of inventing a hardware value. Conditional branches requiring
+unknown flags stop. Arithmetic semantics and encodings use the public
+[Intel instruction reference](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html),
+not the legacy native-context implementation or retail binaries.
+
+Supported encodings: optional single REX; B8-BF MOV immediate; 89/8B MOV with
+32/64-bit register or memory operands; register-only 01/03 ADD, 29/2B SUB, 39/3B
+CMP, 31/33 XOR, 21/23 AND, 09/0B OR and 85 TEST; register groups 81/83 for those
+arithmetic operations; 90 NOP without REX; 50-5F 64-bit PUSH/POP; E8 CALL, C3 RET,
+E9/EB JMP, 70-7F and 0F80-8F Jcc. Memory MOV supports 64-bit ModRM/SIB addressing,
+signed disp8/disp32 and RIP-relative addressing. No legacy prefixes, byte/word
+operands, memory arithmetic, x87/SIMD, atomics, segment overrides or privileged
+execution. Other encodings stop as unsupported. CC and 0F05 produce pre-execution
+breakpoint/syscall stops, not hardware trap or syscall emulation.
+
+Single-step fetches only needed bytes from guest_memory. Fetch permission is its
+existing read policy, not NX emulation. The initial virtual-address policy is
+48-bit canonical; no PS5-specific paging or exception-vector accuracy is claimed.
+Data accesses must fit one existing mapping. Each step stages register changes;
+failed decode/read/write leaves registers unchanged. Native backing write failure
+may have partially changed memory and is explicitly marked uncertain; it is not
+a rollback guarantee. No native code execution, host pointer exposure or new
+dependency is required. Calls are externally serialized.
+
+Run uses a caller-provided instruction budget and trace span; capacity is checked
+before executing, never silently dropping records. Versioned fixed-endian trace
+records capture instruction bytes, complete modeled before/after state, result,
+fault location and the single possible memory write. Traces contain guest values,
+never host identities, clocks or pointers. Fresh replay compares every record
+against independently asserted synthetic expectations, not just a success summary.
+Windows/Linux Debug/Release, malformed input/fault/state-preservation tests,
+deterministic traces and sanitizer checks are Phase 5 closure gates. Full ISA,
+guest OS behavior, hardware fidelity and ARM64 support remain separate gates.
+
 ### Phase 4 offscreen graphics contract
 
 Decision: `graphics/include/pcsx5/graphics/renderer.h` is the canonical typed HAL

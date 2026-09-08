@@ -2,7 +2,41 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: COMPLETE within the offscreen acceptance scope below. Phase 5 — Reference interpreter: NEXT.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: COMPLETE within the offscreen acceptance scope below. Phase 5 — Reference interpreter: IN PROGRESS.**
+
+## Phase 5 acceptance tasks
+
+Phase 5 is IN PROGRESS. Scope: scalar x86-64 subset and full modeled-state trace
+oracle as specified in ARCHITECTURE.md; not complete ISA or PS5 compatibility.
+
+- [x] P5.1 Canonical CPU/stop/trace contract and independent conformance fixtures.
+- [x] P5.2 Portable byte decoder/interpreter, precise stops and memory integration.
+- [x] P5.3 Versioned deterministic instruction traces, replay and mutation tests.
+- [ ] P5.4 Windows/Linux Debug/Release gates, sanitizer checks and acceptance audit.
+
+VERIFIED reconnaissance: execution was an INTERFACE-only CMake target, with no
+interpreter implementation or consumers. Core guest_memory provides bounded
+software-permission reads/writes; runtime owns its backing. Legacy execution is
+not imported. UNKNOWN: unmodeled ISA/state and guest OS behavior. No new dependency.
+
+### Phase 5 implementation checkpoint
+
+VERIFIED: tests first failed to link missing step/run/trace functions. The current
+Linux focused suite passes 4/4, with 45,494 Release-active conformance checks and
+ASan/UBSan evidence. Independent bit-serial arithmetic expectations cover flags
+and both widths. A newly authored synthetic byte program executes through real
+runtime-backed guest memory and matches 19 independently calculated full-state
+records (18 retired instructions plus breakpoint stop), including loop, call,
+return, stack and memory writes. Fresh and bounded-resume replay agree.
+
+VERIFIED: Windows Debug full suite passed 62/62 before the final additive boundary
+tests. Final four-preset acceptance follows separately. Review identified an
+out-of-enumerator-range trace error accepted by encode but rejected on decode;
+validation and regression coverage now reject it. One failing SIB test was an
+incorrect authored scale encoding, corrected without changing production semantics.
+Store-cross-boundary and invalid CALL tests verify unchanged CPU and backing bytes.
+No failed test was skipped. Native arithmetic comparison and final matrix remain
+pending; this checkpoint is not full phase closure.
 
 ## Phase 4 acceptance tasks
 

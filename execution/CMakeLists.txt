@@ -1,3 +1,5 @@
-add_library(pcsx5_execution INTERFACE)
-target_compile_features(pcsx5_execution INTERFACE cxx_std_23)
-target_link_libraries(pcsx5_execution INTERFACE pcsx5_core)
+add_library(pcsx5_execution STATIC src/interpreter.cpp src/trace.cpp)
+target_compile_features(pcsx5_execution PUBLIC cxx_std_23)
+target_include_directories(pcsx5_execution PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(pcsx5_execution PUBLIC pcsx5_core)
+pcsx5_enable_warnings(pcsx5_execution)
