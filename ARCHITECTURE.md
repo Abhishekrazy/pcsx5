@@ -100,6 +100,51 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 
 ### Phase 6 containment, first increment
 
+P6.3 native bring-up decision: use debugger-controlled, disposable children;
+never recover a C++ parent through the guest stack. The first native-step contract
+is `execution/native_step.h`: one trusted authored instruction, exact RX code at
+0x20000000 and RW data/stack at 0x20010000, each 4096 bytes. These are fixture
+addresses, not a guest-address policy. Reserve without replacing existing memory;
+an unavailable exact address fails. PXQ1's 0x1000 image is not silently relocated.
+Windows debug events and Linux ptrace stops provide actual full scalar snapshots,
+including bad RSP, before child disposal. TF/IF/privileged flags are transport or
+host state; modeled output retains arithmetic bits and reserved bit1. Undefined
+arithmetic flags still require the oracle's definedness mask in comparisons.
+The first step is not a guest runner, syscall filter or hostile-code sandbox.
+Native requested-exit policy, instruction whitelist, run traces and differential
+acceptance remain later P6.3/P6.4 gates, not inferred from the one-step probe.
+References: [Windows debug loop](https://learn.microsoft.com/en-us/windows/win32/debug/writing-the-debugger-s-main-loop)
+and [Linux ptrace](https://man7.org/linux/man-pages/man2/ptrace.2.html).
+
+P6.3b bounded-run contract: `native_run.h` is a verification-first consumer of
+the native-step port. Interpreter preflight whitelists the existing scalar
+subset; unsupported instructions and SYSCALL never reach native execution.
+Explicit INT3 executes natively as a requested-exit marker; arrival at a declared
+owned code address is normal return. Each step uses a fresh child and carries
+only modeled registers/data forward. Native records remain actual snapshots,
+separate from labeled interpreter preflight metadata. Compare all GPRs/RIP/data
+and defined arithmetic flags; disagreement is divergence, never fallback success.
+Budgets are 1..256 and timeouts per step. This intentionally expensive bring-up
+strategy neither preserves unmodeled host state nor establishes a fast direct
+execution engine. It remains restricted to trusted authored acceptance inputs.
+
+P6.5 decision: NO-GO for adding an optional x64 JIT at this checkpoint. The
+authored 24-instruction ADD/JMP workload measures the current end-to-end paths,
+including 24 debugger child lifetimes versus interpreter trace validation.
+It identifies process/debugger overhead, not raw instruction throughput or a
+prediction of game performance. A persistent execution design and representative
+guest workload are prerequisites for reconsidering a separate x64 JIT. The
+debugger backend remains an executable correctness/containment reference, not
+the planned high-performance backend. Measurements and exact limits are in status.
+
+The native failure seam is private and per call: controlled aborts after actual
+images/context/stops exercise normal teardown, not simulated OS exhaustion. A
+held real child/context reaches the actual deadline; a reached-stage marker is
+required so an unrelated startup failure cannot pass the timeout test. Baseline
+host ABI fixtures capture nonvolatile GPRs, RSP, FP controls and DF around real
+calls; Windows additionally captures XMM6-15. Deliberate register/control/DF
+corruption is a negative control. This does not model guest SIMD or extended ISA.
+
 P6.2 transport contract: `execution/include/pcsx5/execution/worker_protocol.h`
 defines PXQ1/PXR1 little-endian messages. The first worker accepts one 4096-byte
 guest RAM image at 0x1000, scalar CPU state, a nonzero caller-unique request ID and

@@ -10,11 +10,11 @@
   exact exit/fault classification, bounded-run cancellation and cleanup evidence.
 - [x] P6.2 Validated worker request/result transport carrying modeled guest state;
   malformed/truncated output and stale-result rejection, no guessed snapshots.
-- [ ] P6.3 Contained native x64 entry/return/requested-exit/fault paths with complete
+- [x] P6.3 Contained native x64 entry/return/requested-exit/fault paths with complete
   modeled state and host ABI/stack preservation evidence.
 - [ ] P6.4 Interpreter differential corpus, native cleanup/failure-path hardening,
   repeated/concurrent ownership gates and full acceptance matrix.
-- [ ] P6.5 Measure representative execution costs and record optional x64 JIT
+- [x] P6.5 Measure representative execution costs and record optional x64 JIT
   go/no-go decision; no timing-based claim without reproducible measurements.
 
 ### P6.2 implementation and verification
@@ -42,6 +42,79 @@ Independent review corrected a same-path test that initially used invalid input.
 No dependency, legacy change, remote push or hosted run. Graphics-enabled presets
 were not rerun for this increment. Phase 6 remains IN PROGRESS: next is P6.3
 native register/fault capture, not relabeling interpreter results as native state.
+
+### P6.3 native bring-up task breakdown (IN PROGRESS)
+
+- [x] P6.3a Exact RX/RW child images, debugger-controlled one-instruction entry,
+  complete scalar snapshots for native return/traps/faults, parent ownership tests.
+- [x] P6.3b Bounded native run policy with explicit return/requested-exit markers,
+  unsupported/syscall rejection, defined-state traces and lifecycle results.
+- [x] P6.4a Interpreter/native full-state and data differential corpus.
+- [ ] P6.4b Failure-path injection, repeated/concurrent cleanup and final matrix.
+
+INFERRED decision: debugger-owned contexts avoid guest-stack recovery. Native
+bring-up is a verification-first backend, not yet a fast emulator execution loop.
+No guest syscall may be deliberately executed against the host in acceptance.
+User reports an Android ARM64 device is available; model/device acceptance remains
+UNKNOWN. VERIFIED: Android NDK 28.2.13676358 and adb are installed locally; adb
+now sees the authorized Xiaomi 2512BPNDAI, arm64-v8a, API 36, 4096-byte pages.
+No Apple Silicon device is available from
+the user's current response. Later hardware gates must remain unverified until run.
+
+### P6.3/P6.4 implementation checkpoint
+
+VERIFIED on 2026-09-09: actual debugger-controlled child execution captures all
+16 modeled GPRs/RIP/arithmetic flags and data on Windows/Linux. Real MOV/arithmetic,
+load/store/PUSH/POP/RET/INT3/UD2, invalid RSP/data access and RX-write/RW-execute
+faults pass. Windows loader workers are explicitly tracked and suspended before
+guest stepping; they cannot execute concurrently with the modeled instruction.
+Repeated identical warmed success/failure/concurrent batches show stable Windows
+handle counts; Linux reports no remaining children/zombies. No legacy stack escape.
+
+The bounded runner stops before unsupported/syscall/unknown-flag/truncated-fetch
+or data-execution requests reach hardware. Actual INT3 is requested exit; an owned
+return-address boundary is normal return. Divergence retains observed state rather
+than substituting oracle output. Review corrected prefixed INT3 length and trace
+known-flags annotations; complete modeled states now chain after logical AF becomes
+unknown. 153 actual native/oracle comparisons cover both scalar widths, all Jcc
+conditions under two flag patterns, memory/stack/call/return and a state sequence.
+This is not exhaustive coverage of every encoding or guest ABI.
+
+Before the additive ABI fixture, all eight gates passed: Windows base 69/69 and
+graphics 73/73, Linux base 70/70 and graphics 74/74, Debug and Release each.
+Current Windows Debug including the ABI fixture passes 70/70; Linux Debug's
+additive ABI fixture passes. Final ABI-enabled matrix remains P6.4b work.
+The real assembly ABI fixture verifies nonvolatile registers, stack identity,
+FP controls and DF (also Windows XMM6-15) across success, traps, faults and timeout;
+deliberate corruption controls fail as intended. No new dependency was installed.
+
+Latest Linux ASan/UBSan NDEBUG runner passes 79 checks; failure/timeout fixture
+passes 93 checks, with no diagnostics. Injected stages require reached markers;
+the held real child is terminated/reaped after actual deadline expiry. These
+tests do not force real OS exhaustion or failing termination syscalls. Cleanup
+failure remains fail-fast. Per-step timeout is not a hard whole-run/cleanup bound.
+Fault addresses are captured from native contexts but their equality to software
+fault-address policy is not part of the differential gate. Trusted authored inputs
+only: no hostile-code sandbox, guest OS/TLS/SIMD or platform-support claim.
+
+### P6.5 measured optional x64 JIT decision
+
+VERIFIED Release measurements from `pcsx5_native_cost`, seven samples after warmup:
+
+| 24-instruction scalar ADD/JMP workload | Median | Min / max |
+|---|---|---|
+| Windows fresh-child native verification | 417.239 ms | 408.251 / 458.260 ms |
+| Windows interpreter worker | 5.512 us | 5.446 / 5.947 us |
+| WSL Linux fresh-child native verification | 91.378 ms | 88.605 / 93.556 ms |
+| WSL Linux interpreter worker | 1.619 us | 1.590 / 1.639 us |
+
+Native includes 24 child launches, debug operations, preflight and cleanup;
+interpreter includes its trace/result validation (1000 runs per timing sample).
+Both must retire 24 instructions and produce RAX=12. No timing threshold gate.
+These are end-to-end bring-up costs on this host, not comparable raw ISA rates
+or representative PS5 gameplay. Decision: NO-GO for adding an optional x64 JIT
+now; first address persistent execution and obtain representative guest workloads.
+ARM64 translation remains independently necessary, not justified by these ratios.
 
 ### P6.1 implementation and verification
 
