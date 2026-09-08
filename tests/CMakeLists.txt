@@ -53,6 +53,15 @@ add_test(NAME pcsx5_runtime_page_range COMMAND pcsx5_runtime_page_range)
 set_tests_properties(pcsx5_runtime_page_range PROPERTIES TIMEOUT 30 LABELS runtime)
 
 if(WIN32)
+    add_executable(pcsx5_runtime_worker runtime_worker_tests.cpp)
+    target_link_libraries(pcsx5_runtime_worker PRIVATE pcsx5_runtime_windows)
+    pcsx5_enable_warnings(pcsx5_runtime_worker)
+    add_test(NAME pcsx5_runtime_worker COMMAND pcsx5_runtime_worker)
+    add_test(NAME pcsx5_runtime_worker_termination COMMAND "${CMAKE_COMMAND}"
+        "-DWORKER_TEST=$<TARGET_FILE:pcsx5_runtime_worker>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_worker_termination.cmake")
+    set_tests_properties(pcsx5_runtime_worker pcsx5_runtime_worker_termination
+        PROPERTIES TIMEOUT 30 LABELS runtime)
     add_executable(pcsx5_runtime_windows_fault runtime_windows_fault_tests.cpp)
     target_link_libraries(pcsx5_runtime_windows_fault PRIVATE pcsx5_runtime_windows)
     pcsx5_enable_warnings(pcsx5_runtime_windows_fault)

@@ -200,7 +200,7 @@ Remaining phase acceptance tasks (defined before implementation):
   observation. Real synthetic Windows faults must be observed without swallowing
   unrelated faults; unsupported causes must remain explicit. This is observation,
   not guest execution recovery (Phase 6).
-- [ ] P2.5 Owned host worker threads: start/join, completion publication, failure
+- [x] P2.5 Owned host worker threads: start/join, completion publication, failure
   handling and deterministic lifecycle tests, without host TLS layout assumptions.
 - [ ] P2.6 Monotonic host timing: checked tick conversion, Windows counter source,
   synthetic arithmetic and real source tests; no guest timing accuracy claim.
@@ -214,6 +214,15 @@ ownership. Portable normalization enumerates 25,600 inputs. Windows Debug passes
 48/48 tests and Linux Debug 44/44. Release/integrated closure is tracked in P2.7.
 The test first failed to link before adding the private observation adapter.
 No production exception is consumed and no recovery/guest-address claim is made.
+
+P2.5 VERIFIED locally: Windows Debug and Release each pass 50/50 tests after
+worker integration. Tests cover successful/destructor/idempotent join, published
+writes, throwing callbacks, two live workers synchronized by latches, self-join,
+injected start failure and join failure/retry. Destructor failure subprocess
+requires both injected-join and termination markers with exact exit status 73.
+No sleeps, detach, forced cancellation or guest TLS assumptions were introduced.
+Initial focused test failed to link before provider implementation, then passed.
+Failure seams model pre-mutation errors; arbitrary native faults remain excluded.
 
 - [x] P2.1 Portable host geometry and reservation-relative page-range validation;
   exhaustive synthetic arithmetic tests and four local preset checks.

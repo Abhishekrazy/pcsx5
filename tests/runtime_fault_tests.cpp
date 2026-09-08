@@ -1,4 +1,5 @@
 #include <pcsx5/runtime/fault.h>
+#include <pcsx5/runtime/worker.h>
 #include <cstdio>
 #include <limits>
 using namespace pcsx5::runtime;
