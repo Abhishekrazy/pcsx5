@@ -6,6 +6,31 @@
 
 ## Phase 7 acceptance tasks
 
+### Verified implementation checkpoint (2026-09-09)
+
+VERIFIED: bounded scalar lowering/emission, immutable executable-code ownership
+and the production hybrid step pass Windows Debug 72/72 and WSL Linux Debug
+73/73 CTests. The physical Xiaomi ARM64 device (API 36, 4096-byte pages) passes
+43,528 full-state comparisons using 5,633 immutable generated images, reused
+images and a five-instruction block. A mixed program passes three translated
+and six interpreter-fallback steps with exact state, result metadata and memory.
+Provider failure does not execute or mutate guest state; syscall, unknown flags,
+unsupported encoding and fetch faults retain interpreter outcomes.
+
+VERIFIED on the same device: actual RX/non-writable mappings, repeated ownership
+and release, and AAPCS64 X19-X29/SP/D8-D15/FPCR preservation. A deliberately
+corrupting callback is detected by the ABI probe. These are synthetic shell
+executables, not an APK or retail guest. No personal data was accessed.
+
+Reproduce with `tools/test-android-arm64.ps1 -NdkRoot <existing Windows NDK>
+-Serial <authorized device>`. This uses the existing NDK (locally 28.2.13676358),
+requires no installation, and reports its unique retained device test directory.
+It builds Release-active tests and fails on each build/transfer/execution error.
+
+Remaining before phase closure: Release regression results, sanitizer and final
+repeatability/scope checks. No Apple, Windows ARM64, Android application-sandbox,
+persistent-code-cache, SIMD or complete emulator support is established.
+
 - [ ] P7.1 Portable scalar lowering contract and bounded ARM64 code generation;
   unsupported guest instructions remain explicit interpreter work, never native no-ops.
 - [ ] P7.2 Owned immutable W^X code cache, host page-size/cache synchronization,

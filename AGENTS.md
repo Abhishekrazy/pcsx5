@@ -22,11 +22,9 @@ The current implementation is a legacy reference, not the target architecture. D
 8. A target is supported only after its legal acceptance corpus passes; compilation alone is not support.
 9. Do not add a dependency or make a destructive change without explicit user approval.
 10. Keep each change small, buildable, and independently verifiable.
-11. Use at most two concurrent subagents, only for genuinely independent work
-    that benefits from parallel investigation. Check existing context first;
-    do not delegate overlapping areas, routine reviews/rechecks/summaries, or
-    verification of another agent's findings without contradictory evidence.
-    Prefer direct implementation and testing.
+11. Do not use subagents. The user requested that the main agent perform all
+    implementation, testing, investigation and documentation itself. Preserve
+    this preference across phases and context handoffs unless the user changes it.
 
 ## Built-in engineering skills
 

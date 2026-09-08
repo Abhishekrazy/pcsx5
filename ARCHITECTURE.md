@@ -98,6 +98,43 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 
 ## Delivery sequence and Phase 1 handoff
 
+### Phase 7 ARM64 bring-up contract
+
+`execution/arm64_jit.h` defines a bounded register-only scalar lowering IR and
+ARM64 emitter. First compiled operations are 32/64-bit MOV, ADD/SUB/CMP,
+XOR/AND/OR/TEST and NOP; unsupported memory/control-flow/stack/trap instructions
+remain explicit interpreter work, not emitted no-ops. Blocks are contiguous,
+1..64 instructions, with bounded code size. A leaf AAPCS64 function receives a
+cpu_state pointer, updates modeled registers/RIP/defined flags using emitted
+ARM64 instructions, and uses caller-saved scratch registers only, excluding X18.
+No interpreter helper call is allowed to masquerade as translated arithmetic.
+Compiler output contains no runtime address and is not published as executable
+until the runtime has copied, cache-synchronized and sealed an owned image RX.
+Immutable code has no writable alias; code ownership and host pages are runtime
+concerns. Tests compare real physical ARM64 state against the interpreter before
+any target-support claim. Android shell execution is not app-store/app-sandbox
+acceptance, and does not establish Apple or Windows ARM64 support.
+Reference: [AAPCS64](https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst).
+
+The executable-code port owns at most 32768 bytes of trusted host-ISA code with
+entry signature void(void*). It rejects foreign ISA, copies once into anonymous
+RW pages and publishes only after instruction-cache synchronization and RX seal.
+There is no update operation or writable alias. Invocation requires live owned
+code and valid caller argument storage; native faults are not caught. Explicit
+release is idempotent and retains ownership on failure; destructor failure is
+fail-fast. Windows and Linux/Android leaves use native page geometry. Initial
+tests execute authored tiny functions and inspect their actual RX mapping; a
+test-only instruction reports its own address solely for this inspection.
+
+`step_arm64` is the production hybrid step boundary. It fetches only the bytes
+needed by lowering, compiles register scalars into a fresh immutable image and
+executes without running interpreter arithmetic on that path. Unsupported forms
+run the interpreter with translated=false; cache/provider errors propagate and
+never trigger a second execution. Guest bytes/calls must be stable and externally
+serialized. No compiled image survives the step, so persistent cache invalidation
+is deliberately deferred rather than assumed safe. The execution target depends
+only on the portable runtime interface, not its native implementation libraries.
+
 ### Phase 6 containment, first increment
 
 P6.3 native bring-up decision: use debugger-controlled, disposable children;
