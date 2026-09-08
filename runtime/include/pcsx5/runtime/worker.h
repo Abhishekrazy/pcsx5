@@ -38,4 +38,8 @@ protected:
 [[nodiscard]] worker_result<std::unique_ptr<host_worker>>
 start_windows_worker(worker_callback callback, void* context) noexcept;
 
+// Linux leaf; identical ownership, callback and join contract.
+[[nodiscard]] worker_result<std::unique_ptr<host_worker>>
+start_linux_worker(worker_callback callback, void* context) noexcept;
+
 } // namespace pcsx5::runtime

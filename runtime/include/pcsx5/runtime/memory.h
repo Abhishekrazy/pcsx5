@@ -35,7 +35,8 @@ public:
     // Nonempty page-aligned ranges; checked against THIS live reservation.
     // commit requires every page reserved; protect/decommit require committed.
     // Validation failure changes nothing. Native failure returns host_failure
-    // or out_of_memory; query actual state before retrying native failures.
+    // or out_of_memory; query provider state before retrying native failures.
+    // Linux may report host_failure for uncertain state; release remains usable.
     [[nodiscard]] virtual memory_result<void> commit(std::uint64_t offset,
         std::uint64_t size, memory_access access) noexcept = 0;
     [[nodiscard]] virtual memory_result<void> protect(std::uint64_t offset,
@@ -67,5 +68,13 @@ protected:
 [[nodiscard]] memory_result<memory_geometry> windows_memory_geometry() noexcept;
 [[nodiscard]] memory_result<std::unique_ptr<memory_reservation>>
 reserve_windows_memory(std::uint64_t size) noexcept;
+
+// Linux leaf, same lifecycle contract. Linux commit state is provider-owned;
+// native protection failure makes affected pages uncertain (query returns
+// host_failure; release remains available). A failed discard after successful
+// protection removal leaves pages committed with no access, permitting retry.
+[[nodiscard]] memory_result<memory_geometry> linux_memory_geometry() noexcept;
+[[nodiscard]] memory_result<std::unique_ptr<memory_reservation>>
+reserve_linux_memory(std::uint64_t size) noexcept;
 
 } // namespace pcsx5::runtime

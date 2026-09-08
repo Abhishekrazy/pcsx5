@@ -2,7 +2,65 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: NEXT.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: IN PROGRESS.**
+
+## Phase 3 acceptance tasks
+
+Phase 3 is IN PROGRESS. Its original deliverable is portable core plus Linux
+runtime with equivalent headless tests on Windows and Linux. Implementation must
+establish integration, not merely compile Linux factory declarations.
+
+- [ ] P3.1 Linux owned-memory provider under the existing lifecycle contract;
+  shared Windows/Linux lifecycle tests plus Linux native failures and cleanup.
+- [ ] P3.2 Linux workers and monotonic timing; shared behavioral corpus and
+  platform-specific failure checks, with no host types in public interfaces.
+- [ ] P3.3 Linux owned fault observation, including real synthetic signal delivery,
+  owner isolation, unsupported cases and handler disposition/lifetime evidence.
+- [ ] P3.4 Portable core guest-memory ownership/mapping and runtime-backed storage
+  integration. Test guest bounds, overlap, permissions, cleanup and error mapping
+  against real providers on both hosts; retain the core dependency guard.
+- [ ] P3.5 Equivalent deterministic headless integration output on both hosts,
+  four Debug/Release preset gates, independent review, evidence/remaining risks.
+
+No guest instruction execution, graphics, firmware, guest ABI implementation or
+platform support is inferred from this foundation; those have later phase gates.
+
+### Phase 3 implementation checkpoint
+
+VERIFIED on 2026-09-09 (final acceptance audit follows):
+
+- New Linux memory provider uses anonymous data mappings, explicit contract-state
+  metadata and conservative uncertain-state errors after native protection failure.
+  The same lifecycle source runs on Windows and Linux. Linux native failure tests
+  cover partial protection changes, discard failure/retry/zero-fill, release retry,
+  independent owners and mincore evidence that successful unmap removed the mapping.
+- Linux standard-library workers run the same lifecycle/failure test source as
+  Windows. CLOCK_MONOTONIC has native failure/malformed/overflow tests and 4096
+  nondecreasing samples; portable elapsed conversion remains shared.
+- Linux owner capture occurs before signal installation; signal-time observation
+  uses scalar records and always leaves the fault unhandled. Four real synthetic
+  SIGSEGV child cases cover read/write and owned/other-owner forwarding, requiring
+  exact exit 73 through the prior test handler. Synthetic cases cover unsupported
+  contexts and execute/backing-store records; no recovery or global handler added.
+- Portable guest-memory mappings own core-defined backing objects and enforce
+  checked bounds, non-overlap and guest permissions. Runtime implements the backing
+  outside core. Tests cover retained ownership on map/unmap failures, final-address
+  arithmetic, full-range rejection before copy, error normalization and cleanup.
+  A forwarding wrapper observes successful real-provider release on guest teardown.
+- Test-first evidence: new core test failed for missing guest-memory header before
+  implementation; Linux agents observed missing-provider link failures before
+  implementation. Focused GCC Debug/Release tests passed. Core mapping also passed
+  AddressSanitizer + UndefinedBehaviorSanitizer locally, without new packages.
+- Independent review identified optional operations in the signal path and a
+  premature destructor-failure marker. Both were corrected and focused tests rerun:
+  signal path is scalar-only, and the marker now originates in the failing native
+  unmap callback. Review also prompted bridge operation-failure and real cleanup
+  assertions rather than treating mere destructor execution as proof.
+
+Remaining audit: final four-preset matrix, repeated cross-host semantic output,
+reviewed checkpoint commit and requirement-by-requirement closure. Heap allocation
+exhaustion itself is not injected; exception-to-error paths have source review.
+No new project dependency, legacy emulator modification or remote push occurred.
 
 ## Phase 1 task checkpoints
 

@@ -71,4 +71,9 @@ private:
 [[nodiscard]] timing_result<tick_frequency> windows_counter_frequency() noexcept;
 [[nodiscard]] timing_result<tick_stamp> windows_counter_now() noexcept;
 
+// Linux CLOCK_MONOTONIC leaf, with nanosecond ticks (not a resolution promise).
+// The same-source/boot and ordering preconditions above also apply here.
+[[nodiscard]] timing_result<tick_frequency> linux_counter_frequency() noexcept;
+[[nodiscard]] timing_result<tick_stamp> linux_counter_now() noexcept;
+
 } // namespace pcsx5::runtime

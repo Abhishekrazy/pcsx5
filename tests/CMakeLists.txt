@@ -3,6 +3,16 @@ target_link_libraries(pcsx5_core_smoke PRIVATE pcsx5_core)
 pcsx5_enable_warnings(pcsx5_core_smoke)
 
 add_test(NAME pcsx5_core_smoke COMMAND pcsx5_core_smoke)
+add_executable(pcsx5_guest_memory guest_memory_tests.cpp)
+target_link_libraries(pcsx5_guest_memory PRIVATE pcsx5_core)
+pcsx5_enable_warnings(pcsx5_guest_memory)
+add_test(NAME pcsx5_guest_memory COMMAND pcsx5_guest_memory)
+set_tests_properties(pcsx5_guest_memory PROPERTIES TIMEOUT 30 LABELS core)
+add_executable(pcsx5_guest_memory_backing_failures guest_memory_backing_failure_tests.cpp)
+target_link_libraries(pcsx5_guest_memory_backing_failures PRIVATE pcsx5_runtime_core_bridge)
+pcsx5_enable_warnings(pcsx5_guest_memory_backing_failures)
+add_test(NAME pcsx5_guest_memory_backing_failures COMMAND pcsx5_guest_memory_backing_failures)
+set_tests_properties(pcsx5_guest_memory_backing_failures PROPERTIES TIMEOUT 30 LABELS "core;runtime")
 set_tests_properties(pcsx5_core_smoke PROPERTIES TIMEOUT 30)
 
 add_test(NAME pcsx5_build_preset_contract COMMAND "${CMAKE_COMMAND}"
@@ -87,6 +97,51 @@ if(WIN32)
         -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_memory_termination.cmake")
     set_tests_properties(pcsx5_runtime_memory_failures pcsx5_runtime_memory_termination
         PROPERTIES TIMEOUT 30 LABELS runtime)
+endif()
+
+if(WIN32)
+    set(host_runtime pcsx5_runtime_windows)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(host_runtime pcsx5_runtime_linux)
+    foreach(entry IN ITEMS memory worker linux_timing linux_fault linux_memory_failure)
+        add_executable(pcsx5_runtime_${entry} runtime_${entry}_tests.cpp)
+        target_link_libraries(pcsx5_runtime_${entry} PRIVATE pcsx5_runtime_linux)
+        target_compile_definitions(pcsx5_runtime_${entry} PRIVATE PCSX5_TEST_LINUX=1)
+        target_include_directories(pcsx5_runtime_${entry} PRIVATE "${CMAKE_SOURCE_DIR}/runtime/src")
+        pcsx5_enable_warnings(pcsx5_runtime_${entry})
+        add_test(NAME pcsx5_runtime_${entry} COMMAND pcsx5_runtime_${entry})
+        set_tests_properties(pcsx5_runtime_${entry} PROPERTIES TIMEOUT 30 LABELS runtime)
+    endforeach()
+    add_test(NAME pcsx5_runtime_worker_termination COMMAND "${CMAKE_COMMAND}"
+        "-DWORKER_TEST=$<TARGET_FILE:pcsx5_runtime_worker>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_worker_termination.cmake")
+    add_test(NAME pcsx5_runtime_memory_termination COMMAND "${CMAKE_COMMAND}"
+        "-DMEMORY_TEST=$<TARGET_FILE:pcsx5_runtime_linux_memory_failure>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/runtime_memory_termination.cmake")
+    set_tests_properties(pcsx5_runtime_worker_termination pcsx5_runtime_memory_termination
+        PROPERTIES TIMEOUT 30 LABELS runtime)
+endif()
+if(DEFINED host_runtime)
+    add_executable(pcsx5_guest_memory_native_cleanup guest_memory_native_cleanup_tests.cpp)
+    target_link_libraries(pcsx5_guest_memory_native_cleanup PRIVATE pcsx5_runtime_core_bridge ${host_runtime})
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_compile_definitions(pcsx5_guest_memory_native_cleanup PRIVATE PCSX5_TEST_LINUX=1)
+    endif()
+    pcsx5_enable_warnings(pcsx5_guest_memory_native_cleanup)
+    add_test(NAME pcsx5_guest_memory_native_cleanup COMMAND pcsx5_guest_memory_native_cleanup)
+    set_tests_properties(pcsx5_guest_memory_native_cleanup PROPERTIES TIMEOUT 30 LABELS "core;runtime")
+    add_executable(pcsx5_guest_memory_integration guest_memory_integration_tests.cpp)
+    target_link_libraries(pcsx5_guest_memory_integration PRIVATE pcsx5_runtime_core_bridge ${host_runtime})
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_compile_definitions(pcsx5_guest_memory_integration PRIVATE PCSX5_TEST_LINUX=1)
+    endif()
+    pcsx5_enable_warnings(pcsx5_guest_memory_integration)
+    add_test(NAME pcsx5_guest_memory_integration COMMAND pcsx5_guest_memory_integration)
+    set_tests_properties(pcsx5_guest_memory_integration PROPERTIES TIMEOUT 30 LABELS "core;runtime")
+    add_test(NAME pcsx5_guest_memory_repeatability COMMAND "${CMAKE_COMMAND}"
+        "-DMEMORY_TEST=$<TARGET_FILE:pcsx5_guest_memory_integration>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/guest_memory_repeatability.cmake")
+    set_tests_properties(pcsx5_guest_memory_repeatability PROPERTIES TIMEOUT 30 LABELS "core;runtime")
 endif()
 
 add_executable(pcsx5_runtime_fault runtime_fault_tests.cpp)

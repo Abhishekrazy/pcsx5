@@ -145,8 +145,8 @@ provider and tests together. The project owner approves architectural expansion.
 Reservations are uniquely owned and accept offsets, never host addresses.
 Data-only permissions are none/read-only/read-write, with no executable capability.
 Commit requires reserved pages; protect/decommit require committed pages. Full
-validation precedes mutation or copy. Queries inspect real host state, not a
-parallel bookkeeping model. Explicit release is idempotent and retains ownership
+validation precedes mutation or copy. Windows queries inspect real host state;
+Linux's explicit state model is specified below. Explicit release is idempotent and retains ownership
 on failure; destruction attempts release and terminates on failure rather than
 silently losing a live mapping. Callers must externally serialize operations and
 provide valid copy buffers. This is neither a fault handler nor process isolation.
@@ -211,6 +211,53 @@ without minimum elapsed-time or resolution assumptions. No native types are publ
 References: [C++ thread construction](https://eel.is/c++draft/thread.thread.constr),
 [join synchronization](https://eel.is/c++draft/thread.thread.member),
 [Windows high-resolution timestamps](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps).
+
+### Phase 3 portable integration contracts
+
+Decision (implementation gates pending): core owns a guest-memory mapping table,
+using checked guest byte ranges and unique `memory_backing` objects. The backing
+contract lives in core and exposes size, offset-based read/write and explicit
+release with normalized errors, never host pointers or page geometry. Runtime
+implements this interface outside core; dependency direction is runtime to core.
+Mapping consumes the caller's backing only on success. Overlap, size mismatch,
+invalid permissions and allocation failure leave ownership with the caller.
+An access must fit entirely in one mapping; crossing even adjacent mappings is
+rejected before copying. Protection changes apply to a complete mapping, not a
+host page. Unmap retains the entry on backing release failure so callers can retry.
+All operations and teardown are externally serialized. Backing destructors own
+their cleanup policy; the runtime adapter preserves release-or-terminate behavior.
+
+Guest permissions are software policy, NOT host protection or a security boundary.
+The runtime backing factory allocates and commits data-only read/write host pages;
+core enforces guest none/read-only/read-write independently. No execute permission,
+guest page size, PS5 address validity, guest ABI or instruction execution is implied.
+Factory/provider failures are normalized into core errors; native details remain
+private. Synthetic and actual-provider tests must exercise the same guest path.
+
+Linux decisions: anonymous mappings start PROT_NONE; provider-owned metadata
+defines the reserved/committed distinction that Linux does not expose as a Win32
+commit state. Queries report this contract state, not physical residency. A failed
+native protection change conservatively makes affected state uncertain; subsequent
+state-dependent operations fail until release. If protection to none succeeds but
+discard fails, pages remain committed/none and decommit can be retried. No rollback
+or memory-pressure guarantee is claimed. Linux workers preserve the Windows worker
+contract through standard-library threads. CLOCK_MONOTONIC stamps use a checked
+nanosecond count and frequency 1e9; invalid timestamps and overflow are errors.
+Linux fault observation remains owner-scoped and unhandled, with no installed
+production signal handler, context mutation, demand paging or guest recovery.
+The native region snapshot is captured before handler installation. Its owner
+must remain alive/unreleased, with mapping changes excluded until handler removal;
+no stale-snapshot or concurrent-unregister protocol is promised. Signal-time
+observations use private scalar records rather than standard-library containers.
+Linux rejects READ_IMPLIES_EXEC at reserve time; external changes to mappings or
+process personality while owners exist are unsupported. CLOCK_MONOTONIC excludes
+suspend and may be frequency-adjusted: 1e9 tick units do not imply nanosecond
+resolution or identical Windows/Linux suspend semantics.
+References: [Linux mprotect](https://man7.org/linux/man-pages/man2/mprotect.2.html),
+[discard semantics](https://man7.org/linux/man-pages/man2/madvise.2.html),
+[monotonic clock](https://man7.org/linux/man-pages/man2/clock_gettime.2.html),
+[signal context](https://man7.org/linux/man-pages/man2/sigaction.2.html),
+[C++ signal restrictions](https://eel.is/c++draft/support.signal).
 
 ### Phase 1 build/CI contract
 

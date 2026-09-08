@@ -1,4 +1,5 @@
 #include <pcsx5/runtime/memory.h>
+#include "host_memory_provider.h"
 
 #include <array>
 #include <cstdio>
@@ -30,17 +31,17 @@ bool has_access(const memory_reservation& owner, std::uint64_t offset, memory_ac
 }
 
 int main() {
-    const auto geometry = windows_memory_geometry();
+    const auto geometry = test_host::memory_geometry();
     CHECK(geometry);
     const auto page = geometry->page_size();
     CHECK(page > 1 && page <= std::numeric_limits<std::uint64_t>::max() / 4);
     CHECK(geometry->reservation_alignment() % page == 0);
-    CHECK(fails(reserve_windows_memory(0), memory_error::invalid_range));
-    CHECK(fails(reserve_windows_memory(page + 1), memory_error::invalid_range));
+    CHECK(fails(test_host::reserve_memory(0), memory_error::invalid_range));
+    CHECK(fails(test_host::reserve_memory(page + 1), memory_error::invalid_range));
     const auto largest_aligned = std::numeric_limits<std::uint64_t>::max() -
         std::numeric_limits<std::uint64_t>::max() % page;
-    CHECK(fails(reserve_windows_memory(largest_aligned), memory_error::invalid_range));
-    auto allocation = reserve_windows_memory(page * 4);
+    CHECK(fails(test_host::reserve_memory(largest_aligned), memory_error::invalid_range));
+    auto allocation = test_host::reserve_memory(page * 4);
     CHECK(allocation && *allocation);
     auto owner = std::move(*allocation);
     CHECK(!*allocation);
@@ -92,7 +93,7 @@ int main() {
     CHECK(fails(owner->read(page * 4 - 1, output), memory_error::invalid_range));
     CHECK(fails(owner->write(0, {}), memory_error::invalid_range));
     CHECK(fails(owner->read(0, {}), memory_error::invalid_range));
-    auto second = reserve_windows_memory(page);
+    auto second = test_host::reserve_memory(page);
     CHECK(second && *second);
     CHECK((*second)->commit(0, page, memory_access::read_write));
     CHECK((*second)->write(0, pattern));

@@ -72,6 +72,7 @@ foreach(script IN ITEMS
         ../cmake/CheckCoreIncludes.cmake
         boundary/run_case.cmake
         guest_range_repeatability.cmake
+        guest_memory_repeatability.cmake
         runtime_memory_termination.cmake
         runtime_worker_termination.cmake)
     file(READ "${CMAKE_CURRENT_LIST_DIR}/${script}" source)
