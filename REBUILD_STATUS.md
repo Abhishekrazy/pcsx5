@@ -2,7 +2,19 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: COMPLETE within the offscreen acceptance scope below. Phase 5 — Reference interpreter: COMPLETE within the scalar acceptance scope below. Phase 6 — Direct-x64 containment: IN PROGRESS.**
+**Phases 0–6: COMPLETE within their documented acceptance scopes and exclusions below. Phase 7 — ARM64 translation and code-cache bring-up: IN PROGRESS. No PS5/game or general supported-platform claim.**
+
+## Phase 7 acceptance tasks
+
+- [ ] P7.1 Portable scalar lowering contract and bounded ARM64 code generation;
+  unsupported guest instructions remain explicit interpreter work, never native no-ops.
+- [ ] P7.2 Owned immutable W^X code cache, host page-size/cache synchronization,
+  and physical ARM64 execution experiment without exposing executable host pointers.
+- [ ] P7.3 Physical ARM64 full modeled-state differential tests for compiled
+  instructions, explicit unsupported/fallback boundaries and malformed codegen tests.
+- [ ] P7.4 Repeatability, cleanup/ABI checks, Windows/Linux portable regression
+  matrix and scope/limitations audit. Apple/Windows ARM64 acceptance is not inferred
+  from Android hardware results.
 
 ## Phase 6 acceptance tasks
 
@@ -12,7 +24,7 @@
   malformed/truncated output and stale-result rejection, no guessed snapshots.
 - [x] P6.3 Contained native x64 entry/return/requested-exit/fault paths with complete
   modeled state and host ABI/stack preservation evidence.
-- [ ] P6.4 Interpreter differential corpus, native cleanup/failure-path hardening,
+- [x] P6.4 Interpreter differential corpus, native cleanup/failure-path hardening,
   repeated/concurrent ownership gates and full acceptance matrix.
 - [x] P6.5 Measure representative execution costs and record optional x64 JIT
   go/no-go decision; no timing-based claim without reproducible measurements.
@@ -50,7 +62,7 @@ native register/fault capture, not relabeling interpreter results as native stat
 - [x] P6.3b Bounded native run policy with explicit return/requested-exit markers,
   unsupported/syscall rejection, defined-state traces and lifecycle results.
 - [x] P6.4a Interpreter/native full-state and data differential corpus.
-- [ ] P6.4b Failure-path injection, repeated/concurrent cleanup and final matrix.
+- [x] P6.4b Failure-path injection, repeated/concurrent cleanup and final matrix.
 
 INFERRED decision: debugger-owned contexts avoid guest-stack recovery. Native
 bring-up is a verification-first backend, not yet a fast emulator execution loop.
@@ -115,6 +127,25 @@ These are end-to-end bring-up costs on this host, not comparable raw ISA rates
 or representative PS5 gameplay. Decision: NO-GO for adding an optional x64 JIT
 now; first address persistent execution and obtain representative guest workloads.
 ARM64 translation remains independently necessary, not justified by these ratios.
+
+### Phase 6 closure
+
+VERIFIED for implementation checkpoint `5e61b31`: all final ABI-enabled Debug
+and Release base/graphics gates pass with zero failed or disabled tests:
+
+| Host | Base (each configuration) | Vulkan (each configuration) |
+|---|---|---|
+| Windows x64 | 70/70 | 74/74 |
+| WSL Linux x64 | 71/71 | 75/75 |
+
+The additional baseline ABI test includes corruption controls for GPRs, FP control
+and DF, plus Windows XMM capture; real native exit/fault/timeout calls preserve
+the measured parent ABI fields in both configurations. This supersedes the earlier
+parent-local-only observation. Existing system assemblers are test-only; no legacy
+assembly is reused. Full guest extended state and non-baseline ISA remain excluded.
+All native failures and unsupported cases remain typed rather than guessed success.
+No remote push or hosted run occurred. Phase 6 is COMPLETE for the bounded trusted
+scalar containment/verification backend, not a fast direct guest OS execution engine.
 
 ### P6.1 implementation and verification
 
