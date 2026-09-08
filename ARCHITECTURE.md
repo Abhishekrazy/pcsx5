@@ -113,10 +113,19 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 | 10 | Native Metal go/no-go only after measured MoltenVK gaps |
 | 11 | Product frontends, packaging and release compatibility gates |
 
-Phase 1 task order (next phase; implementation pending):
+Phase 1 task order (active; completion evidence in `REBUILD_STATUS.md`):
 
 1. Replace the stale Windows-only legacy CI workflow with clean Windows/Linux Debug/Release jobs. Retain only approved actions, read-only permissions and test logs; no package/release job.
 2. Make configure/build/test entry points work from a new worktree without local caches or network restores; wire the Codex setup script through its environment editor.
 3. Enforce forbidden OS/UI/graphics includes and legacy link dependencies at the core boundary; test both positive and negative cases.
 4. Add useful portable core tests beyond the current architecture-name smoke test. Require no-tests-as-error and reproducible CTest output.
 5. Record real CI results before calling the build matrix verified. Runtime/platform support still requires the later acceptance gates.
+
+### Phase 1 build/CI contract
+
+- Four Ninja presets isolate Windows x64 MSVC and Linux x64 GCC Debug/Release outputs. Configuration is selected at configure time, not by passing multiple configurations to a single-config build.
+- Each test preset fails if no tests are selected, applies a bounded default timeout, and writes CTest/JUnit logs. CI builds only the clean root; no legacy characterization, submodule restore, package creation or release publishing is part of this workflow.
+- CI uses read-only repository permissions, does not persist checkout credentials, and retains only the already-used checkout, MSVC initialization and log-upload actions, pinned to verified upstream commit IDs. Runner images are version-labeled but their installed tool versions may change; logs identify the actual tools used.
+- Workflow and preset validation is local evidence only. Hosted matrix success requires an actual GitHub Actions run; local GCC compilation without Linux CMake/Ninja is not Linux preset verification.
+
+References checked for this boundary: [CMake 3.25 preset format](https://cmake.org/cmake/help/v3.25/manual/cmake-presets.7.html), [GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), and [hosted runner images](https://github.com/actions/runner-images).

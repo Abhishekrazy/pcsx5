@@ -7,13 +7,26 @@
 ## Phase 1 task checkpoints
 
 - [x] Make the regular-commit rule explicit in `AGENTS.md`: commit verified task boundaries and buildable increments, review exact staged paths, and report checkpoint hashes. VERIFIED: documentation diff reviewed; no runtime change.
-- [ ] P1.1 Replace legacy CI with clean Windows/Linux x64 Debug/Release jobs and strict headless tests (current task).
+- [x] P1.1 Implement clean Windows/Linux x64 Debug/Release CI and strict headless presets; local checks below passed. Hosted execution is separately gated by P1.5.
 - [ ] P1.2 Verify fresh-worktree entry points and finish local Codex setup.
 - [ ] P1.3 Enforce core include/link boundaries with positive and negative tests.
 - [ ] P1.4 Extend portable core tests beyond the scaffold smoke test.
 - [ ] P1.5 Record actual hosted CI matrix results before phase closure.
 
 Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundation`. No remote push is authorized; hosted results remain UNKNOWN until the committed workflow is run.
+
+### P1.1 implementation and local verification
+
+- VERIFIED: `.github/workflows/ci.yml` now defines four isolated Windows 2025/Ubuntu 24.04 Debug/Release jobs using the clean root presets. Repository permissions are read-only; checkout does not persist credentials or fetch submodules/LFS. Only diagnostic logs are uploaded; all legacy packaging, retail PKG targets and release jobs are removed from this workflow.
+- VERIFIED: the existing checkout v7, upload-artifact v7 and MSVC setup v1 action references were resolved through their upstream GitHub APIs and pinned to full commit IDs. Their used inputs were checked. No new action or project dependency was added.
+- VERIFIED: CMake 4.3.3 accepts the version-6 presets; the dependency-free `pcsx5_build_preset_contract` test checks all four names, build types, host conditions, compilers, output paths and strict test settings. Existing local PyYAML parsed the workflow and checked its matrix/triggers/permissions/action count; no package was installed. This is not a hosted workflow or full expression-linter result.
+- VERIFIED: Windows MSVC 19.51 Debug and Release each pass **2/2 CTests**. Both presets reject a deliberately empty selected suite. Normal test runs were repeated afterward to restore passing `ctest.log`/`junit.xml` artifacts.
+- VERIFIED: `bootstrap-windows.cmd` accepts either Windows preset, defaults to Debug, works from a different current directory, rejects an invalid preset, and propagates configure/build/test failures including negative exit codes.
+- VERIFIED: the existing Ubuntu x86-64 GCC 15.2 compiler builds and runs the clean-core smoke test with `-O0 -g` and `-O2 -DNDEBUG`, using C++23 and the project's warning flags. No warnings were emitted. These manual builds are not Linux CMake/CTest preset runs.
+- UNKNOWN: Linux preset execution: the installed Ubuntu distribution has neither CMake nor Ninja on PATH. Installing them requires user approval. Hosted Windows/Linux workflow results also remain UNKNOWN; nothing has been pushed or dispatched.
+- VERIFIED: local diff/whitespace review passed. Commit rule checkpoint: `63a7969`. The unfinished `.codex/` environment file remains excluded.
+
+## Phase 0 closure record
 
 Closure decision, 2026-09-08: the RT-01–RT-08 Windows characterization matrix now exercises the real selected boundaries, including syscall traps, guest-stack exit/fault attempts and cleanup hooks. Failed legacy invariants are recorded as failures, not converted into accepted runtime behavior. Phase 0 establishes evidence for redesign; it does not require preserving defects in the new implementation or prove platform support.
 
@@ -115,15 +128,15 @@ These findings disqualify mechanical copying of the legacy runtime. They neither
 
 ## Environment readiness and next boundary
 
-- VERIFIED: Windows MSVC 19.51.36256.0/Ninja scaffold configured/built; core smoke passed.
+- VERIFIED: Windows MSVC 19.51.36256.0/Ninja clean Debug and Release builds pass the smoke and preset-contract tests; see P1.1 above.
 - VERIFIED: native process launch previously stalled in the sandbox; approved outside-sandbox characterization works. The runner rejects negative and positive failure codes.
 - VERIFIED: `.codex/environments/environment.toml` exists with an empty setup script. Automatic worktree setup is not configured; Windows setup should invoke `cmd /d /c bootstrap-windows.cmd` through the Codex environment editor.
-- VERIFIED: `.github/workflows/ci.yml` still performs legacy Windows packaging and invokes `pkg_ps5_tests`, absent from the clean root. It is not rebuild CI; do not publish rebuild releases through it.
-- UNKNOWN: Linux execution and Windows/Linux CI results. Presets alone are not evidence. New worktrees must start from the rebuild checkpoint (or explicitly include the working-tree changes before it is committed); local Codex environment setup remains separate.
+- VERIFIED: `.github/workflows/ci.yml` has been replaced locally with clean build-and-test jobs. The remote workflow is unchanged until an authorized push; do not treat remote legacy packaging as rebuild release evidence.
+- UNKNOWN: Linux CMake/CTest execution and hosted Windows/Linux CI results. The local GCC smoke check is narrower evidence. New worktrees must include the Phase 1 commits; local Codex environment setup remains separate.
 
-Next: Phase 1's build/boundary foundation in `ARCHITECTURE.md`: replace stale CI with Windows/Linux Debug/Release build-and-test jobs, finish clean worktree setup, enforce forbidden dependencies/includes, add portable tests and record real CI evidence. No dependency addition or semantic legacy fix is approved by this handoff.
+Next: P1.2 fresh-worktree verification and local Codex setup, followed by include/link boundary enforcement, useful portable core tests and actual hosted CI evidence. Linux CMake/Ninja installation and remote pushes require user approval. No dependency addition or semantic legacy fix is approved by this handoff.
 
-## Latest integrated verification
+## Phase 0 integrated verification (before Phase 1)
 
 VERIFIED on 2026-09-08:
 

@@ -7,33 +7,77 @@
   },
   "configurePresets": [
     {
-      "name": "base-debug",
+      "name": "base",
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
         "BUILD_TESTING": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
       "name": "windows-x64-debug",
+      "inherits": "base",
       "displayName": "Windows x64 Debug",
-      "inherits": "base-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "architecture": {
         "value": "x64",
         "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "windows-x64-release",
+      "inherits": "base",
+      "displayName": "Windows x64 Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "cl"
       }
     },
     {
       "name": "linux-x64-debug",
+      "inherits": "base",
       "displayName": "Linux x64 Debug",
-      "inherits": "base-debug",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "linux-x64-release",
+      "inherits": "base",
+      "displayName": "Linux x64 Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "g++"
       }
     }
   ],
@@ -43,8 +87,16 @@
       "configurePreset": "windows-x64-debug"
     },
     {
+      "name": "windows-x64-release",
+      "configurePreset": "windows-x64-release"
+    },
+    {
       "name": "linux-x64-debug",
       "configurePreset": "linux-x64-debug"
+    },
+    {
+      "name": "linux-x64-release",
+      "configurePreset": "linux-x64-release"
     }
   ],
   "testPresets": [
@@ -52,14 +104,52 @@
       "name": "windows-x64-debug",
       "configurePreset": "windows-x64-debug",
       "output": {
-        "outputOnFailure": true
+        "outputOnFailure": true,
+        "outputLogFile": "${sourceDir}/out/build/${presetName}/ctest.log",
+        "outputJUnitFile": "${sourceDir}/out/build/${presetName}/junit.xml"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "timeout": 30
+      }
+    },
+    {
+      "name": "windows-x64-release",
+      "configurePreset": "windows-x64-release",
+      "output": {
+        "outputOnFailure": true,
+        "outputLogFile": "${sourceDir}/out/build/${presetName}/ctest.log",
+        "outputJUnitFile": "${sourceDir}/out/build/${presetName}/junit.xml"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "timeout": 30
       }
     },
     {
       "name": "linux-x64-debug",
       "configurePreset": "linux-x64-debug",
       "output": {
-        "outputOnFailure": true
+        "outputOnFailure": true,
+        "outputLogFile": "${sourceDir}/out/build/${presetName}/ctest.log",
+        "outputJUnitFile": "${sourceDir}/out/build/${presetName}/junit.xml"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "timeout": 30
+      }
+    },
+    {
+      "name": "linux-x64-release",
+      "configurePreset": "linux-x64-release",
+      "output": {
+        "outputOnFailure": true,
+        "outputLogFile": "${sourceDir}/out/build/${presetName}/ctest.log",
+        "outputJUnitFile": "${sourceDir}/out/build/${presetName}/junit.xml"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "timeout": 30
       }
     }
   ]

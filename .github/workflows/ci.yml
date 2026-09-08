@@ -1,133 +1,84 @@
-name: CI
+name: Clean rebuild CI
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    branches: [main, 'codex/**']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: windows-latest
-
-    env:
-      SCCACHE_GHA_ENABLED: "true"
+    name: ${{ matrix.preset }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            preset: windows-x64-debug
+            shell: pwsh
+          - os: windows-2025
+            preset: windows-x64-release
+            shell: pwsh
+          - os: ubuntu-24.04
+            preset: linux-x64-debug
+            shell: bash
+          - os: ubuntu-24.04
+            preset: linux-x64-release
+            shell: bash
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          submodules: recursive
+          persist-credentials: false
+          submodules: false
+          lfs: false
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+      - name: Initialize MSVC x64
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
-          dotnet-version: 9.0.x
+          arch: x64
 
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: CMake version
+        run: cmake --version
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
+      - name: Ninja version
+        run: ninja --version
 
-      - name: Cache FetchContent dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/_deps
-          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
-
-      - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: Configure clean root
+        run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build --preset ${{ matrix.preset }} --parallel 2
 
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: ctest --preset ${{ matrix.preset }}
 
-      - name: Test (Debug)
-        run: |
-          cmake --build build --config Debug
-          ctest --test-dir build -C Debug --output-on-failure
-
-      - name: PS5 PKG Test
-        run: |
-          cmake --build build --config Debug --target pkg_ps5_tests
-          ctest --test-dir build -C Debug -R pkg_ps5 --output-on-failure
-
-      - name: Install Inno Setup
-        # The installer is only consumed by the release job (tags only).
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: choco install innosetup --no-progress -y
-
-      - name: Resolve version
-        shell: pwsh
-        run: |
-          $base = (Get-Content VERSION -TotalCount 1).Trim()
-          if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') {
-            $version = $Matches[1]
-            # The tag and the VERSION file must agree. A release built from a
-            # tag that the tree does not know about ships a binary whose own
-            # version disagrees with the release it is published under, which
-            # is exactly the mismatch the updater cannot recover from.
-            if ($version -ne $base) {
-              Write-Error "Tag v$version does not match VERSION file ($base). Bump VERSION and commit it before tagging."
-              exit 1
-            }
-          } else {
-            # Untagged builds sort below the release they are working towards.
-            $version = "$base-dev+$($env:GITHUB_SHA.Substring(0,7))"
-          }
-          "PCSX5_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Package
-        shell: pwsh
-        run: ./build_and_package.ps1 -SkipBuild -CreateZip -Version $env:PCSX5_VERSION
-
-      - name: Package installer
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: ./build_and_package.ps1 -SkipBuild -CreateInstaller -Version $env:PCSX5_VERSION
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+      - name: Retain build and test diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: PCSX5-windows-x64
-          path: PCSX5_*_Release.zip
-          if-no-files-found: error
-
-      - name: Upload installer artifact
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v7
-        with:
-          name: PCSX5-windows-x64-setup
-          path: installer/Output/*-Setup.exe
-          if-no-files-found: error
-
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: PCSX5-windows-x64
-
-      - name: Download installer artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: PCSX5-windows-x64-setup
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: |
-            PCSX5_*_Release.zip
-            *-Setup.exe
-          generate_release_notes: true
+          name: diagnostics-${{ matrix.preset }}
+          path: |
+            out/build/${{ matrix.preset }}/ctest.log
+            out/build/${{ matrix.preset }}/junit.xml
+            out/build/${{ matrix.preset }}/Testing/Temporary/*.log
+            out/build/${{ matrix.preset }}/CMakeFiles/CMakeConfigureLog.yaml
+            out/build/${{ matrix.preset }}/CMakeFiles/CMakeOutput.log
+            out/build/${{ matrix.preset }}/CMakeFiles/CMakeError.log
+          if-no-files-found: warn
+          retention-days: 7
