@@ -2,24 +2,24 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: IN PROGRESS.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: NEXT.**
 
 ## Phase 3 acceptance tasks
 
-Phase 3 is IN PROGRESS. Its original deliverable is portable core plus Linux
+Phase 3 is COMPLETE. Its original deliverable is portable core plus Linux
 runtime with equivalent headless tests on Windows and Linux. Implementation must
 establish integration, not merely compile Linux factory declarations.
 
-- [ ] P3.1 Linux owned-memory provider under the existing lifecycle contract;
+- [x] P3.1 Linux owned-memory provider under the existing lifecycle contract;
   shared Windows/Linux lifecycle tests plus Linux native failures and cleanup.
-- [ ] P3.2 Linux workers and monotonic timing; shared behavioral corpus and
+- [x] P3.2 Linux workers and monotonic timing; shared behavioral corpus and
   platform-specific failure checks, with no host types in public interfaces.
-- [ ] P3.3 Linux owned fault observation, including real synthetic signal delivery,
+- [x] P3.3 Linux owned fault observation, including real synthetic signal delivery,
   owner isolation, unsupported cases and handler disposition/lifetime evidence.
-- [ ] P3.4 Portable core guest-memory ownership/mapping and runtime-backed storage
+- [x] P3.4 Portable core guest-memory ownership/mapping and runtime-backed storage
   integration. Test guest bounds, overlap, permissions, cleanup and error mapping
   against real providers on both hosts; retain the core dependency guard.
-- [ ] P3.5 Equivalent deterministic headless integration output on both hosts,
+- [x] P3.5 Equivalent deterministic headless integration output on both hosts,
   four Debug/Release preset gates, independent review, evidence/remaining risks.
 
 No guest instruction execution, graphics, firmware, guest ABI implementation or
@@ -57,10 +57,51 @@ VERIFIED on 2026-09-09 (final acceptance audit follows):
   unmap callback. Review also prompted bridge operation-failure and real cleanup
   assertions rather than treating mere destructor execution as proof.
 
-Remaining audit: final four-preset matrix, repeated cross-host semantic output,
-reviewed checkpoint commit and requirement-by-requirement closure. Heap allocation
+Implementation checkpoint: `27a51d1` on `codex/phase-3-linux-core`. Heap allocation
 exhaustion itself is not injected; exception-to-error paths have source review.
 No new project dependency, legacy emulator modification or remote push occurred.
+
+### Phase 3 acceptance audit and closure
+
+VERIFIED for implementation commit `27a51d1`:
+
+| Requirement | Executed evidence |
+|---|---|
+| P3.1 Linux memory | Shared `pcsx5_runtime_memory`; Linux native failure and exact destructor-termination tests; native unmap observations |
+| P3.2 Workers and timing | Shared worker lifecycle/failure/termination corpus; Linux clock malformed/overflow/native sampling; shared portable tick conversion |
+| P3.3 Fault ownership and forwarding | Linux x64 synthetic records and four actual SIGSEGV child cases per run; exact prior-handler exit; unchanged parent dispositions and native records |
+| P3.4 Portable core integration | `pcsx5_guest_memory`, backing-failure tests and real-provider cleanup test on both hosts; all 38 core boundary fixtures pass without guard exceptions |
+| P3.5 Equivalent headless behavior | Same guest-memory integration source runs real storage + host worker + join + monotonic clock on both hosts; common expected semantic summary is checked twice by CTest and actual outputs from all four builds were directly compared equal |
+
+| Local preset | Result |
+|---|---|
+| Windows x64 MSVC Debug | 57/57 passed |
+| Windows x64 MSVC Release | 57/57 passed |
+| WSL Ubuntu x64 GCC Debug | 57/57 passed |
+| WSL Ubuntu x64 GCC Release | 57/57 passed |
+
+All 14 runtime-labeled Debug tests on each host additionally passed five repetitions
+per test (140 executions across hosts). Checks remain active in Release. Core ASan
+and UBSan passed; worker/timing sanitizer checks were separately run by their agent.
+No claim is made that intentional native fault tests are sanitizer-compatible.
+
+A later direct Windows CTest invocation outside the Visual Studio environment
+failed compiler initialization in the boundary fixtures. Re-running the documented
+`bootstrap-windows.cmd windows-x64-debug` entry point passed 57/57 without source
+changes. The final four JUnit reports each contain 57 tests, zero failures and zero
+disabled tests; Linux Debug was also restored after repeat-only verification.
+
+The cross-host summary is a post-assertion semantic result, not an instruction
+trace, replay oracle, timing-equivalence measurement or PS5 accuracy claim. Linux
+execution was on the installed WSL Ubuntu environment, not a newly observed hosted
+runner. Hosted Phase 3 CI is UNKNOWN: the new branch was not pushed, in accordance
+with the explicit no-push rule. The unchanged CI workflow will run the same presets
+when a push is authorized; no hosted result is inferred from local tests.
+
+Phase 3's portable-core/runtime integration gate is met. Later phase gates remain:
+graphics, interpreter, guest scheduling/ABI/devices, direct execution, ARM64 JIT,
+Apple/Android and actual emulator compatibility. These tests establish the declared
+Windows/Linux x64 runtime foundation, not a supported game-running emulator.
 
 ## Phase 1 task checkpoints
 

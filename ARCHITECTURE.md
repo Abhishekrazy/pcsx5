@@ -103,7 +103,7 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 | 0 (characterization complete) | Inventory, provenance dispositions, bounded memory/TLS/register/syscall/trap/exit matrix and evidence review; known failed invariants retained, not accepted |
 | 1 | Build and boundary foundation: Windows x64 MSVC and Linux x64 GCC Debug/Release CI, headless CTest, zero-test failure, no legacy linking or release packaging |
 | 2 (complete) | Owned data memory, fault observation/forwarding, host workers and monotonic timing; Windows leaf implementations and UI-free contract tests. Closure evidence and exclusions in REBUILD_STATUS.md |
-| 3 | Portable core and Linux runtime; equivalent headless tests on both hosts |
+| 3 (complete) | Portable core and Linux runtime; equivalent headless tests on both hosts. Requirement-by-requirement evidence and limits in REBUILD_STATUS.md |
 | 4 | Graphics HAL and Vulkan; isolated synthetic rendering/replay tests |
 | 5 | Reference interpreter and deterministic state/trace oracle |
 | 6 | Direct-x64 containment, complete exit/fault state tests; measured optional x64 JIT decision |
@@ -214,7 +214,7 @@ References: [C++ thread construction](https://eel.is/c++draft/thread.thread.cons
 
 ### Phase 3 portable integration contracts
 
-Decision (implementation gates pending): core owns a guest-memory mapping table,
+Decision (implemented; acceptance evidence in REBUILD_STATUS.md): core owns a guest-memory mapping table,
 using checked guest byte ranges and unique `memory_backing` objects. The backing
 contract lives in core and exposes size, offset-based read/write and explicit
 release with normalized errors, never host pointers or page geometry. Runtime
