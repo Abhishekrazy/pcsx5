@@ -202,7 +202,7 @@ Remaining phase acceptance tasks (defined before implementation):
   not guest execution recovery (Phase 6).
 - [x] P2.5 Owned host worker threads: start/join, completion publication, failure
   handling and deterministic lifecycle tests, without host TLS layout assumptions.
-- [ ] P2.6 Monotonic host timing: checked tick conversion, Windows counter source,
+- [x] P2.6 Monotonic host timing: checked tick conversion, Windows counter source,
   synthetic arithmetic and real source tests; no guest timing accuracy claim.
 - [ ] P2.7 Integrated Windows/Linux Debug/Release checks and independent review;
   evidence-backed phase closure with remaining later-phase work explicit.
@@ -223,6 +223,15 @@ requires both injected-join and termination markers with exact exit status 73.
 No sleeps, detach, forced cancellation or guest TLS assumptions were introduced.
 Initial focused test failed to link before provider implementation, then passed.
 Failure seams model pre-mutation errors; arbitrary native faults remain excluded.
+
+P2.6 VERIFIED locally: exact tick conversion passes 67,086 synthetic checks,
+including near-uint64 limits, reversed samples and overflow. Windows QPC/QPF
+tests cover 4,096 sequential samples, stable frequency, and injected failed/null/
+negative/zero native query outcomes. Windows Debug/Release each pass 52/52 tests;
+all ten Windows Debug runtime tests additionally pass five repetitions each.
+Independent arithmetic and worker-lifetime reviews found no blocking issue.
+Main review replaced unsafe test-only expected accesses with guarded checks.
+No clock accuracy, guest-time or cross-thread synchronization guarantee follows.
 
 - [x] P2.1 Portable host geometry and reservation-relative page-range validation;
   exhaustive synthetic arithmetic tests and four local preset checks.

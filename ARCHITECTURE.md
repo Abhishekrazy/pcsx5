@@ -208,6 +208,9 @@ invalid signed values. Stamps must come from the same source/boot; these are hos
 measurements, not wall time or guest timing accuracy. Synthetic conversion tests
 are independent of real clock tests, which require nondecreasing observations
 without minimum elapsed-time or resolution assumptions. No native types are public.
+References: [C++ thread construction](https://eel.is/c++draft/thread.thread.constr),
+[join synchronization](https://eel.is/c++draft/thread.thread.member),
+[Windows high-resolution timestamps](https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps).
 
 ### Phase 1 build/CI contract
 
