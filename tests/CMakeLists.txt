@@ -8,3 +8,29 @@ set_tests_properties(pcsx5_core_smoke PROPERTIES TIMEOUT 30)
 add_test(NAME pcsx5_build_preset_contract COMMAND "${CMAKE_COMMAND}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/build_preset_contract.cmake")
 set_tests_properties(pcsx5_build_preset_contract PROPERTIES TIMEOUT 30)
+
+set(boundary_cases
+    positive:PASS windows:include posix:include ui:include vulkan:include
+    metal:include legacy:include nested:include macro:preprocessor
+    splice:preprocessor alternate:preprocessor import:preprocessor
+    include_next:preprocessor escape:source link:property
+    transitive_link:property interface_link:property external_source:source
+    include_root:include_root inherited_include:include_root generated:source
+    genex_source:source genex_include:include_root compile_option:option
+    source_option:source directory_definition:property global_flags:option
+    pch:property late_link:property false_link:property quoted_comment:include
+    pragma_link:preprocessor tight_import:preprocessor tight_include_next:preprocessor
+    cmake_header:include control_whitespace:preprocessor post_config_edit:BUILD_INCLUDE
+    local_flags:option)
+foreach(entry IN LISTS boundary_cases)
+    string(REPLACE ":" ";" pair "${entry}")
+    list(GET pair 0 case)
+    list(GET pair 1 expected)
+    add_test(NAME "pcsx5_boundary_${case}" COMMAND "${CMAKE_COMMAND}"
+        "-DCASE=${case}" "-DEXPECTED=${expected}"
+        "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}/boundary"
+        "-DGUARD_FILE=${CMAKE_SOURCE_DIR}/cmake/CoreBoundary.cmake"
+        "-DGENERATOR=${CMAKE_GENERATOR}" "-DCOMPILER=${CMAKE_CXX_COMPILER}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/boundary/run_case.cmake")
+    set_tests_properties("pcsx5_boundary_${case}" PROPERTIES TIMEOUT 30 LABELS boundary)
+endforeach()

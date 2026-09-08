@@ -11,7 +11,7 @@
 - [x] P1.2 Verify fresh-worktree entry points and finish local Codex setup (saved configuration and manual command execution; automatic app-triggered execution remains unobserved).
   - [x] Fresh Windows/Linux Debug/Release configure, build and test entry points.
   - [x] Save and review the Windows-only Codex setup override; leave cleanup empty.
-- [ ] P1.3 Enforce core include/link boundaries with positive and negative tests.
+- [x] P1.3 Enforce core include/link boundaries with positive and negative tests.
 - [ ] P1.4 Extend portable core tests beyond the scaffold smoke test.
 - [ ] P1.5 Record actual hosted CI matrix results before phase closure.
 
@@ -43,6 +43,14 @@ VERIFIED on 2026-09-08:
 VERIFIED: the user corrected and saved `.codex/environments/environment.toml` through the environment editor. Standard-library TOML parsing confirms an empty default setup, `setup.win32.script` equal to `cmd /d /c bootstrap-windows.cmd`, and no cleanup, actions or secret values. The Windows command was rerun manually from the verification worktree and passed **2/2 CTests**. The reviewed environment configuration is included in this checkpoint; the earlier build-evidence checkpoint is `e44034d`.
 
 Remaining limits: automatic setup triggered by Codex worktree creation remains UNKNOWN; saved configuration and manual execution of its command are verified. Non-Windows automatic setup is intentionally unconfigured; Linux configure/build/test entry points are verified above. No hosted CI or emulator-platform support claim follows from these scaffold tests.
+
+### P1.3 core boundary enforcement
+
+- VERIFIED: the deferred root CMake check inspects actual core target sources, include roots, link/interface properties and selected compiler-injection routes. The core currently admits no link dependencies. The whole core tree is checked at configure and before builds, even with `BUILD_TESTING=OFF` (hook placement reviewed).
+- VERIFIED: 38 synthetic boundary fixtures require their specific guard diagnostic; the positive fixture must also compile. Coverage includes OS/UI/graphics/legacy headers, nested and nonliteral includes, external sources/roots, direct/interface/transitive links, generated/opaque sources, PCH, compiler flags and deferred changes. An existing header edited after configure is rejected by the build-time scan.
+- Independent review reproduced and then verified fixes for false-valued library names (`OFF`), strings concealing includes during comment removal, tight import syntax, includes of skipped CMake files and child-directory-local compiler flags. These cases now have regressions. The checker remains conservative rather than a full C++ parser or security sandbox; its toolchain and semantic limits are recorded in `ARCHITECTURE.md`.
+- VERIFIED: Windows MSVC and WSL Ubuntu GCC Debug/Release configure/build/test runs each passed **40/40 CTests** (38 boundary cases plus the two existing scaffold tests). Linux Debug was run by the implementation agent; the main agent ran Windows Debug/Release and Linux Release. No project dependency, legacy behavior change or remote write was made.
+- The portable range API contract is defined for P1.4; its implementation/tests are a separate checkpoint, not part of the P1.3 executable gate.
 
 ## Phase 0 closure record
 
@@ -152,7 +160,7 @@ These findings disqualify mechanical copying of the legacy runtime. They neither
 - VERIFIED: `.github/workflows/ci.yml` has been replaced locally with clean build-and-test jobs. The remote workflow is unchanged until an authorized push; do not treat remote legacy packaging as rebuild release evidence.
 - UNKNOWN: hosted Windows/Linux CI results and automatic Codex worktree setup. New worktrees must include the Phase 1 commits; the local WSL builds do not establish hosted runner success.
 
-Next: P1.3 include/link boundary enforcement, followed by useful portable core tests and actual hosted CI evidence. The approved Ubuntu tool installation is complete; additional dependency installations and remote pushes still require user approval. No semantic legacy fix is approved by this handoff.
+Next: P1.4 portable range tests, followed by P1.5 actual hosted CI evidence. A read-only `gh run list` for `codex/phase-1-build-foundation` returned no runs during this session. The approved Ubuntu tool installation is complete; additional dependency installations and remote pushes still require user approval. No semantic legacy fix is approved by this handoff.
 
 ## Phase 0 integrated verification (before Phase 1)
 

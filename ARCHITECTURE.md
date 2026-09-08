@@ -129,3 +129,17 @@ Phase 1 task order (active; completion evidence in `REBUILD_STATUS.md`):
 - Workflow and preset validation is local evidence only. Hosted matrix success requires an actual GitHub Actions run; local GCC compilation without Linux CMake/Ninja is not Linux preset verification.
 
 References checked for this boundary: [CMake 3.25 preset format](https://cmake.org/cmake/help/v3.25/manual/cmake-presets.7.html), [GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), and [hosted runner images](https://github.com/actions/runner-images).
+
+### Phase 1 portable value contract
+
+Design decision: the first useful clean-core value is `guest_address_range`, a nonempty byte range represented by a `uint64_t` guest base and byte count, never a host pointer or `size_t`. Its checked factory rejects zero size and any range whose last byte exceeds `UINT64_MAX`; the single final byte at `UINT64_MAX` is representable. A range spanning all 2^64 bytes is not representable by its count and is intentionally outside this value's domain. Queries provide address/range containment, overlap and an optional offset; adjacent ranges do not overlap. There is no unchecked public constructor or mutation.
+
+These are arithmetic invariants, not PS5 virtual-address validity, mapping ownership, memory permissions, allocation policy or page-size assumptions. Runtime adapters must supply those later. Implementation uses subtraction-based bounds checks to avoid wrapped endpoints. Compile-time edge checks and deterministic runtime enumeration must stay active in Release builds; no proprietary inputs or new test framework are needed.
+
+### Phase 1 core dependency guard
+
+Design decision: the clean core currently has no approved link dependencies. A deferred CMake guard inspects the real core target after subdirectory configuration; additional libraries, interface dependencies, external source/include roots, generated or opaque sources, PCH, and unreviewed compile injection routes must fail configuration. Only existing core-owned files, the core include root and the reviewed warning options are accepted. The approved standard-library headers are explicitly listed in the guard; additions require review and regression coverage. New runtime/execution contracts must extend this policy deliberately, not disable it.
+
+The whole core source/header tree is scanned at configure time and before core builds. Literal local headers must resolve inside core; external OS/UI/graphics/legacy headers and macro includes are rejected. Conservative preprocessing restrictions reject unhandled spellings instead of silently assuming they are portable. Tests must distinguish a guard's diagnostic from an unrelated compiler/configuration failure and include a passing control.
+
+This is an architectural regression guard, not a C++ parser or security sandbox. It trusts the compiler, standard-library installation and build environment; it cannot establish semantic host independence, detect copied legacy algorithms or certify every possible preprocessor/toolchain trick. Platform behavior still requires source review and cross-host acceptance tests.
