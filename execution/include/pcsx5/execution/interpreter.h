@@ -55,6 +55,12 @@ struct run_result {
     std::span<trace_record>) noexcept;
 // Trace v1: exact fixed-size little-endian wire record, independent of padding
 // and host endianness. Returns false for invalid records or undersized output.
+// Layout: PXI1[4], sequence[8], before[152], after[152], reason/access/error[3],
+// fault_address[8], uncertain[1], instruction[15], length[1], wrote[1],
+// write_address[8], write_bytes[8], write_size[1]. State is GPRs, RIP, RFLAGS,
+// known_flags in declaration order. Enum IDs are their current declaration
+// ordinals; reordering requires a new wire version. Unknown arithmetic flag
+// values are deterministic placeholders, not hardware differential expectations.
 inline constexpr std::size_t trace_wire_size = 362;
 [[nodiscard]] bool encode_trace(const trace_record&, std::span<std::byte>) noexcept;
 [[nodiscard]] bool decode_trace(std::span<const std::byte>, trace_record&) noexcept;

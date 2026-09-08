@@ -36,7 +36,23 @@ validation and regression coverage now reject it. One failing SIB test was an
 incorrect authored scale encoding, corrected without changing production semantics.
 Store-cross-boundary and invalid CALL tests verify unchanged CPU and backing bytes.
 No failed test was skipped. Native arithmetic comparison and final matrix remain
-pending; this checkpoint is not full phase closure.
+pending; this checkpoint is not full phase closure. Implementation commit: `7dc8482`.
+
+### Phase 5 oracle hardening checkpoint
+
+VERIFIED: all four base preset gates pass: Windows Debug/Release 62/62 each,
+WSL Linux Debug/Release 63/63 each. The Linux-only additional test compares seven
+static native x64 arithmetic operations at both widths across 17,080 edge/random
+cases (136,641 checks), including defined flags and 32-bit zero extension. This
+uses compiler-assembled instructions, not execution of guest bytes; its target
+alone disables the compiler red zone for PUSHFQ/POP flag capture. No dependency
+or executable-memory capability is added to production.
+
+VERIFIED: trace tests now mutate every wire byte/bit and require exact round-trip
+for accepted records or unchanged output on rejection. Populated trace-capacity
+exhaustion stops before the next instruction. Trace tests pass ASan/UBSan with
+NDEBUG. Final cross-host trace comparison, repetitions and graphics regressions
+remain before closure; no hosted run is inferred from these local results.
 
 ## Phase 4 acceptance tasks
 

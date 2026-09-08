@@ -25,6 +25,16 @@ int main() {
     expected[343] = std::byte{1};
     CHECK(wire == expected);
     ex::trace_record decoded{};
+    // Every accepted one-bit wire mutation must re-encode identically; malformed
+    // records must leave the destination unchanged. This checks all wire bytes.
+    for (std::size_t offset = 0; offset < wire.size(); ++offset) for (unsigned bit = 0; bit < 8; ++bit) {
+        auto changed = wire; changed[offset] ^= static_cast<std::byte>(1U << bit);
+        decoded = record;
+        if (ex::decode_trace(changed,decoded)) {
+            std::array<std::byte,ex::trace_wire_size> encoded{};
+            CHECK(ex::encode_trace(decoded,encoded)); CHECK(encoded == changed);
+        } else CHECK(decoded == record);
+    }
     CHECK(ex::decode_trace(wire, decoded)); CHECK(decoded == record);
     CHECK(!ex::decode_trace(std::span(wire).first(wire.size()-1), decoded));
     for (const auto offset : {0U, 3U, 316U, 317U, 318U, 327U, 343U, 344U, 361U}) {

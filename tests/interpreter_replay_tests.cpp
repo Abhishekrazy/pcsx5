@@ -78,6 +78,10 @@ bool replay(wire_corpus& output) {
     const auto expected = expected_trace();
     corpus actual{};
     auto state = initial_state();
+    const auto capacity = ex::run(state,memory,100,std::span(actual).first(2));
+    CHECK(capacity.reason == ex::stop_reason::trace_full && capacity.records == 2 && capacity.retired == 2);
+    CHECK(state == expected[1].after && actual[0] == expected[0] && actual[1] == expected[1]);
+    state = initial_state();
     const auto result = ex::run(state,memory,100,actual);
     CHECK(result.reason == ex::stop_reason::breakpoint && result.retired == 18 && result.records == record_count);
     for (std::size_t i = 0; i < record_count; ++i) {
