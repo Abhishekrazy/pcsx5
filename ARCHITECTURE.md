@@ -98,6 +98,36 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 
 ## Delivery sequence and Phase 1 handoff
 
+### Phase 6 containment, first increment
+
+Decision: establish owned child-process lifetime before executing guest bytes
+natively. `runtime/include/pcsx5/runtime/child_process.h` is the shared contract;
+runtime owns Windows/Linux leaves, synthetic helper tests are the first consumer.
+The parent does not borrow a guest stack, patch TEB/TLS or recover through longjmp.
+One trusted helper is launched by absolute path without a shell. Exits, signal
+termination (Linux), deadline termination and cancellation are distinct outcomes;
+none imply a valid guest-state snapshot. All paths reap the owned child and close
+native handles before return. Cleanup failure is fail-fast rather than silently
+abandoning a child, consistent with existing owned runtime resources.
+
+This is process-lifetime containment, NOT a hostile-code sandbox: environment and
+working directory are inherited, Linux non-CLOEXEC descriptors may be inherited,
+and descendants/filesystem/network access are not confined. Windows starts hidden
+without handle inheritance. Callers must not install incompatible child-reaping
+policies; no process-global signal disposition is changed by production code.
+Timeout starts after native spawn and includes neither a hard scheduling guarantee
+nor a bound on OS termination/reaping. The helper must not launch descendants.
+
+First gate: real authored helpers exit, fail, stall and accept exact literal
+arguments; parent observes expected outcomes and proves cleanup/repeated use.
+Later gates remain guest-state transport with validation, contained native x64
+entry/exit/fault snapshots, full modeled-state differential tests and measured
+optional x64-JIT decision. Passing this first gate does not complete Phase 6 or
+enable direct execution of guest bytes. No legacy code or dependency is imported.
+API references: [CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw),
+[CRT argument parsing](https://learn.microsoft.com/en-us/cpp/c-language/parsing-c-command-line-arguments),
+and [posix_spawn](https://man7.org/linux/man-pages/man3/posix_spawn.3.html).
+
 ### Phase 5 scalar interpreter contract
 
 Decision: the first reference oracle is a bounded scalar x86-64 long-mode subset,

@@ -2,7 +2,70 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: COMPLETE within the offscreen acceptance scope below. Phase 5 — Reference interpreter: COMPLETE within the scalar acceptance scope below. Phase 6 — Direct-x64 containment: NEXT.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: COMPLETE within the offscreen acceptance scope below. Phase 5 — Reference interpreter: COMPLETE within the scalar acceptance scope below. Phase 6 — Direct-x64 containment: IN PROGRESS.**
+
+## Phase 6 acceptance tasks
+
+- [x] P6.1 Owned trusted-child lifetime contract and Windows/Linux implementation;
+  exact exit/fault classification, bounded-run cancellation and cleanup evidence.
+- [ ] P6.2 Validated worker request/result transport carrying modeled guest state;
+  malformed/truncated output and stale-result rejection, no guessed snapshots.
+- [ ] P6.3 Contained native x64 entry/return/requested-exit/fault paths with complete
+  modeled state and host ABI/stack preservation evidence.
+- [ ] P6.4 Interpreter differential corpus, native cleanup/failure-path hardening,
+  repeated/concurrent ownership gates and full acceptance matrix.
+- [ ] P6.5 Measure representative execution costs and record optional x64 JIT
+  go/no-go decision; no timing-based claim without reproducible measurements.
+
+### P6.1 implementation and verification
+
+VERIFIED on 2026-09-09: legacy StartGuestCaptured uses TEB stack bounds and
+setjmp/longjmp, with the previously recorded failed trap/exit cases. No legacy
+source was changed. The first clean increment launches one trusted helper in a
+separate process and returns normalized process outcomes, not guest CPU state.
+Windows uses explicit-path CreateProcessW with hidden launch and no inherited
+handles; Linux uses exact-path posix_spawn and exact-PID wait/reap. Both observe
+exit before cancellation/deadline and terminate/reap their owned stalled child.
+
+VERIFIED: test-first link failure for the missing provider was observed. Native
+helper tests now cover exact return codes, synthetic unhandled SIGSEGV/Windows
+RaiseException, timeout, pre-cancel and cancellation after an OS readiness signal.
+The latter uses a named test semaphore/event rather than guessing startup timing.
+An executable filename containing spaces, empty arguments, quotes, backslashes
+and shell metacharacters arrive literally. NUL paths/arguments, excessive sizes,
+malformed Windows UTF-8 and incompatible Linux SIGCHLD policies are rejected.
+Tests restore their temporary signal disposition before assertions/other work.
+
+Six paired concurrent runs retain their distinct exit statuses. Twelve repeated
+exit/timeout pairs leave no Linux children/zombies and no increase in the Windows
+process handle count. Each host's containment gate also passed five repetitions.
+The Linux runner/test passed ASan/UBSan with NDEBUG, using the non-instrumented
+child fixture; this does not claim sanitizer compatibility of native guest faults.
+Independent review found no blocker and prompted the additional malformed-input
+and reaping-policy tests. A directory-scoped Threads imported-target configuration
+failure was fixed by discovering the existing system thread library in tests.
+
+| Local base preset | Result |
+|---|---|
+| windows-x64-debug | 63/63 passed |
+| windows-x64-release | 63/63 passed |
+| linux-x64-debug | 64/64 passed |
+| linux-x64-release | 64/64 passed |
+
+All four final JUnit reports contain zero failed/disabled tests. All 38 core
+boundary fixtures remain unchanged and pass. No new dependency, remote push or
+hosted execution occurred. Graphics-enabled presets were not rerun for P6.1;
+their prior Phase 5 results are historical, not evidence for this increment.
+
+UNKNOWN / excluded: actual guest-byte execution, guest-state transport, native
+CPU fault snapshots, injected OS cleanup failure, descendant containment and
+hostile-code isolation. Environment/CWD and Linux non-CLOEXEC descriptors can be
+inherited; filesystem/network access is not restricted. Timeout is not a hard
+OS scheduling/cleanup deadline. Incompatible external PID reaping is forbidden;
+unrecoverable ownership/cleanup failure is fail-fast rather than abandoning a child.
+Synthetic raised faults prove process outcome handling, not PS5 exception accuracy.
+Phase 6 remains IN PROGRESS. Next boundary is P6.2 state transport, not enabling
+unvalidated guest bytes in the parent process.
 
 ## Phase 5 acceptance tasks
 
