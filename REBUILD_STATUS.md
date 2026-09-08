@@ -8,7 +8,7 @@
 
 - [x] P6.1 Owned trusted-child lifetime contract and Windows/Linux implementation;
   exact exit/fault classification, bounded-run cancellation and cleanup evidence.
-- [ ] P6.2 Validated worker request/result transport carrying modeled guest state;
+- [x] P6.2 Validated worker request/result transport carrying modeled guest state;
   malformed/truncated output and stale-result rejection, no guessed snapshots.
 - [ ] P6.3 Contained native x64 entry/return/requested-exit/fault paths with complete
   modeled state and host ABI/stack preservation evidence.
@@ -16,6 +16,32 @@
   repeated/concurrent ownership gates and full acceptance matrix.
 - [ ] P6.5 Measure representative execution costs and record optional x64 JIT
   go/no-go decision; no timing-based claim without reproducible measurements.
+
+### P6.2 implementation and verification
+
+VERIFIED on 2026-09-09: bounded PXQ1/PXR1 codecs carry the complete modeled
+scalar state, 4096-byte image and up to 256 PXI1 instruction records. The real
+worker CLI executes the interpreter in an owned child; parent tests require
+successful exit before accepting exact-length, matching-ID/state/image results.
+This is trusted file transport, not authenticated IPC or native guest execution.
+
+Test-first unresolved linkage was recorded. Independent request/response wire
+goldens, every truncated length and single-bit canonical roundtrips, stale IDs,
+trace-chain and memory corruption, progressive instruction-image writes, all
+modeled terminal stops and budget limits pass 150,208 Release-active checks.
+Both standalone GCC optimized and ASan/UBSan builds pass without diagnostics.
+The write-fault test caught rejection of the interpreter's conservative memory
+uncertainty marker; matching now preserves it while requiring the actual final
+image to equal reconstructed successful writes. No interpreter semantics changed.
+
+Windows MSVC Debug/Release each pass 65/65 CTests; WSL Linux GCC Debug/Release
+each pass 66/66. No tests disabled or skipped. Actual child transport matches
+local complete wire output, rejects malformed requests and same-path overwrite,
+and demonstrates why old output after failed exit must never be accepted.
+Independent review corrected a same-path test that initially used invalid input.
+No dependency, legacy change, remote push or hosted run. Graphics-enabled presets
+were not rerun for this increment. Phase 6 remains IN PROGRESS: next is P6.3
+native register/fault capture, not relabeling interpreter results as native state.
 
 ### P6.1 implementation and verification
 

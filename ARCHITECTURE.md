@@ -100,6 +100,19 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 
 ### Phase 6 containment, first increment
 
+P6.2 transport contract: `execution/include/pcsx5/execution/worker_protocol.h`
+defines PXQ1/PXR1 little-endian messages. The first worker accepts one 4096-byte
+guest RAM image at 0x1000, scalar CPU state, a nonzero caller-unique request ID and
+1..256 instruction budget. It returns final RAM/state and bounded PXI1 traces.
+Exact sizes, enums, counts, state-chain continuity, fetched bytes and memory-write
+effects are checked; stale IDs and malformed/truncated results are rejected.
+Structural validation is not authentication or a proof of native ISA correctness.
+The initial production helper runs the interpreter; it is not a direct-x64 backend.
+Files are an explicit trusted batch transport: caller-owned input/output paths,
+no guessed paths, bounded reads and no response accepted after failed child exit.
+Tests keep these files in unique build-output directories. Private authenticated
+IPC and hostile-worker protection remain separate work; no sandbox claim follows.
+
 Decision: establish owned child-process lifetime before executing guest bytes
 natively. `runtime/include/pcsx5/runtime/child_process.h` is the shared contract;
 runtime owns Windows/Linux leaves, synthetic helper tests are the first consumer.

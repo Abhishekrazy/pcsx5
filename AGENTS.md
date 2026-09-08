@@ -46,6 +46,11 @@ The current implementation is a legacy reference, not the target architecture. D
 
 ## Commit checkpoints
 
+- Continue automatically across completed tasks and phases; do not wait for another
+  "go" at routine checkpoints. Stop only for missing authority/access/hardware or
+  a material owner decision, and never turn an unverified gate into a completion
+  claim. Preserve this rule when handing work across context boundaries.
+
 - Commit after each completed, verified task, not only at the end of a phase. During longer tasks, commit independently buildable and tested increments when available.
 - Before committing, review the diff, run the relevant checks, and update `REBUILD_STATUS.md` with evidence and remaining risks. Never label a failed or unverified gate complete merely to make a checkpoint.
 - Use descriptive Conventional Commit messages on a `codex/` branch. Stage only reviewed task-related paths; leave unfinished, unrelated, generated and secret material out.
