@@ -113,7 +113,7 @@ The minimal acceptance corpus is newly authored synthetic allocations, byte patt
 | 10 | Native Metal go/no-go only after measured MoltenVK gaps |
 | 11 | Product frontends, packaging and release compatibility gates |
 
-Phase 1 task order (active; completion evidence in `REBUILD_STATUS.md`):
+Phase 1 task order (complete; hosted closure evidence and limits in `REBUILD_STATUS.md`):
 
 1. Replace the stale Windows-only legacy CI workflow with clean Windows/Linux Debug/Release jobs. Retain only approved actions, read-only permissions and test logs; no package/release job.
 2. Make configure/build/test entry points work from a new worktree without local caches or network restores; wire the Codex setup script through its environment editor.

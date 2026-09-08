@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: ACTIVE.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Runtime contracts and Windows leaf implementation: NEXT, not started.**
 
 ## Phase 1 task checkpoints
 
@@ -13,9 +13,9 @@
   - [x] Save and review the Windows-only Codex setup override; leave cleanup empty.
 - [x] P1.3 Enforce core include/link boundaries with positive and negative tests.
 - [x] P1.4 Extend portable core tests beyond the scaffold smoke test.
-- [ ] P1.5 Record actual hosted CI matrix results before phase closure.
+- [x] P1.5 Record actual hosted CI matrix results before phase closure.
 
-Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundation`. The user authorized pushing this branch and verifying hosted CI. Initial hosted execution exposed the script-policy issue below; Phase 1 remains open until the corrected matrix passes.
+Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundation`. The user authorized pushing this branch and verifying hosted CI. The corrected matrix passed at `550e0e9`; the exact run and closure limits are recorded below. No merge or release was performed.
 
 ### P1.1 implementation and local verification
 
@@ -25,7 +25,7 @@ Phase 0 checkpoint: `73a20a0`. Phase 1 work is on `codex/phase-1-build-foundatio
 - VERIFIED: Windows MSVC 19.51 Debug and Release each pass **2/2 CTests**. Both presets reject a deliberately empty selected suite. Normal test runs were repeated afterward to restore passing `ctest.log`/`junit.xml` artifacts.
 - VERIFIED: `bootstrap-windows.cmd` accepts either Windows preset, defaults to Debug, works from a different current directory, rejects an invalid preset, and propagates configure/build/test failures including negative exit codes.
 - VERIFIED: the existing Ubuntu x86-64 GCC 15.2 compiler builds and runs the clean-core smoke test with `-O0 -g` and `-O2 -DNDEBUG`, using C++23 and the project's warning flags. No warnings were emitted. These manual builds are not Linux CMake/CTest preset runs.
-- Historical P1.1 limit: Ubuntu initially lacked CMake/Ninja, so Linux preset execution was UNKNOWN at that checkpoint. P1.2 below supersedes this local limitation. Hosted Windows/Linux workflow results remain UNKNOWN; nothing has been pushed or dispatched.
+- Historical P1.1 limit: Ubuntu initially lacked CMake/Ninja, so Linux preset execution was UNKNOWN at that checkpoint. P1.2 supersedes this local limitation; P1.5 supplies later hosted results. Nothing had been pushed or dispatched at P1.1.
 - VERIFIED: local diff/whitespace review passed. Commit rule checkpoint: `63a7969`. The unfinished `.codex/` environment file remains excluded.
 
 ### P1.2 fresh-worktree verification and saved Codex configuration
@@ -59,14 +59,27 @@ Remaining limits: automatic setup triggered by Codex worktree creation remains U
 - VERIFIED: the CTest repeatability harness runs the executable twice, requires successful exits and valid success summaries, and compares normalized stdout. CTest timing/JUnit timestamps are not claimed deterministic. Existing no-tests-as-error presets remain enforced by the preset-contract test.
 - VERIFIED: integrated Windows MSVC and WSL Ubuntu GCC Debug/Release builds each pass **42/42 CTests**. The range suite also passed GCC AddressSanitizer + UndefinedBehaviorSanitizer with `-DNDEBUG` and strict warnings; no diagnostics were emitted. No sanitizer package or test framework was installed.
 - Independent review found no blocking arithmetic, invariant or Release-test issue; its suggested additional near-maximum rejection matrix was included and verified. Tests use only newly authored synthetic values; no legacy or proprietary fixtures were imported.
-- P1.3 checkpoint: `b3b0971`. P1.4 is a separate implementation/test checkpoint. ARM64, Apple, Android, full emulator execution and hosted CI remain unverified.
+- P1.3 checkpoint: `b3b0971`; P1.4 checkpoint: `e1aee34`. ARM64, Apple, Android and full emulator execution remain unverified. Hosted CI was unverified at P1.4 and is recorded separately below.
 
 ### P1.5 hosted execution and script-policy correction
 
 - VERIFIED: authorized push of `e1aee343e1c263333e301d3e380c862bfb9af5ee` created [run 34260363762](https://github.com/Abhishekrazy/pcsx5/actions/runs/34260363762). Both Windows jobs passed; both Ubuntu jobs failed during the build-time boundary scan before tests ran.
 - VERIFIED: hosted Ubuntu CMake 3.31.6 reported unset policy CMP0057 and rejected `IN_LIST` in the standalone `-P` process. Root configure succeeded because its policy version was already declared; that policy does not carry into a separate script process. Local CMake 4 runs had masked the omission.
-- Correction: all three clean standalone script entry points now declare the same CMake 3.25 baseline as the root. The existing preset-contract test checks those declarations and was observed failing before the correction. No boundary enforcement was removed and no toolchain dependency was changed. Hosted success remains pending the corrected commit's run.
-- VERIFIED after correction: local Windows and WSL Linux Debug builds each passed **42/42 CTests**, including the new policy-baseline assertion and build-time scan. CMake 3 execution will be verified by the hosted rerun, not inferred from these CMake 4 checks.
+- Correction in `550e0e9`: all three clean standalone script entry points now declare the same CMake 3.25 baseline as the root. The existing preset-contract test checks those declarations and was observed failing before the correction. No boundary enforcement was removed and no toolchain dependency was changed.
+- VERIFIED after correction: local Windows and WSL Linux Debug builds each passed **42/42 CTests**, including the new policy-baseline assertion and build-time scan. CMake 3 execution is verified by the hosted rerun below, not inferred from these CMake 4 checks.
+
+### Phase 1 hosted gate and closure
+
+VERIFIED: [run 34260730535](https://github.com/Abhishekrazy/pcsx5/actions/runs/34260730535), attempt 1, completed successfully on 2026-09-08 for exact commit `550e0e99882ee8b2a653cb88e747e563d4fe52f9`. All four configure/build/test and diagnostic-upload steps succeeded. Job logs explicitly report 42 tests passing per job (168 CTest executions total).
+
+| Hosted preset | Runner | Observed toolchain | Result |
+|---|---|---|---|
+| windows-x64-debug | windows-2025 | MSVC 19.51.36256.0, CMake 4.4.2, Ninja 1.13.2 | 42/42 passed |
+| windows-x64-release | windows-2025 | MSVC 19.51.36256.0, CMake 4.4.2, Ninja 1.13.2 | 42/42 passed |
+| linux-x64-debug | ubuntu-24.04 | GCC 13.3.0, CMake 3.31.6, Ninja 1.13.2 | 42/42 passed |
+| linux-x64-release | ubuntu-24.04 | GCC 13.3.0, CMake 3.31.6, Ninja 1.13.2 | 42/42 passed |
+
+Closure is limited to the clean build/boundary foundation and synthetic portable value tests. It is not emulator compatibility or platform-runtime support. Exact CMake 3.25 execution, automatic Codex worktree setup, ARM64/Apple/Android, full legacy application builds and runtime acceptance remain unverified. GitHub reported a non-blocking Node 20-to-24 runtime migration warning for the pinned MSVC setup action; the action succeeded, and updating its pin remains reviewed maintenance rather than a reason to weaken this gate.
 
 ## Phase 0 closure record
 
@@ -173,10 +186,10 @@ These findings disqualify mechanical copying of the legacy runtime. They neither
 - VERIFIED: fresh Windows MSVC and WSL Ubuntu GCC Debug/Release builds pass the smoke and preset-contract tests; see P1.2 above.
 - VERIFIED: native process launch previously stalled in the sandbox; approved outside-sandbox characterization works. The runner rejects negative and positive failure codes.
 - VERIFIED: the editor-generated environment now configures only Windows setup as `cmd /d /c bootstrap-windows.cmd`, with default setup empty and no cleanup command. TOML structure and manual execution passed; see P1.2 above.
-- VERIFIED: `.github/workflows/ci.yml` has been replaced locally with clean build-and-test jobs. The remote workflow is unchanged until an authorized push; do not treat remote legacy packaging as rebuild release evidence.
-- UNKNOWN: hosted Windows/Linux CI results and automatic Codex worktree setup. New worktrees must include the Phase 1 commits; the local WSL builds do not establish hosted runner success.
+- VERIFIED: the clean workflow is published on `codex/phase-1-build-foundation` and its corrected hosted matrix passed. This branch has not been merged into `main`; no package or release was published.
+- UNKNOWN: automatic Codex worktree setup. New worktrees must include the Phase 1 commits. Hosted runner evidence is recorded separately from local WSL results above.
 
-Next: verify the corrected P1.5 hosted matrix following the authorized branch push. Local P1.1-P1.4 work is complete, but Phase 1 remains open until the hosted gate passes. After Phase 1 closure, the next phase is narrow runtime contracts and the Windows leaf implementation. Additional dependencies, merges, releases and semantic legacy fixes remain unapproved.
+Next: Phase 2, beginning with narrow host-memory ownership/capability/failure contracts and synthetic contract tests, then a Windows leaf implementation. No Phase 2 implementation has started. Additional dependencies, merges, releases and semantic legacy fixes remain unapproved.
 
 ## Phase 0 integrated verification (before Phase 1)
 
