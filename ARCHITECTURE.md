@@ -146,7 +146,7 @@ is approved by this decision. Bootstrap must not silently download tools.
 | 1 | Build and boundary foundation: Windows x64 MSVC and Linux x64 GCC Debug/Release CI, headless CTest, zero-test failure, no legacy linking or release packaging |
 | 2 (complete) | Owned data memory, fault observation/forwarding, host workers and monotonic timing; Windows leaf implementations and UI-free contract tests. Closure evidence and exclusions in REBUILD_STATUS.md |
 | 3 (complete) | Portable core and Linux runtime; equivalent headless tests on both hosts. Requirement-by-requirement evidence and limits in REBUILD_STATUS.md |
-| 4 | Graphics HAL and Vulkan; isolated synthetic rendering/replay tests |
+| 4 (complete) | Graphics HAL and Vulkan; isolated synthetic rendering/replay tests. Offscreen acceptance evidence and platform limits in REBUILD_STATUS.md |
 | 5 | Reference interpreter and deterministic state/trace oracle |
 | 6 | Direct-x64 containment, complete exit/fault state tests; measured optional x64 JIT decision |
 | 7 | ARM64 JIT; interpreter differential tests and W^X/cache experiments |

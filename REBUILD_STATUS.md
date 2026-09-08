@@ -2,17 +2,17 @@
 
 ## Current phase
 
-**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: IN PROGRESS.**
+**Phase 0: characterization COMPLETE within the scope below. Phase 1 — Build and boundary foundation: COMPLETE. Phase 2 — Narrow runtime contracts and Windows leaf implementation: COMPLETE within the acceptance scope below. Phase 3 — Portable core integration and Linux runtime: COMPLETE. Phase 4 — Graphics HAL and Vulkan: COMPLETE within the offscreen acceptance scope below. Phase 5 — Reference interpreter: NEXT.**
 
 ## Phase 4 acceptance tasks
 
-Phase 4 is IN PROGRESS; no graphics gate is complete yet.
+Phase 4 is COMPLETE for the API-neutral offscreen contract and synthetic corpus.
 
 - [x] P4.1 Approve/verify Vulkan tools and record exact dependency use.
 - [x] P4.2 API-neutral offscreen HAL and validation contract with unit tests.
-- [ ] P4.3 Real Vulkan draw/readback, bounded resources, errors and cleanup.
-- [ ] P4.4 Synthetic replay with independent pixel expectations and validation.
-- [ ] P4.5 Windows/Linux Debug/Release acceptance, repeatability, review and commits.
+- [x] P4.3 Real Vulkan draw/readback, bounded resources, errors and cleanup.
+- [x] P4.4 Synthetic replay with independent pixel expectations and validation.
+- [x] P4.5 Windows/Linux Debug/Release acceptance, repeatability, review and commits.
 
 P4.1 environment evidence (2026-09-09): user approved the Vulkan dependency set.
 VERIFIED: installed five Linux packages with no upgrades/removals: libvulkan-dev
@@ -25,7 +25,7 @@ VERIFIED: vulkaninfo reports Linux llvmpipe (software Vulkan, LLVM 21.1.8), Wind
 NVIDIA RTX 5070 Ti (616.56) and Intel Graphics (101.5869). Khronos validation layer
 is present on both hosts. Enumeration is not rendering acceptance. Windows loader
 also reports installed overlay hooks and ReShade load errors; acceptance processes
-will disable implicit layers only, not alter installations or disable explicit
+disable implicit layers only, not alter installations or disable explicit
 Khronos validation. Linux loader emits display-extension warnings; no surface is
 required by this offscreen implementation.
 
@@ -59,9 +59,58 @@ and distribution obligations require a later review; the root license stays inta
   check, explicit synchronization validation and observable destructor cleanup.
   Native lifetime/synchronization review found no remaining blocking defect.
 
-Remaining before closure: Release graphics matrix, repeated/cross-device replay,
-final diff and acceptance audit. Injected errors occur before native operations;
-actual hardware loss, memory exhaustion and all-vendor support remain UNKNOWN.
+Implementation checkpoint: `080ccc5` on `codex/phase-4-graphics`.
+
+### Phase 4 acceptance audit and closure
+
+VERIFIED on 2026-09-09 for implementation commit `080ccc5`:
+
+| Requirement | Executed evidence |
+|---|---|
+| P4.1 Dependencies | User-approved installed Windows SDK and five Linux packages recorded above; no SDK or shader binaries vendored |
+| P4.2 Portable HAL | 750 unit checks; API-neutral commands, capabilities and errors; all 38 core boundary fixtures pass unchanged |
+| P4.3 Native rendering | Real triangle draw/readback; default factory; required-layer rejection; synchronization validation; bounded allocation/submission failure injection, retry, close and observable destructor cleanup |
+| P4.4 Synthetic replay | Independent per-pixel expectations, asymmetric origin check, contrasting shared edges, draw order, changed extents, invalid inputs and fresh/reused owners; 4787 checks per replay summary |
+| P4.5 Acceptance | Four complete graphics configurations below; repeated tests, cross-device semantic comparison, independent review and local implementation commit |
+
+| Local graphics preset | Result | Primary renderer |
+|---|---|---|
+| windows-x64-graphics-debug | 62/62 passed | NVIDIA RTX 5070 Ti |
+| windows-x64-graphics-release | 62/62 passed | NVIDIA RTX 5070 Ti |
+| linux-x64-graphics-debug | 62/62 passed | WSL llvmpipe software Vulkan |
+| linux-x64-graphics-release | 62/62 passed | WSL llvmpipe software Vulkan |
+
+All four saved JUnit reports contain 62 tests and zero failures. Original non-Vulkan
+presets also passed 58/58 each (Debug during implementation, Release at checkpoint).
+Windows full gates used the bootstrap entry point to initialize MSVC correctly.
+Release checks remain active. HAL unit tests additionally passed 750 checks with
+AddressSanitizer and UndefinedBehaviorSanitizer under GCC with NDEBUG; this is not
+sanitizer coverage of the Vulkan driver.
+
+Each of the five graphics-labeled Debug tests passed five repetitions on each host
+(50 test executions total). Direct replay outputs from NVIDIA, Intel Graphics and
+llvmpipe in both Debug and Release matched the same post-assertion semantic summary,
+including `validation-errors=0 checks=4787`. The Intel run selects that device for
+the validation corpus; its preliminary default-factory check still selects GPU 0.
+This comparison is not a byte-identical cross-vendor image claim: the contract
+allows one code-value color tolerance and backend-defined exact shared-edge ownership.
+
+Scope and remaining risks:
+
+- VERIFIED: headless synthetic clear/solid-triangle rendering only. No guest GPU
+  commands, guest shaders, presentation, firmware, retail assets or legacy renderer
+  were incorporated. No PS5 hardware accuracy or game compatibility is claimed.
+- UNKNOWN: actual hardware device loss, allocation exhaustion and untested native
+  failure paths. Injected failures occur before native allocation/submission;
+  successful retry does not establish recovery from genuine hardware loss.
+- UNKNOWN: AMD, ARM64, Apple/MoltenVK, Android and non-WSL Linux acceptance. No
+  all-platform support claim follows from these x64 results.
+- VERIFIED: hosted CI remains the original non-Vulkan matrix. Graphics CI SDK
+  provisioning and hosted graphics execution are not established; nothing was
+  pushed remotely. Redistribution/license obligations remain a later review.
+
+Next boundary: Phase 5 reference interpreter and deterministic state/trace oracle.
+Do not begin ARM64 JIT or infer guest execution from the graphics acceptance corpus.
 
 ## Phase 3 acceptance tasks
 
