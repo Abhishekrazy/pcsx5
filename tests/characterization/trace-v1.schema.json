@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PCSX5 normalized characterization trace v1",
+  "description": "Evidence format, not architecture authority. Records observed legacy behavior, not hardware correctness. Event order is deterministic fixture order. Scalar values are lowercase fixed-width u64 hex; addresses are region-relative references. Never serialize timestamps, process addresses, OS thread IDs, proprietary inputs or secrets. Fixture producers must distinguish scalar values from pointers before serialization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fixture", "events"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "fixture": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "description": "sequence must equal its zero-based array index; enforced by the executable validator.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sequence", "kind", "subject", "value"],
+        "properties": {
+          "sequence": {"type": "integer", "minimum": 0},
+          "kind": {"enum": ["enter", "exit", "register", "fault", "tls", "check"]},
+          "subject": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "value": {"type": "string", "pattern": "^(pass|fail|unknown|0x[0-9a-f]{16}|[a-z][a-z0-9-]*\\+0x[0-9a-f]{16})$"}
+        }
+      }
+    }
+  }
+}

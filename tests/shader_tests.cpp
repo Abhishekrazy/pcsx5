@@ -819,7 +819,7 @@ int SpirvFirstImageArrayed(const std::vector<u32>& words) {
 // to go through the same declaration.  Before this rule existed every binding
 // was declared sampled and untargeted writing draws had nowhere to go, so all
 // but the last one per frame were discarded
-// (docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md).
+// Targetless draws retain their storage path.
 void TestRequiresStorageImage() {
     // MIMG opcode sits in bits [24:18]: 0x20 sample, 0x08 store, 0x00 load.
     // Word 1 carries srsrc in bits [20:16] (<<2): 0x02 -> s[8], 0x03 -> s[12].

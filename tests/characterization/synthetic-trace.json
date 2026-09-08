@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "fixture": "trace_contract_example",
+  "events": [
+    {"sequence": 0, "kind": "enter", "subject": "synthetic_entry", "value": "guest-code+0x0000000000000000"},
+    {"sequence": 1, "kind": "register", "subject": "rax", "value": "0x000000000000002a"},
+    {"sequence": 2, "kind": "exit", "subject": "synthetic_return", "value": "pass"}
+  ]
+}

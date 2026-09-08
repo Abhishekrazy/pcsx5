@@ -520,7 +520,7 @@ struct AgcSubmitShadow {
     // order at the flip.  This was one slot, so every frame kept only its
     // last sprite and the other twelve were counted dropped -- 3039 of 3443
     // draws in a 120 s PPSA02929 run
-    // (docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md).
+    // Targetless draws retain their storage path.
     std::vector<PendingDraw> pending_targetless;
 };
 
@@ -1470,7 +1470,7 @@ void AgcExecuteDraw(AgcSubmitShadow& st, u32 draw_count, bool indexed) {
     // than parked.  Without this route such draws fell into the single
     // pending-composite slot below and all but the last one per frame were
     // discarded -- 1302 of 1572 draws in a 60 s PPSA02929 run
-    // (docs/audits/AUDIT-2026-09-07-targetless-draw-storage-path.md).
+    // Targetless draws retain their storage path.
     // The colour attachment is sized from the storage image and is not what
     // the shader writes; the write goes through the storage descriptor, which
     // vk_draw.cpp already binds in VK_IMAGE_LAYOUT_GENERAL.

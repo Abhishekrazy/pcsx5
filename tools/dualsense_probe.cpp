@@ -5,7 +5,7 @@
 //   * speaker / headset, report 0x35, Opus at 48 kHz
 //
 // Input (sticks, triggers, buttons, touch) and the LED and rumble outputs were
-// verified working on real hardware on 2026-09-05 and are recorded in TASKS.md.
+// verified working on real hardware during probe validation.
 // They are not re-tested here; doing so only buried the parts still unresolved.
 //
 // Deliberately NOT a CTest: it needs a controller and a person to say whether

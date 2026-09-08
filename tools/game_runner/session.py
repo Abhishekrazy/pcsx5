@@ -705,7 +705,7 @@ def entry_from_record(rec, previous=None, stability=None):
         "eboot": rec["eboot"],
         # Only a run observed to keep changing counts as a successful boot.
         # This was "not crashed and not no-frame", which made frozen a success --
-        # directly against CLAUDE.md, which states that a live process painting
+        # against the project operating contract: a live process painting
         # one unchanging frame is not stable execution and is never reported as
         # success. It also admitted ran-headless, where frame validation was
         # impossible by construction and nothing about rendering was observed at

@@ -55,7 +55,7 @@
     <!-- 3D DualSense renderer (Input tab testing view): Direct3D 11 with real
          PBR shaders (base colour, normal, roughness/metallic maps), which WPF's
          own Viewport3D cannot do. MIT. Owner: shell. Update: bump the pin, run
-         the Input popup capture. See architecture/decisions/ADR-004-3d-pad-renderer.md. -->
+         the Input popup capture. -->
     <PackageReference Include="HelixToolkit.SharpDX.Core.Wpf" Version="2.27.3" />
   </ItemGroup>
 

@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "kind": "phase0_extraction_review_evidence",
+  "review_date": "2026-09-08",
+  "authority": "Evidence artifact only; AGENTS.md, ARCHITECTURE.md and REBUILD_STATUS.md remain project guidance.",
+  "method": "Independent read-only source review using ECC C++ coding standards, preserving legacy behavior rather than refactoring it. SHA-256 function-body hashes cover UTF-8 text from opening to matching closing brace after CRLF-to-LF normalization; original blob hashes are Git object IDs.",
+  "baseline": {
+    "commit": "f1244ff4abf9c1768149e0c15f451c0f37b42580",
+    "git_blob_ids": {
+      "src/hle/hle.cpp": "e6b565a9dcec23f401e950d71879bb2898b4c369",
+      "src/kernel/kernel.cpp": "ee7d10f6d80ae4c8b3aeec3699a49b996689e0f0"
+    }
+  },
+  "moved_bodies": {
+    "claim": "VERIFIED",
+    "result": "All 18 function bodies match baseline exactly after line-ending normalization. Entries list the common original/current SHA-256.",
+    "src/hle/guest_lifecycle.cpp": {
+      "GetHostStackPointer": "d298d053071e419226de1019936febcc3e4c309c2ae20a056ccad346b361770b",
+      "SetHostStackPointer": "8135a0ed61664271253cb895df5354441a11677968f0829881bec00b0dd5c86c",
+      "SetIncomingXmm0": "7bf3529b4f004639fb5ec0ec2f3283468c3084fe85907bb06b814903d710903d",
+      "SetIncomingXmmBlock": "8aa0cd3646fb5b3a25e71865eb3f6127d2f6dffc808e57732d82c5d291f0abf1",
+      "HLE::GetIncomingXmm0": "093b83de2334e30c61d908c456cd4a1cb02d041fd1ef7ca0c4aa8243ea7d7833",
+      "HLE::GetIncomingXmmBlock": "496ca24ad48342fcf884b00778cbd350a403ea4115f0ab99a79841879f4457d5",
+      "HLE::SetGuestCrashed": "324015a3be9d25d06e18b36f2661a3cedbadc5975e389088380ffad8b2ae2736",
+      "HLE::IsGuestCrashed": "d66d0acf539db93c53fa8865ab514ac40800a025846d65746a8891d1f57c5dfb",
+      "HLE::GetLastGuestCrashInfo": "86a7d9521763d1244a4e5bf945c640de463ff178bedcb0b852df52eebdfc887b",
+      "HLE::SetMainGuestThreadId": "9e9881aa8de86050ae13684b76147253dcc774aaf8e346596a6803c5fd3b36a7",
+      "HLE::RequestStop": "0793a7a7434c0afa088994e5aac9451dd7d1a3be371097f5ef29aeb25db67f8d",
+      "HLE::StopRequested": "b5a568c683ba4f686cf7d137023e39e9fb10007ed2b6852b9b1f783d41e6c258",
+      "HLE::GuestExitEnv": "69f543e3180bdaac4b60a1f207aac81f81f43d0cf7dd4a6e60e8749ab539fbb2",
+      "HLE::ArmGuestExitEnv": "60b53dec39db270dfc331609eb9605d2116ba542789b07878ec9a2dfb1d94ac0",
+      "HLE::GuestExitCode": "692eb031ed4ad659284c69c6de28961e7d54ccf42042f44a90875ab7f5222ddc",
+      "HLE::ExitGuestProcess": "2295215c301bfb945e3f4664d659d32e6fdca4f81117e2a8d60107fe2e905e78"
+    },
+    "src/kernel/guest_execution.cpp": {
+      "Kernel::TryStartGuest": "dc33f8774b25380f6c32885db3befa4310887bd3419539a4cd66f2fcb0fe89b0",
+      "Kernel::StartGuestCaptured": "a6817fec3ae0f020a50cf866706ca2886c03f7e73d1a9f18b9f52968cf020d70"
+    }
+  },
+  "trap_body_review": {
+    "claim": "VERIFIED",
+    "result": "The handler stays in kernel.cpp. Its body and WriteCrashDump match baseline after reversing only the diagnostic provider substitutions below. ExceptionEntry returns the same handler address that Kernel::Initialize registers.",
+    "substitutions": [
+      {"old": "HLE::GetImportTrace(16)", "new": "ExceptionImportTrace(16)", "occurrences": 2},
+      {"old": "GPU::GetBootTimeline()", "new": "ExceptionBootTimeline()", "occurrences": 1}
+    ],
+    "VectoredExceptionHandler": {
+      "original_sha256": "c56cfbc11ce52def7c60db4db0db57a07e92dafce42c1ddccd376288745963ca",
+      "current_sha256": "7970cea90094d60ca2ecd9be3f029658a8d2543a7fd8ddc45c36b7706d2451fe"
+    },
+    "WriteCrashDump": {
+      "original_sha256": "63d80ff5feb0462d4dd4e61b5f1d32becff30c2d40aa06ee96e383b6a8a88610",
+      "current_sha256": "f383a23bcaa4efd88ef8133950797edf466ae32d900a72965e8c52ef36a4ecaf"
+    },
+    "default_behavior": "Both provider pointers initialize to null; null dispatch calls the original provider. No non-test call site was found that installs an override. Provider installation/reset must occur only with execution stopped; these raw pointers are not synchronized."
+  },
+  "reset_review": {
+    "claim": "VERIFIED",
+    "method": "Manual statement and lock-scope comparison, not identical textual hashes.",
+    "result": "Shutdown calls ResetGuestLifecycleState at the original reset location: release-store false to stop, release-store zero to main thread ID, release-store false to armed, zero exit code, then lock crash mutex and clear crashed/code/RIP/message. ResetRunStatistics calls ResetGuestCrashState at its original crash-only reset location. TLS/XMM state remains outside these resets, as before."
+  },
+  "intentional_interface_changes": [
+    "StartGuestCaptured changes from translation-unit static to externally linkable Kernel function for the independent harness; body and argument types remain unchanged.",
+    "guest_lifecycle.h declares existing HLE lifecycle/TLS helpers plus two extracted reset scopes. ExitGuestProcess retains the noreturn contract already declared in hle.h.",
+    "exception_entry.h is a legacy Windows-only diagnostic/handler seam, not a portable core contract."
+  ],
+  "build_integration": {
+    "claim": "VERIFIED",
+    "result": "The standalone characterization CMake manifest includes both new implementation files for guest_lifecycle_execution and guest_lifecycle_kernel, and guest_lifecycle.cpp for lifecycle_state/kernel_trap. Kernel trap supplies an abort-only StartGuestCaptured linker tripwire because execution is outside that host-stack fixture; the combined guest_lifecycle_kernel target excludes that tripwire and links real entry, assembly, kernel VEH, syscall and HLE state together. Root CMake currently builds only the clean scaffold and does not compile these legacy sources.",
+    "future_requirement": "Any restoration of the baseline monolithic legacy build must add src/hle/guest_lifecycle.cpp and src/kernel/guest_execution.cpp to every affected source manifest; retaining old source lists alone will produce unresolved symbols."
+  },
+  "followup_fixture_review": {
+    "claim": "VERIFIED",
+    "method": "Independent read-only inspection of expanded combined fixtures; no blocking false-positive found. Executed outcomes are established by the parent verification, not this read-only review.",
+    "observations": [
+      "Synthetic syscall 501 checks the real handler call count, six arguments, resumed RAX and reached HLE exit callback.",
+      "Syscall 1 is explicitly registered by a fixture wrapper that records arguments and invokes real SysExit. Default syscall-table initialization remains untested.",
+      "Tracked guest-address fault requires exact authored fault RIP plus matching HLE crash code/RIP from an observation-only tail handler after the real kernel handler.",
+      "Standalone SysExit checks one reentrant cleanup hook and process status 42. Concurrent cleanup and active-heartbeat teardown are not covered.",
+      "Fatal child outcomes do not establish host-state restoration or identify the precise subsequent unwind fault."
+    ],
+    "parent_repetition_observation": "In-process SysExit subsequently exhibited both AV and BAD_STACK termination. The harness permits only those two observed statuses with the same required real-call/no-return/no-hook markers. Raw statuses remain diagnostic output; normalized summaries describe failed recovery and mark the variable raw status unknown. This is not deterministic instruction/runtime evidence."
+  },
+  "limitations": [
+    "Source-body equivalence is not proof of identical machine code, unwind metadata, translation-unit initialization order, or full emulator runtime behavior.",
+    "This review did not build the complete legacy emulator, execute tests, or independently reproduce the parent task's lifecycle results. Consult the acceptance-run evidence separately.",
+    "The diagnostic override pointers are not thread-safe for concurrent installation; the test harness installs them before entering exception routes.",
+    "Existing switched-stack exit/fault recovery and ABI defects are retained for characterization; this review does not certify them as correct or portable.",
+    "Only the listed extraction boundaries were reviewed. Other pre-existing workspace changes are outside this review."
+  ]
+}

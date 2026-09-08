@@ -141,7 +141,7 @@ namespace DualSense {
 
     // Number of DualSense controllers currently enumerated (0 when none).
     // Only controller 0 is currently streamed; see
-    // architecture/decisions/ADR-001-input-ownership.md.
+    // Input ownership stays with the active controller session.
     int GetDeviceCount();
 
     // ---- output ----------------------------------------------------------
@@ -176,7 +176,7 @@ namespace DualSense {
     //
     // EXPERIMENTAL.  The report layout is INFERRED from the SAxense research
     // (MPL-2.0) and has not yet been confirmed against hardware; see
-    // docs/audits/AUDIT-2026-09-05-dualsense-audio-over-bluetooth.md.
+    // Bluetooth speaker support is capability-gated.
     bool PlayHapticsPcmBlocking(const u8* pcm, size_t bytes);
 
     // True when the open device is on Bluetooth, where the report above

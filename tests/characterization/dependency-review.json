@@ -1,0 +1,221 @@
+{
+  "format": "pcsx5.dependency-review",
+  "version": 1,
+  "review_date": "2026-09-08",
+  "baseline_commit": "f1244ff",
+  "authority": "Evidence artifact only; AGENTS.md, ARCHITECTURE.md and REBUILD_STATUS.md remain authoritative.",
+  "scope": {
+    "status": "VERIFIED",
+    "reviewed": [
+      "Dependency declarations in git show f1244ff:CMakeLists.txt",
+      "Current root and clean-layer CMakeLists.txt files",
+      ".gitmodules and both checked-out submodule commit IDs/status",
+      "Vendored top-level third_party libraries and their local license notices",
+      "Existing build/_deps source-checkout revisions and license notices",
+      "src/ui_csharp/Pcsx5Ui.csproj direct PackageReference declarations",
+      "tools/PkgToolBox/requirements.txt and README.md",
+      "assets/gamepad/dualsense3d/LICENSE.txt, manifest.json and README.md",
+      "Selected legacy dynamic library loaders and source attribution comments"
+    ],
+    "limits": [
+      "This is not a complete SBOM, security scan, source-origin certification or legal compatibility opinion.",
+      "No upstream downloads, package restore or binary execution was used for this review.",
+      "The build/_deps evidence is an ignored local cache, not committed reproducibility evidence.",
+      "Transitive NuGet/Python dependencies, SDK redistributables, all assets and every legacy source file were not individually audited.",
+      "A verified declaration or notice establishes its presence, not the correctness of the upstream claim or compliance of a distribution."
+    ]
+  },
+  "rebuild_state": {
+    "status": "VERIFIED",
+    "fact": "The inspected clean scaffold contains no third-party fetch, vendored-library link or legacy src dependency. The characterization build compiles selected legacy sources separately.",
+    "reuse_decision": "No third-party component or legacy implementation is approved for import into the clean core by this audit. Preserve existing notices. Review exact source revision, modifications, license choice and packaging obligations before any later approved reuse."
+  },
+  "project_license": {
+    "status": "VERIFIED",
+    "path": "LICENSE",
+    "notice": "GNU General Public License version 2 text",
+    "sha256": "3cfa4e937a7ab371e83d111fca4d66ee9d670f382370c88ab04ca09e62c34057",
+    "unknown": "A root license text alone does not settle each contribution's origin, GPL-only versus later-version grants, or all combined-work distribution obligations."
+  },
+  "fetched_legacy_dependencies": [
+    {
+      "name": "GLFW",
+      "status": "VERIFIED",
+      "declaration": "f1244ff:CMakeLists.txt",
+      "url": "https://github.com/glfw/glfw.git",
+      "declared_tag": "3.3.9",
+      "local_cache_head": "e2c92645460f680fd272fd2eed591efb2be7dc31",
+      "license_evidence": "build/_deps/glfw-src/LICENSE.md",
+      "notice": "zlib-style permission and three restrictions",
+      "reuse_decision": "Not imported; possible future frontend/runtime-only candidate after approval."
+    },
+    {
+      "name": "Vulkan-Headers",
+      "status": "VERIFIED",
+      "declaration": "f1244ff:CMakeLists.txt",
+      "url": "https://github.com/KhronosGroup/Vulkan-Headers.git",
+      "declared_tag": "v1.3.275",
+      "local_cache_head": "217e93c664ec6704ec2d8c36fa116c1a4a1e2d40",
+      "license_evidence": "build/_deps/vulkan_headers-src/LICENSE.md",
+      "notice": "Repository notice describes Apache-2.0 and MIT, including file-level alternatives and an exception; do not classify all files under one license without inspection.",
+      "reuse_decision": "Not imported; architecture's Vulkan direction is not dependency approval. Inspect exact consumed files and chosen license before graphics-backend import."
+    },
+    {
+      "name": "Dear ImGui",
+      "status": "VERIFIED",
+      "declaration": "f1244ff:CMakeLists.txt",
+      "url": "https://github.com/ocornut/imgui.git",
+      "declared_tag": "v1.90.4",
+      "local_cache_head": "277ae93c41314ba5f4c7444f37c4319cdf07e8cf",
+      "license_evidence": "build/_deps/imgui-src/LICENSE.txt",
+      "notice": "MIT, Omar Cornut",
+      "reuse_decision": "Not imported; frontend decision deferred."
+    },
+    {
+      "name": "Lua",
+      "status": "VERIFIED",
+      "declaration": "f1244ff:CMakeLists.txt",
+      "url": "https://github.com/lua/lua.git",
+      "declared_tag": "v5.4.7",
+      "local_cache_head": "1ab3208a1fceb12fca8f24ba57d6e13c5bff15e3",
+      "license_evidence": "build/_deps/lua-src/lua.h:500",
+      "notice": "MIT-style permission, Lua.org and PUC-Rio",
+      "reuse_decision": "Not imported; scripting is not required by the Phase 0 scaffold."
+    },
+    {
+      "name": "nlohmann/json",
+      "status": "VERIFIED",
+      "declaration": "f1244ff:CMakeLists.txt",
+      "url": "https://github.com/nlohmann/json.git",
+      "declared_tag": "v3.11.2",
+      "local_cache_head": "bc889afb4c5bf1c0d8ee29ef35eaaf4c8bef8a5d",
+      "license_evidence": "build/_deps/nlohmann_json-src/LICENSE.MIT",
+      "notice": "MIT, Niels Lohmann",
+      "reuse_decision": "Not imported; defer until a concrete boundary requires it."
+    }
+  ],
+  "vendored_legacy_dependencies": [
+    {
+      "name": "Opus",
+      "status": "VERIFIED",
+      "path": "third_party/opus",
+      "url_declared_in_readme": "https://github.com/xiph/opus",
+      "revision_declared_in_readme": "8f39f9725c9546d64c6eb8fff4d8c1b19abba1e6",
+      "provenance_evidence": "third_party/opus/README.md",
+      "license_evidence": ["third_party/opus/COPYING", "third_party/opus/LICENSE_PLEASE_READ.txt"],
+      "notice": "BSD-style redistribution notice and additional contributor/patent references; retain both files.",
+      "modification_evidence": "README declares an upstream tree trimmed to build inputs and unmodified C sources; not independently diffed against upstream.",
+      "reuse_decision": "Not imported; possible audio/input-runtime candidate only after upstream diff, notice review and approval."
+    },
+    {
+      "name": "DualSenseWindows",
+      "status": "VERIFIED",
+      "path": "third_party/DualSenseWindows",
+      "url_declared_in_readme": "https://github.com/Ohjurot/DualSense-Windows",
+      "revision_declared_in_readme": "a78fbab1fbc021115f37d297f4eb3bf393d633d6",
+      "provenance_evidence": "third_party/DualSenseWindows/README.md",
+      "license_evidence": ["third_party/DualSenseWindows/LICENSE", "third_party/DualSenseWindows/TRADEMARKS.md"],
+      "notice": "MIT, Ludwig Fuechsl; separate trademark notice retained.",
+      "modification_evidence": "README lists a local battery clamp in DS5_Input.cpp but ends by saying no changes/upstream verbatim. The modification inventory is internally inconsistent.",
+      "reuse_decision": "Not imported; never put Windows HID dependency into core. Resolve source diff before possible runtime-leaf reuse."
+    },
+    {
+      "name": "LibAtrac9",
+      "status": "VERIFIED",
+      "path": "third_party/LibAtrac9",
+      "url": "https://github.com/RPCSX/LibAtrac9.git",
+      "baseline_gitlink_and_local_head": "91d8e01307d8c7dd7018c049ba258f7d329a605b",
+      "provenance_evidence": [".gitmodules", "git ls-tree f1244ff third_party/LibAtrac9", "git -C third_party/LibAtrac9 status --porcelain (empty at review)"],
+      "license_evidence": "third_party/LibAtrac9/LICENSE",
+      "notice": "MIT, Alex Barney",
+      "reuse_decision": "Not imported; potential codec boundary candidate after review and approval."
+    },
+    {
+      "name": "stb single-header libraries",
+      "status": "VERIFIED",
+      "files": [
+        {"path": "third_party/stb_image.h", "declared_version": "2.30", "sha256": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3"},
+        {"path": "third_party/stb_image_write.h", "declared_version": "1.16", "sha256": "cbd5f0ad7a9cf4468affb36354a1d2338034f2c12473cf1a8e32053cb6914a05"},
+        {"path": "third_party/stb_vorbis.h", "declared_version": "1.22", "sha256": "0bec65a0408e902b12da70ec5c3c7874434c5eecc4e0c7174a82d2bb34f8f062"}
+      ],
+      "notice": "Each header includes MIT and public-domain alternatives near its end.",
+      "unknown": "Exact upstream revisions and local modifications have not been established.",
+      "reuse_decision": "Not imported; retain header notices and resolve origin before any future tool/frontend/codec reuse."
+    }
+  ],
+  "shell_and_tool_dependencies": [
+    {
+      "name": "Legacy WPF shell",
+      "status": "VERIFIED",
+      "declaration": "src/ui_csharp/Pcsx5Ui.csproj",
+      "target": "net9.0-windows / win-x64 / self-contained WPF",
+      "direct_packages": {"Clowd.Squirrel": "2.11.1", "NAudio": "2.3.0", "HelixToolkit.SharpDX.Core.Wpf": "2.27.3"},
+      "unknown": "Package license texts, transitive graph and redistributable notices were not audited. Project comment calls HelixToolkit MIT, but a comment is not package evidence.",
+      "reuse_decision": "Not imported; old Windows UI is reference only, not a portable frontend implementation."
+    },
+    {
+      "name": "PkgToolBox",
+      "status": "VERIFIED",
+      "path": "tools/PkgToolBox",
+      "url": "https://github.com/seregonwar/PkgToolBox.git",
+      "baseline_gitlink_and_local_head": "eaba67631b88c686d681c790420d66b6e630e529",
+      "direct_requirements": ["PySide6>=6.5.0", "qt-material>=2.17", "Pillow>=9.0.0", "kiwisolver>=1.3.0", "requests>=2.31.0", "pycryptodome>=3.0.0"],
+      "evidence": [".gitmodules", "tools/PkgToolBox/requirements.txt", "tools/PkgToolBox/README.md", "git -C tools/PkgToolBox status --porcelain (empty at review)"],
+      "notice_search": "No LICENSE or COPYING filename found by rg --files -uu tools/PkgToolBox using those filename patterns.",
+      "unknown": "Tool redistribution license and cited PS5-Game-Info/Waste_Ur_Time-derived module permissions are unresolved. Requirement ranges do not identify a reproducible transitive environment.",
+      "reuse_decision": "Not imported, installed, run or redistributed by Phase 0. Keep outside the clean build."
+    }
+  ],
+  "optional_runtime_loaders": [
+    {"name": "SDL", "status": "VERIFIED", "paths": ["src/hle/audio/sdl_audio_device.cpp", "src/gpu/input/sdl_gamecontroller_backend.cpp"], "names": ["SDL2.dll", "SDL.dll"], "reuse_decision": "Not imported; exact binary source/version/license and ABI remain UNKNOWN."},
+    {"name": "FFmpeg", "status": "VERIFIED", "paths": ["src/media/ffmpeg_decoder.cpp"], "names": ["avformat-61.dll", "avformat-60.dll", "avcodec-61.dll", "avcodec-60.dll", "avutil-59.dll", "avutil-58.dll", "swscale-8.dll", "swscale-7.dll"], "reuse_decision": "Not imported; exact binary build options, origin, license configuration and redistribution obligations remain UNKNOWN."},
+    {"name": "FidelityFX FSR", "status": "VERIFIED", "paths": ["src/gpu/fsr_upscale.cpp", "src/gpu/fsr_upscale.h"], "names": ["ffx_fsr2_api_vk.dll"], "reuse_decision": "Not imported; header's MIT statement is not verified binary provenance, and SDK revision/implemented capability remain UNKNOWN."}
+  ],
+  "assets": [
+    {
+      "name": "DualSense 3D model",
+      "status": "VERIFIED",
+      "path": "assets/gamepad/dualsense3d",
+      "notice": "LICENSE.txt and manifest.json identify AHarmlessPotato, the Sketchfab model URL, and CC-BY-4.0 attribution.",
+      "source_declared": "https://sketchfab.com/3d-models/playstation-5-dualsense-878c1f882808477ab81c2fe86d5a3936",
+      "license_sha256": "f314d74e4960fda263a5f24fad05cfa6449db4dd5f45d11561339ee947370b4d",
+      "manifest_sha256": "6d943cb349fa64b021858ecc5fd50c03ec03fc0180f55d0b97a4b198f2ca604b",
+      "unknown": "Original download identity, all transformation inputs and any separate trademark permissions are not independently established.",
+      "reuse_decision": "Not imported; preserve existing credit documents. New frontend inclusion requires an asset-specific review."
+    },
+    {
+      "name": "Other legacy assets",
+      "status": "UNKNOWN",
+      "paths": ["src/ui_csharp/ps5_controller.png", "src/ui_csharp/pcsx5_icon.ico", "assets/lang"],
+      "reuse_decision": "Not imported; no blanket permission or original-authorship claim is made. Individually establish provenance before reuse."
+    }
+  ],
+  "source_import_blockers": [
+    {
+      "status": "VERIFIED",
+      "fact": "Legacy comments explicitly identify external design studies and ports; their presence is verified, but origin and permission coverage are not established by comments alone.",
+      "evidence": [
+        "src/memory/memory.h:262 (SharpEmu GuestImageWriteTracker, abbreviated commit 04557fd)",
+        "src/kernel/tls_patch.h:17 (SharpEmu DirectExecutionBackend reference)",
+        "src/hle/libjson.cpp:13 (KytyPS5 libJson2.cpp port)",
+        "src/hle/libjson.h:4 (SharpEmu JsonValueExports/JsonExports model)",
+        "src/hle/libagc.cpp:4 (SharpEmu/Kyty-derived semantics and tables)",
+        "src/gpu/shader/gcn_decode.cpp:40 (ported opcode tables)",
+        "src/kernel/kernel.cpp:1669 (SharpEmu abbreviated commit 8ef5a54)"
+      ],
+      "unknown": "Exact upstream repositories/revisions, copied versus independently implemented portions, copyright notices and license grant for each import.",
+      "reuse_decision": "No mechanical migration into the rebuild. Characterization measures existing behavior only and does not cure provenance gaps. Resolve a per-file import ledger before reusing implementation, derived tables or traces as an accuracy oracle."
+    }
+  ],
+  "review_disposition": {
+    "status": "VERIFIED",
+    "result": "Bounded local inventory and reuse triage completed; no dependency addition or legal clearance issued.",
+    "blocked_actions": [
+      "Import or redistribution of legacy source with unresolved origin/notice coverage",
+      "Reuse of PkgToolBox until its license and derived-module permissions are established",
+      "Import of fetched/vendor packages until exact revisions, modifications and chosen license obligations are checked",
+      "Packaging of optional DLLs, transitive packages or unreviewed assets"
+    ],
+    "phase_boundary": "These are explicit reuse/release gates, not evidence that host-independent contracts or original synthetic fixtures cannot be developed. The parent Phase 0 review must decide completion based on documented scope and remaining gates."
+  }
+}

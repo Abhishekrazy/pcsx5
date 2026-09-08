@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PCSX5 Phase 0 fixture provenance records",
+  "description": "Input provenance evidence only. Repository presence or a passing test is not legal clearance. UNKNOWN authorship is explicitly retained; any proposed external reuse needs separate review. Hashes cover UTF-8 source with CRLF normalized to LF.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "fixtures"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scope": {"type": "string"},
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "sha256_lf", "origin", "authorship", "inputs", "review"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "path": {"type": "string", "description": "Repository-relative source path, contained in tests/; no traversal."},
+          "sha256_lf": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "origin": {"enum": ["legacy-repository", "authored-in-this-rebuild"]},
+          "authorship": {"enum": ["VERIFIED", "INFERRED", "UNKNOWN"]},
+          "inputs": {"const": "locally-generated-synthetic"},
+          "review": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

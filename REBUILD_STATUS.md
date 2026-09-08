@@ -1,0 +1,127 @@
+# PCSX5 Clean Rebuild Status
+
+## Current phase
+
+**Phase 0 — Characterization and rebuild preparation: COMPLETE within the scope below. Phase 1 is next, not implemented.**
+
+Closure decision, 2026-09-08: the RT-01–RT-08 Windows characterization matrix now exercises the real selected boundaries, including syscall traps, guest-stack exit/fault attempts and cleanup hooks. Failed legacy invariants are recorded as failures, not converted into accepted runtime behavior. Phase 0 establishes evidence for redesign; it does not require preserving defects in the new implementation or prove platform support.
+
+## Preservation and scope
+
+- VERIFIED: legacy checkpoint `f1244ff` exists. The rebuild checkpoint covers completed guidance cleanup, the clean scaffold and Phase 0 characterization; the unfinished local Codex environment configuration is excluded.
+- The user explicitly approved testability-only legacy extraction on 2026-09-08. Entry/capture moved to `src/kernel/guest_execution.*`; HLE lifecycle/TLS state moved to `src/hle/guest_lifecycle.*`. Original callers use the extracted functions.
+- The real exception handler stays in `src/kernel/kernel.cpp`; `exception_entry.h` exposes its address plus optional diagnostic providers. Defaults call the original providers. Tests supply empty history/timeline data, not substitute trap/exit behavior.
+- VERIFIED: independent [extraction review](tests/characterization/extraction-review.json) compared all 18 moved bodies and reset order/scope against the checkpoint. Trap-body differences are diagnostic-provider substitutions only. Source equivalence is not binary/unwind or full-application equivalence.
+- The extraction task made no semantic fixes, dependency installations/imports or additional deletions. No legacy code was moved into the clean core. The subsequent user request authorizes regular local commits of completed work, not remote pushes.
+- The clean C++23 root excludes `src/`. The standalone C++20 characterization build compiles selected real legacy sources. Any restored full legacy build must include both new implementation files exactly once; the complete legacy emulator was not built.
+
+## Executable characterization
+
+Entry point: `cmd /d /c tools\characterize-windows.cmd`.
+Output: ignored `out/build/characterization-windows-x64/`. Tests use isolated working directories and bounded timeouts; fatal lifecycle cases run in hidden child processes with five-second waits. A timeout fails the test.
+
+| Test/group | Evidence and important limit |
+|---|---|
+| memory_validation, memory_query, guest_memory_access | Memory lifecycle/query/guarded access; legacy regression expectations |
+| memory_write_tracker, kernel_memory | Write generations and guest protection mapping |
+| tls_context, tls_patch_stub | TLS arithmetic/bounds and emitted byte patterns |
+| memory_fault_routes | Actual owned AV recovery, tracked-write precedence, rejection propagation and ownership gaps |
+| tls_thread_execution | Patched load across two bound threads, rebinding, fallback, invalidation and red-zone clobber; one RAX 64-bit displacement-zero load form |
+| dispatcher_execution | Actual assembly argument/return mapping, GPR/XMM sentinels, alternate stack and StartGuest entry. Injected HLE endpoints and test-only escape isolate assembly behavior |
+| register_context | Actual CPUState conversion in both directions, 106 checks; no full x87/extended-state accuracy claim |
+| syscall_dispatch | Actual table registration/dispatch and signed return/rejection with synthetic handler; not default syscall-table initialization |
+| kernel_trap_* | Nine real-handler syscall/context/breakpoint/AV routes plus cleanup-hook repetition/reentry. Executed guest/host-address code on the host stack; empty diagnostic data supplied |
+| guest_lifecycle_execution | Real extracted StartGuestCaptured, original assembly and HLE exit state. Host-stack control, switched-stack/direct-C++ controls, exact guest AV observation, unarmed exit and worker exit with an armed main-thread jump environment |
+| guest_lifecycle_kernel | Real entry, VEH, table and HLE together. Synthetic syscall 501 resumes with six arguments/result; syscall 1 wrapper calls real SysExit in both modes; tracked guest-address AV records a real guest crash before fatal recovery. Default table initialization and full Kernel::Execute are not exercised |
+| lifecycle_state | 22 focused checks on real HLE stop/crash/reset state and thread-local host-stack/XMM storage; reset scopes and existing XMM block layout retained |
+| kernel_sys_exit_process | Real standalone SysExit(42) terminates with status 42 and exactly one flushed hook marker |
+| trace_contract, trace_sample | Versioned syntax validation, including 20 malformed-input rejection cases; invented sample is format evidence only |
+| *_trace_repeatability, kernel_trace_* | Dispatcher, lifecycle and selected kernel producers emit asserted, schema-valid, byte-identical semantic summaries across two runs; not instruction replay |
+| fixture_provenance | 21 reviewed fixture-source hashes and input-origin records; not license clearance |
+
+Abort-only link tripwires isolate unused dependencies and fail if reached. Exercised trap, register conversion, syscall dispatch, crash state and exit behavior are real implementations. Full initialization, graphics, loader and active background-thread teardown are outside this fixture scope.
+
+## Measured lifecycle outcomes
+
+VERIFIED on the local Windows Debug toolchain; these are observed statuses, not diagnoses of every nested fault:
+
+| Route | Observed outcome |
+|---|---|
+| Host-stack real HLE exit; host-stack in-process SysExit control | Captured guest status 42; host process returns normally |
+| Switched-stack HLE exit, both sentinel-wrapper and direct-C++ controls | Process terminates with `0xc0000028`; real exit callback reached once; captured return not reached |
+| Synthetic syscall 501 on switched stack, then HLE exit | Handler called once, six arguments match, resumed RAX is `0x1234`; subsequent exit terminates with `0xc0000028` |
+| Syscall 1 → real in-process SysExit on switched stack | Real SysExit reached with status 42; process terminates with `0xc0000005` or `0xc0000028`, no captured return or cleanup hook. Both statuses observed during repetition |
+| Syscall 1 → real standalone SysExit on switched stack | Process status 42; cleanup hook exactly once, including same-thread reentry |
+| Exact fixture AV on switched stack, with and without real kernel VEH | Process terminates with `0xc0000005`; exact fixture AV observed; captured return not reached |
+| Tracked guest-address AV with real VEH on switched stack | Original fault reaches post-handler observer with real HLE crash code/RIP recorded; process subsequently terminates with `0xc0000005` |
+| Unarmed HLE exit; worker exit while main-thread jump environment is armed | Process terminates with requested status 42 |
+
+Termination prevents post-return host GPR/XMM/RSP/TEB comparisons: restoration is **UNKNOWN/unobserved and its required invariant FAILED**, not verified. Nested diagnostic counts and in-process SysExit status vary; exact values remain in test output. The normalized summary marks that raw status unknown and records failure to return. Its repeatability is not a claim of deterministic runtime behavior. The precise causal chain of nested faults remains UNKNOWN. Cleanup evidence is sequential/reentrant with no active heartbeat, not concurrent exactly-once or full application teardown.
+
+## Legacy risks and rebuild gates
+
+| Finding | Evidence/classification | Required rebuild gate |
+|---|---|---|
+| Guest calls leak host RDI/RSI and XMM6 | VERIFIED dispatcher_execution | Preserve complete host ABI state at every boundary |
+| InvokeGuestOnStack callback alignment/shadow-space defect corrupts saved GPRs | VERIFIED dispatcher_execution | Explicit frame ownership/alignment and host-state sentinels |
+| StartGuest host callback stack is misaligned | VERIFIED dispatcher_execution | Test entry preparation as well as guest entry |
+| Switched-stack exit/fault paths terminate instead of restoring host execution | VERIFIED outcomes above | Typed execution result and supported recovery with all exit paths tested |
+| Untracked host AV reaches guest callback; demand commit accepts untracked reservations | VERIFIED memory_fault_routes | Ownership-filtered routing; unrelated faults remain unhandled |
+| In-process kernel filtering uses successful native Query, not guest ownership | VERIFIED kernel_trap untracked breakpoint/host AV fixtures | Separate owned guest regions from queryable native memory |
+| TLS patch stub overwrites a guest leaf red-zone slot | VERIFIED tls_thread_execution | Register/flag/stack preservation before reuse |
+| CPUState uses FltSave.MxCsr while the other native MxCsr stays inconsistent | VERIFIED register_context; OS effect UNKNOWN | Explicit single-value normalization |
+| Incoming XMM block stores first eight contiguous qwords from the spill, not eight low lanes; lifecycle reset leaves TLS values intact | VERIFIED lifecycle_state and source inspection | Define explicit lane layout and per-thread reset lifetime |
+| Successful StartGuestCaptured longjmp branch does not disarm the global exit environment | INFERRED risk from retained source; this switched-stack branch did not return in tests | Owned per-execution exit state with explicit lifetime |
+
+These findings disqualify mechanical copying of the legacy runtime. They neither prove a target impossible nor guarantee future platforms need no redesign.
+
+## Phase 0 checklist and invariant disposition
+
+- [x] P0.1 Preserve checkpoint and identify dirty user work.
+- [x] P0.2–P0.4 Consolidate inventory, architecture and subsystem migration decisions in `ARCHITECTURE.md`.
+- [x] P0.5 Exercise the bounded RT-01–RT-08 Windows matrix with real selected implementations and measured failure outcomes.
+- [x] P0.6 Define synthetic-input admission, provenance records and normalized trace v1 summaries. Interpreter/instruction replay remains later work.
+- [x] P0.7 Record local dependency/license observations and explicit reuse restrictions.
+- [x] P0.8 Complete extraction/fixture evidence review and record the clean-build/CI handoff. Phase 1 tasks are defined, not silently completed.
+
+| Original gate | Characterization result; portable invariant disposition |
+|---|---|
+| RT-01 reserve/commit/protect/query | VERIFIED local lifecycle/protection behavior; cross-host equivalence UNKNOWN |
+| RT-02 first-touch demand commit | VERIFIED behavior including FAILED ownership isolation |
+| RT-03 guarded copy | VERIFIED selected generated-input regression cases |
+| RT-04 register conversion | VERIFIED modeled fields and MXCSR inconsistency; full native/extended-state accuracy UNKNOWN |
+| RT-05 syscall register ABI | VERIFIED real CC90 trap/table, six argument registers, signed return and resume; direct CONTEXT changes only RAX/RIP. Guest PS5 ABI accuracy not established |
+| RT-06 guest entry/exit | VERIFIED entry/return, real exit/fault attempts and bounded hook behavior; host-restoration invariant FAILED/unobserved after fatal paths; concurrent/full teardown UNKNOWN |
+| RT-07 thread TLS | VERIFIED narrow Windows patched-load isolation plus FAILED red-zone preservation; other forms/flags/non-Windows strategy UNKNOWN |
+| RT-08 fault classification | VERIFIED demand-commit, syscall, breakpoint and guest/host AV routes; ownership isolation FAILED, fatal recovery remains unsafe |
+
+## Corpus and dependency decisions
+
+- VERIFIED: newly authored fixtures use synthetic state/code and test-owned memory, with no retail input files. Existing seven memory/TLS fixtures use generated inputs; historical authorship is UNKNOWN.
+- Unreviewed replays, graphics goldens, binaries and assets are excluded from the acceptance corpus. No broad legal-data clearance, redistribution approval or clean-room certification was inferred.
+- [Dependency review](tests/characterization/dependency-review.json) covers declarations, selected cached revisions/notices, vendors, shell/tool packages, optional loaders and selected attribution. It is not a full SBOM or legal opinion.
+- All third-party/legacy imports into the clean core remain unapproved. Unresolved issues include SharpEmu/Kyty-derived attribution, PkgToolBox licensing, inconsistent DualSenseWindows modification notes, and transitive/binary/asset provenance. Existing notices remain intact.
+
+## Environment readiness and next boundary
+
+- VERIFIED: Windows MSVC 19.51.36256.0/Ninja scaffold configured/built; core smoke passed.
+- VERIFIED: native process launch previously stalled in the sandbox; approved outside-sandbox characterization works. The runner rejects negative and positive failure codes.
+- VERIFIED: `.codex/environments/environment.toml` exists with an empty setup script. Automatic worktree setup is not configured; Windows setup should invoke `cmd /d /c bootstrap-windows.cmd` through the Codex environment editor.
+- VERIFIED: `.github/workflows/ci.yml` still performs legacy Windows packaging and invokes `pkg_ps5_tests`, absent from the clean root. It is not rebuild CI; do not publish rebuild releases through it.
+- UNKNOWN: Linux execution and Windows/Linux CI results. Presets alone are not evidence. New worktrees must start from the rebuild checkpoint (or explicitly include the working-tree changes before it is committed); local Codex environment setup remains separate.
+
+Next: Phase 1's build/boundary foundation in `ARCHITECTURE.md`: replace stale CI with Windows/Linux Debug/Release build-and-test jobs, finish clean worktree setup, enforce forbidden dependencies/includes, add portable tests and record real CI evidence. No dependency addition or semantic legacy fix is approved by this handoff.
+
+## Latest integrated verification
+
+VERIFIED on 2026-09-08:
+
+- `cmd /d /c tools\characterize-windows.cmd`: updated sources compiled/linked without compiler warnings; **36/36 CTests passed**.
+- `ctest --test-dir out/build/characterization-windows-x64 --output-on-failure --no-tests=error --repeat until-fail:5`: **all 36 tests passed five repetitions each** (180 CTest executions; 45.57 seconds). Trace tests themselves run each producer twice.
+- An earlier repetition failed the single-status in-process SysExit expectation. Both AV and BAD_STACK were then recorded explicitly; the final test accepts only those observed failures with the required path markers. This is characterization of unstable legacy behavior, not a runtime fix.
+- `cmd /d /c bootstrap-windows.cmd`: clean scaffold configured/built; **1/1 core smoke test passed**.
+- Fixture provenance: **21 records** pass normalized-source hash validation.
+- Dependency/extraction review JSON parsed; `git diff --check` reported no whitespace errors (existing LF/CRLF notices remain).
+- Checkpoint review additionally checked newly staged files: one trailing-whitespace blank line in `src/hle/guest_lifecycle.cpp` is retained verbatim from the original ExitGuestProcess body, consistent with the extraction hashes. No semantic change was made to remove it.
+- Independent extraction and fixture reviews found no blocking source-equivalence or test false-positive issue within their stated scopes.
+- Windows Debug only. No Linux/full-emulator execution, instruction replay or supported-platform claim follows from these results.

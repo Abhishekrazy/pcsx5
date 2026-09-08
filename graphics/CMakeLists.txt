@@ -1,0 +1,3 @@
+add_library(pcsx5_graphics INTERFACE)
+target_compile_features(pcsx5_graphics INTERFACE cxx_std_23)
+target_link_libraries(pcsx5_graphics INTERFACE pcsx5_core)

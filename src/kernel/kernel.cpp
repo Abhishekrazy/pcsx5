@@ -1,4 +1,6 @@
 #include "kernel.h"
+#include "exception_entry.h"
+#include "guest_execution.h"
 #include "fd_table.h"
 #include "instr_decode.h"
 #include "memory.h"
@@ -48,6 +50,27 @@
 
 
 namespace Kernel {
+
+    static Legacy::ExceptionTraceReader g_exception_trace_reader = nullptr;
+    static Legacy::ExceptionTimelineReader g_exception_timeline_reader = nullptr;
+
+    void Legacy::SetExceptionTraceReader(ExceptionTraceReader reader) {
+        g_exception_trace_reader = reader;
+    }
+
+    static std::vector<HLE::TraceEntry> ExceptionImportTrace(size_t max_count) {
+        return g_exception_trace_reader ? g_exception_trace_reader(max_count)
+                                        : HLE::GetImportTrace(max_count);
+    }
+
+    void Legacy::SetExceptionTimelineReader(ExceptionTimelineReader reader) {
+        g_exception_timeline_reader = reader;
+    }
+
+    static std::vector<std::string> ExceptionBootTimeline() {
+        return g_exception_timeline_reader ? g_exception_timeline_reader()
+                                           : GPU::GetBootTimeline();
+    }
 
     // Global state
     static std::unordered_map<u64, ThreadContext> g_threads;
@@ -1420,64 +1443,6 @@ namespace Kernel {
         return true;
     }
 
-    extern "C" void StartGuest(u64 entry_point, u64 stack_pointer);
-
-    static bool TryStartGuest(guest_addr_t entry_point, guest_addr_t sp) {
-#ifdef _WIN32
-        PNT_TIB tib = (PNT_TIB)NtCurrentTeb();
-        PVOID host_stack_base = tib->StackBase;
-        PVOID host_stack_limit = tib->StackLimit;
-        // Spoof bounds around the dedicated guest stack
-        tib->StackBase = (PVOID)(sp + 0x800000);
-        tib->StackLimit = (PVOID)(sp - 0x800000);
-#endif
-        bool ok = true;
-        __try {
-            StartGuest(entry_point, sp);
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            LOG_ERROR(Kernel, "Unhandled hardware exception occurred inside guest execution!");
-            ok = false;
-        }
-#ifdef _WIN32
-        tib->StackBase = host_stack_base;
-        tib->StackLimit = host_stack_limit;
-#endif
-        return ok;
-    }
-
-    // Cooperative guest exit: HleDispatch observes the window-close stop flag
-    // (and guest exit()/libc exit paths call HLE::ExitGuestProcess directly),
-    // which longjmps back to the setjmp below.  SEH unwinding cannot cross
-    // guest/asm frames, so a setjmp/longjmp pair on the same (host) stack is
-    // used instead.  C4611 is suppressed locally: the longjmp target frame
-    // holds no C++ objects, and frames abandoned by the jump (guest/asm and
-    // the current HleDispatch) intentionally skip destruction.
-#pragma warning(push)
-#pragma warning(disable: 4611)
-    static bool StartGuestCaptured(guest_addr_t entry_point, guest_addr_t sp, u32* out_exit_code) {
-#ifdef _WIN32
-        PNT_TIB tib = (PNT_TIB)NtCurrentTeb();
-        PVOID host_stack_base = tib->StackBase;
-        PVOID host_stack_limit = tib->StackLimit;
-#endif
-        if (setjmp(HLE::GuestExitEnv()) == 0) {
-            HLE::ArmGuestExitEnv(true);
-            bool ok = TryStartGuest(entry_point, sp);
-            HLE::ArmGuestExitEnv(false);
-            return ok;
-        }
-#ifdef _WIN32
-        // Restore TEB if we longjmp'd out of TryStartGuest!
-        tib->StackBase = host_stack_base;
-        tib->StackLimit = host_stack_limit;
-#endif
-        *out_exit_code = HLE::GuestExitCode();
-        LOG_INFO(Kernel, "Guest requested process termination (exit code %u).", *out_exit_code);
-        printf("StartGuestCaptured Returning True\n");
-        return true;
-    }
-#pragma warning(pop)
 
     bool Execute(const Loader::LoadedModule& main_module, u32* out_guest_exit_code) {
         LOG_INFO(Kernel, "Starting execution of %s at Entry Point: 0x%llx",
@@ -2009,7 +1974,7 @@ static void WriteCrashDump(const EXCEPTION_RECORD* rec, const CONTEXT* ctx,
 
     // HLE import trace
     fprintf(cf, "HLE Import Trace (last 16):\n");
-    auto trace = HLE::GetImportTrace(16);
+    auto trace = ExceptionImportTrace(16);
     for (auto& te : trace)
         fprintf(cf, "  %s::%s args=(0x%llX,0x%llX,0x%llX,0x%llX)\n",
                 te.module_name.c_str(), te.name.c_str(),
@@ -3020,7 +2985,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
             LOG_ERROR(Kernel, "    R15: 0x%016llx", context->R15);
 
             // I6.1: Boot-status timeline — stages recorded via SetBootStatus.
-            auto boot_timeline = GPU::GetBootTimeline();
+            auto boot_timeline = ExceptionBootTimeline();
             if (!boot_timeline.empty()) {
                 LOG_ERROR(Kernel, "  Boot timeline:");
                 for (const auto& stage : boot_timeline)
@@ -3029,7 +2994,7 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
 
             // Also log recent HLE import calls so the crash can be correlated
             // with the last guest->host transitions.
-            auto trace = HLE::GetImportTrace(16);
+            auto trace = ExceptionImportTrace(16);
             for (const auto& te : trace) {
                 LOG_ERROR(Kernel, "  HLE trace: %s::%s (id=%llu) from guest RIP 0x%llx args=(0x%llx, 0x%llx, 0x%llx, 0x%llx)",
                           te.module_name.c_str(), te.name.c_str(), te.symbol_id,
@@ -3050,6 +3015,10 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
         }
 
         return EXCEPTION_CONTINUE_SEARCH;
+    }
+
+    PVECTORED_EXCEPTION_HANDLER Legacy::ExceptionEntry() {
+        return &VectoredExceptionHandler;
     }
 
     void RegisterThread(const ThreadContext& context) {
@@ -3167,10 +3136,6 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS exception_info
     }
 }
 // namespace Kernel
-
-
-
-
 
 
 

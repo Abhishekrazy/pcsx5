@@ -1,0 +1,3 @@
+add_library(pcsx5_frontend INTERFACE)
+target_compile_features(pcsx5_frontend INTERFACE cxx_std_23)
+target_link_libraries(pcsx5_frontend INTERFACE pcsx5_core pcsx5_runtime)
