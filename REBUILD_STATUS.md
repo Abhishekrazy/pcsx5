@@ -9,6 +9,7 @@ Pending owner-gated gates (to resume when Apple Silicon hardware is available):
 - P8.1–P8.5: Apple runtime, MoltenVK acceptance, memory/worker/timing/graphics execution, and acceptance reporting.
 - P10.1: Metal go/no-go decision, measured after actual MoltenVK data on Apple.
 - Re-run of combined desktop and Android validation gates only after P8/P10 acceptance updates.
+- Non-blocking macOS build smoke is now enabled in CI for macOS 14 arm64 hosts under `ci-macos-build.yml` to provide compile-level feedback and concrete issue data without declaring platform acceptance.
 
 ## Phase 7 acceptance tasks
 

@@ -1,0 +1,48 @@
+name: macOS build smoke
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-build:
+    name: macOS arm64 build smoke
+    runs-on: macos-14
+    continue-on-error: true
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: CMake version
+        run: cmake --version
+
+      - name: Configure clean root (no tests)
+        run: |
+          cmake -S . -B out/build/macos-arm64-release \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_OSX_ARCHITECTURES=arm64
+
+      - name: Build
+        run: cmake --build out/build/macos-arm64-release --parallel 2
+
+      - name: Retain build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: diagnostics-macos-arm64
+          path: |
+            out/build/macos-arm64-release/CMakeFiles/CMakeConfigureLog.yaml
+            out/build/macos-arm64-release/CMakeFiles/CMakeOutput.log
+            out/build/macos-arm64-release/CMakeFiles/CMakeError.log
+          if-no-files-found: warn
+          retention-days: 7
