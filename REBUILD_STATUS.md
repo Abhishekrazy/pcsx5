@@ -2,7 +2,13 @@
 
 ## Current phase
 
-**Phases 0–7, bounded developer-shell Phase 9 and bounded developer-delivery Phase 11: COMPLETE within their documented scopes and exclusions below. Phases 8 and 10 are owner-DEFERRED with all Apple development/testing suspended. No active roadmap phase remains. This is not a completed PS5/game emulator or a general supported-platform claim.**
+**Phases 0–7, bounded developer-shell Phase 9 and bounded developer-delivery Phase 11: COMPLETE within their documented scopes and exclusions below. Phases 8 and 10 are owner-DEFERRED with all Apple development/testing suspended. No active roadmap phase remains until Apple work is resumed by the owner. This is not a completed PS5/game emulator or a general supported-platform claim.**
+
+Pending owner-gated gates (to resume when Apple Silicon hardware is available):
+
+- P8.1–P8.5: Apple runtime, MoltenVK acceptance, memory/worker/timing/graphics execution, and acceptance reporting.
+- P10.1: Metal go/no-go decision, measured after actual MoltenVK data on Apple.
+- Re-run of combined desktop and Android validation gates only after P8/P10 acceptance updates.
 
 ## Phase 7 acceptance tasks
 
