@@ -126,6 +126,22 @@ emission/execution, and image release does not unmap the arena. It uses the macO
 allow-jit / pthread_jit_write_protect_np policy, not the callback allowlist policy.
 Mac compilation, actual W^X behavior and the hardware corpus remain UNVERIFIED.
 
+### Apple work suspension decision (2026-09-09)
+
+Status: ACCEPTED by the project owner. Suspend both macOS development and macOS
+testing until an Apple Silicon Mac is available. Preserve the existing isolated
+Darwin/MoltenVK preparation as unverified scaffolding; do not extend it, use it
+as evidence, or allow it to affect non-Apple acceptance gates while suspended.
+
+Continuing compile-only Apple work and treating the prepared code as complete
+pending a later smoke test were considered and rejected. Neither can validate
+Apple SDK integration, hardened-runtime JIT behavior, MoltenVK execution,
+lifecycle, ABI, or packaging. Windows, Linux and Android work continues
+independently. Phase 8 and its dependent Phase 10 measurement are DEFERRED, not
+failed or complete. Resumption requires an authorized Apple Silicon host and
+explicit owner direction; first run the existing Mac acceptance script and fix
+evidence-backed failures before adding features.
+
 The initial frontend is a bounded developer surface, not an ELF/game product:
 `frontend/session.h` owns one synthetic 4096-byte guest image and a maximum
 1,000,000-instruction run. It exposes scalar results, typed stops and the actual

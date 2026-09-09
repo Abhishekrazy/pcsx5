@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phases 0–7 and bounded developer-shell Phase 9: COMPLETE within their documented scopes and exclusions below. Phases 8, 10 and full-product Phase 11 remain open; Apple acceptance deferred by the user. No PS5/game or general supported-platform claim.**
+**Phases 0–7 and bounded developer-shell Phase 9: COMPLETE within their documented scopes and exclusions below. Phases 8 and 10 are owner-DEFERRED with all Apple development/testing suspended. Full-product Phase 11 remains open. No PS5/game or general supported-platform claim.**
 
 ## Phase 7 acceptance tasks
 
@@ -49,7 +49,14 @@ hostile code. Phase 7 is bounded scalar bring-up, not a full x86-64 recompiler.
   matrix and scope/limitations audit. Apple/Windows ARM64 acceptance is not inferred
   from Android hardware results.
 
-## Phase 8 acceptance tasks — implementation prepared, Apple testing deferred
+## Phase 8 acceptance tasks — all Apple work owner-deferred
+
+OWNER DECISION on 2026-09-09: stop macOS development as well as testing because
+no Apple Silicon host is available. Existing Darwin/MoltenVK preparation remains
+isolated, preserved and UNVERIFIED; it is not an active implementation boundary.
+Do not modify or cite it as acceptance evidence until the owner resumes Apple
+work with testable hardware. Phase 10 is suspended with Phase 8 because its Metal
+decision requires measured MoltenVK results. Windows/Linux/Android work continues.
 
 VERIFIED locally: portability-aware Vulkan initialization passes Windows Vulkan
 Release 76/76 tests. The new shared POSIX data-memory/worker/timing path passes
@@ -83,8 +90,9 @@ References: [Apple JIT requirements](https://developer.apple.com/documentation/a
 UNKNOWN: Apple execution and graphics behavior in this project. The user reports
 only an Android ARM64 device; this workspace has no authorized Apple host.
 No new SDK/dependency installation, cloud purchase or remote access is assumed.
-The user has now authorized preparing remaining platforms out of order and
-running Mac tests later. This does not establish Apple acceptance.
+The earlier authorization to prepare Apple work is superseded by the owner
+decision above. Neither compilation nor further Apple development is currently
+in scope. This does not remove macOS from the long-term architecture.
 
 ## Remaining task list (defined before implementation)
 
@@ -93,7 +101,8 @@ running Mac tests later. This does not establish Apple acceptance.
   JIT capability/failure reporting, no retail code or blanket device permissions.
 - [x] P9.3 Physical-device runtime/graphics/app lifecycle acceptance and cleanup
   for the bounded developer shell on the recorded device; limitations below.
-- [ ] P10.1 Record measured native Metal go/no-go. DEFERRED without Mac data;
+- [ ] P10.1 OWNER-DEFERRED with Phase 8. Record a measured native Metal go/no-go
+  only after Apple work is explicitly resumed and physical MoltenVK data exists;
   native Metal is not implemented solely to fill the phase checkbox.
 - [x] P11.1 Frontend-facing bounded synthetic execution entry point and tests.
 - [x] P11.2 Developer CLI/Android shell and reproducible experimental packaging.
@@ -127,12 +136,12 @@ and passes v2/v3 signature verification. It includes project/NDK notices and
 requests no device permissions. It is development-signed and NOT installed.
 Native runtime/device execution is NOT inferred from APK packaging.
 
-Pending: Apple C++ compile/run/signing/MoltenVK corpus; reconnect Android for the
-new runtime/graphics corpus and app launch/rotation/background/repeat tests;
-physical 16-KiB-page device coverage; measured Metal decision; complete product
-frontends, game/ELF support and production release gates. The simple app is an
+Deferred by owner: all Apple C++/runtime/JIT/signing/MoltenVK/Metal development
+and testing. Pending active non-Apple work: physical Android 16-KiB-page device
+coverage, complete product frontends, game/ELF support and production release
+gates. The simple app is an
 experimental diagnostic frontend, not completion of the original product scope.
-Phases 8, 9, 10 and 11 therefore remain incomplete rather than being relabelled.
+Phases 8 and 10 remain deferred; full-product Phase 11 remains incomplete.
 
 ### P9 physical Android closure — bounded developer-shell scope (2026-09-09)
 
