@@ -228,6 +228,13 @@ Windows debug events and Linux ptrace stops provide actual full scalar snapshots
 including bad RSP, before child disposal. TF/IF/privileged flags are transport or
 host state; modeled output retains arithmetic bits and reserved bit1. Undefined
 arithmetic flags still require the oracle's definedness mask in comparisons.
+Windows native-step sessions are process-wide serialized with the caller's deadline:
+`WaitForDebugEvent` is not a per-child queue, so concurrent sessions could otherwise
+consume each other's events. Loader workers observed before or after the initial
+breakpoint are identified, suspended before the modeled instruction can run, and
+retained until their matching exit event. A worker that has already exited is not
+treated as a live suspend target. Only the initial thread may produce the modeled
+instruction stop; serialization is a correctness boundary, not a throughput claim.
 The first step is not a guest runner, syscall filter or hostile-code sandbox.
 Native requested-exit policy, instruction whitelist, run traces and differential
 acceptance remain later P6.3/P6.4 gates, not inferred from the one-step probe.

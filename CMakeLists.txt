@@ -45,5 +45,15 @@ if(NOT ANDROID)
     set(CPACK_PACKAGE_NAME pcsx5-experimental)
     set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
     set(CPACK_PACKAGE_FILE_NAME "pcsx5-experimental-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+    set(CPACK_PACKAGE_CHECKSUM SHA256)
     include(CPack)
+    if(BUILD_TESTING)
+        add_test(NAME pcsx5_package_acceptance COMMAND "${CMAKE_COMMAND}"
+            "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
+            "-DCPACK_COMMAND=${CMAKE_CPACK_COMMAND}"
+            "-DEXECUTABLE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
+            -P "${CMAKE_SOURCE_DIR}/tests/package_acceptance.cmake")
+        set_tests_properties(pcsx5_package_acceptance PROPERTIES
+            TIMEOUT 60 LABELS "frontend;packaging;release")
+    endif()
 endif()

@@ -30,8 +30,7 @@
         "strategy": "external"
       },
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "cl"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
@@ -48,8 +47,7 @@
         "strategy": "external"
       },
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_COMPILER": "cl"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -62,8 +60,7 @@
         "rhs": "Linux"
       },
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "g++"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
@@ -76,8 +73,7 @@
         "rhs": "Linux"
       },
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_COMPILER": "g++"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {

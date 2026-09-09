@@ -11,6 +11,13 @@ function(expect expected)
     endif()
 endfunction()
 
+function(expect_missing)
+    string(JSON ignored ERROR_VARIABLE error GET "${presets}" ${ARGN})
+    if(NOT error MATCHES "not found")
+        message(FATAL_ERROR "Preset field [${ARGN}] must be absent")
+    endif()
+endfunction()
+
 expect(6 version)
 expect(base configurePresets 0 name)
 expect(ON configurePresets 0 hidden)
@@ -55,10 +62,8 @@ set(index 0)
 foreach(platform windows linux)
     if(platform STREQUAL "windows")
         set(system Windows)
-        set(compiler cl)
     else()
         set(system Linux)
-        set(compiler g++)
     endif()
     foreach(config Debug Release)
         string(TOLOWER "${config}" lower_config)
@@ -70,7 +75,10 @@ foreach(platform windows linux)
         expect("\${hostSystemName}" configurePresets ${configure_index} condition lhs)
         expect("${system}" configurePresets ${configure_index} condition rhs)
         expect("${config}" configurePresets ${configure_index} cacheVariables CMAKE_BUILD_TYPE)
-        expect("${compiler}" configurePresets ${configure_index} cacheVariables CMAKE_CXX_COMPILER)
+        # Let each activated host environment select its compiler. A short name
+        # such as "cl" becomes a different cache value after CMake resolves the
+        # executable and can force a configure loop on newer CMake versions.
+        expect_missing(configurePresets ${configure_index} cacheVariables CMAKE_CXX_COMPILER)
         if(platform STREQUAL "windows")
             expect(x64 configurePresets ${configure_index} architecture value)
             expect(external configurePresets ${configure_index} architecture strategy)
@@ -96,6 +104,7 @@ foreach(script IN ITEMS
         guest_range_repeatability.cmake
         guest_memory_repeatability.cmake
         graphics_repeatability.cmake
+        package_acceptance.cmake
         runtime_memory_termination.cmake
         runtime_worker_termination.cmake)
     file(READ "${CMAKE_CURRENT_LIST_DIR}/${script}" source)

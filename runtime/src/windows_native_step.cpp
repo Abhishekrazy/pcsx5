@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <exception>
+#include <mutex>
 #include <new>
 #include <string>
 #include <thread>
@@ -14,6 +15,11 @@
 namespace pcsx5::execution {
 namespace {
 using clock_type = std::chrono::steady_clock;
+
+std::timed_mutex& debug_session_mutex() noexcept {
+    static std::timed_mutex mutex;
+    return mutex;
+}
 
 native_error translate_error(DWORD error) noexcept {
     if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ||
@@ -187,7 +193,7 @@ native_result observe(debug_child& child, const native_request& request) noexcep
 native_result drive(debug_child& child, const native_request& request,
     clock_type::time_point deadline, testing::native_failure_stage stage, bool* reached) noexcept {
     bool created{}, installed{};
-    struct bootstrap_thread { DWORD id{}; HANDLE handle{}; };
+    struct bootstrap_thread { DWORD id{}; HANDLE handle{}; bool exited{}; };
     std::array<bootstrap_thread,64> bootstrap_threads{};
     for (;;) {
         if (clock_type::now() >= deadline) return std::unexpected(native_error::timed_out);
@@ -211,7 +217,7 @@ native_result drive(debug_child& child, const native_request& request,
                     if (reached) *reached = true;
                     return std::unexpected(native_error::host_failure);
                 }
-                return observe(child, request);
+                return observe(child,request);
             }
             if (event.u.Exception.ExceptionRecord.ExceptionCode != EXCEPTION_BREAKPOINT)
                 return std::unexpected(native_error::host_failure);
@@ -219,10 +225,26 @@ native_result drive(debug_child& child, const native_request& request,
             // They may run during bootstrap, but no other thread may execute
             // while the modeled instruction is stepped. Event handles remain
             // OS-owned until the corresponding EXIT event is continued.
-            for (const auto& thread : bootstrap_threads)
-                if (thread.handle && SuspendThread(thread.handle) == static_cast<DWORD>(-1))
+            for (auto& thread : bootstrap_threads) {
+                if (!thread.id || thread.exited) continue;
+                DWORD exit_code{};
+                if (!GetExitCodeThread(thread.handle,&exit_code))
                     return std::unexpected(native_error::host_failure);
-            if (const auto result = install(child, request, stage, reached); !result) return std::unexpected(result.error());
+                if (exit_code != STILL_ACTIVE) {
+                    // EXIT_THREAD delivery may trail the actual loader-worker exit.
+                    // Keep its identity until that queued event, but never attempt
+                    // to suspend an already terminated thread.
+                    thread.exited = true;
+                    continue;
+                }
+                if (SuspendThread(thread.handle) == static_cast<DWORD>(-1)) {
+                    if (!GetExitCodeThread(thread.handle,&exit_code) || exit_code == STILL_ACTIVE)
+                        return std::unexpected(native_error::host_failure);
+                    thread.exited = true;
+                }
+            }
+            if (const auto result = install(child, request, stage, reached); !result)
+                return std::unexpected(result.error());
             if (stage == testing::native_failure_stage::hold_after_context) {
                 if (reached) *reached = true;
                 // Keep the actual debug event pending until the real deadline.
@@ -232,34 +254,51 @@ native_result drive(debug_child& child, const native_request& request,
             installed = true;
             break;
         case CREATE_THREAD_DEBUG_EVENT: {
-            if (!created || installed) return std::unexpected(native_error::host_failure);
+            if (!created)
+                return std::unexpected(native_error::host_failure);
             bool retained{};
             for (auto& thread : bootstrap_threads) {
-                if (thread.handle) continue;
-                thread = {event.dwThreadId, event.u.CreateThread.hThread};
+                if (thread.id) continue;
+                thread = {event.dwThreadId, event.u.CreateThread.hThread, false};
+                if (installed) {
+                    DWORD exit_code{};
+                    if (!GetExitCodeThread(thread.handle,&exit_code))
+                        return std::unexpected(native_error::host_failure);
+                    if (exit_code != STILL_ACTIVE) thread.exited = true;
+                    else if (SuspendThread(thread.handle) == static_cast<DWORD>(-1)) {
+                        if (!GetExitCodeThread(thread.handle,&exit_code) || exit_code == STILL_ACTIVE)
+                            return std::unexpected(native_error::host_failure);
+                        thread.exited = true;
+                    }
+                }
                 retained = true;
                 break;
             }
-            if (!retained || !event.u.CreateThread.hThread) return std::unexpected(native_error::host_failure);
+            if (!retained || !event.u.CreateThread.hThread)
+                return std::unexpected(native_error::host_failure);
             break;
         }
         case EXIT_THREAD_DEBUG_EVENT: {
-            if (installed || event.dwThreadId == child.tid()) return std::unexpected(native_error::host_failure);
+            if (event.dwThreadId == child.tid())
+                return std::unexpected(native_error::host_failure);
             bool found{};
             for (auto& thread : bootstrap_threads) {
-                if (thread.handle && thread.id == event.dwThreadId) {
+                if (thread.id == event.dwThreadId) {
                     thread = {};
                     found = true;
                     break;
                 }
             }
-            if (!found) return std::unexpected(native_error::host_failure);
+            if (!found)
+                return std::unexpected(native_error::host_failure);
             break;
         }
         case LOAD_DLL_DEBUG_EVENT:
         case UNLOAD_DLL_DEBUG_EVENT:
         case OUTPUT_DEBUG_STRING_EVENT:
-            if (installed) return std::unexpected(native_error::host_failure);
+            // A loader event queued before the initial breakpoint may be
+            // delivered afterward. Known worker threads are kept suspended,
+            // while TF still bounds the modeled main thread to one instruction.
             break;
         case EXIT_PROCESS_DEBUG_EVENT:
             if (!child.resume()) return std::unexpected(native_error::host_failure);
@@ -268,7 +307,8 @@ native_result drive(debug_child& child, const native_request& request,
             // Arbitrary debugger events are not part of this probe contract.
             return std::unexpected(native_error::host_failure);
         }
-        if (!child.resume()) return std::unexpected(native_error::host_failure);
+        if (!child.resume())
+            return std::unexpected(native_error::host_failure);
     }
 }
 } // namespace
@@ -288,6 +328,10 @@ native_result testing::step_windows_native_injected(const std::filesystem::path&
         (request.initial.known_flags & ~arithmetic_flags) != 0)
         return std::unexpected(native_error::invalid);
     try {
+        const auto deadline = clock_type::now() + std::chrono::milliseconds(timeout_ms);
+        std::unique_lock session_lock(debug_session_mutex(),std::defer_lock);
+        if (!session_lock.try_lock_until(deadline))
+            return std::unexpected(native_error::timed_out);
         std::wstring command = L"\"" + path + L"\"";
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
@@ -297,7 +341,6 @@ native_result testing::step_windows_native_injected(const std::filesystem::path&
         if (!CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE,
             DEBUG_ONLY_THIS_PROCESS | CREATE_NO_WINDOW, nullptr, nullptr, &startup, &information))
             return std::unexpected(translate_error(GetLastError()));
-        const auto deadline = clock_type::now() + std::chrono::milliseconds(timeout_ms);
         debug_child child(information);
         return drive(child, request, deadline, stage, reached);
     } catch (const std::bad_alloc&) { return std::unexpected(native_error::out_of_memory); }

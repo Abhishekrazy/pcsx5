@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phases 0–7 and bounded developer-shell Phase 9: COMPLETE within their documented scopes and exclusions below. Phases 8 and 10 are owner-DEFERRED with all Apple development/testing suspended. Full-product Phase 11 remains open. No PS5/game or general supported-platform claim.**
+**Phases 0–7, bounded developer-shell Phase 9 and bounded developer-delivery Phase 11: COMPLETE within their documented scopes and exclusions below. Phases 8 and 10 are owner-DEFERRED with all Apple development/testing suspended. No active roadmap phase remains. This is not a completed PS5/game emulator or a general supported-platform claim.**
 
 ## Phase 7 acceptance tasks
 
@@ -106,11 +106,43 @@ in scope. This does not remove macOS from the long-term architecture.
   native Metal is not implemented solely to fill the phase checkbox.
 - [x] P11.1 Frontend-facing bounded synthetic execution entry point and tests.
 - [x] P11.2 Developer CLI/Android shell and reproducible experimental packaging.
-- [ ] P11.3 Platform acceptance report, packaging checks and release exclusions.
+- [x] P11.3 Platform acceptance report, automated packaging checks and release exclusions.
 
 The existing roadmap ends at Phase 11. No invented later phases or game-support
 claims are implied by this task list. Production UI, signing/notarization and
 release compatibility cannot be certified by developer-shell checks.
+
+### P11.3 developer-delivery closure (2026-09-09)
+
+VERIFIED: desktop packaging is now an automated Release-labelled CTest, not a
+manual observation. CPack emits exactly one experimental ZIP and matching SHA-256
+sidecar. The gate extracts the archive, rejects any payload beyond the CLI,
+LICENSE, ARCHITECTURE.md and REBUILD_STATUS.md, runs the packaged self-test, and
+requires the packaged version output to say both `experimental` and
+`no PS5 game compatibility claim`. Windows Release passes 77/77 and WSL Linux
+Release passes 80/80, including this gate and the compiler-selection contract.
+
+VERIFIED during the Windows gate: CMake 4.3 exposed a regeneration loop caused by
+forcing the short compiler name `cl` after CMake cached its resolved path. Host
+presets now rely on their activated toolchain environment and the preset contract
+requires that no conflicting compiler override reappears. Interrupted detection
+also left an MSVC program-database server holding a scratch PDB; it was stopped,
+then a fresh configure/build succeeded. No toolchain was installed or changed.
+
+VERIFIED: the updated Windows loader can deliver bootstrap-worker events after
+its initial breakpoint. The native oracle now serializes the process-wide debug
+event queue within the caller deadline, tracks already-exited workers, suspends
+late workers, and accepts only their matched exit. Both native corpora passed ten
+consecutive paired runs, then passed inside the parallel 77-test Release matrix.
+Linux remained green after the Windows-only correction.
+
+VERIFIED release exclusions: desktop artifacts are unsigned experimental archives;
+the Android artifact remains development-signed and the recorded device acceptance
+is limited to the scalar/offscreen diagnostic shell on a 4-KiB-page device. Apple
+artifacts do not exist. No retail assets, firmware, keys or guest executables are
+packaged. Production UI, PS5 ELF/game loading, complete ISA/devices, signing,
+notarization, store distribution, Android 16-KiB pages and compatibility claims
+remain outside the completed Phase 11 developer-delivery scope.
 
 ### Remaining-platform delivery checkpoint (2026-09-09)
 
@@ -137,11 +169,11 @@ requests no device permissions. It is development-signed and NOT installed.
 Native runtime/device execution is NOT inferred from APK packaging.
 
 Deferred by owner: all Apple C++/runtime/JIT/signing/MoltenVK/Metal development
-and testing. Pending active non-Apple work: physical Android 16-KiB-page device
-coverage, complete product frontends, game/ELF support and production release
-gates. The simple app is an
+and testing. Future non-Apple product work includes physical Android 16-KiB-page
+device coverage, complete product frontends, game/ELF support and production
+release gates, but those are not defined as completed roadmap phases. The simple app is an
 experimental diagnostic frontend, not completion of the original product scope.
-Phases 8 and 10 remain deferred; full-product Phase 11 remains incomplete.
+Phases 8 and 10 remain deferred; bounded Phase 11 developer delivery is complete.
 
 ### P9 physical Android closure — bounded developer-shell scope (2026-09-09)
 
@@ -181,7 +213,8 @@ shell scope on the recorded 4-KiB-page device. UNKNOWN: physical 16-KiB pages,
 Android validation-layer acceptance, GPU presentation/surface lifecycle, complete
 input/audio/storage adapters, full guest execution, retail compatibility and
 production Android distribution. These exclusions prevent a general Android
-emulator-support claim. Phases 8, 10 and full-product Phase 11 remain open.
+emulator-support claim. Phases 8 and 10 remain owner-deferred; bounded Phase 11
+developer delivery is complete without changing these exclusions.
 
 ## Phase 6 acceptance tasks
 
