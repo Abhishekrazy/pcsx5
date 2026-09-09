@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phases 0–7: COMPLETE within their documented acceptance scopes and exclusions below. Phases 8–11: implementation in progress; Apple acceptance deferred by the user. No PS5/game or general supported-platform claim.**
+**Phases 0–7 and bounded developer-shell Phase 9: COMPLETE within their documented scopes and exclusions below. Phases 8, 10 and full-product Phase 11 remain open; Apple acceptance deferred by the user. No PS5/game or general supported-platform claim.**
 
 ## Phase 7 acceptance tasks
 
@@ -89,9 +89,10 @@ running Mac tests later. This does not establish Apple acceptance.
 ## Remaining task list (defined before implementation)
 
 - [x] P9.1 Android runtime memory/worker/timing and root CMake cross-build.
-- [ ] P9.2 Synthetic application-sandbox execution and lifecycle shell; explicit
+- [x] P9.2 Synthetic application-sandbox execution and lifecycle shell; explicit
   JIT capability/failure reporting, no retail code or blanket device permissions.
-- [ ] P9.3 Physical-device runtime/graphics/app lifecycle acceptance and cleanup.
+- [x] P9.3 Physical-device runtime/graphics/app lifecycle acceptance and cleanup
+  for the bounded developer shell on the recorded device; limitations below.
 - [ ] P10.1 Record measured native Metal go/no-go. DEFERRED without Mac data;
   native Metal is not implemented solely to fill the phase checkbox.
 - [x] P11.1 Frontend-facing bounded synthetic execution entry point and tests.
@@ -132,6 +133,46 @@ physical 16-KiB-page device coverage; measured Metal decision; complete product
 frontends, game/ELF support and production release gates. The simple app is an
 experimental diagnostic frontend, not completion of the original product scope.
 Phases 8, 9, 10 and 11 therefore remain incomplete rather than being relabelled.
+
+### P9 physical Android closure — bounded developer-shell scope (2026-09-09)
+
+VERIFIED on reconnected serial c2b2af7f, Xiaomi 2512BPNDAI, Android user 0:
+the new POSIX memory lifecycle/range/protection/zeroing corpus passes, as do
+worker publication/repeated join/exception and 4,096 monotonic samples. Actual
+RX code-page ownership/release, 43,528 full-state ARM64 comparisons across 5,633
+images, hybrid fallback/error boundaries and the host ABI negative control pass.
+The functional Vulkan corpus passes 4,787 checks (two fresh owners, two replays),
+explicitly with validation layers DISABLED. This supersedes the disconnected
+device status above, not the Apple or validation-layer exclusions.
+
+VERIFIED: no existing org.pcsx5.experimental installation was found for user 0.
+The development instrumentation APK installed successfully. Its real UI/JNI path
+passes five runs spanning repeat, recreate, orientation-triggered recreation,
+background/resume and final activity destruction. Synchronization uses actual
+completion/lifecycle events, not delays. No device-wide rotation settings or
+permissions were changed. The app remains installed; no user data was deleted.
+Three additional consecutive instrumentation sequences passed through the checked
+runner (15 more UI/JNI completions). Its parser self-tests initially caught a
+PowerShell array/concatenation mistake in the negative controls; parenthesizing
+the malformed-output case fixed the fixture, and all negative controls now pass.
+An initial unscoped package query was denied access to user 10; subsequent
+queries/install/instrumentation explicitly target the observed current user 0.
+
+Reproduction: build with `tools/build-android-app.ps1 -DeviceTests` and the existing
+SDK/NDK/JDK arguments, install the resulting APK for the explicitly selected user,
+then run `tools/test-android-app.ps1 -Serial c2b2af7f -Repetitions 3`. Never uninstall
+an existing differently signed package automatically. The host runner rejects
+missing/failed markers even when adb exits zero; parser negative controls are
+embedded. Shell tests use `tools/test-android-arm64.ps1` with the installed NDK
+and Vulkan SDK paths. Generated shell binaries are retained in the reported
+project-specific device directory, not copied into personal storage.
+
+Phase 9 is COMPLETE only for this experimental scalar/runtime/offscreen/developer
+shell scope on the recorded 4-KiB-page device. UNKNOWN: physical 16-KiB pages,
+Android validation-layer acceptance, GPU presentation/surface lifecycle, complete
+input/audio/storage adapters, full guest execution, retail compatibility and
+production Android distribution. These exclusions prevent a general Android
+emulator-support claim. Phases 8, 10 and full-product Phase 11 remain open.
 
 ## Phase 6 acceptance tasks
 

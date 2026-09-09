@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory=$true)][string]$NdkRoot,
     [Parameter(Mandatory=$true)][string]$JdkRoot,
     [string]$BuildToolsVersion='36.0.0',
-    [string]$Platform='android-37.0'
+    [string]$Platform='android-37.0',
+    [switch]$DeviceTests
 )
 $ErrorActionPreference='Stop'
 function Check-Native([string]$Step) { if ($LASTEXITCODE -ne 0) { throw "$Step failed ($LASTEXITCODE)." } }
@@ -25,14 +26,26 @@ try {
     Copy-Item -LiteralPath 'LICENSE' -Destination "$output/package/assets/LICENSE"
     Copy-Item -LiteralPath "$NdkRoot/NOTICE" -Destination "$output/package/assets/NDK-NOTICE"
     Copy-Item -LiteralPath "$NdkRoot/NOTICE.toolchain" -Destination "$output/package/assets/NDK-TOOLCHAIN-NOTICE"
-    & "$JdkRoot/bin/javac.exe" -source 8 -target 8 -Xlint:-options -bootclasspath $androidJar -d "$output/classes" frontend/android/MainActivity.java
+    $javaSources=@('frontend/android/MainActivity.java')
+    $manifest='frontend/android/AndroidManifest.xml'
+    if ($DeviceTests) {
+        $javaSources+='frontend/android/DeviceAcceptance.java'
+        [xml]$testManifest=Get-Content -LiteralPath $manifest -Raw
+        $instrumentation=$testManifest.CreateElement('instrumentation')
+        $instrumentation.SetAttribute('name','http://schemas.android.com/apk/res/android','org.pcsx5.experimental.DeviceAcceptance') | Out-Null
+        $instrumentation.SetAttribute('targetPackage','http://schemas.android.com/apk/res/android','org.pcsx5.experimental') | Out-Null
+        $testManifest.manifest.AppendChild($instrumentation) | Out-Null
+        $manifest="$output/AndroidManifest.xml"
+        $testManifest.Save($manifest)
+    }
+    & "$JdkRoot/bin/javac.exe" -source 8 -target 8 -Xlint:-options -bootclasspath $androidJar -d "$output/classes" @javaSources
     Check-Native 'Java compile'
     $classes=@(Get-ChildItem -LiteralPath "$output/classes" -Recurse -Filter '*.class' | ForEach-Object FullName)
     & "$buildTools/d8.bat" --min-api 26 --lib $androidJar --output "$output/dex" @classes
     Check-Native 'Dex compile'
     Copy-Item -LiteralPath "$output/dex/classes.dex" -Destination "$output/package/classes.dex"
     Copy-Item -LiteralPath "$native/frontend/libpcsx5_app.so" -Destination "$output/package/lib/arm64-v8a/libpcsx5_app.so"
-    & "$buildTools/aapt.exe" package -f -M frontend/android/AndroidManifest.xml -I $androidJar -F "$output/unsigned.apk" "$output/package"
+    & "$buildTools/aapt.exe" package -f -M $manifest -I $androidJar -F "$output/unsigned.apk" "$output/package"
     Check-Native 'APK package'
     & "$buildTools/zipalign.exe" -P 16 -f 4 "$output/unsigned.apk" "$output/aligned.apk"
     Check-Native 'APK align'

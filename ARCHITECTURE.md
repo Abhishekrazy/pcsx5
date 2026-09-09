@@ -136,6 +136,16 @@ destruction. No network/storage permissions, automatic guest host syscalls or
 firmware/game import are enabled. Mobile lifecycle/native crashes still need
 physical app tests; the bounded runner is not a security sandbox claim.
 
+The optional `-DeviceTests` Android build registers a framework Instrumentation
+runner in the development APK only, without another dependency. It observes the
+real button/status TextView and lifecycle callbacks, waits on completion/events
+with bounded latches/queues, and exercises repeat/recreate/orientation/background/
+resume/finish. It does not directly substitute a native success result or inspect
+other applications. `tools/test-android-app.ps1` requires both the exact completion
+record and instrumentation success code; adb process exit zero alone is not proof.
+This app test is a two-instruction scalar differential smoke test, not the full
+43,528-case shell corpus. The default developer APK does not register the runner.
+
 Developer packaging includes the project license; Android also includes installed
 NDK notices for its statically linked runtime. These artifacts remain local, with
 no release approval, redistribution/license certification, store submission,
