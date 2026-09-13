@@ -2,14 +2,14 @@
 
 ## Current phase
 
-**Track 1: Core Emulator Integration in progress (Milestone T1.3 COMPLETE). Phases 0–7, bounded developer-shell Phase 9 and bounded developer-delivery Phase 11: COMPLETE within their documented scopes. Phases 8 and 10 remain owner-DEFERRED.**
+**Track 1: Core Emulator Integration in progress (Milestone T1.4 COMPLETE). Phases 0–7, bounded developer-shell Phase 9 and bounded developer-delivery Phase 11: COMPLETE within their documented scopes. Phases 8 and 10 remain owner-DEFERRED.**
 
 ### Track 1: Core Emulator Integration tasks
 
 - [x] T1.1 Host-independent 64-bit ELF and Sony PS5 SELF header parser in `core/` with strict bounds validation and rejection tests (Windows Release 78/78, WSL Linux 81/81, all 38 core boundary checks pass).
 - [x] T1.2 Segment mapping & guest memory image allocation: `core::loader` mapping `PT_LOAD` segments, memory permission enforcement (RX/RO vs RW), zero-filled BSS, and `PT_TLS` template extraction (Windows Release 79/79, WSL Linux 82/82, boundary checks pass).
 - [x] T1.3 Dynamic table parsing (`PT_DYNAMIC`) and x86-64 relocation processing (`R_X86_64_RELATIVE`, `R_X86_64_64`, `R_X86_64_GLOB_DAT`, `R_X86_64_JUMP_SLOT`) with host-independent symbol resolution callback (Windows Release 80/80, WSL Linux 83/83, all 38 core boundary checks pass).
-- [ ] T1.4 Clean HLE dispatch table and module NID resolution.
+- [x] T1.4 Clean HLE dispatch table and module NID resolution: Sony base64 NID encoder/decoder, well-known name lookup, host-independent `hle_registry`, guest thunk emission (`syscall; ret`), auto-stubbing, and relocation symbol resolver (Windows Release 81/81, WSL Linux 84/84, all 38 core boundary checks pass).
 - [ ] T1.5 Frontend session integration and standalone test ELF execution.
 
 Pending owner-gated gates (to resume when Apple Silicon hardware is available):

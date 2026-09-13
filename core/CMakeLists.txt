@@ -5,6 +5,8 @@ add_library(pcsx5_core STATIC
     src/loader.cpp
     src/dynamic_info.cpp
     src/relocation.cpp
+    src/nid.cpp
+    src/hle_registry.cpp
 )
 
 target_include_directories(pcsx5_core

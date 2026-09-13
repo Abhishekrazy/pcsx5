@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -193,6 +193,7 @@ struct elf64_sym {
 };
 static_assert(sizeof(elf64_sym) == 24, "elf64_sym size must be exactly 24 bytes");
 
+inline constexpr std::uint16_t shn_undef = 0;
 
 } // namespace pcsx5::core
 
