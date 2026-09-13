@@ -3,6 +3,8 @@ add_library(pcsx5_core STATIC
     src/guest_memory.cpp
     src/elf_parser.cpp
     src/loader.cpp
+    src/dynamic_info.cpp
+    src/relocation.cpp
 )
 
 target_include_directories(pcsx5_core
