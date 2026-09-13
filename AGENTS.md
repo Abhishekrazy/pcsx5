@@ -2,7 +2,7 @@
 
 ## Authority
 
-This file, [ARCHITECTURE.md](ARCHITECTURE.md), and [REBUILD_STATUS.md](REBUILD_STATUS.md) are the only project guidance sources. If another document or old source conflicts, these files win.
+This file, [ARCHITECTURE.md](ARCHITECTURE.md), and [REBUILD_STATUS.md](REBUILD_STATUS.md) are the only project guidance sources. If another document or old source conflicts, these files win. Detailed modular guidelines and skills are organized under [`.agent/rules/`](.agent/rules/) and [`.agent/skills/`](.agent/skills/).
 
 ## Objective
 
@@ -28,14 +28,16 @@ The current implementation is a legacy reference, not the target architecture. D
 
 ## Built-in engineering skills
 
+Detailed runbooks for each skill are located in [`.agent/skills/`](.agent/skills/):
+
 | Skill | Use it for | Required output |
 |---|---|---|
-| Reconnaissance | Entering an unfamiliar subsystem | Ownership, call sites, tests, and unknowns |
-| Characterization | Preserving legacy behavior | Focused test or deterministic trace |
-| Contract design | Creating a cross-platform boundary | Narrow API, invariants, and capability model |
-| Implementation | Changing one bounded concern | Buildable implementation with no unrelated refactor |
-| Verification | Closing a change | Focused result, acceptance-gate result, and remaining risk |
-| Architecture decision | Making an irreversible or cross-platform choice | Short decision record in `ARCHITECTURE.md` or a linked section |
+| [Reconnaissance](.agent/skills/reconnaissance/SKILL.md) | Entering an unfamiliar subsystem | Ownership, call sites, tests, and unknowns |
+| [Characterization](.agent/skills/characterization/SKILL.md) | Preserving legacy behavior | Focused test or deterministic trace |
+| [Contract design](.agent/skills/contract-design/SKILL.md) | Creating a cross-platform boundary | Narrow API, invariants, and capability model |
+| [Implementation](.agent/skills/implementation/SKILL.md) | Changing one bounded concern | Buildable implementation with no unrelated refactor |
+| [Verification](.agent/skills/verification/SKILL.md) | Closing a change | Focused result, acceptance-gate result, and remaining risk |
+| [Architecture decision](.agent/skills/architecture-decision/SKILL.md) | Making an irreversible or cross-platform choice | Short decision record in `ARCHITECTURE.md` or a linked section |
 
 ## Standard workflow
 

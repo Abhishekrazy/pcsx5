@@ -132,6 +132,8 @@ releases/
 # Local AI engineering tooling — development aids, not part of the emulator.
 # Kept on disk, deliberately not published.
 # ---------------------------------------------------------------------------
+.agent/
+.agents/
 .claude/
 .gemini/
 CLAUDE.md
