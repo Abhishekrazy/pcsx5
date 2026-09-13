@@ -1,6 +1,6 @@
 add_library(pcsx5_frontend STATIC src/session.cpp)
 target_compile_features(pcsx5_frontend PUBLIC cxx_std_23)
-target_link_libraries(pcsx5_frontend PUBLIC pcsx5_execution)
+target_link_libraries(pcsx5_frontend PUBLIC pcsx5_execution pcsx5_core)
 target_include_directories(pcsx5_frontend PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 pcsx5_enable_warnings(pcsx5_frontend)
 if(ANDROID)
