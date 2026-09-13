@@ -7,7 +7,7 @@
 ### Track 1: Core Emulator Integration tasks
 
 - [x] T1.1 Host-independent 64-bit ELF and Sony PS5 SELF header parser in `core/` with strict bounds validation and rejection tests (Windows Release 78/78, WSL Linux 81/81, all 38 core boundary checks pass).
-- [ ] T1.2 Segment mapping & guest memory image allocation (`core::loader` allocating via `runtime::make_guest_memory_backing`).
+- [x] T1.2 Segment mapping & guest memory image allocation: `core::loader` mapping `PT_LOAD` segments, memory permission enforcement (RX/RO vs RW), zero-filled BSS, and `PT_TLS` template extraction (Windows Release 79/79, WSL Linux 82/82, boundary checks pass).
 - [ ] T1.3 Dynamic table parsing (`PT_DYNAMIC`) and x86-64 relocation processing (`R_X86_64_RELATIVE`, `R_X86_64_64`, GOT/PLT).
 - [ ] T1.4 Clean HLE dispatch table and module NID resolution.
 - [ ] T1.5 Frontend session integration and standalone test ELF execution.
