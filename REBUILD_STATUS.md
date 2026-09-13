@@ -2,7 +2,15 @@
 
 ## Current phase
 
-**Phases 0–7, bounded developer-shell Phase 9 and bounded developer-delivery Phase 11: COMPLETE within their documented scopes and exclusions below. Phases 8 and 10 are owner-DEFERRED with all Apple development/testing suspended. No active roadmap phase remains until Apple work is resumed by the owner. This is not a completed PS5/game emulator or a general supported-platform claim.**
+**Track 1: Core Emulator Integration in progress (Milestone T1.1 COMPLETE). Phases 0–7, bounded developer-shell Phase 9 and bounded developer-delivery Phase 11: COMPLETE within their documented scopes. Phases 8 and 10 remain owner-DEFERRED.**
+
+### Track 1: Core Emulator Integration tasks
+
+- [x] T1.1 Host-independent 64-bit ELF and Sony PS5 SELF header parser in `core/` with strict bounds validation and rejection tests (Windows Release 78/78, WSL Linux 81/81, all 38 core boundary checks pass).
+- [ ] T1.2 Segment mapping & guest memory image allocation (`core::loader` allocating via `runtime::make_guest_memory_backing`).
+- [ ] T1.3 Dynamic table parsing (`PT_DYNAMIC`) and x86-64 relocation processing (`R_X86_64_RELATIVE`, `R_X86_64_64`, GOT/PLT).
+- [ ] T1.4 Clean HLE dispatch table and module NID resolution.
+- [ ] T1.5 Frontend session integration and standalone test ELF execution.
 
 Pending owner-gated gates (to resume when Apple Silicon hardware is available):
 
